@@ -9,6 +9,7 @@ const terminalProof = resolve(runtimeDir, 'terminal-proof.txt');
 const userDataDir = resolve(runtimeDir, `user-data-${Date.now()}`);
 const debugPort = Number(process.env.THEIA_ELECTRON_DEBUG_PORT ?? 9334);
 const browserURL = `http://127.0.0.1:${debugPort}`;
+const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
 mkdirSync(runtimeDir, { recursive: true });
 rmSync(terminalProof, { force: true });
 
@@ -46,10 +47,12 @@ let browser;
 try {
     await waitForCdp(browserURL, startProcess, 120_000);
     browser = await puppeteer.connect({ browserURL, defaultViewport: null });
-    const page = await findWorkbenchPage(browser, 120_000);
-    page.setDefaultTimeout(30_000);
+    const page = await findWorkbenchPage(browser, uiTimeout);
+    page.setDefaultTimeout(uiTimeout);
     await page.bringToFront();
     await page.evaluate(() => window.focus());
+    await page.waitForSelector('.lens-agent-window__actions button', { timeout: uiTimeout });
+    await page.waitForSelector('#status-bar-lens-changes', { timeout: uiTimeout });
 
     const windowTitle = await page.title();
     const userAgent = await page.evaluate(() => navigator.userAgent);
@@ -63,45 +66,34 @@ try {
     }
 
     await clickButton(page, '.lens-agent-window', '質問');
-    await page.waitForSelector('[aria-label="Mock follow-up question"]');
+    await page.waitForSelector('[aria-label="Mock follow-up question"]', { timeout: uiTimeout });
 
-    await page.$eval('#status-bar-lens-changes', element => {
-        if (!(element instanceof HTMLElement)) {
-            throw new Error('IDE Changes status bar entry was not found');
-        }
-        element.click();
-    });
-    await page.waitForSelector('.lens-changes');
+    await clickSelector(page, '#status-bar-lens-changes', 'IDE Changes status bar entry');
+    await page.waitForSelector('.lens-changes__content', { timeout: uiTimeout });
+    await page.waitForSelector('[aria-label="Code Diff representation"]', { timeout: uiTimeout });
     const changeSetId = await page.$eval(
         '.lens-changes__content',
         element => element.getAttribute('data-change-set-id')
     );
     const codeDiffVisible = Boolean(await page.$('[aria-label="Code Diff representation"]'));
-    await page.$eval('.lens-changes__open-diff', element => {
-        if (!(element instanceof HTMLElement)) {
-            throw new Error('Code Diff action was not found');
-        }
-        element.click();
-    });
-    await page.waitForSelector('.monaco-diff-editor');
+    await clickSelector(page, '.lens-changes__open-diff', 'Code Diff action');
+    await page.waitForSelector('.monaco-diff-editor', { timeout: uiTimeout });
     await page.waitForFunction(
-        () => document.querySelector('.lens-changes__status')?.textContent?.includes('既存 Diff Editor')
+        () => document.querySelector('.lens-changes__status')?.textContent?.includes('既存 Diff Editor'),
+        { timeout: uiTimeout }
     );
 
     await clickButton(page, '.lens-changes__tabs', 'Semantic Diff');
-    await page.waitForSelector('[aria-label="Semantic Diff representation"]');
-    await page.$eval('.lens-changes__evidence', element => {
-        if (!(element instanceof HTMLElement)) {
-            throw new Error('Evidence action was not found');
-        }
-        element.click();
-    });
+    await page.waitForSelector('[aria-label="Semantic Diff representation"]', { timeout: uiTimeout });
+    await clickSelector(page, '.lens-changes__evidence', 'Evidence action');
     await page.waitForFunction(
-        () => document.querySelector('.lens-changes__status')?.textContent?.includes('12 行目')
+        () => document.querySelector('.lens-changes__status')?.textContent?.includes('12 行目'),
+        { timeout: uiTimeout }
     );
     await page.waitForFunction(
         () => [...document.querySelectorAll('.lm-TabBar-tabLabel')]
-            .some(label => label.textContent?.trim() === 'auth-service.ts')
+            .some(label => label.textContent?.trim() === 'auth-service.ts'),
+        { timeout: uiTimeout }
     );
 
     const evidenceResult = await page.evaluate(() => ({
@@ -118,7 +110,7 @@ try {
                 .some(label => label.textContent?.trim().toLowerCase() === 'cmd'),
             { timeout: 10_000 }
         );
-        await activateEditorTab(page, 'cmd');
+        await activateEditorTab(page, 'cmd', 10_000);
         await page.waitForSelector('.xterm-helper-textarea', { timeout: 10_000 });
         const terminalInput = await page.$('.xterm-helper-textarea');
         await terminalInput.focus();
@@ -142,7 +134,7 @@ try {
     });
 
     const lspResult = await optionalCheck('TypeScript hover', async () => {
-        await activateEditorTab(page, 'auth-service.ts');
+        await activateEditorTab(page, 'auth-service.ts', 20_000);
         await page.keyboard.press('Home');
         for (let index = 0; index < 8; index += 1) {
             await page.keyboard.press('ArrowRight');
@@ -239,6 +231,13 @@ async function findWorkbenchPage(browser, timeout) {
 }
 
 async function clickButton(page, rootSelector, label) {
+    await page.waitForFunction(
+        ({ rootSelector: rootSelectorValue, label: labelValue }) =>
+            [...document.querySelectorAll(`${rootSelectorValue} button`)]
+                .some(candidate => candidate.textContent?.trim() === labelValue),
+        { timeout: uiTimeout },
+        { rootSelector, label }
+    );
     await page.evaluate(({ rootSelector: rootSelectorValue, label: labelValue }) => {
         const button = [...document.querySelectorAll(`${rootSelectorValue} button`)]
             .find(candidate => candidate.textContent?.trim() === labelValue);
@@ -247,6 +246,16 @@ async function clickButton(page, rootSelector, label) {
         }
         button.click();
     }, { rootSelector, label });
+}
+
+async function clickSelector(page, selector, label) {
+    await page.waitForSelector(selector, { timeout: uiTimeout });
+    await page.$eval(selector, (element, labelValue) => {
+        if (!(element instanceof HTMLElement)) {
+            throw new Error(`${labelValue} was not an HTML element`);
+        }
+        element.click();
+    }, label);
 }
 
 async function pressChord(page, modifiers, key) {
@@ -259,10 +268,15 @@ async function pressChord(page, modifiers, key) {
     for (const modifier of [...modifiers].reverse()) {
         await page.keyboard.up(modifier);
     }
-    await delay(500);
 }
 
-async function activateEditorTab(page, label) {
+async function activateEditorTab(page, label, timeout = uiTimeout) {
+    await page.waitForFunction(
+        labelValue => [...document.querySelectorAll('.lm-TabBar-tabLabel')]
+            .some(candidate => candidate.textContent?.trim() === labelValue),
+        { timeout },
+        label
+    );
     await page.evaluate(labelValue => {
         const tab = [...document.querySelectorAll('.lm-TabBar-tab')]
             .find(candidate => candidate.querySelector('.lm-TabBar-tabLabel')?.textContent?.trim() === labelValue);
@@ -271,7 +285,12 @@ async function activateEditorTab(page, label) {
         }
         tab.click();
     }, label);
-    await delay(500);
+    await page.waitForFunction(
+        labelValue => [...document.querySelectorAll('.lm-TabBar-tab.lm-mod-current .lm-TabBar-tabLabel')]
+            .some(candidate => candidate.textContent?.trim() === labelValue),
+        { timeout },
+        label
+    );
 }
 
 async function waitFor(predicate, timeout, label) {
