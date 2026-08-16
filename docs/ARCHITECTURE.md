@@ -8,7 +8,7 @@ Architecture Draft for First Completion.
 
 ## Architectural Goals
 
-- Agent WindowとEditorを同一IDE内に統合する
+- Agent Window、Changes、Editorを同一IDE内に統合する
 - Agent RuntimeとUIを疎結合にする
 - Agentによる実変更を追跡できる
 - Semantic Diffを実コード解析に基づいて生成する
@@ -19,31 +19,30 @@ Architecture Draft for First Completion.
 ## High-Level Architecture
 
 ```text
-┌─────────────────────────────────────────────┐
-│                   IDE                       │
-│                                             │
-│  ┌──────────────────┐  ┌─────────────────┐ │
-│  │      Editor      │  │  Agent Window   │ │
-│  │ Code / Diff / LSP│  │ Chat            │ │
-│  │ Git              │  │ Question        │ │
-│  │                  │  │ Semantic Diff   │ │
-│  └─────────┬────────┘  └────────┬────────┘ │
-│            │                    │          │
-│            └────────┬───────────┘          │
-│                     │                      │
-│              Application Core             │
-│                     │                      │
-│   ┌─────────────────┼─────────────────┐    │
-│   │                 │                 │    │
-│ Event Bus     Workspace Service   Task /    │
-│                                   Change    │
-│                                   Tracking  │
-└─────────────────────┬───────────────────────┘
-                      │
-          ┌───────────┼────────────┐
-          │           │            │
-   AgentProvider  SemanticDiff   Tool/Process
-                  Provider       Services
+┌──────────────────────────────────────────────────────────────┐
+│                            IDE                               │
+│                                                              │
+│ ┌──────────────┐  ┌─────────────────┐  ┌──────────────────┐ │
+│ │ Agent Window │  │     Changes     │  │      Editor      │ │
+│ │ Chat         │  │ Change Set      │  │ Code / LSP / Git │ │
+│ │ Task Result  │  │ Code Diff       │  │ Evidence         │ │
+│ │ Question     │  │ Semantic Diff   │  │                  │ │
+│ └──────┬───────┘  └────────┬────────┘  └────────┬─────────┘ │
+│        │                   │                    │           │
+│        └───────────────────┼────────────────────┘           │
+│                            │                                │
+│                     Application Core                       │
+│                            │                                │
+│       ┌────────────────────┼────────────────────┐           │
+│       │                    │                    │           │
+│   Event Bus       Workspace Service       Task / Change     │
+│                                             Tracking        │
+└────────────────────────────┬─────────────────────────────────┘
+                             │
+                 ┌───────────┼────────────┐
+                 │           │            │
+          AgentProvider  SemanticDiff   Tool/Process
+                         Provider       Services
 ```
 
 ## Core Concepts
@@ -72,7 +71,7 @@ BaselineとTask終了時点のWorkspace状態との差。
 ChangeSet = Workspace(Before) → Workspace(After)
 ```
 
-Change SetはSemantic Diffの一次入力になる。
+Change SetはCode Diffの元データであり、Semantic Diffの一次入力になる。
 
 ### Intent
 ユーザーのPrompt、チャット、Agent Plan等から得られる「何をしようとしたか」。
@@ -176,7 +175,7 @@ interface SemanticChange {
 - Range navigation
 - Diff open
 - Reveal evidence
-- Agent Windowとの連携
+- Changes、Agent Windowとの連携
 
 ## Event Model
 
@@ -204,20 +203,32 @@ Agent Windowは以下の責務を持つ。
 - Chat
 - Task result
 - Question
-- Semantic Diff
-- Quick Diff
-- Agent status
 
-通常時はChatのみを主表示とする。
+通常時はChatとTask resultのみを主表示とする。Questionは対象Taskの文脈を引き継ぐ。
+
+Agent WindowはChange Set、Code Diff、Semantic Diffを表示しない。
+
+## Changes
+
+Changesは実際のChange Setを確認する領域である。
+
+- 対象TaskとChange Setの対応
+- Code Diff
+- Semantic Diff
+- Semantic ChangeからEvidenceへの移動
+
+Code DiffとSemantic Diffは、同じChange Setの異なる表現である。切り替えて表示でき、必要な場合は並列に表示できる。
+
+ChangesはAgentの作業完了時に自動表示しない。ユーザーが必要なときに開く。
 
 Level 1 / Level 2 / Level 3を同時表示しない。
 
 ```text
-Level 1: Result
-↓ user action
-Level 2: Semantic Diff
-↓ user action
-Level 3: Editor / Evidence
+Level 1: Agent Window / Task Result・Question
+↓ user opens Changes
+Level 2: Changes / Code Diff・Semantic Diff
+↓ user opens Evidence
+Level 3: Editor / Evidence・Code
 ```
 
 ## Editor
@@ -230,7 +241,7 @@ Editorは以下を担当する。
 - Git Diff
 - Evidence navigation
 
-Agent Window内にEditorを再実装しない。
+Agent WindowやChanges内に本格的なEditorを再実装しない。ChangesのCode DiffはChange Setのコード表現に限定する。
 
 ## Semantic Diff Pipeline
 
@@ -244,16 +255,18 @@ Agent Work
 Task Completed
     ↓
 Build Change Set
+    ├─ Generate Code Diff
+    └─ Static / Structural Analysis
+           ↓
+       Semantic Change Extraction
+           ↓
+       LLM-assisted Human-readable Representation
+           ↓
+       Evidence Validation
+           ↓
+       Generate Semantic Diff
     ↓
-Static / Structural Analysis
-    ↓
-Semantic Change Extraction
-    ↓
-LLM-assisted Human-readable Representation
-    ↓
-Evidence Validation
-    ↓
-Semantic Diff UI
+Publish Code Diff and Semantic Diff to Changes
 ```
 
 LLMは説明生成・統合に利用できるが、一次情報にはしない。

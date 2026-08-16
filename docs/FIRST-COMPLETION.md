@@ -8,7 +8,7 @@
 
 ## First Completion Goal
 
-自分の実プロジェクトをこのIDEで開き、Agentに実装を任せ、普段はチャットだけで進められ、気になった変更だけSemantic Diffで理解し、さらに必要なら同じIDEのEditorで根拠コードを確認できる。
+自分の実プロジェクトをこのIDEで開き、Agentに実装を任せ、普段はチャットだけで進められ、気になった変更だけChanges領域でCode DiffやSemantic Diffとして理解し、さらに必要なら同じIDEのEditorで根拠コードを確認できる。
 
 これを日常開発で実用できる。
 
@@ -33,8 +33,8 @@
 - [ ] 通常状態はシンプルなチャットUIである
 - [ ] 作業完了時に短い結果を表示できる
 - [ ] 作業結果に「質問」アクションがある
-- [ ] 作業結果に「変更を見る」アクションがある
 - [ ] Agent Windowだけで通常の開発を継続できる
+- [ ] Agent WindowはChange Setの表示責務を持たない
 
 ### Question
 - [ ] 「質問」から、そのTaskを文脈として追加質問できる
@@ -47,9 +47,18 @@
 - [ ] 複数ターンにまたがる修正を一つのTask Change Setとして扱える
 - [ ] Agentの自己申告ではなく、Workspaceの実差分を取得できる
 
+### Changes
+- [ ] ユーザーが必要なときにChanges領域を開ける
+- [ ] Changes領域で対象TaskのChange Setを確認できる
+- [ ] 同じChange SetのCode DiffとSemantic Diffを切り替えて確認できる
+- [ ] 必要な場合はCode DiffとSemantic Diffを並列に表示できる
+- [ ] Agentの作業完了時にChanges領域を強制表示しない
+
 ### Semantic Diff
 - [ ] Change SetからSemantic Diffを生成できる
 - [ ] Semantic Diffは実際のコード・設定・スキーマ等を一次情報とする
+- [ ] Semantic DiffをChanges領域で表示できる
+- [ ] Code DiffとSemantic Diffが同じChange Setを表現していることを識別できる
 - [ ] 変更前と変更後の意味の差を表示できる
 - [ ] 重要な責務・依存・データフロー等の変化を表現できる
 - [ ] Semantic Changeごとに根拠情報を保持できる
@@ -58,9 +67,9 @@
 
 ### Editor Integration
 - [ ] Semantic Diff上の項目から該当ファイル・行へ移動できる
-- [ ] EditorからAgent Windowへ自然に戻れる
-- [ ] Agent WindowとEditorが別アプリ・別Workspaceとして分離されていない
-- [ ] Quick Diffと本格的なコード閲覧の役割が重複しすぎていない
+- [ ] EditorからChangesやAgent Windowへ自然に戻れる
+- [ ] Agent Window、Changes、Editorが別アプリ・別Workspaceとして分離されていない
+- [ ] ChangesのCode DiffとEditorでの本格的なコード閲覧の役割が重複しすぎていない
 
 ### Practical Use
 - [ ] 自分の実プロジェクトで継続利用できる
@@ -87,7 +96,7 @@ Definition of Doneを満たした後、1〜2週間、自分の実開発でメイ
 
 以下の質問にYESなら第一完成とする。
 
-> AIに実装を任せ、普段はAgent Windowだけで進め、気になったときだけSemantic Diffを見て、さらに必要な場合だけ根拠コードへ降りる開発フローを、自分が実際に使いたいと思えるか？
+> AIに実装を任せ、普段はAgent Windowだけで進め、気になったときだけChangesでCode DiffやSemantic Diffを見て、さらに必要な場合だけ根拠コードへ降りる開発フローを、自分が実際に使いたいと思えるか？
 
 YESなら完成。
 

@@ -22,7 +22,7 @@ AIによる開発では、コード生成速度が人間の理解速度を上回
 - 生成されたコードを毎回すべて読むのは現実的ではない
 - AIの報告書を読むだけでは人間が受動的になりやすい
 - チャットによる説明は一時的で、理解がプロジェクト知識として残りにくい
-- Agent WindowとEditorの往復が思考を分断する
+- Agent Window、Changes、Editorの往復が思考を分断する
 - 「理解のための専用画面」は教育的になり、使われなくなる
 
 という問題が起こる。
@@ -41,20 +41,24 @@ AI
 - TokenStoreを追加
 - Logout時の失効処理を変更
 
-[質問] [変更を見る]
+[質問]
 ```
+
+変更を確認したいときは、ユーザーがIDEのChanges領域を開く。Changes領域では、同じChange SetをCode DiffとSemantic Diffの2つの表現で確認する。
 
 ユーザーが気になったときだけ深く入る。
 
 ```text
-Level 1: AIの作業結果
-    ↓
-Level 2: Semantic Diff
-    ↓
-Level 3: Evidence / Code
+Level 1: Agent Window / AIの作業結果・質問
+    ↓ user opens Changes
+Level 2: Changes / Code Diff・Semantic Diff
+    ↓ user opens Evidence
+Level 3: Editor / Evidence・Code
 ```
 
-この3段階を同時に表示しない。
+ChangesはAgentの作業完了時に自動表示しない。ユーザーが必要な深さまで開く。
+
+Changes内では、Code DiffとSemantic Diffを切り替えるか、必要に応じて並列に表示できる。
 
 ## Semantic Diff
 
@@ -118,28 +122,32 @@ Refresh / Logout / Session
 
 ## IDE Structure
 
-IDE内にEditorとAgent Windowを共存させる。
+IDE内にAgent Window、Changes、Editorを共存させる。
 
 ```text
 IDE
-├ Editor
-│  ├ Code
-│  ├ Diff
-│  ├ LSP
-│  └ Git
+├ Agent Window
+│  ├ Chat
+│  ├ Task Result
+│  └ Question
 │
-└ Agent Window
-   ├ Chat
-   ├ Question
-   ├ Semantic Diff
-   └ Quick Diff
+├ Changes
+│  ├ Change Set
+│  ├ Code Diff
+│  └ Semantic Diff
+│
+└ Editor
+   ├ Code
+   ├ LSP
+   ├ Git
+   └ Evidence
 ```
 
 Agent Windowの中にもう一つEditorを作らない。
 
-Agent Windowは「Intent / Result / Meaning」を見る場所。Editorは「Evidence / Implementation」を見る場所。
+Agent Windowは「Intent / Result / Question」を扱う場所。ChangesはActual ChangeをCode DiffとSemantic Diffで確認する場所。Editorは「Evidence / Implementation」を見る場所。
 
-どちらも同じIDE内に存在し、画面・アプリを行き来しなくて済むようにする。
+すべて同じIDE内に存在し、別の画面・アプリへ移動しなくて済むようにする。
 
 ## Interaction Principles
 
@@ -147,7 +155,7 @@ Agent Windowは「Intent / Result / Meaning」を見る場所。Editorは「Evid
 通常時はチャットだけでよい。
 
 ### 2. Depth on demand
-深く知りたいときだけSemantic Diffやコードを開く。
+深く知りたいときだけChangesでCode DiffやSemantic Diffを開き、さらに必要ならEditorでコードを開く。
 
 ### 3. No forced education
 AIから理解確認の質問をしない。理解度テストをしない。報告書を読ませない。

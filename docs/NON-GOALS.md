@@ -104,11 +104,11 @@ Semantic Diffが全言語・全変更を完全に理解することを完成条�
 
 ### Forced Review
 
-すべてのAgent作業後にSemantic Diffを開かせない。ユーザーが通常のチャットだけで次へ進めることを許容する。
+すべてのAgent作業後にChangesやSemantic Diffを開かせない。ユーザーが通常のチャットだけで次へ進めることを許容する。
 
-### Duplicate Editor in Agent Window
+### Duplicate Editor in Agent Window / Changes
 
-Agent Window内に本格的なコードEditorを再実装しない。Quick Diffは許可する。
+Agent WindowやChanges内に本格的なコードEditorを再実装しない。ChangesにはChange Setの表現としてCode Diffを表示する。
 
 本格的なコード閲覧・編集はIDEのEditorへ委譲する。
 

@@ -1,0 +1,5 @@
+# Codex への指示書・実行ログ(作業ファイル)
+_codex/
+
+node_modules/
+*.log
