@@ -25,4 +25,5 @@ export default new ContainerModule(bind => {
         createWidget: () => context.container.get(ChangesWidget)
     })).inSingletonScope();
     bindViewContribution(bind, ChangesContribution);
+    bind(FrontendApplicationContribution).toService(ChangesContribution);
 });

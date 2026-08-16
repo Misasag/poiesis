@@ -1,0 +1,53 @@
+name: Theia Electron Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/theia-electron-windows.yml"
+      - "spikes/theia/**"
+  pull_request:
+    paths:
+      - ".github/workflows/theia-electron-windows.yml"
+      - "spikes/theia/**"
+
+jobs:
+  build-and-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: spikes/theia
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      electron_config_cache: ${{ github.workspace }}\spikes\theia\.electron-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.5.0
+          cache: npm
+          cache-dependency-path: spikes/theia/package-lock.json
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: spikes/theia/.electron-cache
+          key: ${{ runner.os }}-electron-39.8.7
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download built-in VS Code extensions
+        run: npm run download:plugins
+
+      - name: Validate source contract
+        run: npm run validate:source
+
+      - name: Rebuild native dependencies and build Electron target
+        run: npm run build:electron
+
+      - name: Run Electron CDP smoke test
+        run: npm run smoke:electron

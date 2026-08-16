@@ -9,15 +9,20 @@
   },
   "workspaces": [
     "agent-window",
-    "browser-app"
+    "browser-app",
+    "electron-app"
   ],
   "scripts": {
     "build": "npm run compile --workspace=@lens/theia-agent-window && npm run build --workspace=@lens/theia-browser-app",
-    "clean": "npm run clean --workspace=@lens/theia-agent-window && npm run clean --workspace=@lens/theia-browser-app",
+    "build:electron": "npm run compile --workspace=@lens/theia-agent-window && npm run build --workspace=@lens/theia-electron-app",
+    "clean": "npm run clean --workspace=@lens/theia-agent-window && npm run clean --workspace=@lens/theia-browser-app && npm run clean --workspace=@lens/theia-electron-app",
     "download:plugins": "theia download:plugins",
     "rebuild": "npm run rebuild --workspace=@lens/theia-browser-app",
+    "rebuild:electron": "npm run rebuild --workspace=@lens/theia-electron-app",
+    "smoke:electron": "node scripts/smoke-electron.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
     "start": "npm run start --workspace=@lens/theia-browser-app",
+    "start:electron": "npm run start --workspace=@lens/theia-electron-app --",
     "validate:source": "node scripts/validate-source.mjs"
   },
   "devDependencies": {

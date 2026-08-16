@@ -8,6 +8,7 @@ const read = path => readFile(resolve(root, path), 'utf8');
 
 const rootPackage = JSON.parse(await read('package.json'));
 const appPackage = JSON.parse(await read('browser-app/package.json'));
+const electronPackage = JSON.parse(await read('electron-app/package.json'));
 const extensionPackage = JSON.parse(await read('agent-window/package.json'));
 const agentWidget = await read('agent-window/src/browser/agent-window-widget.tsx');
 const changesWidget = await read('agent-window/src/browser/changes-widget.tsx');
@@ -19,7 +20,16 @@ const baseline = await read('sample-src/auth-service.before.ts');
 
 assert.equal(rootPackage.devDependencies['@theia/cli'], '1.73.1');
 assert.equal(appPackage.theia.target, 'browser');
+assert.ok(rootPackage.workspaces.includes('electron-app'));
+assert.equal(electronPackage.theia.target, 'electron');
+assert.equal(electronPackage.dependencies['@theia/electron'], '1.73.1');
+assert.equal(electronPackage.devDependencies.electron, '39.8.7');
 for (const [name, version] of Object.entries(appPackage.dependencies)) {
+    if (name.startsWith('@theia/')) {
+        assert.equal(version, '1.73.1', `${name} must match the selected Theia version`);
+    }
+}
+for (const [name, version] of Object.entries(electronPackage.dependencies)) {
     if (name.startsWith('@theia/')) {
         assert.equal(version, '1.73.1', `${name} must match the selected Theia version`);
     }
@@ -65,7 +75,9 @@ assert.ok(moduleSource.includes('ChangesWidget'));
 assert.ok(moduleSource.includes('ChangesContribution'));
 assert.ok(agentContribution.includes("area: 'right'"));
 assert.ok(changesContribution.includes("area: 'bottom'"));
-assert.ok(!changesContribution.includes('FrontendApplicationContribution'));
+assert.ok(!changesContribution.includes('initializeLayout'));
+assert.ok(changesContribution.includes("setElement('lens-changes'"));
+assert.ok(changesContribution.includes("onclick: () => void this.openView"));
 assert.ok(changesContribution.includes('Lens: Open IDE Changes'));
 assert.match(sample.split(/\r?\n/)[11], /rotateRefreshToken/);
 assert.match(baseline, /Database/);

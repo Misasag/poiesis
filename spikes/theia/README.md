@@ -56,7 +56,7 @@ npm start
 2. 右側の `Agent Window` にモック結果と「質問」だけがあり、Change SetやSemantic Diffが表示されないことを確認する。
 3. 「質問」でモック質問欄が展開することを確認する。
 4. 起動直後に `IDE Changes` が表示されていないことを確認する。
-5. Command Palette の `Lens: Open IDE Changes`、または `View > Views > IDE Changes` で底部のChanges Widgetを開く。
+5. Status Bar の `IDE Changes`、Command Palette の `Lens: Open IDE Changes`、または `View > Views > IDE Changes` で底部のChanges Widgetを開く。
 6. `Code Diff`でChange Set ID `task-auth-redis-001`を確認し、「既存 Diff Editor で開く」でTheiaのMonaco Diff Editorが開くことを確認する。
 7. `Semantic Diff`へ切り替え、同じChange Set IDの意味表現が表示されることを確認する。
 8. 「根拠コードを開く」を押し、`sample-src/auth-service.ts` の12行目がEditorで選択されることを確認する。
@@ -74,10 +74,53 @@ npm run smoke:ui
 
 Agent Windowが「質問」だけを持つこと、Changesの初期非表示、Command Paletteからの表示、Code/Semantic切り替え、既存Diff Editor、Evidenceから`auth-service.ts`の12行目への移動を検査します。標準以外の場所にChromeがある場合は`CHROME_PATH`環境変数で指定できます。
 
+## Electron target
+
+Electron 版は browser 版と同じ拡張構成を `electron-app/` で合成します。Theia と Electron はそれぞれ 1.73.1、39.8.7 に固定しています。
+
+Electron の取得先をリポジトリ配下へ固定してインストールします。
+
+```powershell
+cd C:\Users\owner\github\lens\spikes\theia
+$env:PUPPETEER_SKIP_DOWNLOAD = 'true'
+$env:electron_config_cache = (Join-Path (Get-Location) '.electron-cache')
+npm install
+npm run download:plugins
+```
+
+native dependency の Electron ABI 向け rebuild と bundle をまとめて実行します。ビルドは Node heap を 4 GB、webpack の並列度を 2 に制限します。
+
+```powershell
+npm run build:electron
+```
+
+native dependency の rebuild だけを再実行する場合は次を使います。
+
+```powershell
+npm run rebuild:electron
+```
+
+Electron 版を起動すると、リポジトリルート `lens` を Workspace として開きます。
+
+```powershell
+npm run start:electron
+```
+
+実起動を CDP で操作するスモークテストは次です。一意な user data、remote debugging port 9334、`--disable-gpu` を使い、終了時に Electron の process tree と port の停止を確認します。
+
+```powershell
+npm run smoke:electron
+```
+
+スモークテストは、Agent Window、Status Bar の `IDE Changes` からの手動オープン、Code Diff / Semantic Diff、既存 Diff Editor、Evidence jump、Git 状態、TypeScript hover を検証します。Terminal は統合端末の `cmd` タブ起動までを検出します。詳細と実測上の限界は `ELECTRON-REPORT.md` に記録しています。
+
 ## 構成
 
 - `browser-app/`: 既存 Theia extension を組み合わせた browser application
+- `electron-app/`: 同じ extension 構成を組み合わせた Electron application
 - `agent-window/`: Agent Window Widget、Changes Widget、Editor連携
 - `sample-src/`: Change Setのbefore/afterとEvidence navigationの対象
 - `scripts/smoke-ui.mjs`: Chrome / Edge を使う任意の UI smoke test
+- `scripts/smoke-electron.mjs`: Electron を直接起動して CDP 操作する Windows smoke test
 - `SPIKE-REPORT.md`: 実装・動作確認結果と所見
+- `ELECTRON-REPORT.md`: Electron build、native rebuild、実起動、CI の実測記録

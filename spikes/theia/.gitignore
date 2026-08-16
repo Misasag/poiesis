@@ -4,6 +4,11 @@ node_modules/
 .puppeteer-cache/
 .theia-config/
 .chrome-profile/
+.electron-runtime/
+.electron-cache/
+.electron-home/
+.theia-config-electron/
+.browser_modules/
 lib/
 src-gen/
 gen-webpack.config.js

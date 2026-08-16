@@ -1,8 +1,10 @@
 import * as React from '@theia/core/shared/react';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
+import URI from '@theia/core/lib/common/uri';
 import { DiffUris } from '@theia/core/lib/browser/diff-uris';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { EditorManager } from '@theia/editor/lib/browser';
+import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 
 type ChangesMode = 'code' | 'semantic';
@@ -15,6 +17,9 @@ export class ChangesWidget extends ReactWidget {
 
     @inject(EditorManager)
     protected readonly editorManager!: EditorManager;
+
+    @inject(FileService)
+    protected readonly fileService!: FileService;
 
     @inject(WorkspaceService)
     protected readonly workspaceService!: WorkspaceService;
@@ -125,8 +130,8 @@ export class ChangesWidget extends ReactWidget {
             this.setStatus('Workspace が開かれていません。');
             return;
         }
-        const before = root.resource.resolve('sample-src/auth-service.before.ts');
-        const after = root.resource.resolve('sample-src/auth-service.ts');
+        const before = await this.resolveSampleFile(root.resource, 'auth-service.before.ts');
+        const after = await this.resolveSampleFile(root.resource, 'auth-service.ts');
         try {
             const diffUri = DiffUris.encode(before, after, 'Change Set: auth-service.ts');
             await this.editorManager.open(diffUri, { mode: 'activate' });
@@ -143,7 +148,7 @@ export class ChangesWidget extends ReactWidget {
             return;
         }
         this.setStatus('根拠コードを開いています…');
-        const uri = root.resource.resolve('sample-src/auth-service.ts');
+        const uri = await this.resolveSampleFile(root.resource, 'auth-service.ts');
         try {
             await this.editorManager.open(uri, {
                 mode: 'activate',
@@ -161,6 +166,14 @@ export class ChangesWidget extends ReactWidget {
     protected getWorkspaceRoot() {
         return this.workspaceService.tryGetRoots()[0]
             ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
+    }
+
+    protected async resolveSampleFile(root: URI, name: string): Promise<URI> {
+        const direct = root.resolve(`sample-src/${name}`);
+        if (await this.fileService.exists(direct)) {
+            return direct;
+        }
+        return root.resolve(`spikes/theia/sample-src/${name}`);
     }
 
     protected setStatus(status: string): void {
