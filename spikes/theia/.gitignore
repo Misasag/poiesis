@@ -1,0 +1,14 @@
+node_modules/
+.npm-cache/
+.node-gyp/
+.puppeteer-cache/
+.theia-config/
+.chrome-profile/
+lib/
+src-gen/
+gen-webpack.config.js
+gen-webpack.node.config.js
+gen-esbuild.*.mjs
+esbuild.mjs
+plugins/
+*.log

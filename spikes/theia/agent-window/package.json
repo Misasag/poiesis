@@ -1,0 +1,27 @@
+{
+  "name": "@lens/theia-agent-window",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "files": [
+    "lib",
+    "src"
+  ],
+  "dependencies": {
+    "@theia/core": "1.73.1",
+    "@theia/editor": "1.73.1",
+    "@theia/workspace": "1.73.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "clean": "tsc -p . --build --clean"
+  },
+  "theiaExtensions": [
+    {
+      "frontend": "lib/browser/agent-window-frontend-module"
+    }
+  ]
+}

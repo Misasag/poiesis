@@ -1,0 +1,75 @@
+{
+  "name": "lens-code-oss-spike",
+  "displayName": "Lens Agent Window Spike",
+  "description": "Code-OSS/VSCodium technical spike for an Agent-first IDE workflow.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "lens-spike",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:lens.openAgentWindow",
+    "onCommand:lens.openChanges",
+    "onView:lens.changesView"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "lens.openAgentWindow",
+        "title": "Lens: Agent Window を開く"
+      },
+      {
+        "command": "lens.openChanges",
+        "title": "Lens: Changes を開く"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "lensChanges",
+          "title": "IDE Changes",
+          "icon": "media/changes.svg"
+        }
+      ]
+    },
+    "views": {
+      "lensChanges": [
+        {
+          "type": "webview",
+          "id": "lens.changesView",
+          "name": "Changes"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "prepackage": "node scripts/prepare-package.mjs",
+    "package": "npm run build && vsce package --no-dependencies --out artifacts/lens-code-oss-spike.vsix",
+    "download:host": "node scripts/download-vscodium.mjs",
+    "start": "node scripts/start-host.mjs",
+    "smoke:ui": "node scripts/smoke-ui.mjs",
+    "validate:source": "node scripts/validate-source.mjs"
+  },
+  "files": [
+    "dist/**",
+    "media/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.6.2",
+    "extract-zip": "^2.0.1",
+    "puppeteer-core": "^24.16.0",
+    "typescript": "^5.9.2"
+  }
+}

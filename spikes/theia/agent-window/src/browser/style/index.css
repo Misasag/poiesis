@@ -1,0 +1,173 @@
+.lens-agent-window {
+    min-width: 320px;
+}
+
+.lens-agent-window__content,
+.lens-changes__content {
+    box-sizing: border-box;
+    color: var(--theia-foreground);
+    height: 100%;
+    overflow: auto;
+    padding: 14px;
+}
+
+.lens-agent-window__content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.lens-agent-window__message,
+.lens-agent-window__question,
+.lens-changes__representation {
+    background: var(--theia-editor-background);
+    border: 1px solid var(--theia-panel-border);
+    border-radius: 6px;
+    padding: 14px;
+}
+
+.lens-agent-window__speaker,
+.lens-changes__eyebrow {
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.lens-agent-window__message p {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 10px 0;
+}
+
+.lens-agent-window__message ul {
+    line-height: 1.6;
+    margin: 0 0 14px;
+    padding-left: 20px;
+}
+
+.lens-agent-window__actions,
+.lens-agent-window__question-row,
+.lens-changes__tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.lens-agent-window__question label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.lens-agent-window__question input {
+    flex: 1;
+    min-width: 0;
+}
+
+.lens-agent-window__question small,
+.lens-changes__evidence small {
+    color: var(--theia-descriptionForeground);
+    display: block;
+    margin-top: 6px;
+}
+
+.lens-changes {
+    min-height: 220px;
+}
+
+.lens-changes__header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.lens-changes__header h2 {
+    font-size: 15px;
+    margin: 4px 0 0;
+}
+
+.lens-changes__header code {
+    color: var(--theia-descriptionForeground);
+}
+
+.lens-changes__tabs {
+    border-bottom: 1px solid var(--theia-panel-border);
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+}
+
+.lens-changes__tabs button.active {
+    font-weight: 700;
+}
+
+.lens-changes__representation h3 {
+    font-size: 14px;
+    margin: 8px 0 12px;
+}
+
+.lens-changes__before-after {
+    align-items: stretch;
+    display: grid;
+    gap: 6px;
+    grid-template-columns: 1fr auto 1fr;
+}
+
+.lens-changes__before-after > div:not(.lens-changes__arrow) {
+    background: var(--theia-sideBar-background);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.lens-changes__before-after span,
+.lens-changes__before-after strong {
+    display: block;
+}
+
+.lens-changes__before-after span {
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+    margin-bottom: 5px;
+}
+
+.lens-changes__before-after strong {
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.lens-changes__arrow {
+    align-self: center;
+}
+
+.lens-changes__impact {
+    color: var(--theia-descriptionForeground);
+    margin: 12px 0;
+}
+
+.lens-changes__evidence {
+    align-items: center;
+    background: transparent;
+    border: 1px solid var(--theia-button-background);
+    border-radius: 4px;
+    color: var(--theia-foreground);
+    cursor: pointer;
+    display: flex;
+    gap: 9px;
+    padding: 9px 10px;
+    text-align: left;
+    width: 100%;
+}
+
+.lens-changes__evidence:hover {
+    background: var(--theia-list-hoverBackground);
+}
+
+.lens-changes__evidence small {
+    margin-top: 2px;
+}
+
+.lens-changes__status {
+    color: var(--theia-descriptionForeground);
+    font-size: 12px;
+    margin-top: 9px;
+}

@@ -1,0 +1,37 @@
+{
+  "name": "lens-theia-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A focused Eclipse Theia technical spike for the Lens core UX.",
+  "engines": {
+    "node": ">=20 <25",
+    "npm": ">=10"
+  },
+  "workspaces": [
+    "agent-window",
+    "browser-app"
+  ],
+  "scripts": {
+    "build": "npm run compile --workspace=@lens/theia-agent-window && npm run build --workspace=@lens/theia-browser-app",
+    "clean": "npm run clean --workspace=@lens/theia-agent-window && npm run clean --workspace=@lens/theia-browser-app",
+    "download:plugins": "theia download:plugins",
+    "rebuild": "npm run rebuild --workspace=@lens/theia-browser-app",
+    "smoke:ui": "node scripts/smoke-ui.mjs",
+    "start": "npm run start --workspace=@lens/theia-browser-app",
+    "validate:source": "node scripts/validate-source.mjs"
+  },
+  "devDependencies": {
+    "@theia/cli": "1.73.1",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "puppeteer-core": "25.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "terser-webpack-plugin": "^5.3.14",
+    "typescript": "~5.9.3"
+  },
+  "theiaPluginsDir": "plugins",
+  "theiaPlugins": {
+    "vscode-builtin-extensions": "https://github.com/eclipse-theia/vscode-builtin-extensions/releases/download/1.108.2/vscode-builtin-extensions-1.108.2.tar.gz"
+  }
+}
