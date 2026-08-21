@@ -1,0 +1,826 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lens UI Spec — Agent Window</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #e9dfcf;
+      --panel: #f8f2e8;
+      --panel-2: #efe5d6;
+      --line: #cdbfa9;
+      --line-strong: #ae9b82;
+      --text: #302b25;
+      --muted: #71675b;
+      --accent: #93643d;
+      --accent-soft: rgba(147, 100, 61, 0.13);
+      --ok: #50745a;
+      --warn: #a56b2b;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+      line-height: 1.45;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    button { font: inherit; }
+
+    .page-header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 20px;
+      min-height: 60px;
+      padding: 10px clamp(18px, 2.5vw, 38px);
+      border-bottom: 1px solid var(--line);
+      background: rgba(248, 242, 232, 0.96);
+    }
+
+    .page-header h1 {
+      margin: 0;
+      font-size: clamp(17px, 1.7vw, 22px);
+      letter-spacing: -0.02em;
+    }
+
+    .page-header p {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 9px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: #f3eadc;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .badge::before {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      content: "";
+    }
+
+    .badge.decided { color: var(--ok); }
+    .badge.draft { color: var(--warn); }
+    .badge.planned { color: var(--muted); }
+
+    main {
+      width: min(1800px, 100%);
+      height: 100%;
+      margin: 0 auto;
+      padding: 12px clamp(16px, 2.5vw, 38px) 18px;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      gap: 0;
+      overflow: hidden;
+    }
+
+    .screen-tabs {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .screen-tab {
+      flex: 0 0 auto;
+      min-width: 116px;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--muted);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .screen-tab:hover { border-color: var(--line-strong); color: var(--text); }
+
+    .screen-tab[aria-selected="true"] {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--text);
+      box-shadow: inset 0 0 0 1px rgba(84, 168, 255, 0.12);
+    }
+
+    .screen-tab strong,
+    .screen-tab small { display: inline; }
+
+    .screen-tab small {
+      margin-left: 6px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .screen-heading {
+      display: none;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin: 0;
+    }
+
+    .screen-heading h2 {
+      margin: 0;
+      font-size: clamp(20px, 2.4vw, 30px);
+      letter-spacing: -0.025em;
+    }
+
+    .screen-heading p {
+      max-width: 820px;
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .annotation-toggle {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .spec-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(410px, 450px);
+      gap: 14px;
+      min-height: 0;
+      height: 100%;
+      align-items: stretch;
+    }
+
+    .stage-card,
+    .inspector,
+    .document-section {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    .stage-card {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .stage-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 58px;
+      padding: 7px 10px 7px 13px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .stage-context {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .stage-context-copy { min-width: 0; }
+
+    .stage-context strong {
+      display: block;
+      color: var(--text);
+      font-size: 15px;
+    }
+
+    .stage-context small {
+      display: block;
+      overflow: hidden;
+      color: var(--muted);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stage-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .asset-name {
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stage {
+      position: relative;
+      min-height: 0;
+      background:
+        linear-gradient(45deg, rgba(255,255,255,0.018) 25%, transparent 25%) 0 0 / 18px 18px,
+        linear-gradient(-45deg, rgba(255,255,255,0.018) 25%, transparent 25%) 0 0 / 18px 18px,
+        #d8cbb8;
+    }
+
+    .stage img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .placeholder {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-content: center;
+      gap: 8px;
+      padding: 40px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .placeholder strong { color: var(--text); font-size: 18px; }
+
+    .marker {
+      position: absolute;
+      display: grid;
+      width: clamp(25px, 2.1vw, 34px);
+      height: clamp(25px, 2.1vw, 34px);
+      padding: 0;
+      transform: translate(-50%, -50%);
+      place-items: center;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      background: #8a5a34;
+      color: #fff;
+      box-shadow: 0 3px 16px rgba(0, 0, 0, 0.7);
+      font-size: clamp(10px, 0.9vw, 13px);
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease;
+    }
+
+    .marker:hover,
+    .marker:focus-visible,
+    .marker.active {
+      z-index: 3;
+      transform: translate(-50%, -50%) scale(1.18);
+      background: #b96e35;
+      outline: none;
+    }
+
+    .stage.hide-annotations .marker { display: none; }
+
+    .inspector {
+      position: static;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-height: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .inspector-header {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .inspector-header h3 { margin: 0; font-size: 15px; }
+    .inspector-header p { margin: 2px 0 0; color: var(--muted); font-size: 10px; }
+
+    .item-list {
+      min-height: 0;
+      padding: 7px 8px;
+      overflow: hidden;
+    }
+
+    .item-group + .item-group { margin-top: 5px; }
+
+    .item-group-title {
+      margin: 0;
+      padding: 3px 7px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .item-card {
+      display: grid;
+      grid-template-columns: minmax(118px, 0.72fr) minmax(0, 1.28fr);
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 30px;
+      margin: 0 0 2px;
+      padding: 4px 7px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .item-card:hover { background: var(--panel-2); }
+
+    .item-card.active {
+      border-color: #9f6a3d;
+      background: var(--accent-soft);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+
+    .item-title {
+      display: flex;
+      align-items: baseline;
+      gap: 9px;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .item-number { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+    .item-card p {
+      display: block;
+      min-width: 0;
+      margin: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .item-detail {
+      display: none;
+    }
+
+    .selected-detail {
+      min-height: 160px;
+      padding: 11px 13px 13px;
+      border-top: 1px solid var(--line);
+      background: #f2e7d8;
+    }
+
+    .selected-detail[hidden] { display: none; }
+
+    .selected-detail-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 5px;
+    }
+
+    .selected-detail-heading strong { font-size: 14px; }
+
+    .selected-detail-summary {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .selected-detail dl {
+      display: grid;
+      gap: 4px;
+      margin: 0;
+      font-size: 11px;
+    }
+
+    .detail-row {
+      display: grid;
+      grid-template-columns: 60px 1fr;
+      gap: 7px;
+    }
+
+    .detail-row dt { color: var(--muted); }
+    .detail-row dd { margin: 0; }
+
+    .below-grid {
+      display: none;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .document-section { padding: 20px; }
+
+    .document-section h3 {
+      margin: 0 0 12px;
+      font-size: 17px;
+    }
+
+    .document-section p,
+    .document-section li {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .flow {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .flow-step {
+      display: grid;
+      grid-template-columns: 82px 20px 1fr;
+      gap: 8px;
+      align-items: center;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      font-size: 12px;
+    }
+
+    .flow-step strong { color: var(--accent); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th,
+    td {
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { color: var(--muted); font-weight: 600; }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #e5dac9;
+      color: #6f4728;
+    }
+
+    .template-note {
+      display: none;
+      margin-top: 18px;
+      padding: 15px 17px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-height: 760px) {
+      .page-header { min-height: 52px; padding-block: 6px; }
+      .page-header p, .screen-heading p { display: none; }
+      .screen-tab { padding-block: 5px; }
+      .screen-tab small { display: none; }
+      .stage-context small, .asset-name { display: none; }
+      .item-card { padding-block: 3px; }
+      .item-card p { display: none; }
+      .selected-detail { min-height: 140px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <div>
+      <h1>Lens UI Spec — Agent Window</h1>
+      <p>第一完成点・画面仕様テンプレート</p>
+    </div>
+    <nav id="screen-tabs" class="screen-tabs" aria-label="画面状態"></nav>
+    <div class="header-meta">
+      <span class="badge draft">DRAFT</span>
+      <span>Updated 2026-08-22</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="spec-layout">
+      <section class="stage-card" aria-label="番号付き画面モック">
+        <div class="stage-toolbar">
+          <div class="stage-context">
+            <div id="screen-status" class="badge draft">DRAFT</div>
+            <div class="stage-context-copy">
+              <strong id="screen-title"></strong>
+              <small id="screen-summary"></small>
+            </div>
+          </div>
+          <div class="stage-actions">
+            <span id="asset-name" class="asset-name"></span>
+            <button id="annotation-toggle" class="annotation-toggle" type="button" aria-pressed="true">
+              番号を非表示
+            </button>
+          </div>
+        </div>
+        <div id="stage" class="stage"></div>
+      </section>
+
+      <aside class="inspector" aria-label="画面項目の仕様">
+        <div class="inspector-header">
+          <h3>画面項目</h3>
+          <p>領域別の項目一覧。選択項目の操作仕様を下部に表示</p>
+        </div>
+        <div id="item-list" class="item-list"></div>
+        <div id="selected-detail" class="selected-detail"></div>
+      </aside>
+    </div>
+
+    <div class="below-grid">
+      <section class="document-section">
+        <h3>主要な画面遷移</h3>
+        <div class="flow">
+          <div class="flow-step"><strong>Agent</strong><span>→</span><span>Explorerアイコンで選択Repositoryのファイルツリーを開く</span></div>
+          <div class="flow-step"><strong>Explorer</strong><span>→</span><span>ファイルを選択してmain areaのEditorで開く</span></div>
+          <div class="flow-step"><strong>Agent</strong><span>→</span><span><code>Changes 1</code>で選択SessionのChangesを開く</span></div>
+          <div class="flow-step"><strong>Changes</strong><span>→</span><span>Evidenceを選択してEditorの該当行へ移動する</span></div>
+          <div class="flow-step"><strong>Any view</strong><span>→</span><span>Agentアイコンで会話へ戻る。会話状態は保持する</span></div>
+        </div>
+      </section>
+
+      <section class="document-section">
+        <h3>状態保持の契約</h3>
+        <table>
+          <thead><tr><th>状態</th><th>単位</th><th>切替時の扱い</th></tr></thead>
+          <tbody>
+            <tr><td>選択Repository</td><td>Window</td><td>Explorer・Search・Gitの対象として共有</td></tr>
+            <tr><td>選択Session</td><td>Repository</td><td>会話、Composer、Changes選択を復元</td></tr>
+            <tr><td>Task</td><td>Session</td><td>会話内の実行記録。左サイドバーには並べない</td></tr>
+            <tr><td>Change Set</td><td>Task</td><td>Changesで表示し、Agentへ戻っても選択を保持</td></tr>
+            <tr><td>開いているEditor</td><td>Repository</td><td>Agent／Changesへ移動しても閉じない</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="document-section">
+        <h3>現在の設計判断</h3>
+        <table>
+          <thead><tr><th>状態</th><th>判断</th><th>理由</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge decided">決定</span></td><td>D1-B Agent-first layout</td><td>Agentを主画面とし、必要時に下位レイヤーへ降りる</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>「質問」ボタンを置かない</td><td>同じComposerから自然に追加質問できる</td></tr>
+            <tr><td><span class="badge draft">草案</span></td><td>Repository配下にSessionを表示</td><td>Repository中心と会話履歴への到達性を両立する</td></tr>
+            <tr><td><span class="badge draft">草案</span></td><td>Explorerは左ペインを切り替える</td><td>ファイル選択後はmain areaのEditorでコードを開く</td></tr>
+            <tr><td><span class="badge draft">草案</span></td><td>Changesをmain areaで開く</td><td>Semantic Diffの縦幅とEvidence可読性を確保する</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="document-section">
+        <h3>未確定事項</h3>
+        <ul>
+          <li>Sessionの新規作成、名称変更、終了・アーカイブ操作。</li>
+          <li>Repository切替時の実行中Taskの扱い。</li>
+          <li><code>Changes 1</code>を上部だけに置くか、Status Barにも残すか。</li>
+          <li>Editor表示中にComposerを常設するか、Agentへ戻したときだけ表示するか。</li>
+          <li>Explorerでのsingle click／double clickとEditor tabの固定方法。</li>
+        </ul>
+      </section>
+    </div>
+
+    <p class="template-note">
+      テンプレートの更新方法：下部script内の<code>SCREENS</code>へ画面、画像パス、番号位置（%）、操作仕様を追加します。
+      画像は<code>docs/ui/assets/</code>へ配置し、このHTMLから相対パスで参照します。外部ライブラリやWebサーバは不要です。
+    </p>
+  </main>
+
+  <script>
+    // Screen definitions are intentionally kept in this file so the spec can be
+    // opened directly from disk. Marker coordinates are percentages of the image.
+    const SCREENS = [
+      {
+        id: "agent",
+        tab: "Agent",
+        status: "draft",
+        statusLabel: "DRAFT",
+        title: "通常のAgent画面",
+        summary: "RepositoryとSessionを選び、同じ時系列と単一ComposerでAgentとの開発を続ける標準状態。",
+        image: "assets/agent-default.png",
+        items: [
+          { id: "01", x: 1.8, y: 8.8, title: "Agentナビゲーション", summary: "Agent画面を選択中であることを示す。", action: "クリック", result: "左ペインをRepository／Session一覧へ戻し、選択Sessionの会話をmain areaへ表示する。", state: "会話、スクロール、Composer下書きを復元する。" },
+          { id: "02", x: 1.8, y: 15.5, title: "Explorer", summary: "選択Repositoryのファイルを確認する入口。", action: "クリック", result: "左ペインをRepository／Session一覧からファイルツリーへ切り替える。ファイル選択後にEditorをmain areaで開く。", state: "Agent Sessionは閉じない。対象は常に選択Repository。" },
+          { id: "03", x: 1.8, y: 22.3, title: "Search", summary: "選択Repository内を検索する。", action: "クリック", result: "左ペインへ検索フォームと結果を表示し、結果選択でEditorを開く。", state: "検索条件はRepository単位で保持してよい。" },
+          { id: "04", x: 1.8, y: 29.1, title: "Source Control", summary: "選択RepositoryのGit状態を表示する。", action: "クリック", result: "左ペインへ変更ファイル、stage状態、branch情報を表示する。", state: "AgentのTask／Change Setとは識別して扱う。" },
+          { id: "05", x: 9.2, y: 14.1, title: "Repository", summary: "Session、Explorer、Search、Gitの親となる単位。", action: "クリック／展開", result: "Repositoryをアクティブにし、その配下のSessionを表示する。", state: "第一完成点では同時にアクティブなのは一つ。" },
+          { id: "06", x: 12.2, y: 21.7, title: "新しいSession", summary: "選択Repositoryで新しい会話を開始する。", action: "クリック", result: "空のAgent Sessionを作り、Composerへfocusする。", state: "最初の依頼を送るまではTaskを作成しない。" },
+          { id: "07", x: 17.0, y: 27.0, title: "Session履歴", summary: "Repository配下のひと続きの会話。Task一覧ではない。", action: "クリック", result: "選択Sessionの会話、実行状態、Changesをmain areaへ復元する。", state: "SessionごとにComposer下書きと選択Change Setを保持する。" },
+          { id: "08", x: 34.6, y: 9.8, title: "Agent", summary: "選択Sessionの会話を表示するmain view。", action: "クリック", result: "ChangesやEditorからAgentの会話へ戻る。", state: "下位レイヤーを閉じず、選択状態を保持する。" },
+          { id: "09", x: 41.5, y: 9.8, title: "Changes 1", summary: "選択Sessionに未確認Change Setが1件あることを示す。", action: "クリック", result: "選択SessionのChangesをmain areaへ表示する。自動では開かない。", state: "Code／Semanticの選択と対象Change Setを保持する。" },
+          { id: "10", x: 54.0, y: 35.5, title: "会話タイムライン", summary: "User、Agent、Task resultを一つの流れで表示する。", action: "スクロール／テキスト選択", result: "通常の会話と完了結果を閲覧する。専用の「質問」ボタンは置かない。", state: "Session単位で履歴とスクロール位置を保持する。" },
+          { id: "11", x: 64.0, y: 53.5, title: "作業詳細", summary: "Tool実行や完了stepを必要時だけ確認する。", action: "展開／折り畳み", result: "実行した操作、対象、status、必要なstdout／stderrを表示する。", state: "既定はコンパクトに畳む。" },
+          { id: "12", x: 64.0, y: 85.0, title: "Composer", summary: "通常依頼と追加質問で共用する唯一の入力欄。", action: "入力／送信", result: "選択Sessionへmessageを追加し、必要なら新しいTaskを開始する。", state: "直前の会話文脈を自然に継承する。" }
+        ]
+      },
+      {
+        id: "explorer",
+        tab: "Explorer",
+        status: "planned",
+        statusLabel: "IMAGE TODO",
+        title: "Explorerを開いた状態",
+        summary: "左ペインに選択Repositoryのファイルツリーを表示し、ファイル選択でEditorへ移動する状態。",
+        image: null,
+        items: []
+      },
+      {
+        id: "changes",
+        tab: "Changes",
+        status: "planned",
+        statusLabel: "IMAGE TODO",
+        title: "Changesを開いた状態",
+        summary: "選択SessionのChange SetをCode Diff／Semantic Diffとしてmain areaに表示する状態。",
+        image: null,
+        items: []
+      },
+      {
+        id: "editor",
+        tab: "Editor / Evidence",
+        status: "planned",
+        statusLabel: "IMAGE TODO",
+        title: "EditorでEvidenceを開いた状態",
+        summary: "Explorerのファイル、またはSemantic DiffのEvidenceから該当ファイル・行を開いた状態。",
+        image: null,
+        items: []
+      }
+    ];
+
+    const tabs = document.querySelector("#screen-tabs");
+    const stage = document.querySelector("#stage");
+    const itemList = document.querySelector("#item-list");
+    const selectedDetail = document.querySelector("#selected-detail");
+    const title = document.querySelector("#screen-title");
+    const summary = document.querySelector("#screen-summary");
+    const status = document.querySelector("#screen-status");
+    const assetName = document.querySelector("#asset-name");
+    const annotationToggle = document.querySelector("#annotation-toggle");
+
+    let activeScreenId = "agent";
+    let activeItemId = "01";
+    let annotationsVisible = true;
+
+    const ITEM_GROUPS = [
+      { label: "Activity bar", ids: ["01", "02", "03", "04"] },
+      { label: "Repository / Session", ids: ["05", "06", "07"] },
+      { label: "Main area", ids: ["08", "09", "10", "11", "12"] }
+    ];
+
+    function renderTabs() {
+      tabs.replaceChildren(...SCREENS.map(screen => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "screen-tab";
+        button.setAttribute("aria-selected", String(screen.id === activeScreenId));
+        button.innerHTML = `<strong>${screen.tab}</strong><small>${screen.statusLabel}</small>`;
+        button.addEventListener("click", () => {
+          activeScreenId = screen.id;
+          activeItemId = screen.items[0]?.id ?? "";
+          render();
+        });
+        return button;
+      }));
+    }
+
+    function renderStage(screen) {
+      stage.replaceChildren();
+      stage.classList.toggle("hide-annotations", !annotationsVisible);
+
+      if (screen.image) {
+        const image = document.createElement("img");
+        image.src = screen.image;
+        image.alt = `${screen.title}の画面モック`;
+        stage.append(image);
+      } else {
+        const placeholder = document.createElement("div");
+        placeholder.className = "placeholder";
+        placeholder.innerHTML = `<strong>${screen.statusLabel}</strong><span>画面モックを作成後、SCREENSのimageへパスを設定します。</span>`;
+        stage.append(placeholder);
+      }
+
+      screen.items.forEach(item => {
+        const marker = document.createElement("button");
+        marker.type = "button";
+        marker.className = `marker${item.id === activeItemId ? " active" : ""}`;
+        marker.style.left = `${item.x}%`;
+        marker.style.top = `${item.y}%`;
+        marker.textContent = item.id;
+        marker.setAttribute("aria-label", `${item.id} ${item.title}`);
+        marker.addEventListener("click", () => selectItem(item.id));
+        stage.append(marker);
+      });
+    }
+
+    function renderItems(screen) {
+      if (!screen.items.length) {
+        itemList.innerHTML = `<div class="placeholder" style="position:static;min-height:220px"><strong>項目定義待ち</strong><span>画像と操作仕様を追加すると、ここに番号付き項目が表示されます。</span></div>`;
+        selectedDetail.hidden = true;
+        return;
+      }
+
+      const itemById = new Map(screen.items.map(item => [item.id, item]));
+      itemList.replaceChildren(...ITEM_GROUPS.map(group => {
+        const section = document.createElement("section");
+        section.className = "item-group";
+        const heading = document.createElement("h4");
+        heading.className = "item-group-title";
+        heading.textContent = group.label;
+        section.append(heading);
+
+        group.ids.map(id => itemById.get(id)).filter(Boolean).forEach(item => {
+          const card = document.createElement("button");
+          card.type = "button";
+          card.className = `item-card${item.id === activeItemId ? " active" : ""}`;
+          card.innerHTML = `
+            <div class="item-title"><span class="item-number">${item.id}</span><span>${item.title}</span></div>
+            <p>${item.summary}</p>`;
+          card.addEventListener("click", () => selectItem(item.id));
+          section.append(card);
+        });
+        return section;
+      }));
+
+      const item = itemById.get(activeItemId) ?? screen.items[0];
+      selectedDetail.hidden = false;
+      selectedDetail.innerHTML = `
+        <div class="selected-detail-heading"><span class="item-number">${item.id}</span><strong>${item.title}</strong></div>
+        <p class="selected-detail-summary">${item.summary}</p>
+        <dl>
+          <div class="detail-row"><dt>操作</dt><dd>${item.action}</dd></div>
+          <div class="detail-row"><dt>結果</dt><dd>${item.result}</dd></div>
+          <div class="detail-row"><dt>状態保持</dt><dd>${item.state}</dd></div>
+        </dl>`;
+    }
+
+    function selectItem(itemId) {
+      activeItemId = itemId;
+      const screen = SCREENS.find(candidate => candidate.id === activeScreenId);
+      renderStage(screen);
+      renderItems(screen);
+    }
+
+    function render() {
+      const screen = SCREENS.find(candidate => candidate.id === activeScreenId);
+      renderTabs();
+      title.textContent = screen.title;
+      summary.textContent = screen.summary;
+      status.className = `badge ${screen.status}`;
+      status.textContent = screen.statusLabel;
+      assetName.textContent = screen.image ?? "画像未設定";
+      renderStage(screen);
+      renderItems(screen);
+    }
+
+    annotationToggle.addEventListener("click", () => {
+      annotationsVisible = !annotationsVisible;
+      annotationToggle.setAttribute("aria-pressed", String(annotationsVisible));
+      annotationToggle.textContent = annotationsVisible ? "番号を非表示" : "番号を表示";
+      stage.classList.toggle("hide-annotations", !annotationsVisible);
+    });
+
+    render();
+  </script>
+</body>
+</html>
