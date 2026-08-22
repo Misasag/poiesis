@@ -14,6 +14,8 @@ const agentWidget = await read('agent-window/src/browser/agent-window-widget.tsx
 const agentStyles = await read('agent-window/src/browser/style/index.css');
 const changesWidget = await read('agent-window/src/browser/changes-widget.tsx');
 const moduleSource = await read('agent-window/src/browser/agent-window-frontend-module.ts');
+const lensFrontendApplication = await read('agent-window/src/browser/lens-frontend-application.ts');
+const designShotContribution = await read('agent-window/src/browser/design-shot-contribution.ts');
 const backendModule = await read('agent-window/src/node/agent-window-backend-module.ts');
 const agentContribution = await read('agent-window/src/browser/agent-window-contribution.ts');
 const changesContribution = await read('agent-window/src/browser/changes-contribution.ts');
@@ -29,6 +31,7 @@ const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts'
 const readme = await read('README.md');
 const sample = await read('sample-src/auth-service.ts');
 const baseline = await read('sample-src/auth-service.before.ts');
+const firstCompletion = await read('../../docs/FIRST-COMPLETION.md');
 
 assert.equal(rootPackage.devDependencies['@theia/cli'], '1.73.1');
 assert.equal(appPackage.theia.target, 'browser');
@@ -215,10 +218,16 @@ assert.ok(!resultsSkill.includes('task.baseline.note'), 'Results must not render
 
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
-    "type CodeRailTab = 'files' | 'source-control'",
+    "type CodeSidebarTab = 'files' | 'git'",
     'protected codeMode = false',
+    "static readonly FILES_WIDGET_FACTORY_ID = 'files'",
+    "static readonly GIT_WIDGET_FACTORY_ID = 'scm-view'",
+    "static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener'",
+    "static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget'",
+    "import { EditorWidget } from '@theia/editor/lib/browser'",
     "this.activeTab === 'agent'",
     "data-mode={this.codeMode ? 'code' : this.activeTab}",
+    '{!this.codeMode && this.renderRail()}',
     "<small>lens / main</small>",
     'lens-agent-window__code-control',
     'aria-pressed={this.codeMode}',
@@ -236,11 +245,37 @@ for (const marker of [
     "placeholder='この結果について質問…'",
     'submitResultsQuestion',
     'protected toggleCodeMode(): void',
-    'this.codeMode = !this.codeMode;',
-    'protected renderCode(): React.ReactNode'
+    'protected renderCode(): React.ReactNode',
+    "className='lens-agent-window__code-sidebar-host'",
+    "className='lens-agent-window__code-editor-host'",
+    "this.selectCodeSidebarTab('files')",
+    "this.selectCodeSidebarTab('git')",
+    'registerCodeWidget(factoryId: string, widget: Widget): void',
+    'protected isCodeCenterWidget(factoryId: string, widget: Widget): boolean',
+    'widget instanceof EditorWidget',
+    'factoryId.startsWith(AgentWindowWidget.EDITOR_WIDGET_FACTORY_ID)',
+    'protected syncCodeWidgetAttachments(): void',
+    'this.attachCodeWidget(this.activeCodeSidebarWidget(), this.codeSidebarHost)',
+    'this.attachCodeWidget(this.activeCodeCenterWidget, this.codeEditorHost)',
+    'this.resizeCodeWidget(this.activeCodeSidebarWidget(), host)',
+    'this.resizeCodeWidget(this.activeCodeCenterWidget, host)',
+    'widget.parent = null',
+    'protected revealCodeWidget(widget: Widget, host: HTMLDivElement): void',
+    'requestAnimationFrame(() =>',
+    'protected resizeCodeWidget(widget: Widget | undefined, host: HTMLDivElement): void',
+    'const width = host.clientWidth',
+    'const height = host.clientHeight',
+    'new Widget.ResizeMessage(width, height)',
+    'widget.editor.resizeToFit()',
+    'widget.editor.refresh()',
+    'Widget.attach(widget, host)',
+    'Widget.detach(widget)',
+    'this.widgetManager.getOrCreateWidget(AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID)',
+    'protected async openCodeSettings(): Promise<void>'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
+assert.ok(!agentWidget.includes('Widget.ResizeMessage.UnknownSize'), 'Code widgets must receive measured pixel resize messages');
 assert.equal(
     agentWidget.match(/this\.selectTab\('results'\)/g)?.length,
     1,
@@ -249,6 +284,21 @@ assert.equal(
 const codeToggle = agentWidget.match(/protected toggleCodeMode\(\): void \{[\s\S]*?\n    \}/)?.[0];
 assert.ok(codeToggle, 'Code mode toggle is missing');
 assert.ok(!codeToggle.includes('activeTab'), 'Code mode must preserve the previous Agent / Results tab');
+assert.match(
+    codeToggle,
+    /if \(this\.codeMode\) \{\s*this\.detachCodeWidgets\(\);\s*this\.codeMode = false;/,
+    'Leaving Code mode must detach direct Theia widgets before rendering Agent / Results'
+);
+for (const forbidden of [
+    'ApplicationShell',
+    'setCodeShell',
+    'attachCodeShell',
+    'detachCodeShell',
+    'codeShell',
+    'lens-agent-window__theia-host'
+]) {
+    assert.ok(!agentWidget.includes(forbidden), `Code mode must not host ${forbidden}`);
+}
 for (const forbidden of [
     'renderQuestion',
     'showQuestion',
@@ -274,9 +324,16 @@ for (const forbidden of ['AgentRuntimeServer', 'CliDetectionReport', 'detectClis
     assert.ok(!agentWidget.includes(forbidden), `Agent widget must not expose CLI diagnostics: ${forbidden}`);
 }
 for (const marker of [
+    '#lens-window-host',
     '--lens-chrome-bg: #181918',
     '--lens-chrome-panel: #1d1e1c',
     'grid-template-columns: minmax(164px, 196px) minmax(0, 1fr)',
+    ".lens-agent-window__content[data-mode='code']",
+    '.lens-agent-window__viewport',
+    '.lens-agent-window__code',
+    '.lens-agent-window__code-sidebar-host',
+    '.lens-agent-window__code-editor-host',
+    '.lens-agent-window__code-footer',
     '.lens-agent-window__composer',
     'align-self: end',
     '.lens-results__main',
@@ -286,6 +343,26 @@ for (const marker of [
 ]) {
     assert.ok(agentStyles.includes(marker), `Agent chrome styles are missing ${marker}`);
 }
+assert.match(
+    agentStyles,
+    /\.lens-agent-window__viewport\s*\{[^}]*height:\s*100%;/,
+    'Code viewport must have a definite height'
+);
+assert.match(
+    agentStyles,
+    /\.lens-agent-window__code\s*\{[^}]*height:\s*100%;/,
+    'Code layout must have a definite height'
+);
+assert.match(
+    agentStyles,
+    /\.lens-agent-window__code-sidebar-host,\s*\.lens-agent-window__code-editor-host\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/,
+    'Code widget hosts must fill their minmax rows without collapsing'
+);
+assert.match(
+    agentStyles,
+    /\.lens-agent-window__code-editor\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);/,
+    'Editor host must occupy the remaining row below its tabs'
+);
 
 for (const marker of [
     'IDE Changes',
@@ -300,7 +377,76 @@ for (const marker of [
 }
 assert.ok(moduleSource.includes('ChangesWidget'));
 assert.ok(moduleSource.includes('ChangesContribution'));
-assert.ok(agentContribution.includes("isDesignVariant('d1-b') ? 'main' : 'right'"));
+assert.ok(moduleSource.includes('bind(AgentWindowWidget).toSelf().inSingletonScope()'));
+assert.ok(moduleSource.includes('bind(AgentWindowContribution).toSelf().inSingletonScope()'));
+assert.ok(!moduleSource.includes('bindViewContribution(bind, AgentWindowContribution)'));
+assert.ok(!moduleSource.includes('id: AgentWindowWidget.ID'));
+assert.ok(!moduleSource.includes('createWidget: () => context.container.get(AgentWindowWidget)'));
+for (const marker of [
+    'implements FrontendApplicationContribution',
+    '@inject(AgentWindowWidget)',
+    '@inject(WidgetManager)',
+    '@inject(EditorManager)',
+    'this.editorManager.onCreated',
+    'this.widgetManager.onDidCreateWidget',
+    'async onDidInitializeLayout(): Promise<void>',
+    'this.widgetManager.getOrCreateWidget(AgentWindowWidget.FILES_WIDGET_FACTORY_ID)',
+    'this.widgetManager.getOrCreateWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID)',
+    'for (const editor of this.editorManager.all)',
+    'this.agentWindowWidget.registerCodeWidget(factoryId, widget)',
+    "host.id = 'lens-window-host'",
+    'Widget.attach(this.agentWindowWidget, host)'
+]) {
+    assert.ok(agentContribution.includes(marker), `Lens-owned Agent host is missing ${marker}`);
+}
+for (const forbidden of [
+    'AbstractViewContribution',
+    'defaultWidgetOptions',
+    'widgetName',
+    'toggleCommandId',
+    'openView('
+]) {
+    assert.ok(!agentContribution.includes(forbidden), `Agent Window must not use docked view API ${forbidden}`);
+}
+assert.ok(!agentContribution.includes('ApplicationShell'), 'Agent Window contribution must never receive ApplicationShell');
+assert.ok(!agentContribution.includes('app.shell'), 'Agent Window must never receive or attach ApplicationShell');
+for (const marker of [
+    'class LensFrontendApplication extends FrontendApplication',
+    'protected override attachShell(_host: HTMLElement): void'
+]) {
+    assert.ok(lensFrontendApplication.includes(marker), `Lens frontend shell policy is missing ${marker}`);
+}
+assert.ok(!lensFrontendApplication.includes('super.attachShell'), 'Lens must not delegate ApplicationShell attachment');
+assert.ok(!lensFrontendApplication.includes('Widget.attach'), 'Lens frontend must not attach ApplicationShell directly');
+assert.ok(moduleSource.includes('rebind(FrontendApplication).to(LensFrontendApplication).inSingletonScope()'));
+for (const marker of [
+    "import { ThemeService } from '@theia/core/lib/browser/theming'",
+    'this.themeService.onDidColorThemeChange',
+    'void this.preferenceService.ready.then',
+    "this.themeService.setCurrentTheme('dark', false)"
+]) {
+    assert.ok(designShotContribution.includes(marker), `Lens startup theme lock is missing ${marker}`);
+}
+assert.ok(
+    !designShotContribution.includes('getDesignVariant'),
+    'Lens startup theme lock must also run outside design-shot variants'
+);
+assert.ok(moduleSource.includes('bind(FrontendApplicationContribution).toService(DesignShotContribution)'));
+assert.ok(!agentWidget.includes('this.title.label'), 'Agent / Results must not define a Theia tab title');
+assert.ok(!agentWidget.includes('this.title.closable'), 'Lens outer content must not opt into closable Theia tab chrome');
+assert.ok(!agentStyles.includes('theia-tabBar-tab-row'), 'Agent / Results must not hide Theia tab rows with CSS');
+assert.ok(!agentStyles.includes('.theia-tabBar'), 'Agent / Results styles must not target Theia tab bars');
+assert.ok(!agentStyles.includes('.lm-TabBar'), 'Agent / Results styles must not target Lumino tab bars');
+for (const forbidden of ['lm-Widget', 'lm-Panel', 'lm-BoxPanel', 'lm-SplitPanel-child', 'theia-mod-collapsed']) {
+    assert.ok(!agentStyles.includes(forbidden), `Code chrome must remove ${forbidden} nodes instead of hiding them with CSS`);
+}
+for (const forbidden of ['theia-ApplicationShell', 'theia-tabBar-tab-row', '.theia-tabBar', '.lm-TabBar']) {
+    assert.ok(!agentStyles.includes(forbidden), `Code chrome must not CSS-hide ${forbidden}`);
+}
+assert.ok(
+    firstCompletion.includes('Code does not host ApplicationShell; Lens hosts Files/Git/Editor widgets only.'),
+    'FIRST-COMPLETION must state the Code widget-hosting boundary'
+);
 assert.ok(changesContribution.includes("isDesignVariant('d2-b') ? 'main' : 'bottom'"));
 assert.ok(!changesContribution.includes('initializeLayout'));
 assert.ok(changesContribution.includes("setElement('lens-changes'"));

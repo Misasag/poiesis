@@ -2,7 +2,6 @@ import { injectable, inject } from '@theia/core/shared/inversify';
 import { FrontendApplicationContribution } from '@theia/core/lib/browser';
 import { ThemeService } from '@theia/core/lib/browser/theming';
 import { PreferenceService } from '@theia/core/lib/common/preferences';
-import { getDesignVariant } from './design-variant';
 
 @injectable()
 export class DesignShotContribution implements FrontendApplicationContribution {
@@ -15,9 +14,6 @@ export class DesignShotContribution implements FrontendApplicationContribution {
     protected readonly preferenceService!: PreferenceService;
 
     onStart(): void {
-        if (!getDesignVariant()) {
-            return;
-        }
         this.themeService.onDidColorThemeChange(event => {
             document.documentElement.dataset.lensDesignTheme = event.newTheme.id;
             if (!this.applyingTheme && event.newTheme.id !== 'dark') {

@@ -9,7 +9,8 @@ This directory contains the focused Eclipse Theia spike for Lens. The current im
 - `MockAgentProvider` creates one execution Task per sent message, streams a short reply, supports cancellation, and never reads or writes workspace files.
 - `TaskService` owns start, end, cancel, a baseline placeholder, and a captured change set. The backend uses a read-only real `git diff` when possible and otherwise records an empty change set.
 - One `BundledResultsSkill` runs only after a Task ends or is cancelled. It returns one complete HTML document; generation does not stream document fragments.
-- Agent and Results are separate tabs. Results contains a finished-Task switcher, one iframe canvas that hosts the complete skill document, and its own short composer. Task completion does not select Results or steal focus.
+- Lens owns the outer window and its Agent / Results tabs. They are not Theia dock tabs. Results contains a finished-Task switcher, one iframe canvas that hosts the complete skill document, and its own short composer. Task completion does not select Results or steal focus.
+- Code mode mounts the Theia application shell inside the Lens window, retaining Theia's Editor, Files, Git, settings, and editor file tabs without creating an `Agent Window` tab.
 - The pre-existing IDE Changes widget can still open code and semantic mock representations. It is separate from Results.
 
 This slice intentionally has no real agent execution, marketplace, agent-wiring settings screen, or full Code-mode chrome.

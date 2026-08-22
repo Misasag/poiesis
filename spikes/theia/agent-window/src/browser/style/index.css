@@ -1,3 +1,15 @@
+#lens-window-host {
+    background: #181918;
+    inset: 0;
+    overflow: hidden;
+    position: absolute;
+}
+
+#lens-window-host > .lens-agent-window {
+    height: 100%;
+    width: 100%;
+}
+
 .lens-agent-window {
     min-width: 360px;
 }
@@ -663,6 +675,10 @@
     padding: 0;
 }
 
+.lens-agent-window__content[data-mode='code'] {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 [data-lens-design-variant='d1-b'] .lens-agent-window__content {
     margin: 0;
     max-width: none;
@@ -802,6 +818,7 @@
     background: var(--lens-chrome-bg);
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
     min-height: 0;
     min-width: 0;
     overflow: hidden;
@@ -905,6 +922,7 @@
 }
 
 .lens-agent-window__viewport {
+    height: 100%;
     min-height: 0;
     min-width: 0;
     overflow: hidden;
@@ -1210,126 +1228,133 @@
     white-space: normal;
 }
 
-.lens-agent-window__rail--code {
+.lens-agent-window__code {
+    background: #171817;
+    display: grid;
+    grid-template-columns: minmax(190px, 224px) minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.lens-agent-window__code-sidebar,
+.lens-agent-window__code-editor {
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.lens-agent-window__code-sidebar {
+    background: #20211f;
+    border-right: 1px solid var(--lens-chrome-line);
+    display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
-.lens-agent-window__code-rail-tabs {
+.lens-agent-window__code-sidebar-tabs,
+.lens-agent-window__code-editor-tabs {
+    align-items: stretch;
+    background: #1d1e1c;
     border-bottom: 1px solid var(--lens-chrome-line);
-    display: grid;
-    gap: 4px;
-    grid-template-columns: 1fr 1fr;
-    padding: 8px;
+    display: flex;
+    min-height: 34px;
+    overflow-x: auto;
 }
 
-.lens-agent-window__code-rail-tabs button {
+.lens-agent-window__code-sidebar-tabs button,
+.lens-agent-window__code-editor-tabs button {
     background: transparent;
     border: 0;
-    border-radius: 6px;
-    color: #858780;
+    color: var(--lens-chrome-muted);
     cursor: pointer;
-    font-size: 9px;
+    flex: none;
+    font-size: 10px;
+    padding: 0 12px;
+}
+
+.lens-agent-window__code-sidebar-tabs button.active,
+.lens-agent-window__code-editor-tabs button.active {
+    background: #262724;
+    color: var(--lens-chrome-text);
+}
+
+.lens-agent-window__code-sidebar-tabs button.active {
+    box-shadow: inset 0 -2px #737b91;
+}
+
+.lens-agent-window__code-editor-tabs button {
+    align-items: center;
+    border-right: 1px solid var(--lens-chrome-line);
+    display: flex;
+    gap: 7px;
+    max-width: 220px;
+}
+
+.lens-agent-window__code-editor-tabs button span:last-child {
     overflow: hidden;
-    padding: 6px 4px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.lens-agent-window__code-rail-tabs button.active {
-    background: var(--lens-chrome-hover);
-    color: var(--lens-chrome-text);
-}
-
-.lens-agent-window__tree {
-    color: #9a9c95;
-    font-size: 9px;
-    min-height: 0;
-    overflow: auto;
-    padding: 5px 7px 9px;
-}
-
-.lens-agent-window__tree-title,
-.lens-agent-window__tree-row {
-    align-items: center;
-    display: flex;
-    gap: 7px;
-    min-height: 25px;
-    padding: 4px 6px;
-}
-
-.lens-agent-window__tree-title {
-    color: #b9bab4;
-    font-weight: 600;
-}
-
-.lens-agent-window__tree-title span:last-child,
-.lens-agent-window__tree-row strong {
-    margin-left: auto;
-}
-
-.lens-agent-window__tree-row {
-    border-radius: 5px;
-    white-space: nowrap;
-}
-
-.lens-agent-window__tree-row.depth-1 {
-    padding-left: 18px;
-}
-
-.lens-agent-window__tree-row.depth-2 {
-    padding-left: 31px;
-}
-
-.lens-agent-window__tree-row.active {
-    background: var(--lens-chrome-hover);
-    color: var(--lens-chrome-text);
-}
-
-.lens-agent-window__tree-row strong {
-    color: #8ea997;
-}
-
-.lens-agent-window__code {
-    background: #171817;
+.lens-agent-window__code-editor {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.lens-agent-window__code-sidebar-host,
+.lens-agent-window__code-editor-host {
     height: 100%;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
+    position: relative;
 }
 
-.lens-agent-window__editor-tabs {
-    border-bottom: 1px solid #2c2d2b;
-    display: flex;
-    min-height: 34px;
+.lens-agent-window__code-sidebar-host > *,
+.lens-agent-window__code-editor-host > * {
+    height: 100%;
+    inset: 0;
+    position: absolute;
+    width: 100%;
 }
 
-.lens-agent-window__editor-tabs > div {
+.lens-agent-window__code-footer {
     align-items: center;
-    background: #1e1f1d;
-    border-right: 1px solid #2c2d2b;
-    color: #e1e0da;
+    border-top: 1px solid var(--lens-chrome-line);
+    color: var(--lens-chrome-muted);
     display: flex;
     font-size: 9px;
-    gap: 7px;
-    padding: 0 12px;
+    justify-content: space-between;
+    min-height: 34px;
+    padding: 0 9px 0 12px;
 }
 
-.lens-agent-window__breadcrumbs {
-    color: #777a73;
-    font-size: 9px;
-    padding: 9px 16px 3px;
+.lens-agent-window__code-footer button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    height: 26px;
+    justify-content: center;
+    width: 26px;
 }
 
-.lens-agent-window__source {
-    color: #c9cac4;
-    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+.lens-agent-window__code-footer button:hover,
+.lens-agent-window__code-footer button:focus-visible {
+    background: var(--lens-chrome-hover);
+    outline: none;
+}
+
+.lens-agent-window__code-empty {
+    align-items: center;
+    color: var(--lens-chrome-muted);
+    display: flex;
     font-size: 11px;
-    line-height: 1.72;
-    margin: 0;
-    min-height: 0;
-    overflow: auto;
-    padding: 12px 16px;
+    justify-content: center;
 }
 
 @media (max-width: 680px) {
@@ -1373,48 +1398,12 @@
         padding-inline: 0;
     }
 
-    .lens-agent-window__code-rail-tabs {
-        display: flex;
-        flex-direction: column;
-        padding: 6px 4px;
-    }
-
-    .lens-agent-window__code-rail-tabs button {
-        font-size: 0;
-        min-height: 28px;
-    }
-
-    .lens-agent-window__code-rail-tabs button::before {
-        font-size: 10px;
-    }
-
-    .lens-agent-window__code-rail-tabs button:first-child::before {
-        content: "F";
-    }
-
-    .lens-agent-window__code-rail-tabs button:last-child::before {
-        content: "S";
-    }
-
-    .lens-agent-window__tree-title,
-    .lens-agent-window__tree-row {
-        font-size: 0;
-        justify-content: center;
-        padding-inline: 0;
-    }
-
-    .lens-agent-window__tree-title .codicon,
-    .lens-agent-window__tree-row .codicon {
-        font-size: 12px;
-    }
-
-    .lens-agent-window__tree-row.depth-1,
-    .lens-agent-window__tree-row.depth-2 {
-        padding-left: 0;
-    }
-
     .lens-agent-window__header {
         padding-inline: 11px;
+    }
+
+    .lens-agent-window__code {
+        grid-template-columns: 148px minmax(0, 1fr);
     }
 
     .lens-agent-window__context > strong {

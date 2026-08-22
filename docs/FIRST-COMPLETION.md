@@ -38,6 +38,9 @@ Taskが終了またはキャンセルされたら、アプリがResults skillを
 - [ ] `Code`モードでは`Agent`／`Results`タブを隠し、`Code`をもう一度押すと直前の`Agent`または`Results`へ戻る
 - [ ] `Code`モードへの切替で、左サイドバーはFiles／Git、中央はEditorになる
 - [ ] 共通の左サイドバー下部に設定の歯車があり、中央にTheia／Workspace settingsを開ける
+
+Code does not host ApplicationShell; Lens hosts Files/Git/Editor widgets only.
+
 - [ ] plugin install screenとAgent wiring screenを追加しない
 
 ### Results

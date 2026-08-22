@@ -1,6 +1,7 @@
 import { ContainerModule } from '@theia/core/shared/inversify';
 import {
     bindViewContribution,
+    FrontendApplication,
     FrontendApplicationContribution,
     WebSocketConnectionProvider
 } from '@theia/core/lib/browser';
@@ -17,9 +18,12 @@ import { AgentRuntimeServer, agentRuntimeServerPath } from '../common/agent-runt
 import { MockAgentProvider } from './mock-agent-provider';
 import { BundledResultsSkill, ResultsService, ResultsSkill } from './results-skill';
 import { TaskService } from './task-service';
+import { LensFrontendApplication } from './lens-frontend-application';
 import '../../src/browser/style/index.css';
 
-export default new ContainerModule(bind => {
+export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
+    rebind(FrontendApplication).to(LensFrontendApplication).inSingletonScope();
+
     bind(AgentRuntimeClientImpl).toSelf().inSingletonScope();
     bind(AgentRuntimeServer).toDynamicValue(context => {
         const client = context.container.get(AgentRuntimeClientImpl);
@@ -37,12 +41,8 @@ export default new ContainerModule(bind => {
     bind(DesignShotContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(DesignShotContribution);
 
-    bind(AgentWindowWidget).toSelf();
-    bind(WidgetFactory).toDynamicValue(context => ({
-        id: AgentWindowWidget.ID,
-        createWidget: () => context.container.get(AgentWindowWidget)
-    })).inSingletonScope();
-    bindViewContribution(bind, AgentWindowContribution);
+    bind(AgentWindowWidget).toSelf().inSingletonScope();
+    bind(AgentWindowContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(AgentWindowContribution);
 
     bind(ChangesWidget).toSelf();

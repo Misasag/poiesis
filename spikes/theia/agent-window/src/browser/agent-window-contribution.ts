@@ -1,23 +1,65 @@
-import { injectable } from '@theia/core/shared/inversify';
-import { AbstractViewContribution, FrontendApplicationContribution } from '@theia/core/lib/browser';
+import { inject, injectable } from '@theia/core/shared/inversify';
+import { FrontendApplicationContribution, WidgetManager } from '@theia/core/lib/browser';
+import { DisposableCollection } from '@theia/core/lib/common';
+import { Widget } from '@theia/core/shared/@lumino/widgets';
+import { EditorManager } from '@theia/editor/lib/browser';
 import { AgentWindowWidget } from './agent-window-widget';
-import { isDesignVariant } from './design-variant';
 
 @injectable()
-export class AgentWindowContribution extends AbstractViewContribution<AgentWindowWidget> implements FrontendApplicationContribution {
-    constructor() {
-        super({
-            widgetId: AgentWindowWidget.ID,
-            widgetName: AgentWindowWidget.LABEL,
-            defaultWidgetOptions: {
-                area: isDesignVariant('d1-b') ? 'main' : 'right',
-                rank: 100
-            },
-            toggleCommandId: 'lens.agentWindow.toggle'
-        });
+export class AgentWindowContribution implements FrontendApplicationContribution {
+    protected host?: HTMLElement;
+    protected readonly toDispose = new DisposableCollection();
+
+    constructor(
+        @inject(AgentWindowWidget) protected readonly agentWindowWidget: AgentWindowWidget,
+        @inject(WidgetManager) protected readonly widgetManager: WidgetManager,
+        @inject(EditorManager) protected readonly editorManager: EditorManager
+    ) { }
+
+    initialize(): void {
+        // onCreated fires while WidgetManager is still resolving creation, before
+        // WidgetOpenHandler can add an unattached editor to the workbench shell.
+        this.toDispose.push(this.editorManager.onCreated(widget => {
+            const factoryId = this.widgetManager.getDescription(widget)?.factoryId
+                ?? AgentWindowWidget.EDITOR_WIDGET_FACTORY_ID;
+            this.agentWindowWidget.registerCodeWidget(factoryId, widget);
+        }));
+        this.toDispose.push(this.widgetManager.onDidCreateWidget(({ factoryId, widget }) => {
+            this.agentWindowWidget.registerCodeWidget(factoryId, widget);
+        }));
     }
 
-    async initializeLayout(): Promise<void> {
-        await this.openView({ reveal: true });
+    async onDidInitializeLayout(): Promise<void> {
+        const [files, git] = await Promise.all([
+            this.widgetManager.getOrCreateWidget(AgentWindowWidget.FILES_WIDGET_FACTORY_ID),
+            this.widgetManager.getOrCreateWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID)
+        ]);
+        this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.FILES_WIDGET_FACTORY_ID, files);
+        this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID, git);
+        for (const editor of this.editorManager.all) {
+            const factoryId = this.widgetManager.getDescription(editor)?.factoryId
+                ?? AgentWindowWidget.EDITOR_WIDGET_FACTORY_ID;
+            this.agentWindowWidget.registerCodeWidget(factoryId, editor);
+        }
+        for (const settings of this.widgetManager.getWidgets(AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID)) {
+            this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID, settings);
+        }
+
+        const host = document.createElement('div');
+        host.id = 'lens-window-host';
+        host.setAttribute('aria-label', 'Lens');
+        const preload = document.querySelector('.theia-preload');
+        document.body.insertBefore(host, preload);
+        Widget.attach(this.agentWindowWidget, host);
+        this.host = host;
+    }
+
+    onStop(): void {
+        this.toDispose.dispose();
+        if (this.agentWindowWidget.isAttached) {
+            Widget.detach(this.agentWindowWidget);
+        }
+        this.host?.remove();
+        this.host = undefined;
     }
 }

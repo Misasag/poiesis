@@ -1,6 +1,11 @@
 import * as React from '@theia/core/shared/react';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
+import { WidgetManager } from '@theia/core/lib/browser';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
+import { Disposable } from '@theia/core/lib/common';
+import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
+import { Widget } from '@theia/core/shared/@lumino/widgets';
+import { EditorWidget } from '@theia/editor/lib/browser';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
 import { ResultsService } from './results-skill';
@@ -8,7 +13,7 @@ import { ExecutionTask, TaskService } from './task-service';
 import { getDesignVariant } from './design-variant';
 
 type AgentWindowTab = 'agent' | 'results';
-type CodeRailTab = 'files' | 'source-control';
+type CodeSidebarTab = 'files' | 'git';
 
 interface ChatMessage {
     id: string;
@@ -20,11 +25,21 @@ interface ChatMessage {
 @injectable()
 export class AgentWindowWidget extends ReactWidget {
     static readonly ID = 'lens-agent-window';
-    static readonly LABEL = 'Agent Window';
-
+    static readonly FILES_WIDGET_FACTORY_ID = 'files';
+    static readonly GIT_WIDGET_FACTORY_ID = 'scm-view';
+    static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener';
+    static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget';
     protected activeTab: AgentWindowTab = 'agent';
     protected codeMode = false;
-    protected codeRailTab: CodeRailTab = 'files';
+    protected codeSidebarTab: CodeSidebarTab = 'files';
+    protected codeFilesWidget?: Widget;
+    protected codeGitWidget?: Widget;
+    protected readonly codeCenterWidgets: Widget[] = [];
+    protected activeCodeCenterWidget?: Widget;
+    protected codeSidebarHost?: HTMLDivElement;
+    protected codeEditorHost?: HTMLDivElement;
+    protected codeSidebarResizeObserver?: ResizeObserver;
+    protected codeEditorResizeObserver?: ResizeObserver;
     protected session?: AgentSession;
     protected agentDraft = '';
     protected messages: ChatMessage[] = [{
@@ -41,7 +56,8 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(AgentProvider) protected readonly agentProvider: AgentProvider,
         @inject(TaskService) protected readonly taskService: TaskService,
         @inject(ResultsService) protected readonly resultsService: ResultsService,
-        @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService
+        @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
+        @inject(WidgetManager) protected readonly widgetManager: WidgetManager
     ) {
         super();
     }
@@ -50,10 +66,6 @@ export class AgentWindowWidget extends ReactWidget {
     protected init(): void {
         getDesignVariant();
         this.id = AgentWindowWidget.ID;
-        this.title.label = AgentWindowWidget.LABEL;
-        this.title.caption = 'Lens の Agent と Results';
-        this.title.iconClass = 'codicon codicon-hubot';
-        this.title.closable = true;
         this.addClass('lens-agent-window');
 
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
@@ -73,7 +85,7 @@ export class AgentWindowWidget extends ReactWidget {
         const runningTask = this.runningTask();
         return (
             <div className='lens-agent-window__content' data-mode={this.codeMode ? 'code' : this.activeTab}>
-                {this.renderRail()}
+                {!this.codeMode && this.renderRail()}
                 <main className='lens-agent-window__workspace'>
                     {this.renderHeader()}
                     <div className='lens-agent-window__viewport'>
@@ -89,48 +101,6 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderRail(): React.ReactNode {
-        if (this.codeMode) {
-            return (
-                <aside className='lens-agent-window__rail lens-agent-window__rail--code' aria-label='Code のサイドバー'>
-                    <div className='lens-agent-window__code-rail-tabs' role='group' aria-label='Code の表示'>
-                        <button
-                            type='button'
-                            className={this.codeRailTab === 'files' ? 'active' : ''}
-                            aria-pressed={this.codeRailTab === 'files'}
-                            onClick={() => this.selectCodeRailTab('files')}
-                        >
-                            Files
-                        </button>
-                        <button
-                            type='button'
-                            className={this.codeRailTab === 'source-control' ? 'active' : ''}
-                            aria-pressed={this.codeRailTab === 'source-control'}
-                            onClick={() => this.selectCodeRailTab('source-control')}
-                        >
-                            Source Control
-                        </button>
-                    </div>
-                    {this.codeRailTab === 'files' ? (
-                        <div className='lens-agent-window__tree' aria-label='ファイル一覧'>
-                            <div className='lens-agent-window__tree-title'><span className='codicon codicon-chevron-down' /> lens</div>
-                            <div className='lens-agent-window__tree-row'><span className='codicon codicon-folder-opened' /> spikes</div>
-                            <div className='lens-agent-window__tree-row depth-1'><span className='codicon codicon-folder-opened' /> theia</div>
-                            <div className='lens-agent-window__tree-row depth-2 active'><span className='codicon codicon-file-code' /> auth-service.ts</div>
-                        </div>
-                    ) : (
-                        <div className='lens-agent-window__tree' aria-label='変更ファイル一覧'>
-                            <div className='lens-agent-window__tree-title'>変更 <span>1</span></div>
-                            <div className='lens-agent-window__tree-row active'>auth-service.ts <strong>M</strong></div>
-                        </div>
-                    )}
-                    <div className='lens-agent-window__rail-footer'>
-                        <span>{this.codeRailTab === 'files' ? 'Files' : 'Source Control'}</span>
-                        <span className='codicon codicon-settings-gear' title='設定' aria-label='設定' />
-                    </div>
-                </aside>
-            );
-        }
-
         return (
             <aside className='lens-agent-window__rail' aria-label='セッションのサイドバー'>
                 <div className='lens-agent-window__rail-top'>
@@ -347,21 +317,236 @@ export class AgentWindowWidget extends ReactWidget {
     protected renderCode(): React.ReactNode {
         return (
             <section className='lens-agent-window__code' aria-label='Code モード'>
-                <div className='lens-agent-window__editor-tabs'>
-                    <div className='active'><span className='codicon codicon-file-code' aria-hidden='true' /> auth-service.ts</div>
-                </div>
-                <div className='lens-agent-window__breadcrumbs'>spikes / theia / sample-src / auth-service.ts</div>
-                <pre className='lens-agent-window__source' aria-label='auth-service.ts のコード'><code>{`export class AuthService {
-  constructor(private readonly tokenStore: TokenStore) {}
-
-  async rotateRefreshToken(userId: string): Promise<string> {
-    const token = crypto.randomUUID();
-    await this.tokenStore.save(userId, token);
-    return token;
-  }
-}`}</code></pre>
+                <aside className='lens-agent-window__code-sidebar' aria-label='Code のサイドバー'>
+                    <div className='lens-agent-window__code-sidebar-tabs' role='tablist' aria-label='Code の表示'>
+                        <button
+                            type='button'
+                            role='tab'
+                            aria-selected={this.codeSidebarTab === 'files'}
+                            className={this.codeSidebarTab === 'files' ? 'active' : ''}
+                            onClick={() => this.selectCodeSidebarTab('files')}
+                        >
+                            Files
+                        </button>
+                        <button
+                            type='button'
+                            role='tab'
+                            aria-selected={this.codeSidebarTab === 'git'}
+                            className={this.codeSidebarTab === 'git' ? 'active' : ''}
+                            onClick={() => this.selectCodeSidebarTab('git')}
+                        >
+                            Git
+                        </button>
+                    </div>
+                    <div className='lens-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
+                    <footer className='lens-agent-window__code-footer'>
+                        <span>{this.codeSidebarTab === 'files' ? 'Files' : 'Git'}</span>
+                        <button type='button' title='設定' aria-label='設定' onClick={() => void this.openCodeSettings()}>
+                            <span className='codicon codicon-settings-gear' aria-hidden='true' />
+                        </button>
+                    </footer>
+                </aside>
+                <main className='lens-agent-window__code-editor' aria-label='Editor'>
+                    <div className='lens-agent-window__code-editor-tabs' role='tablist' aria-label='開いているEditor'>
+                        {this.codeCenterWidgets.map(widget => (
+                            <button
+                                key={widget.id}
+                                type='button'
+                                role='tab'
+                                aria-selected={this.activeCodeCenterWidget === widget}
+                                className={this.activeCodeCenterWidget === widget ? 'active' : ''}
+                                onClick={() => this.selectCodeCenterWidget(widget)}
+                            >
+                                {widget.title.iconClass && <span className={widget.title.iconClass} aria-hidden='true' />}
+                                <span>{this.codeCenterWidgetLabel(widget)}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <div className='lens-agent-window__code-editor-host' ref={this.setCodeEditorHost}>
+                        {!this.activeCodeCenterWidget && (
+                            <div className='lens-agent-window__code-empty'>Filesからファイルを開いてください。</div>
+                        )}
+                    </div>
+                </main>
             </section>
         );
+    }
+
+    registerCodeWidget(factoryId: string, widget: Widget): void {
+        let changed = false;
+        if (factoryId === AgentWindowWidget.FILES_WIDGET_FACTORY_ID) {
+            changed = this.codeFilesWidget !== widget;
+            this.codeFilesWidget = widget;
+        } else if (factoryId === AgentWindowWidget.GIT_WIDGET_FACTORY_ID) {
+            changed = this.codeGitWidget !== widget;
+            this.codeGitWidget = widget;
+        } else if (this.isCodeCenterWidget(factoryId, widget)
+            && !this.codeCenterWidgets.includes(widget)) {
+            this.detachCodeWidget(this.activeCodeCenterWidget);
+            this.codeCenterWidgets.push(widget);
+            this.activeCodeCenterWidget = widget;
+            changed = true;
+            const onDisposed = (): void => this.removeCodeCenterWidget(widget);
+            widget.disposed.connect(onDisposed);
+            this.toDispose.push(Disposable.create(() => widget.disposed.disconnect(onDisposed)));
+        }
+        if (changed && this.codeMode) {
+            this.update();
+            this.syncCodeWidgetAttachments();
+        }
+    }
+
+    protected isCodeCenterWidget(factoryId: string, widget: Widget): boolean {
+        return widget instanceof EditorWidget
+            || factoryId.startsWith(AgentWindowWidget.EDITOR_WIDGET_FACTORY_ID)
+            || factoryId === AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID;
+    }
+
+    protected readonly setCodeSidebarHost = (host: HTMLDivElement | null): void => {
+        if (!host) {
+            this.codeSidebarResizeObserver?.disconnect();
+            this.codeSidebarResizeObserver = undefined;
+            this.detachCodeWidget(this.activeCodeSidebarWidget());
+            this.codeSidebarHost = undefined;
+            return;
+        }
+        this.codeSidebarHost = host;
+        this.codeSidebarResizeObserver = new ResizeObserver(() =>
+            this.resizeCodeWidget(this.activeCodeSidebarWidget(), host));
+        this.codeSidebarResizeObserver.observe(host);
+        this.syncCodeWidgetAttachments();
+    };
+
+    protected readonly setCodeEditorHost = (host: HTMLDivElement | null): void => {
+        if (!host) {
+            this.codeEditorResizeObserver?.disconnect();
+            this.codeEditorResizeObserver = undefined;
+            this.detachCodeWidget(this.activeCodeCenterWidget);
+            this.codeEditorHost = undefined;
+            return;
+        }
+        this.codeEditorHost = host;
+        this.codeEditorResizeObserver = new ResizeObserver(() =>
+            this.resizeCodeWidget(this.activeCodeCenterWidget, host));
+        this.codeEditorResizeObserver.observe(host);
+        this.syncCodeWidgetAttachments();
+    };
+
+    protected activeCodeSidebarWidget(): Widget | undefined {
+        return this.codeSidebarTab === 'files' ? this.codeFilesWidget : this.codeGitWidget;
+    }
+
+    protected syncCodeWidgetAttachments(): void {
+        if (!this.codeMode) {
+            this.detachCodeWidgets();
+            return;
+        }
+        this.attachCodeWidget(this.activeCodeSidebarWidget(), this.codeSidebarHost);
+        this.attachCodeWidget(this.activeCodeCenterWidget, this.codeEditorHost);
+    }
+
+    protected attachCodeWidget(widget: Widget | undefined, host: HTMLDivElement | undefined): void {
+        if (!widget || !host) {
+            return;
+        }
+        if (widget.node.parentElement !== host) {
+            // Files and Git normally belong to ViewContainerPart; editors may
+            // already belong to the detached shell. Make each a root first.
+            if (widget.parent) {
+                widget.parent = null;
+            }
+            if (widget.isAttached) {
+                Widget.detach(widget);
+            }
+            Widget.attach(widget, host);
+        }
+        this.revealCodeWidget(widget, host);
+    }
+
+    protected revealCodeWidget(widget: Widget, host: HTMLDivElement): void {
+        widget.show();
+        widget.update();
+        widget.activate();
+        this.resizeCodeWidget(widget, host);
+        requestAnimationFrame(() => {
+            if (!widget.isDisposed && widget.isAttached && widget.node.parentElement === host) {
+                widget.show();
+                widget.update();
+                this.resizeCodeWidget(widget, host);
+            }
+        });
+    }
+
+    protected resizeCodeWidget(widget: Widget | undefined, host: HTMLDivElement): void {
+        if (!widget?.isAttached || widget.node.parentElement !== host) {
+            return;
+        }
+        const width = host.clientWidth;
+        const height = host.clientHeight;
+        MessageLoop.sendMessage(widget, new Widget.ResizeMessage(width, height));
+        widget.update();
+        if (widget instanceof EditorWidget) {
+            widget.editor.resizeToFit();
+            widget.editor.refresh();
+        }
+    }
+
+    protected detachCodeWidget(widget: Widget | undefined): void {
+        const parent = widget?.node.parentElement;
+        if (widget?.isAttached && (parent === this.codeSidebarHost || parent === this.codeEditorHost)) {
+            Widget.detach(widget);
+        }
+    }
+
+    protected detachCodeWidgets(): void {
+        this.detachCodeWidget(this.activeCodeSidebarWidget());
+        this.detachCodeWidget(this.activeCodeCenterWidget);
+    }
+
+    protected selectCodeSidebarTab(tab: CodeSidebarTab): void {
+        this.detachCodeWidget(this.activeCodeSidebarWidget());
+        this.codeSidebarTab = tab;
+        this.update();
+        this.syncCodeWidgetAttachments();
+    }
+
+    protected selectCodeCenterWidget(widget: Widget): void {
+        this.detachCodeWidget(this.activeCodeCenterWidget);
+        this.activeCodeCenterWidget = widget;
+        this.update();
+        this.syncCodeWidgetAttachments();
+    }
+
+    protected removeCodeCenterWidget(widget: Widget): void {
+        const index = this.codeCenterWidgets.indexOf(widget);
+        if (index !== -1) {
+            this.codeCenterWidgets.splice(index, 1);
+        }
+        if (this.activeCodeCenterWidget === widget) {
+            this.activeCodeCenterWidget = this.codeCenterWidgets.at(-1);
+        }
+        this.update();
+        this.syncCodeWidgetAttachments();
+    }
+
+    protected codeCenterWidgetLabel(widget: Widget): string {
+        if (widget.id === AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID) {
+            return 'Settings';
+        }
+        return widget.title.label || widget.title.caption || 'Editor';
+    }
+
+    protected async openCodeSettings(): Promise<void> {
+        const settings = await this.widgetManager.getOrCreateWidget(AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID);
+        this.registerCodeWidget(AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID, settings);
+        this.selectCodeCenterWidget(settings);
+    }
+
+    protected onBeforeDetach(message: Message): void {
+        this.codeSidebarResizeObserver?.disconnect();
+        this.codeEditorResizeObserver?.disconnect();
+        this.detachCodeWidgets();
+        super.onBeforeDetach(message);
     }
 
     protected async initializeSession(): Promise<void> {
@@ -438,12 +623,12 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected toggleCodeMode(): void {
-        this.codeMode = !this.codeMode;
-        this.update();
-    }
-
-    protected selectCodeRailTab(tab: CodeRailTab): void {
-        this.codeRailTab = tab;
+        if (this.codeMode) {
+            this.detachCodeWidgets();
+            this.codeMode = false;
+        } else {
+            this.codeMode = true;
+        }
         this.update();
     }
 
@@ -453,6 +638,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected async newChat(): Promise<void> {
+        this.detachCodeWidgets();
         this.codeMode = false;
         this.activeTab = 'agent';
         this.agentDraft = '';
