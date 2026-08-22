@@ -101,7 +101,6 @@
     }
 
     .badge.decided { color: var(--ok); }
-    .badge.draft { color: var(--warn); }
     .badge.planned { color: var(--muted); }
 
     main {
@@ -272,6 +271,891 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
+    }
+
+    .agent-mock {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: 238px minmax(0, 1fr);
+      overflow: hidden;
+      background: #171817;
+      color: #e9e8e4;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+      font-size: 12px;
+      line-height: 1.48;
+    }
+
+    .agent-mock--sidebar-collapsed {
+      grid-template-columns: 52px minmax(0, 1fr);
+    }
+
+    .agent-mock button { color: inherit; }
+
+    .agent-mock__icon {
+      width: 14px;
+      height: 14px;
+      display: inline-block;
+      flex: 0 0 auto;
+      vertical-align: middle;
+    }
+
+    .agent-mock__icon-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .agent-mock__sidebar {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      border-right: 1px solid #30312f;
+      background: #1d1e1c;
+    }
+
+    .agent-mock__top-nav {
+      display: grid;
+      gap: 3px;
+      padding: 12px 9px 8px;
+    }
+
+    .agent-mock__sidebar-controls {
+      display: flex;
+      justify-content: flex-end;
+      min-height: 28px;
+      padding: 0 1px 3px;
+    }
+
+    .agent-mock__sidebar-toggle {
+      width: 28px;
+      height: 28px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: #8e9089;
+      cursor: pointer;
+    }
+
+    .agent-mock__sidebar-toggle:hover,
+    .agent-mock__sidebar-toggle:focus-visible {
+      background: #2b2c29;
+      color: #f3f2ed;
+      outline: none;
+    }
+
+    .agent-mock__nav-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 31px;
+      padding: 6px 9px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: #a9aaa4;
+      font-size: 11px;
+      text-align: left;
+    }
+
+    .agent-mock__nav-item,
+    .agent-mock__session {
+      cursor: pointer;
+    }
+
+    .agent-mock__nav-item.active {
+      background: #2b2c29;
+      color: #f3f2ed;
+    }
+
+    .agent-mock__nav-icon {
+      width: 15px;
+      color: #8e9089;
+      text-align: center;
+    }
+
+    .agent-mock__nav-icon .agent-mock__icon {
+      width: 13px;
+      height: 13px;
+    }
+
+    .agent-mock__header-action,
+    .agent-mock__send {
+      border: 0;
+      background: transparent;
+      cursor: default;
+    }
+
+    .agent-mock__workspaces-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 15px 5px;
+      color: #777a73;
+      font-size: 10px;
+    }
+
+    .agent-mock__workspace-actions {
+      display: flex;
+      gap: 9px;
+      color: #7f817a;
+      font-size: 12px;
+    }
+
+    .agent-mock__sessions {
+      min-height: 0;
+      padding: 2px 9px;
+      overflow: hidden;
+    }
+
+    .agent-mock__workspace-group + .agent-mock__workspace-group { margin-top: 5px; }
+
+    .agent-mock__workspace-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 28px;
+      padding: 5px 7px;
+      color: #d2d1cb;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .agent-mock__workspace-title .chevron {
+      margin-left: auto;
+      color: #7f817a;
+      font-size: 9px;
+    }
+
+    .agent-mock__session {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      margin: 1px 0 1px 17px;
+      padding: 6px 7px;
+      border-radius: 7px;
+      color: #a9aaa4;
+    }
+
+    .agent-mock__session.selected {
+      background: #2b2c29;
+      color: #f3f2ed;
+    }
+
+    .agent-mock__session-title {
+      display: block;
+      overflow: hidden;
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .agent-mock__session-meta {
+      color: #7f817a;
+      font-size: 9px;
+    }
+
+    .agent-mock__sidebar-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 15px 13px;
+      color: #7e8079;
+      font-size: 10px;
+    }
+
+    .agent-mock--sidebar-collapsed .agent-mock__sidebar-controls {
+      justify-content: center;
+      padding-inline: 0;
+    }
+
+    .agent-mock--sidebar-collapsed .agent-mock__top-nav {
+      padding-inline: 7px;
+    }
+
+    .agent-mock--sidebar-collapsed .agent-mock__nav-item {
+      justify-content: center;
+      padding-inline: 0;
+    }
+
+    .agent-mock--sidebar-collapsed .agent-mock__nav-label,
+    .agent-mock--sidebar-collapsed .agent-mock__workspaces-header,
+    .agent-mock--sidebar-collapsed .agent-mock__sessions,
+    .agent-mock--sidebar-collapsed .agent-mock__sidebar-footer-label {
+      display: none;
+    }
+
+    .agent-mock--sidebar-collapsed .agent-mock__sidebar-footer {
+      justify-content: center;
+      padding-inline: 0;
+    }
+
+    .agent-mock__workspace {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      background: #181918;
+    }
+
+    .agent-mock__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 54px;
+      padding: 9px 16px;
+      border-bottom: 1px solid #2c2d2b;
+    }
+
+    .agent-mock__context {
+      min-width: 0;
+    }
+
+    .agent-mock__context-scope {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .agent-mock__context small {
+      display: block;
+      color: #7e817a;
+      font-size: 9px;
+    }
+
+    .agent-mock__context strong {
+      display: block;
+      overflow: hidden;
+      margin-top: 1px;
+      font-size: 12px;
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .agent-mock__header-actions {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .agent-mock__session-switch {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 2px;
+      border: 1px solid #393a36;
+      border-radius: 7px;
+      background: #20211f;
+    }
+
+    .agent-mock__header-action {
+      padding: 5px 8px;
+      border-radius: 6px;
+      color: #9ea099;
+      font-size: 10px;
+    }
+
+    .agent-mock__header-action.active {
+      background: #2b2c29;
+      color: #f1f0eb;
+    }
+
+    .agent-mock__header-action.code-entry {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border: 1px solid #444540;
+      background: #242522;
+      color: #d9d8d2;
+      font-size: 8px;
+    }
+
+    .agent-mock__header-action.code-entry.active {
+      border-color: #62645e;
+      background: #32332f;
+      color: #f1f0eb;
+    }
+
+    .agent-mock__timeline {
+      min-height: 0;
+      overflow: hidden;
+      padding: 22px clamp(28px, 7vw, 78px) 14px;
+    }
+
+    .agent-mock__timeline-inner {
+      width: min(680px, 100%);
+      margin: 0 auto;
+    }
+
+    .agent-mock__user-message {
+      width: fit-content;
+      max-width: 78%;
+      margin: 0 0 23px auto;
+      padding: 8px 11px;
+      border-radius: 10px 10px 3px 10px;
+      background: #292a27;
+      color: #e8e7e2;
+      font-size: 12px;
+    }
+
+    .agent-mock__answer {
+      color: #d7d6d0;
+      font-size: 12px;
+    }
+
+    .agent-mock__answer p { margin: 0 0 8px; }
+
+    .agent-mock__answer ul {
+      margin: 7px 0 13px;
+      padding-left: 18px;
+      color: #b5b6af;
+    }
+
+    .agent-mock__answer li { margin: 3px 0; }
+
+    .agent-mock__activity,
+    .agent-mock__validation {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 29px;
+      margin-top: 5px;
+      padding: 5px 8px;
+      border-radius: 7px;
+      color: #979992;
+      font-size: 10px;
+    }
+
+    .agent-mock__activity { background: #21221f; }
+    .agent-mock__validation { color: #88aa8f; }
+
+    .agent-mock__completion-note {
+      margin-top: 10px;
+      color: #73766f;
+      font-size: 9px;
+    }
+
+    .agent-mock__composer-wrap {
+      padding: 10px clamp(28px, 7vw, 78px) 16px;
+    }
+
+    .agent-mock__composer {
+      width: min(680px, 100%);
+      min-height: 66px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 12px;
+      padding: 10px 11px 9px 13px;
+      border: 1px solid #444540;
+      border-radius: 12px;
+      background: #222320;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+    }
+
+    .agent-mock__composer-copy {
+      display: grid;
+      gap: 10px;
+      color: #777a73;
+      font-size: 11px;
+    }
+
+    .agent-mock__composer-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #858780;
+      font-size: 9px;
+    }
+
+    .agent-mock__send {
+      width: 28px;
+      height: 28px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 8px;
+      background: #e2e0d7;
+      color: #222320;
+      font-size: 14px;
+    }
+
+    .agent-mock__resource-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 8px;
+      border-bottom: 1px solid #30312f;
+    }
+
+    .agent-mock__code-sidebar {
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+    }
+
+    .agent-mock__code-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 31px;
+      margin: 8px 8px 4px;
+      padding: 6px 9px;
+      border: 1px solid #343632;
+      border-radius: 6px;
+      background: #232421;
+      color: #8f918a;
+      font-size: 9px;
+      text-align: left;
+    }
+
+    .agent-mock__code-pane-body {
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .agent-mock__resource-tab {
+      padding: 5px 6px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #858780;
+      font-size: 9px;
+      cursor: pointer;
+    }
+
+    .agent-mock__resource-tab.active {
+      background: #2b2c29;
+      color: #efeee9;
+    }
+
+    .agent-mock__pane-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 31px;
+      padding: 7px 10px;
+      color: #b9bab4;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .agent-mock__tree,
+    .agent-mock__scm-list {
+      padding: 3px 7px 9px;
+      color: #9a9c95;
+      font-size: 9px;
+    }
+
+    .agent-mock__tree-row,
+    .agent-mock__scm-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 24px;
+      padding: 4px 6px;
+      border-radius: 5px;
+      white-space: nowrap;
+    }
+
+    .agent-mock__tree-row.depth-1 { padding-left: 18px; }
+    .agent-mock__tree-row.depth-2 { padding-left: 31px; }
+
+    .agent-mock__tree-row.selected,
+    .agent-mock__scm-row.selected {
+      background: #2b2c29;
+      color: #efeee9;
+    }
+
+    .agent-mock__row-status {
+      margin-left: auto;
+      color: #8ea997;
+      font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    }
+
+    .agent-mock__editor {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+      background: #171817;
+    }
+
+    .agent-mock__editor-tabbar {
+      display: flex;
+      align-items: center;
+      min-height: 34px;
+      border-bottom: 1px solid #2c2d2b;
+      color: #9ea099;
+      font-size: 9px;
+    }
+
+    .agent-mock__editor-tab {
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border-right: 1px solid #2c2d2b;
+      background: #1e1f1d;
+      color: #e1e0da;
+    }
+
+    .agent-mock__code {
+      min-height: 0;
+      padding: 13px 16px;
+      overflow: hidden;
+      color: #c9cac4;
+      font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+      font-size: 9px;
+      line-height: 1.72;
+    }
+
+    .agent-mock__code-line {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 10px;
+      white-space: pre;
+    }
+
+    .agent-mock__line-number {
+      color: #5f625c;
+      text-align: right;
+      user-select: none;
+    }
+
+    .agent-mock__code-line.added { background: rgba(75, 126, 89, 0.17); }
+    .agent-mock__code-line.removed { background: rgba(150, 70, 64, 0.16); }
+    .agent-mock__keyword { color: #c6a0d8; }
+    .agent-mock__string { color: #a7c080; }
+    .agent-mock__type { color: #7fbbb3; }
+
+    .agent-mock__commit-box {
+      display: grid;
+      gap: 6px;
+      padding: 8px;
+      border-bottom: 1px solid #30312f;
+    }
+
+    .agent-mock__commit-input {
+      min-height: 39px;
+      padding: 7px;
+      border: 1px solid #3d3f3b;
+      border-radius: 6px;
+      background: #232421;
+      color: #777a73;
+      font-size: 9px;
+    }
+
+    .agent-mock__commit-button {
+      padding: 5px;
+      border: 0;
+      border-radius: 6px;
+      background: #454942;
+      color: #ecebe6;
+      font-size: 9px;
+    }
+
+    .agent-mock__results {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 196px;
+      overflow: hidden;
+      background: #171817;
+    }
+
+    .agent-mock__results-main {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+
+    .agent-mock__results-body {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .agent-mock__task-switcher {
+      min-width: 0;
+      min-height: 0;
+      padding: 13px 9px;
+      overflow: hidden;
+      border-left: 1px solid #30312f;
+      background: #1d1e1c;
+    }
+
+    .agent-mock__task-switcher-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+      color: #777a73;
+      font-size: 8px;
+      letter-spacing: .08em;
+    }
+
+    .agent-mock__task-switcher-list {
+      display: grid;
+      gap: 5px;
+    }
+
+    .agent-mock__task-switcher-option {
+      width: 100%;
+      display: grid;
+      gap: 3px;
+      padding: 9px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      color: #9a9c95;
+      font-size: 9px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .agent-mock__task-switcher-option:hover,
+    .agent-mock__task-switcher-option:focus-visible {
+      background: #272825;
+      outline: none;
+    }
+
+    .agent-mock__task-switcher-option.selected {
+      border-color: #46516c;
+      background: #272d3d;
+      color: #eff2fa;
+    }
+
+    .agent-mock__task-switcher-option small {
+      color: #777a73;
+      font-size: 8px;
+    }
+
+    .agent-mock__task-switcher-option strong {
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+
+    .agent-mock__results-inline-answer {
+      margin: 8px 10px 0;
+      padding: 2px 0 2px 9px;
+      border-left: 2px solid #536182;
+      color: #c8ccd7;
+      font-size: 9px;
+      line-height: 1.45;
+    }
+
+    .agent-mock__results-inline-answer small {
+      display: block;
+      margin-bottom: 3px;
+      color: #95a2c3;
+      font-size: 8px;
+      font-weight: 700;
+    }
+
+    .agent-mock__results-inline-answer p { margin: 0; }
+
+    .agent-mock__results-composer {
+      margin: 8px 16px 12px;
+      padding: 7px 8px;
+      border: 1px solid #536182;
+      border-radius: 10px;
+      background: #1d2230;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .agent-mock__results-input-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .agent-mock__results-input-row input {
+      min-width: 0;
+      flex: 1 1 auto;
+      padding: 7px 8px;
+      border: 0;
+      border-radius: 7px;
+      outline: 0;
+      background: #252b3a;
+      color: #eef1f8;
+      font: inherit;
+      font-size: 10px;
+    }
+
+    .agent-mock__results-input-row input::placeholder { color: #778198; }
+
+    .agent-mock__results-input-row button {
+      width: 27px;
+      height: 27px;
+      display: inline-grid;
+      place-items: center;
+      border: 0;
+      border-radius: 7px;
+      background: #dce4f7;
+      color: #232938;
+      cursor: pointer;
+    }
+
+    .agent-mock__task-result {
+      min-height: 0;
+      flex: 1 1 auto;
+      padding: 15px 16px 8px;
+      overflow: hidden;
+    }
+
+    .agent-mock__task-result-header {
+      display: block;
+    }
+
+    .agent-mock__task-result-header small {
+      color: #777a73;
+      font-size: 8px;
+      letter-spacing: .06em;
+    }
+
+    .agent-mock__task-result-header h4 {
+      margin: 3px 0 0;
+      font-size: 12px;
+    }
+
+    .agent-mock__results-canvas {
+      min-height: 180px;
+      display: block;
+      margin-top: 14px;
+      padding: 10px;
+      border: 1px solid #30322e;
+      border-radius: 9px;
+      background: #1b1c1a;
+      overflow: hidden;
+    }
+
+    .agent-mock__skill-document {
+      width: 100%;
+      min-height: 190px;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      gap: 11px;
+      padding: 15px 17px 13px;
+      border-radius: 7px;
+      background: #f1efe8;
+      color: #262721;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+
+    .agent-mock__skill-document-kicker {
+      color: #686b62;
+      font-size: 7px;
+      font-weight: 700;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+
+    .agent-mock__skill-document-heading {
+      display: grid;
+      gap: 3px;
+    }
+
+    .agent-mock__skill-document-heading h5 {
+      margin: 0;
+      color: #1f211c;
+      font-size: 15px;
+      letter-spacing: -.01em;
+    }
+
+    .agent-mock__skill-document-heading p {
+      margin: 0;
+      color: #61645c;
+      font-size: 9px;
+    }
+
+    .agent-mock__skill-diagram {
+      display: grid;
+      grid-template-columns: minmax(92px, .9fr) auto minmax(100px, 1fr) auto minmax(92px, .9fr);
+      align-items: center;
+      gap: 7px;
+      padding: 12px 13px;
+      border-block: 1px solid #d6d3c9;
+    }
+
+    .agent-mock__skill-node {
+      min-width: 0;
+    }
+
+    .agent-mock__skill-node strong,
+    .agent-mock__skill-node small {
+      display: block;
+    }
+
+    .agent-mock__skill-node strong {
+      color: #272922;
+      font-size: 10px;
+    }
+
+    .agent-mock__skill-node small {
+      margin-top: 2px;
+      color: #74776e;
+      font-size: 7px;
+      line-height: 1.35;
+    }
+
+    .agent-mock__skill-node.is-boundary {
+      padding: 9px 10px;
+      border: 1px solid #879278;
+      border-radius: 6px;
+      background: #e1e6d9;
+    }
+
+    .agent-mock__skill-arrow {
+      color: #878a81;
+      font-size: 12px;
+    }
+
+    .agent-mock__skill-document-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .agent-mock__skill-document-note {
+      min-width: 0;
+      color: #53564e;
+      font-size: 8px;
+    }
+
+    .agent-mock__skill-document-note code {
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: #dedbd1;
+      color: #33352f;
+      font: inherit;
+    }
+
+    .agent-mock__citation-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #4d607e;
+      font-size: 8px;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      cursor: pointer;
     }
 
     .placeholder {
@@ -535,7 +1419,7 @@
     </div>
     <nav id="screen-tabs" class="screen-tabs" aria-label="画面状態"></nav>
     <div class="header-meta">
-      <span class="badge draft">DRAFT</span>
+      <span class="badge decided">DECIDED</span>
       <span>Updated 2026-08-22</span>
     </div>
   </header>
@@ -545,7 +1429,7 @@
       <section class="stage-card" aria-label="番号付き画面モック">
         <div class="stage-toolbar">
           <div class="stage-context">
-            <div id="screen-status" class="badge draft">DRAFT</div>
+            <div id="screen-status" class="badge decided">DECIDED</div>
             <div class="stage-context-copy">
               <strong id="screen-title"></strong>
               <small id="screen-summary"></small>
@@ -573,13 +1457,19 @@
 
     <div class="below-grid">
       <section class="document-section">
-        <h3>主要な画面遷移</h3>
+        <h3>主要な表示切替</h3>
         <div class="flow">
-          <div class="flow-step"><strong>Agent</strong><span>→</span><span>Explorerアイコンで選択Repositoryのファイルツリーを開く</span></div>
-          <div class="flow-step"><strong>Explorer</strong><span>→</span><span>ファイルを選択してmain areaのEditorで開く</span></div>
-          <div class="flow-step"><strong>Agent</strong><span>→</span><span><code>Changes 1</code>で選択SessionのChangesを開く</span></div>
-          <div class="flow-step"><strong>Changes</strong><span>→</span><span>Evidenceを選択してEditorの該当行へ移動する</span></div>
-          <div class="flow-step"><strong>Any view</strong><span>→</span><span>Agentアイコンで会話へ戻る。会話状態は保持する</span></div>
+          <div class="flow-step"><strong>Agent / Results</strong><span>→</span><span><code>Code</code>を押すと、同じWindowの左サイドバーをSession一覧からFiles／Source Controlへ切り替え、中央をEditorにする</span></div>
+          <div class="flow-step"><strong>Code / Files</strong><span>→</span><span>左サイドバーのファイルを選択して中央Editorで開く。コード検索もこの左サイドバーで行う</span></div>
+          <div class="flow-step"><strong>Code / Git</strong><span>→</span><span>左サイドバー内でSource Controlへ切り替え、変更ファイルを選択して中央Diffを開く</span></div>
+          <div class="flow-step"><strong>Code / 戻る</strong><span>→</span><span><code>Code</code>をもう一度押すと、Codeに入る直前のAgentまたはResultsへ戻り、左もSession一覧へ戻る。Code中のヘッダにはAgent／Resultsタブを出さない</span></div>
+          <div class="flow-step"><strong>Agent</strong><span>→</span><span><code>Results</code>で現在のSessionに紐づく実行TaskとSkill HTMLを開く</span></div>
+          <div class="flow-step"><strong>Results</strong><span>→</span><span>引用（このファイルのここ）を押すとCodeモードへ切り替え、左にFiles、中央Editorにその位置を開く</span></div>
+          <div class="flow-step"><strong>Results / 質問</strong><span>→</span><span>選択中の実行Taskと表示中のSkill HTMLをscopeとして、Agentと共有しないResultsのスレッドへ投稿する</span></div>
+          <div class="flow-step"><strong>Results内の回答</strong><span>→</span><span>同じスレッドへ回答する。Agent会話、実行Task、Skill HTMLは変更しない</span></div>
+          <div class="flow-step"><strong>変更を依頼する場合</strong><span>→</span><span>人間が<code>Agent</code>タブを明示的に選び、作業者AIへ依頼する。自動遷移、自動投稿、自動Task開始は行わない</span></div>
+          <div class="flow-step"><strong>設定</strong><span>→</span><span>左サイドバー下部の歯車を押すと中央にTheia / ワークスペース設定を開く。Sessionは変えず、Code中はEditorに設定タブを追加する</span></div>
+          <div class="flow-step"><strong>状態保持</strong><span>→</span><span>選択Session、Editorのtab、ResultsのTask・Skill HTML・質問状態を切替前のまま保持する</span></div>
         </div>
       </section>
 
@@ -588,13 +1478,63 @@
         <table>
           <thead><tr><th>状態</th><th>単位</th><th>切替時の扱い</th></tr></thead>
           <tbody>
-            <tr><td>選択Repository</td><td>Window</td><td>Explorer・Search・Gitの対象として共有</td></tr>
-            <tr><td>選択Session</td><td>Repository</td><td>会話、Composer、Changes選択を復元</td></tr>
-            <tr><td>Task</td><td>Session</td><td>会話内の実行記録。左サイドバーには並べない</td></tr>
-            <tr><td>Change Set</td><td>Task</td><td>Changesで表示し、Agentへ戻っても選択を保持</td></tr>
-            <tr><td>開いているEditor</td><td>Repository</td><td>Agent／Changesへ移動しても閉じない</td></tr>
+            <tr><td>選択Workspace</td><td>Window</td><td>単一Repositoryまたは複数rootを作業対象として共有</td></tr>
+            <tr><td>左サイドバーの内容</td><td>Window mode</td><td>Agent／ResultsではNew Chat・会話Search・Workspace・Session一覧、CodeではFiles／Source Controlを表示する。同時には表示しない</td></tr>
+            <tr><td>通常時の左サイドバー展開状態</td><td>Window</td><td>Agent／Resultsを切り替えても維持し、Windowをまたいで共有しない</td></tr>
+            <tr><td>選択Session</td><td>Workspace</td><td>Agent会話とComposer、Resultsの表示とスレッドを別状態で復元する。両タブは会話を共有しない</td></tr>
+            <tr><td>実行Task</td><td>Session（1対多）</td><td>アプリが開始・終了・キャンセルと状態を管理する実行単位。BaselineとChange SetもTaskに紐づけ、左サイドバーには並べない</td></tr>
+            <tr><td>Results</td><td>Session（1対1）</td><td>選択中の実行TaskをResults内のリストで切り替え、本体キャンバスにはSkill HTML文書を1つだけ表示する。最新Taskを初期選択にできる</td></tr>
+            <tr><td>Resultsの質問下書き</td><td>選択中の実行Task</td><td>表示中のSkill HTMLをscopeに含め、Agent Composerの下書きとは共有しない</td></tr>
+            <tr><td>Resultsの質問スレッド</td><td>選択中の実行Task</td><td>Agent会話とは別に保持し、回答はResults内だけに追加する</td></tr>
+            <tr><td>Skill HTML文書</td><td>Skillsが決める確認単位</td><td>実行Taskとの1対1を要求しない。複数Taskを一つの見どころにまとめても、一つのTaskを複数の見どころに分類してもよい</td></tr>
+            <tr><td>Baseline</td><td>実行Task</td><td>アプリがTask開始時の基準状態として保持し、Skillsへ入力として渡せる</td></tr>
+            <tr><td>Change Set</td><td>実行Task</td><td>アプリがTask終了またはキャンセル時の変更集合として保持し、Skillsへ入力として渡せる</td></tr>
+            <tr><td>開いているEditor</td><td>Workspace</td><td>CodeからAgent／Resultsへ戻ってもtab、選択位置、Files／Source Controlの選択を閉じずに保持する</td></tr>
+            <tr><td>設定表示</td><td>Window mode</td><td>Session一覧とCodeで共通の左下の歯車から中央へ開く。選択Sessionは変えず、Code中は既存のEditor tabを保ったまま設定タブを追加する</td></tr>
           </tbody>
         </table>
+      </section>
+
+      <section class="document-section">
+        <h3>Resultsの単位と表示契約</h3>
+        <p>Resultsは、終了またはキャンセルされた実行Taskを手掛かりに成果を確認するSession内の画面である。アプリが固定する枠は、実行Taskの切替リスト、本体キャンバス1つ、その下の短いComposerだけ。同じSessionの他Taskは切替リストから選び、左サイドバーのSession一覧とは分ける。第一完成点では、本体キャンバスの中身はSkillsが返すHTML文書1つとし、アプリはその文書を表示する枠だけを持つ。HTMLを節やカードへ分解せず、見出し、図、比較、引用などの内部構成を強制しない。</p>
+        <p>Resultsで何を一つの見どころとして分類するかはSkillsが決める。その分類は実行Taskの境界を写す必要がなく、複数Taskをまとめても、一つのTaskを複数の見どころに分けてもよい。Markdownは第一完成の必須形式にしない。将来の入力形式、またはMarkdownをHTMLへ変換するSkillとして追加できる。</p>
+        <p>質問スレッドは選択中の実行Taskと表示中のSkill HTMLをscopeに持ち、HTML文書やアプリが確定したBaseline／Change Setを書き換えない。質問と回答はResults内だけに置き、Agent会話へ複製・転送しない。</p>
+        <table>
+          <thead><tr><th>深さ</th><th>出すもの</th></tr></thead>
+          <tbody>
+            <tr><td>Agent</td><td>短い結果と検証。本体キャンバスの詳細は出さない</td></tr>
+            <tr><td>Results / アプリ枠</td><td>実行Task切替リスト、Skill HTMLを表示する本体キャンバス1つ、短いComposer</td></tr>
+            <tr><td>Results / 本体キャンバス</td><td>Skillsが返すHTML文書1つ。何を見どころとするかも文書の内部構成もSkillsが決める</td></tr>
+            <tr><td>Code</td><td>Codeモードへ切り替え、左にFiles／Source Control、中央に通常のEditorを表示する。引用時はそのファイルの位置を開く</td></tr>
+          </tbody>
+        </table>
+        <p>表示の時計は2つある。データが揃う時計と、人が見る時計。</p>
+        <table>
+          <thead><tr><th>時点</th><th>データ</th><th>人が見ている画面</th></tr></thead>
+          <tbody>
+            <tr><td>Task開始</td><td>アプリが実行Taskを開始し、Baselineを確定する</td><td>Agent内だけで作業中を示す。ResultsのComposer送信からTaskは開始しない</td></tr>
+            <tr><td>Taskキャンセル</td><td>アプリがキャンセル状態、終了時刻、そこまでのChange Setを確定する</td><td>Skillsはキャンセルを推測せず、渡されたTask状態をHTML生成の入力にできる</td></tr>
+            <tr><td>Task終了</td><td>アプリが終了状態、終了時刻、Change Setを確定する</td><td>Resultsは自動で開かずfocusも奪わない。Taskは切替リストへ追加できるが、HTML内の見どころ分類はSkillsが決める</td></tr>
+            <tr><td>HTML生成中</td><td>SkillsのHTML文書は未確定</td><td>アプリ枠で進行状態を示し、不完全な文書断片を成果としてキャンバスへ流し込まない</td></tr>
+            <tr><td>HTML生成完了</td><td>SkillsがHTML文書1つを返す</td><td>アプリは本体キャンバスの文書を一度に差し替える</td></tr>
+            <tr><td>HTML生成失敗</td><td>アプリが持つ実行Task、Baseline、Change Setは残す</td><td>アプリ枠で生成失敗を示し、Agent報告をキャンバスの代替にしない</td></tr>
+            <tr><td>Results質問送信</td><td>選択中の実行TaskとSkill HTMLを参照する質問をスレッドへ追加</td><td>Results内で回答を待つ。Agent会話、実行Task、Skill HTMLは変更しない</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="document-section">
+        <h3>アプリとSkillsの境界</h3>
+        <p>枠はアプリ、中身はSkills。Skillsを差し替えても人がResultsを読む手順が同じならSkills。手順や枠が変わるならアプリ。</p>
+        <table>
+          <thead><tr><th>側</th><th>持つもの</th></tr></thead>
+          <tbody>
+            <tr><td>アプリ</td><td>実行Taskの開始・終了・キャンセル、Baseline、Change Set。ResultsではTask切替リスト、本体キャンバス1つ、その下の短いComposerと、HTML文書をそのまま表示する処理を持つ。自動ではResultsを開かない</td></tr>
+            <tr><td>Skills</td><td>本体キャンバスへ返すHTML文書すべて。何を一つの見どころとして分類するか、どの実行Taskをまとめるか、どんな節・文章・図・引用を使うかを決める。アプリの必須部品をHTML内へ追加しない</td></tr>
+          </tbody>
+        </table>
+        <p>第一完成の出力契約はHTML文書1つ。Task切替リスト、キャンバス自体、短いComposerというページの枠はアプリが持ち、HTML文書内のレイアウトは解釈しない。</p>
       </section>
 
       <section class="document-section">
@@ -602,11 +1542,30 @@
         <table>
           <thead><tr><th>状態</th><th>判断</th><th>理由</th></tr></thead>
           <tbody>
-            <tr><td><span class="badge decided">決定</span></td><td>D1-B Agent-first layout</td><td>Agentを主画面とし、必要時に下位レイヤーへ降りる</td></tr>
-            <tr><td><span class="badge decided">決定</span></td><td>「質問」ボタンを置かない</td><td>同じComposerから自然に追加質問できる</td></tr>
-            <tr><td><span class="badge draft">草案</span></td><td>Repository配下にSessionを表示</td><td>Repository中心と会話履歴への到達性を両立する</td></tr>
-            <tr><td><span class="badge draft">草案</span></td><td>Explorerは左ペインを切り替える</td><td>ファイル選択後はmain areaのEditorでコードを開く</td></tr>
-            <tr><td><span class="badge draft">草案</span></td><td>Changesをmain areaで開く</td><td>Semantic Diffの縦幅とEvidence可読性を確保する</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Agent／Resultsの役割を分離</td><td>Agentは作業指示、Resultsは確定済みの成果確認と質問に使う</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Results専用の質問入口を置く</td><td>Agent Composerと共有せず、選択中の実行TaskとSkill HTMLをscopeとしてResults内へ送る</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Workspace配下にSessionを表示</td><td>Cursor型の会話管理と複数Repository対応を両立する</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>通常時の左サイドバーは折りたためる</td><td>展開時はWorkspace／Session一覧を表示し、折りたたみ時もNew Chat／Searchと再展開操作をアイコンレールに残す</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>会話検索とコード検索を分離</td><td>Agent／ResultsのSearchは会話履歴、コード検索はCodeモードへ切り替えた左サイドバーで扱う</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Agent／ResultsをSession内で切り替える</td><td>同じSessionの独立タブとし、会話を共有しない</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Codeは同じWindowのモード切替</td><td>Codeを押すと左サイドバーの内容と中央表示を切り替える。Code中はAgent／Resultsタブを出さず、もう一度Codeを押したときだけ直前の表示へ戻す</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>左サイドバーの席は一つ</td><td>Agent／ResultsのSession一覧とCodeのFiles／Source Controlを同時に表示しない</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>設定は共通の左下の歯車から開く</td><td>中央にTheia / ワークスペース設定を開き、Sessionは変えない。Code中はEditorへ設定タブを追加し、第一完成点ではLens専用設定画面を作らない</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Files／GitはCodeの補助ペイン</td><td>Codeへ切り替えた左サイドバー内でFilesとSource Controlを切り替え、コードとDiffは中央Editorへ表示する</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>FilesにCompact Composerを置かない</td><td>ファイル閲覧・編集に集中し、追加依頼は選択状態を保持してAgentへ戻って行う</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>1 SessionにN実行Taskを紐づける</td><td>Taskの開始・終了・キャンセル、Baseline、Change Setはアプリが独立して保存する</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>実行Taskと確認単位を分離</td><td>Resultsで何を一つの見どころとして分類するかはSkillsが決め、実行Taskとの1対1を要求しない</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Resultsは最小契約だけを固定</td><td>実行Taskの切替、本体キャンバス1つ、短い独立ComposerをUI契約とし、引用は任意とする</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>キャンバスの中身はSkillのHTML</td><td>第一完成ではSkillsがHTML文書1つを返し、アプリはその文書を表示する枠だけを持つ</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Markdownを必須にしない</td><td>Markdownは将来の入力形式、またはHTMLへ変換するSkillとして追加できる</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>本体の節構成は固定しない</td><td>複数の変更見出しや定型の比較をアプリから要求せず、SkillsがHTML文書として構成する</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Resultsは確定した変更を確認する画面</td><td>必要なときだけ開き、変更内容を見て質問できる</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Resultsの入力は「見ながら聞く」入口</td><td>選択中の実行TaskとSkill HTMLを固定scopeとして独立スレッドへ送り、回答もResults内に置く</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>変更要求はResultsで実行しない</td><td>Agentタブで依頼できると案内するだけで、自動遷移、自動投稿、自動Task開始を行わない</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>枠はアプリ、中身はSkills</td><td>アプリはTask切替リスト、キャンバス、Composerだけを持ち、SkillsがHTML文書の表示全体を持つ</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>Skill HTMLは揃ってから出す</td><td>生成中に不完全な文書断片を流し込むと、確定した成果に見えやすい</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>根拠は引用で足りる</td><td>「このファイルのここ」を示せばよい。Task Change SetのCode DiffはResultsの必須契約ではない</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>解析の足し算はSkillsに委ねる</td><td>カテゴリ、重要度、Confidence、Coverage、Intent比較は固定しない。なくても読める</td></tr>
           </tbody>
         </table>
       </section>
@@ -614,10 +1573,11 @@
       <section class="document-section">
         <h3>未確定事項</h3>
         <ul>
-          <li>Sessionの新規作成、名称変更、終了・アーカイブ操作。</li>
-          <li>Repository切替時の実行中Taskの扱い。</li>
-          <li><code>Changes 1</code>を上部だけに置くか、Status Barにも残すか。</li>
-          <li>Editor表示中にComposerを常設するか、Agentへ戻したときだけ表示するか。</li>
+          <li>Sessionの名称変更、終了・アーカイブ操作。</li>
+          <li>Workspace切替時の実行中Taskの扱い。</li>
+          <li>入力欄左下の＋で開くコンテキスト追加メニューの項目。</li>
+          <li>Resultsの更新をdotなどで通知するか。</li>
+          <li>Resultsの質問スレッドをどのscopeで検索・複数化するか。</li>
           <li>Explorerでのsingle click／double clickとEditor tabの固定方法。</li>
         </ul>
       </section>
@@ -632,59 +1592,71 @@
   <script>
     // Screen definitions are intentionally kept in this file so the spec can be
     // opened directly from disk. Marker coordinates are percentages of the image.
+    const NAV_ITEMS = [
+      { id: "01", x: 10.5, y: 6.5, title: "New Chat", summary: "新しいAgent会話の空画面を開く。", action: "クリック", result: "優先Workspaceを初期選択しComposerへfocusする。", state: "送信前はTaskを作らず、Workspace／branch／実行先を変更できる。" },
+      { id: "02", x: 10.5, y: 12.0, title: "会話検索", summary: "過去のAgent会話を名前・本文・PR番号から横断検索する。", action: "クリック／Ctrl+K", result: "会話検索パレットを開き、選択したSessionへ移動する。", state: "コード検索は対象外。コード検索はCodeモードの左サイドバーで行う。" },
+      { id: "03", x: 10.5, y: 15.0, title: "Workspaces", summary: "作業対象ごとにAgent Sessionをまとめる。", action: "展開／追加", result: "Workspace配下のSessionを表示する。", state: "SessionはWorkspace単位でグループ化する。" },
+      { id: "04", x: 11.5, y: 29.0, title: "Session一覧", summary: "Workspace配下のAgent会話とResultsへの入口を表示する。", action: "クリック", result: "選択SessionのAgent会話とResults表示を別状態として復元する。", state: "Agent Composer下書きはSession単位、Resultsの下書きと質問スレッドは選択中の実行Task単位。EditorのtabとCode内の左ペイン選択も保持する。" },
+      { id: "11", x: 17.0, y: 4.2, collapsedX: 6.0, title: "左サイドバーの折りたたみ", summary: "展開時のWorkspace／Session一覧と、New Chat／Searchを残すアイコンレールを切り替える。", action: "サイドバー上部のボタンをクリック", result: "展開時は折りたたみ、折りたたみ時は同じ位置の操作で再展開する。", state: "Window単位で保持し、Agent／Resultsを切り替えてもリセットしない。" }
+    ];
+    const SETTINGS_ITEM = { id: "13", x: 10.5, y: 94.0, collapsedX: 6.0, title: "設定", summary: "Session一覧とCodeで共通の左サイドバー下部の歯車。", action: "歯車をクリック", result: "中央にTheia / ワークスペース設定を開く。Code中はEditorに設定タブを追加する。", state: "選択SessionとEditorの既存tabを保持する。第一完成点ではLens専用設定画面を作らない。" };
+
     const SCREENS = [
       {
         id: "agent",
         tab: "Agent",
-        status: "draft",
-        statusLabel: "DRAFT",
-        title: "通常のAgent画面",
-        summary: "RepositoryとSessionを選び、同じ時系列と単一ComposerでAgentとの開発を続ける標準状態。",
-        image: "assets/agent-default.png",
+        status: "decided",
+        statusLabel: "DECIDED",
+        title: "Agent — 通常状態",
+        summary: "通常の左サイドバーにSession一覧を表示し、Codeでは同じ左領域をFiles／Source Controlへ切り替える。",
+        mock: "agent",
         items: [
-          { id: "01", x: 1.8, y: 8.8, title: "Agentナビゲーション", summary: "Agent画面を選択中であることを示す。", action: "クリック", result: "左ペインをRepository／Session一覧へ戻し、選択Sessionの会話をmain areaへ表示する。", state: "会話、スクロール、Composer下書きを復元する。" },
-          { id: "02", x: 1.8, y: 15.5, title: "Explorer", summary: "選択Repositoryのファイルを確認する入口。", action: "クリック", result: "左ペインをRepository／Session一覧からファイルツリーへ切り替える。ファイル選択後にEditorをmain areaで開く。", state: "Agent Sessionは閉じない。対象は常に選択Repository。" },
-          { id: "03", x: 1.8, y: 22.3, title: "Search", summary: "選択Repository内を検索する。", action: "クリック", result: "左ペインへ検索フォームと結果を表示し、結果選択でEditorを開く。", state: "検索条件はRepository単位で保持してよい。" },
-          { id: "04", x: 1.8, y: 29.1, title: "Source Control", summary: "選択RepositoryのGit状態を表示する。", action: "クリック", result: "左ペインへ変更ファイル、stage状態、branch情報を表示する。", state: "AgentのTask／Change Setとは識別して扱う。" },
-          { id: "05", x: 9.2, y: 14.1, title: "Repository", summary: "Session、Explorer、Search、Gitの親となる単位。", action: "クリック／展開", result: "Repositoryをアクティブにし、その配下のSessionを表示する。", state: "第一完成点では同時にアクティブなのは一つ。" },
-          { id: "06", x: 12.2, y: 21.7, title: "新しいSession", summary: "選択Repositoryで新しい会話を開始する。", action: "クリック", result: "空のAgent Sessionを作り、Composerへfocusする。", state: "最初の依頼を送るまではTaskを作成しない。" },
-          { id: "07", x: 17.0, y: 27.0, title: "Session履歴", summary: "Repository配下のひと続きの会話。Task一覧ではない。", action: "クリック", result: "選択Sessionの会話、実行状態、Changesをmain areaへ復元する。", state: "SessionごとにComposer下書きと選択Change Setを保持する。" },
-          { id: "08", x: 34.6, y: 9.8, title: "Agent", summary: "選択Sessionの会話を表示するmain view。", action: "クリック", result: "ChangesやEditorからAgentの会話へ戻る。", state: "下位レイヤーを閉じず、選択状態を保持する。" },
-          { id: "09", x: 41.5, y: 9.8, title: "Changes 1", summary: "選択Sessionに未確認Change Setが1件あることを示す。", action: "クリック", result: "選択SessionのChangesをmain areaへ表示する。自動では開かない。", state: "Code／Semanticの選択と対象Change Setを保持する。" },
-          { id: "10", x: 54.0, y: 35.5, title: "会話タイムライン", summary: "User、Agent、Task resultを一つの流れで表示する。", action: "スクロール／テキスト選択", result: "通常の会話と完了結果を閲覧する。専用の「質問」ボタンは置かない。", state: "Session単位で履歴とスクロール位置を保持する。" },
-          { id: "11", x: 64.0, y: 53.5, title: "作業詳細", summary: "Tool実行や完了stepを必要時だけ確認する。", action: "展開／折り畳み", result: "実行した操作、対象、status、必要なstdout／stderrを表示する。", state: "既定はコンパクトに畳む。" },
-          { id: "12", x: 64.0, y: 85.0, title: "Composer", summary: "通常依頼と追加質問で共用する唯一の入力欄。", action: "入力／送信", result: "選択Sessionへmessageを追加し、必要なら新しいTaskを開始する。", state: "直前の会話文脈を自然に継承する。" }
+          ...NAV_ITEMS,
+          SETTINGS_ITEM,
+          { id: "05", x: 34.0, y: 8.5, title: "Workspace context／Code切替", summary: "Workspaceとbranchを示し、その文脈でCodeモードを切り替える。", action: "Codeをクリック", result: "同じWindowの左をFiles／Source Control、中央をEditorへ切り替える。", state: "選択Sessionと会話状態を保持し、自動では戻らない。" },
+          { id: "06", x: 86.0, y: 8.5, title: "Session view", summary: "同じSessionに紐づくAgent／Resultsを切り替える。", action: "クリック", result: "現在のSessionの会話または成果へ移動する。", state: "会話とComposer下書きは閉じずに保持する。" },
+          { id: "07", x: 64.0, y: 25.0, title: "会話", summary: "人間の作業指示と作業者AIの回答を、発言者ラベルに頼らず配置で区別する。", action: "閲覧", result: "Agent内の作業依頼、結果、作業上の追質問を同じ時系列で確認する。Resultsの質問と回答は表示しない。", state: "Agent会話のSession履歴として保持する。" },
+          { id: "08", x: 62.0, y: 42.0, title: "実行結果", summary: "作業結果と検証結果を短く表示する。", action: "展開／折り畳み", result: "必要な場合だけTool実行詳細を表示する。", state: "Change Set自体はここへ表示しない。" },
+          { id: "09", x: 64.0, y: 88.0, title: "Composer", summary: "Agentタブ内で作業者AIへ指示する入力欄。", action: "入力／送信", result: "選択SessionのAgent会話へmessageを追加し、必要な作業Taskを開始する。", state: "Agent会話の文脈だけを継承し、Resultsの質問下書きや回答は共有しない。" },
+          { id: "10", x: 34.5, y: 91.5, title: "コンテキスト追加", summary: "ファイルや画像などを入力へ追加する。", action: "クリック", result: "コンテキスト追加メニューを開く。", state: "New Chatの作成操作には使用しない。" }
         ]
       },
       {
-        id: "explorer",
-        tab: "Explorer",
-        status: "planned",
-        statusLabel: "IMAGE TODO",
-        title: "Explorerを開いた状態",
-        summary: "左ペインに選択Repositoryのファイルツリーを表示し、ファイル選択でEditorへ移動する状態。",
-        image: null,
-        items: []
+        id: "code",
+        tab: "Code",
+        status: "decided",
+        statusLabel: "DECIDED",
+        title: "Code — 左サイドバー切替状態",
+        summary: "同じWindowの左をFiles／Source Controlに差し替え、中央Editorは開いたtabを保つ。",
+        mock: "code",
+        items: [
+          { id: "05", x: 34.0, y: 8.5, title: "Codeモード切替", summary: "Codeを選択中と示し、ヘッダにAgent／Resultsタブは出さない。", action: "Codeをもう一度クリック", result: "Codeに入る直前のAgentまたはResultsへ戻り、左をSession一覧へ戻す。", state: "選択Session、Editorのtab、Results状態を保持する。" },
+          { id: "07", x: 11.0, y: 7.0, title: "Files／Source Control切替", summary: "Codeモードの左サイドバー内だけを切り替える。", action: "クリック", result: "File treeまたはSource Controlを同じ左の席へ表示する。", state: "中央Editorのtabは閉じない。" },
+          { id: "08", x: 11.0, y: 15.0, title: "コード検索", summary: "Workspace内のコードを検索する。", action: "クリック／Ctrl+Shift+F", result: "Codeモードの左サイドバー内に検索UIを開く。", state: "Agent／Resultsの会話Searchとは共有しない。" },
+          { id: "09", x: 11.0, y: 40.0, title: "File tree / Source Control", summary: "選択中のFilesまたはGit操作だけを左サイドバーに表示する。", action: "選択／展開／Git操作", result: "ファイルまたは差分を中央Editorで開く。", state: "Session一覧とは同時に表示しない。展開状態と選択をWorkspace単位で保持する。" },
+          { id: "10", x: 64.0, y: 45.0, title: "Editor", summary: "選択したファイルまたはDiffを中央で閲覧・編集する。", action: "閲覧／編集", result: "保存時にWorkspaceとGit状態を更新する。", state: "Agent／Resultsへ戻ってもEditorのtabと位置を保持する。" },
+          SETTINGS_ITEM
+        ]
       },
       {
-        id: "changes",
-        tab: "Changes",
-        status: "planned",
-        statusLabel: "IMAGE TODO",
-        title: "Changesを開いた状態",
-        summary: "選択SessionのChange SetをCode Diff／Semantic Diffとしてmain areaに表示する状態。",
-        image: null,
-        items: []
-      },
-      {
-        id: "editor",
-        tab: "Editor / Evidence",
-        status: "planned",
-        statusLabel: "IMAGE TODO",
-        title: "EditorでEvidenceを開いた状態",
-        summary: "Explorerのファイル、またはSemantic DiffのEvidenceから該当ファイル・行を開いた状態。",
-        image: null,
-        items: []
+        id: "results",
+        tab: "Results",
+        status: "decided",
+        statusLabel: "DECIDED",
+        title: "Results — Sessionの成果",
+        summary: "実行TaskをResults内で切り替え、本体キャンバスにはSkillsが返すHTML文書を1つ表示する。",
+        mock: "results",
+        items: [
+          ...NAV_ITEMS,
+          SETTINGS_ITEM,
+          { id: "05", x: 34.0, y: 8.5, title: "Workspace context／Code切替", summary: "Workspaceとbranchを示し、同じWindowのCodeモードを切り替える。", action: "Codeをクリック", result: "左をFiles／Source Control、中央をEditorへ切り替える。", state: "選択中の実行Task、Skill HTML、質問状態を保持する。" },
+          { id: "06", x: 86.0, y: 8.5, title: "Agent / Results tabs", summary: "Resultsを選択中と示す。", action: "人間がタブをクリック", result: "明示的に選んだAgentまたはResultsを開く。自動遷移しない。", state: "Agent会話とResults表示・質問スレッドを別々に保持する。" },
+          { id: "07", x: 89.0, y: 27.0, title: "Task切替リスト", summary: "現在のSessionに属する実行TaskだけをResults内に並べる。左のSession一覧とは別の切替UI。", action: "Taskをクリック", result: "HTML生成へ渡す実行Taskのscopeを切り替える。", state: "Taskごとの質問スレッドと下書きを復元する。最新を初期選択にできる。" },
+          { id: "08", x: 53.0, y: 38.0, title: "本体キャンバス", summary: "Skillsが返すHTML文書を1つだけ表示する。", action: "閲覧", result: "Skillsが分類した見どころをSkills自身の構成で確認する。アプリは節や比較表現を強制しない。", state: "HTML文書と実行Taskは1対1でなくてよく、アプリは文書内部を解釈しない。" },
+          { id: "09", x: 70.0, y: 57.0, title: "任意の引用", summary: "Skillsが必要と判断した場合だけ、HTML文書内に「このファイルのここ」を出す。", action: "クリック", result: "Codeモードへ切り替え、左にFiles、中央Editorに引用先のファイルと行を開く。", state: "引用の有無と引用先はSkillsが決め、ResultsのTask選択状態は保持する。" },
+          { id: "10", x: 55.0, y: 88.0, title: "Results Composer", summary: "Agent用の＋／@ Context／Autoを置かず、表示中のSkill HTMLをscopeに質問する短い入力欄。", action: "入力／送信", result: "回答はResults内に短く表示する。", state: "下書きと質問スレッドは選択中の実行Task単位で保持し、Agent Composerと共有せずTaskも作らない。" },
+          { id: "12", x: 52.0, y: 72.0, when: "answer", title: "Results内の短い回答", summary: "表示中のSkill HTMLについての独立スレッドに置く回答。", action: "Results内で回答を確認", result: "回答はResults内にだけ現れる。変更要求にはAgentタブで依頼できると案内し、実行しない。", state: "処理状態名は画面に表示せず、Agent会話、実行Task、Skill HTMLを変更しない。" }
+        ]
       }
     ];
 
@@ -698,15 +1670,57 @@
     const assetName = document.querySelector("#asset-name");
     const annotationToggle = document.querySelector("#annotation-toggle");
 
-    let activeScreenId = "agent";
-    let activeItemId = "01";
+    const urlParams = new URLSearchParams(window.location.search);
+    const requestedScreenId = urlParams.get("screen");
+    let activeScreenId = SCREENS.some(screen => screen.id === requestedScreenId) ? requestedScreenId : "agent";
+    let lastSessionScreenId = activeScreenId === "results" ? "results" : "agent";
+    let activeCodePane = urlParams.get("codePane") === "git" ? "git" : "files";
+    const TASKS = [
+      { id: "auth-redis", title: "認証処理をRedis方式へ変更", time: "14:32" },
+      { id: "redis-config", title: "Redis接続設定を追加", time: "13:48" }
+    ];
+    let selectedTaskId = TASKS[0].id;
+    const resultsThreads = {
+      "auth-redis": { question: "この TokenStore 分離は変更全体でどんな責務を持つ？", pending: false, answerVisible: urlParams.get("answer") === "1" },
+      "redis-config": { question: "", pending: false, answerVisible: false }
+    };
+    const resultsAnswerTimers = {};
+    let activeItemId = getInitialItemId(SCREENS.find(screen => screen.id === activeScreenId));
     let annotationsVisible = true;
+    let sidebarCollapsed = false;
 
     const ITEM_GROUPS = [
-      { label: "Activity bar", ids: ["01", "02", "03", "04"] },
-      { label: "Repository / Session", ids: ["05", "06", "07"] },
-      { label: "Main area", ids: ["08", "09", "10", "11", "12"] }
+      { label: "Navigation / Workspace", ids: ["01", "02", "03", "04", "11", "13"] },
+      { label: "Current work", ids: ["05", "06", "07", "08", "09", "10", "12"] }
     ];
+
+    function getInitialItemId(screen) {
+      if (screen?.id === "results" && getCurrentResultsThread().answerVisible) return "12";
+      return screen?.initialItemId ?? screen?.items[0]?.id ?? "";
+    }
+
+    function getVisibleItems(screen) {
+      return screen.items.filter(item => item.when !== "answer" || getCurrentResultsThread().answerVisible);
+    }
+
+    function getSelectedTask() {
+      return TASKS.find(task => task.id === selectedTaskId) ?? TASKS[0];
+    }
+
+    function getCurrentResultsThread() {
+      return resultsThreads[selectedTaskId];
+    }
+
+    function activateScreen(screenId) {
+      if (screenId === "code" && ["agent", "results"].includes(activeScreenId)) {
+        lastSessionScreenId = activeScreenId;
+      } else if (["agent", "results"].includes(screenId)) {
+        lastSessionScreenId = screenId;
+      }
+      activeScreenId = screenId;
+      activeItemId = getInitialItemId(SCREENS.find(screen => screen.id === activeScreenId));
+      render();
+    }
 
     function renderTabs() {
       tabs.replaceChildren(...SCREENS.map(screen => {
@@ -716,19 +1730,393 @@
         button.setAttribute("aria-selected", String(screen.id === activeScreenId));
         button.innerHTML = `<strong>${screen.tab}</strong><small>${screen.statusLabel}</small>`;
         button.addEventListener("click", () => {
-          activeScreenId = screen.id;
-          activeItemId = screen.items[0]?.id ?? "";
-          render();
+          activateScreen(screen.id);
         });
         return button;
       }));
+    }
+
+    function icon(name, className = "") {
+      const icons = {
+        "new-chat": '<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h6"/><path d="M17 3v8M13 7h8"/>',
+        search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+        "sidebar-collapse": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M16 9l-3 3 3 3"/>',
+        "sidebar-expand": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M13 9l3 3-3 3"/>',
+        menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+        plus: '<path d="M12 5v14M5 12h14"/>',
+        folder: '<path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H9l2 2h7.5A2.5 2.5 0 0 1 21 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/>',
+        file: '<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v5h5"/>',
+        "chevron-down": '<path d="m6 9 6 6 6-6"/>',
+        "chevron-right": '<path d="m9 6 6 6-6 6"/>',
+        settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1v.1h-4v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1-.4h-.1v-4H3a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1v-.1h4V3a1.7 1.7 0 0 0 1.1 1.6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.38.33.72.6 1 .28.27.63.4 1 .4h.1v4H21a1.7 1.7 0 0 0-1.6.6Z"/>',
+        code: '<path d="m8 9-3 3 3 3M16 9l3 3-3 3M14 5l-4 14"/>',
+        send: '<path d="m12 19V5M6 11l6-6 6 6"/>',
+        check: '<path d="m5 12 4 4L19 6"/>',
+        more: '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
+        refresh: '<path d="M20 7h-5V2"/><path d="M20 7a8 8 0 1 0 1 7"/>',
+        "arrow-right": '<path d="M5 12h14M13 6l6 6-6 6"/>',
+        "arrow-down": '<path d="M12 5v14M6 13l6 6 6-6"/>',
+        "external-code": '<path d="M14 5h5v5M19 5l-7 7"/><path d="M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'
+      };
+      const classes = ["agent-mock__icon", className].filter(Boolean).join(" ");
+      return `<svg class="${classes}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${icons[name]}</svg>`;
+    }
+
+    function renderSidebar() {
+      const toggleLabel = sidebarCollapsed ? "左サイドバーを展開" : "左サイドバーを折りたたむ";
+      return `
+        <aside class="agent-mock__sidebar" aria-label="左サイドバー">
+          <div class="agent-mock__top-nav">
+            <div class="agent-mock__sidebar-controls">
+              <button class="agent-mock__sidebar-toggle" type="button" data-sidebar-toggle aria-label="${toggleLabel}" title="${toggleLabel}">${icon(sidebarCollapsed ? "sidebar-expand" : "sidebar-collapse")}</button>
+            </div>
+            <button class="agent-mock__nav-item" type="button" aria-label="New Chat" title="New Chat"><span class="agent-mock__nav-icon">${icon("new-chat")}</span><span class="agent-mock__nav-label">New Chat</span></button>
+            <button class="agent-mock__nav-item" type="button" aria-label="Search" title="Search"><span class="agent-mock__nav-icon">${icon("search")}</span><span class="agent-mock__nav-label">Search</span></button>
+          </div>
+          <div class="agent-mock__workspaces-header">
+            <span>Workspaces</span>
+            <span class="agent-mock__workspace-actions"><span>${icon("menu")}</span><span>${icon("plus")}</span></span>
+          </div>
+          <div class="agent-mock__sessions">
+            <div class="agent-mock__workspace-group">
+              <div class="agent-mock__workspace-title">${icon("folder")}<span>lens</span><span class="chevron">${icon("chevron-down")}</span></div>
+              <div class="agent-mock__session selected" data-screen="agent">
+                <span class="agent-mock__session-title">認証をRedis方式へ変更</span>
+                <span class="agent-mock__session-meta">今</span>
+              </div>
+              <div class="agent-mock__session">
+                <span class="agent-mock__session-title">ログアウト処理を修正</span>
+                <span class="agent-mock__session-meta">1d</span>
+              </div>
+              <div class="agent-mock__session">
+                <span class="agent-mock__session-title">テスト失敗を調査</span>
+                <span class="agent-mock__session-meta">2d</span>
+              </div>
+            </div>
+            <div class="agent-mock__workspace-group">
+              <div class="agent-mock__workspace-title">${icon("folder")}<span>shared-services</span><span class="chevron">${icon("chevron-right")}</span></div>
+            </div>
+          </div>
+          <div class="agent-mock__sidebar-footer"><span class="agent-mock__sidebar-footer-label">Lens</span><span title="Settings">${icon("settings")}</span></div>
+        </aside>`;
+    }
+
+    function renderHeader(screen, titleText) {
+      const codeActive = screen.id === "code";
+      const resultsActive = screen.id === "results";
+      return `
+        <header class="agent-mock__header">
+          <div class="agent-mock__context">
+            <div class="agent-mock__context-scope">
+              <small>lens / main</small>
+              <button class="agent-mock__header-action code-entry${codeActive ? " active" : ""}" type="button" data-code-toggle aria-pressed="${codeActive}">${icon("code")}<span>Code</span></button>
+            </div>
+            <strong>${titleText}</strong>
+          </div>
+          ${codeActive ? "" : `<div class="agent-mock__header-actions">
+            <div class="agent-mock__session-switch" role="group" aria-label="Agent / Results tabs（会話は共有しない）">
+              <button class="agent-mock__header-action${screen.id === "agent" ? " active" : ""}" type="button" data-screen="agent">Agent</button>
+              <button class="agent-mock__header-action${resultsActive ? " active" : ""}" type="button" data-screen="results">Results</button>
+            </div>
+          </div>`}
+        </header>`;
+    }
+
+    function renderAgentMain(screen) {
+      return `
+        <section class="agent-mock__workspace">
+          ${renderHeader(screen, "認証をRedis方式へ変更")}
+          <div class="agent-mock__timeline">
+            <div class="agent-mock__timeline-inner">
+              <div class="agent-mock__user-message">認証をRedis方式へ変更して</div>
+              <div class="agent-mock__answer">
+                <p>認証処理をRedis方式へ変更しました。</p>
+                <ul>
+                  <li>TokenStoreへ保存責務を分離</li>
+                  <li>Refresh / Logoutの処理を更新</li>
+                  <li>関連テストを追加</li>
+                </ul>
+                <div class="agent-mock__activity">${icon("chevron-right")}<span>7 actions</span></div>
+                <div class="agent-mock__validation">${icon("check")}<span>24 tests passed</span></div>
+                <div class="agent-mock__completion-note">Task完了 · Resultsを更新</div>
+              </div>
+            </div>
+          </div>
+          <div class="agent-mock__composer-wrap">
+            <div class="agent-mock__composer">
+              <div class="agent-mock__composer-copy">
+                <span>Ask anything, or describe the next change…</span>
+                <span class="agent-mock__composer-tools"><span>${icon("plus")}</span><span>@ Context</span><span class="agent-mock__icon-label">Auto${icon("chevron-down")}</span></span>
+              </div>
+              <button class="agent-mock__send" type="button" aria-label="送信">${icon("send")}</button>
+            </div>
+          </div>
+        </section>`;
+    }
+
+    function renderCodeSidebar() {
+      const filesActive = activeCodePane === "files";
+      return `
+        <aside class="agent-mock__sidebar agent-mock__code-sidebar" aria-label="Codeモードの左サイドバー">
+          <div class="agent-mock__resource-tabs">
+            <button class="agent-mock__resource-tab${filesActive ? " active" : ""}" type="button" data-code-pane="files" aria-pressed="${filesActive}">Files</button>
+            <button class="agent-mock__resource-tab${filesActive ? "" : " active"}" type="button" data-code-pane="git" aria-pressed="${!filesActive}">Source Control</button>
+          </div>
+          <button class="agent-mock__code-search" type="button">${icon("search")}<span>Search code</span><small>Ctrl+Shift+F</small></button>
+          <div class="agent-mock__code-pane-body">
+            ${filesActive ? `
+              <div class="agent-mock__pane-heading"><span>lens</span><span>${icon("more")}</span></div>
+              <div class="agent-mock__tree">
+                <div class="agent-mock__tree-row">${icon("chevron-down")}${icon("folder")}<span>src</span></div>
+                <div class="agent-mock__tree-row depth-1">${icon("chevron-down")}${icon("folder")}<span>auth</span></div>
+                <div class="agent-mock__tree-row depth-2 selected">${icon("file")}<span>auth-service.ts</span></div>
+                <div class="agent-mock__tree-row depth-2">${icon("file")}<span>token-store.ts</span></div>
+                <div class="agent-mock__tree-row depth-1">${icon("chevron-right")}${icon("folder")}<span>session</span></div>
+                <div class="agent-mock__tree-row">${icon("chevron-right")}${icon("folder")}<span>tests</span></div>
+                <div class="agent-mock__tree-row">${icon("file")}<span>package.json</span></div>
+              </div>` : `
+              <div class="agent-mock__pane-heading"><span>main*</span><span>${icon("refresh")}</span></div>
+              <div class="agent-mock__commit-box">
+                <div class="agent-mock__commit-input">Message (Ctrl+Enter to commit)</div>
+                <button class="agent-mock__commit-button" type="button">Commit</button>
+              </div>
+              <div class="agent-mock__pane-heading"><span>Changes</span><span>3</span></div>
+              <div class="agent-mock__scm-list">
+                <div class="agent-mock__scm-row selected"><span>auth-service.ts</span><span class="agent-mock__row-status">M</span></div>
+                <div class="agent-mock__scm-row"><span>token-store.ts</span><span class="agent-mock__row-status">U</span></div>
+                <div class="agent-mock__scm-row"><span>package.json</span><span class="agent-mock__row-status">M</span></div>
+              </div>`}
+          </div>
+          <div class="agent-mock__sidebar-footer"><span class="agent-mock__sidebar-footer-label">Code · ${filesActive ? "Files" : "Source Control"}</span><span title="Settings">${icon("settings")}</span></div>
+        </aside>`;
+    }
+
+    function renderSourceEditor() {
+      return `
+        <section class="agent-mock__editor">
+          <div class="agent-mock__editor-tabbar"><div class="agent-mock__editor-tab">auth-service.ts</div></div>
+          <div class="agent-mock__code">
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">10</span><span><span class="agent-mock__keyword">export class</span> <span class="agent-mock__type">AuthService</span> {</span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">11</span><span>  constructor(</span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">12</span><span>    <span class="agent-mock__keyword">private readonly</span> tokenStore: <span class="agent-mock__type">TokenStore</span>,</span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">13</span><span>  ) {}</span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">14</span><span></span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">15</span><span>  <span class="agent-mock__keyword">async</span> rotateRefreshToken(userId: string) {</span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">16</span><span>    <span class="agent-mock__keyword">await</span> this.tokenStore.save(userId, token);</span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">17</span><span>    <span class="agent-mock__keyword">return</span> token;</span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">18</span><span>  }</span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">19</span><span>}</span></div>
+          </div>
+        </section>`;
+    }
+
+    function renderDiffEditor() {
+      return `
+        <section class="agent-mock__editor">
+          <div class="agent-mock__editor-tabbar"><div class="agent-mock__editor-tab">auth-service.ts (Working Tree)</div></div>
+          <div class="agent-mock__code">
+            <div class="agent-mock__code-line removed"><span class="agent-mock__line-number">15</span><span>- <span class="agent-mock__keyword">await</span> this.database.saveRefreshToken(userId, token);</span></div>
+            <div class="agent-mock__code-line added"><span class="agent-mock__line-number">15</span><span>+ <span class="agent-mock__keyword">await</span> this.tokenStore.save(userId, token);</span></div>
+            <div class="agent-mock__code-line"><span class="agent-mock__line-number">16</span><span>  <span class="agent-mock__keyword">return</span> token;</span></div>
+          </div>
+        </section>`;
+    }
+
+    function renderCodeMain(screen) {
+      const filesActive = activeCodePane === "files";
+      return `
+        <section class="agent-mock__workspace">
+          ${renderHeader(screen, filesActive ? "Code · auth-service.ts" : "Code · Source Control")}
+          ${filesActive ? renderSourceEditor() : renderDiffEditor()}
+        </section>`;
+    }
+
+    function escapeHtml(value) {
+      return value.replace(/[&<>'"]/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;"
+      })[character]);
+    }
+
+    function renderSkillHtmlDocument(task) {
+      const citation = task.id === "auth-redis" ? "token-store.ts:8–42" : "redis.ts:4–18";
+      return `
+        <article class="agent-mock__task-result" data-task-id="${task.id}">
+          <header class="agent-mock__task-result-header">
+            <small>SELECTED TASK · ${task.time}</small>
+            <h4>${task.title}</h4>
+          </header>
+          <div class="agent-mock__results-canvas" aria-label="Skillが返したHTML文書を表示する本体キャンバス">
+            <section class="agent-mock__skill-document" aria-label="認証をRedis方式へ変更した現在の設計">
+              <div class="agent-mock__skill-document-kicker">Security design · Skill HTML</div>
+              <header class="agent-mock__skill-document-heading">
+                <h5>認証トークンは TokenStore に集約する</h5>
+                <p>認証サービスから保存方式を切り離し、トークンの寿命と失効を一つの境界で扱う。</p>
+              </header>
+              <div class="agent-mock__skill-diagram" role="img" aria-label="AuthServiceからTokenStoreを経由してRedisへ保存する設計">
+                <div class="agent-mock__skill-node"><strong>AuthService</strong><small>発行・検証ルール</small></div>
+                <span class="agent-mock__skill-arrow">→</span>
+                <div class="agent-mock__skill-node is-boundary"><strong>TokenStore</strong><small>save · rotate · revoke</small></div>
+                <span class="agent-mock__skill-arrow">→</span>
+                <div class="agent-mock__skill-node"><strong>Redis</strong><small>token hash + TTL</small></div>
+              </div>
+              <footer class="agent-mock__skill-document-footer">
+                <div class="agent-mock__skill-document-note">接続設定は境界の内側へ閉じ、期限はRedisの<code>TTL</code>と認証ポリシーで一致させる。</div>
+                <button class="agent-mock__citation-link" type="button" data-screen="code" data-open-file aria-label="${citation}の引用">${icon("file")}<span>${citation}</span></button>
+              </footer>
+            </section>
+          </div>
+        </article>`;
+    }
+
+    function renderTaskSwitcher() {
+      return `
+        <aside class="agent-mock__task-switcher" aria-label="同じSessionの実行Task切替">
+          <div class="agent-mock__task-switcher-header"><strong>TASKS</strong><span>${TASKS.length}</span></div>
+          <div class="agent-mock__task-switcher-list">
+            ${TASKS.map((task, index) => `
+              <button class="agent-mock__task-switcher-option${task.id === selectedTaskId ? " selected" : ""}" type="button" data-task-select="${task.id}" aria-pressed="${task.id === selectedTaskId}">
+                <small>${index === 0 ? "LATEST · " : ""}${task.time}</small>
+                <strong>${task.title}</strong>
+              </button>`).join("")}
+          </div>
+        </aside>`;
+    }
+
+    function isChangeRequest(question) {
+      return /(変えて|変更して|直して|修正して|実装して|戻して)/.test(question);
+    }
+
+    function renderResultsInlineAnswer(task, thread) {
+      if (!thread.answerVisible) return "";
+
+      const answer = isChangeRequest(thread.question)
+        ? "このResultsでは変更を実行しません。変更する場合はAgentタブで作業者AIへ依頼してください。"
+        : task.id === "auth-redis"
+          ? "TokenStoreは認証ルールとRedisの接続詳細を分ける境界です。RefreshとLogoutで同じ失効ルールを使いながら、保存先の影響をTokenStore内に閉じ込めます。"
+          : "REDIS_URLと接続プールを実行環境側へまとめ、認証処理から接続先や再接続方法の詳細を分離しています。";
+      return `
+        <div class="agent-mock__results-inline-answer" data-target-task-id="${task.id}">
+          <small>回答</small>
+          <p>${answer}</p>
+        </div>`;
+    }
+
+    function renderResultsComposer(task, thread) {
+      return `
+        <div class="agent-mock__results-composer" aria-label="Resultsの質問Composer">
+          <div class="agent-mock__results-input-row">
+            <input type="text" data-results-input value="${escapeHtml(thread.question)}" placeholder="この結果について…" aria-label="${task.title}についてResults内で質問" ${thread.pending ? "disabled" : ""}>
+            <button type="button" data-send-question aria-label="Results内へ質問を送信" ${thread.pending ? "disabled" : ""}>${icon("send")}</button>
+          </div>
+        </div>`;
+    }
+
+    function renderResults(screen) {
+      const task = getSelectedTask();
+      const thread = getCurrentResultsThread();
+      return `
+        <section class="agent-mock__workspace">
+          ${renderHeader(screen, "Results · 認証をRedis方式へ変更")}
+          <section class="agent-mock__results">
+            <div class="agent-mock__results-main">
+              <div class="agent-mock__results-body">
+                ${renderSkillHtmlDocument(task)}
+                ${renderResultsInlineAnswer(task, thread)}
+              </div>
+              ${renderResultsComposer(task, thread)}
+            </div>
+            ${renderTaskSwitcher()}
+          </section>
+        </section>`;
+    }
+
+    function renderMock(screen) {
+      const mock = document.createElement("div");
+      const normalSidebarCollapsed = screen.id !== "code" && sidebarCollapsed;
+      mock.className = `agent-mock${normalSidebarCollapsed ? " agent-mock--sidebar-collapsed" : ""}`;
+      mock.setAttribute("aria-label", `${screen.title}の画面モック`);
+
+      let main;
+      if (screen.mock === "agent") {
+        main = renderAgentMain(screen);
+      } else if (screen.mock === "code") {
+        main = renderCodeMain(screen);
+      } else if (screen.mock === "results") {
+        main = renderResults(screen);
+      } else {
+        main = renderAgentMain(screen);
+      }
+
+      mock.innerHTML = `${screen.id === "code" ? renderCodeSidebar() : renderSidebar()}${main}`;
+      mock.querySelector("[data-sidebar-toggle]")?.addEventListener("click", () => {
+        sidebarCollapsed = !sidebarCollapsed;
+        render();
+      });
+      mock.querySelector("[data-code-toggle]")?.addEventListener("click", () => {
+        activateScreen(activeScreenId === "code" ? lastSessionScreenId : "code");
+      });
+      mock.querySelectorAll("[data-screen]").forEach(control => {
+        control.addEventListener("click", () => {
+          if (control.hasAttribute("data-open-file")) activeCodePane = "files";
+          activateScreen(control.dataset.screen);
+        });
+      });
+      mock.querySelectorAll("[data-code-pane]").forEach(control => {
+        control.addEventListener("click", () => {
+          activeCodePane = control.dataset.codePane;
+          activeItemId = "07";
+          render();
+        });
+      });
+      mock.querySelectorAll("[data-task-select]").forEach(control => {
+        control.addEventListener("click", () => {
+          selectedTaskId = control.dataset.taskSelect;
+          activeItemId = getCurrentResultsThread().answerVisible ? "12" : "07";
+          render();
+        });
+      });
+      const submitResultsQuestion = () => {
+        const input = mock.querySelector("[data-results-input]");
+        const question = input?.value.trim();
+        const taskId = selectedTaskId;
+        const thread = resultsThreads[taskId];
+        if (!question || thread.pending) return;
+        thread.question = question;
+        thread.pending = true;
+        thread.answerVisible = false;
+        activeItemId = "10";
+        clearTimeout(resultsAnswerTimers[taskId]);
+        render();
+        resultsAnswerTimers[taskId] = setTimeout(() => {
+          thread.pending = false;
+          thread.answerVisible = true;
+          if (activeScreenId === "results" && selectedTaskId === taskId) {
+            activeItemId = "12";
+            render();
+          }
+        }, 900);
+      };
+      mock.querySelector("[data-send-question]")?.addEventListener("click", submitResultsQuestion);
+      mock.querySelector("[data-results-input]")?.addEventListener("input", event => {
+        getCurrentResultsThread().question = event.currentTarget.value;
+      });
+      mock.querySelector("[data-results-input]")?.addEventListener("keydown", event => {
+        if (event.key === "Enter") submitResultsQuestion();
+      });
+      return mock;
     }
 
     function renderStage(screen) {
       stage.replaceChildren();
       stage.classList.toggle("hide-annotations", !annotationsVisible);
 
-      if (screen.image) {
+      if (screen.mock) {
+        stage.append(renderMock(screen));
+      } else if (screen.image) {
         const image = document.createElement("img");
         image.src = screen.image;
         image.alt = `${screen.title}の画面モック`;
@@ -740,11 +2128,12 @@
         stage.append(placeholder);
       }
 
-      screen.items.forEach(item => {
+      getVisibleItems(screen).forEach(item => {
         const marker = document.createElement("button");
         marker.type = "button";
         marker.className = `marker${item.id === activeItemId ? " active" : ""}`;
-        marker.style.left = `${item.x}%`;
+        const markerX = activeScreenId !== "code" && sidebarCollapsed && item.collapsedX !== undefined ? item.collapsedX : item.x;
+        marker.style.left = `${markerX}%`;
         marker.style.top = `${item.y}%`;
         marker.textContent = item.id;
         marker.setAttribute("aria-label", `${item.id} ${item.title}`);
@@ -754,13 +2143,14 @@
     }
 
     function renderItems(screen) {
-      if (!screen.items.length) {
+      const visibleItems = getVisibleItems(screen);
+      if (!visibleItems.length) {
         itemList.innerHTML = `<div class="placeholder" style="position:static;min-height:220px"><strong>項目定義待ち</strong><span>画像と操作仕様を追加すると、ここに番号付き項目が表示されます。</span></div>`;
         selectedDetail.hidden = true;
         return;
       }
 
-      const itemById = new Map(screen.items.map(item => [item.id, item]));
+      const itemById = new Map(visibleItems.map(item => [item.id, item]));
       itemList.replaceChildren(...ITEM_GROUPS.map(group => {
         const section = document.createElement("section");
         section.className = "item-group";
@@ -808,7 +2198,7 @@
       summary.textContent = screen.summary;
       status.className = `badge ${screen.status}`;
       status.textContent = screen.statusLabel;
-      assetName.textContent = screen.image ?? "画像未設定";
+      assetName.textContent = screen.mock ? "HTML/CSS mock" : (screen.image ?? "画像未設定");
       renderStage(screen);
       renderItems(screen);
     }

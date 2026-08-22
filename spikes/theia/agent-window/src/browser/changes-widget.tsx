@@ -6,8 +6,9 @@ import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { EditorManager } from '@theia/editor/lib/browser';
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
+import { getDesignVariant, isDesignVariant } from './design-variant';
 
-type ChangesMode = 'code' | 'semantic';
+type ChangesMode = 'code' | 'semantic' | 'parallel';
 
 @injectable()
 export class ChangesWidget extends ReactWidget {
@@ -29,12 +30,16 @@ export class ChangesWidget extends ReactWidget {
 
     @postConstruct()
     protected init(): void {
+        getDesignVariant();
         this.id = ChangesWidget.ID;
         this.title.label = ChangesWidget.LABEL;
         this.title.caption = 'Code Diff and Semantic Diff for one Change Set';
         this.title.iconClass = 'codicon codicon-diff';
         this.title.closable = true;
         this.addClass('lens-changes');
+        if (isDesignVariant('d7-b', 'semantic-card-closeup')) {
+            this.mode = 'semantic';
+        }
         this.update();
     }
 
@@ -43,10 +48,13 @@ export class ChangesWidget extends ReactWidget {
             <div className='lens-changes__content' data-change-set-id={ChangesWidget.CHANGE_SET_ID}>
                 <header className='lens-changes__header'>
                     <div>
-                        <div className='lens-changes__eyebrow'>CHANGE SET · MOCK</div>
-                        <h2>認証トークン保存方式の変更</h2>
+                        <div className='lens-changes__eyebrow'>CHANGE SET · 完了 · 14:32</div>
+                        <h2>認証を Redis 方式へ変更</h2>
                     </div>
-                    <code>{ChangesWidget.CHANGE_SET_ID}</code>
+                    <button className='lens-changes__task-selector' aria-label='Select Task and Change Set'>
+                        <span>Task 1 / 3</span>
+                        <span className='codicon codicon-chevron-down' aria-hidden='true' />
+                    </button>
                 </header>
                 <div className='lens-changes__tabs' role='tablist' aria-label='Change Set representations'>
                     <button
@@ -65,8 +73,26 @@ export class ChangesWidget extends ReactWidget {
                     >
                         Semantic Diff
                     </button>
+                    {isDesignVariant('d3-b') && (
+                        <button
+                            className={this.mode === 'parallel' ? 'theia-button active' : 'theia-button secondary'}
+                            role='tab'
+                            aria-selected={this.mode === 'parallel'}
+                            onClick={() => this.selectMode('parallel')}
+                        >
+                            Parallel
+                        </button>
+                    )}
+                    {!isDesignVariant('d3-b') && (
+                        <button className='theia-button secondary lens-changes__parallel-action' onClick={() => this.selectMode('parallel')}>
+                            <span className='codicon codicon-layout-panel' aria-hidden='true' />
+                            並列表示
+                        </button>
+                    )}
                 </div>
-                {this.mode === 'code' ? this.renderCodeDiff() : this.renderSemanticDiff()}
+                {this.mode === 'code' && this.renderCodeDiff()}
+                {this.mode === 'semantic' && this.renderSemanticDiff()}
+                {this.mode === 'parallel' && this.renderParallel()}
             </div>
         );
     }
@@ -75,11 +101,24 @@ export class ChangesWidget extends ReactWidget {
         return (
             <section className='lens-changes__representation' aria-label='Code Diff representation'>
                 <div className='lens-changes__eyebrow'>CODE DIFF · SAME CHANGE SET</div>
-                <h3>sample-src/auth-service.ts</h3>
-                <p>AuthService の保存先を Database から TokenStore へ変更。</p>
-                <button className='theia-button lens-changes__open-diff' onClick={() => this.openCodeDiff()}>
-                    既存 Diff Editor で開く
-                </button>
+                <div className='lens-changes__summary'>3 files changed <span>+83 −9</span></div>
+                <div className='lens-changes__files'>
+                    <button className='lens-changes__file lens-changes__open-diff' onClick={() => this.openCodeDiff()}>
+                        <span className='lens-changes__file-status modified'>M</span>
+                        <span className='lens-changes__file-path'>src/auth/auth.service.ts</span>
+                        <span className='lens-changes__lines'>+18 −9</span>
+                    </button>
+                    <button className='lens-changes__file' onClick={() => this.openCodeDiff()}>
+                        <span className='lens-changes__file-status added'>A</span>
+                        <span className='lens-changes__file-path'>src/auth/token-store.ts</span>
+                        <span className='lens-changes__lines'>+64</span>
+                    </button>
+                    <button className='lens-changes__file' onClick={() => this.openCodeDiff()}>
+                        <span className='lens-changes__file-status modified'>M</span>
+                        <span className='lens-changes__file-path'>package.json</span>
+                        <span className='lens-changes__lines'>+1</span>
+                    </button>
+                </div>
                 {this.status && <div className='lens-changes__status' role='status'>{this.status}</div>}
             </section>
         );
@@ -89,32 +128,70 @@ export class ChangesWidget extends ReactWidget {
         return (
             <section className='lens-changes__representation' aria-label='Semantic Diff representation'>
                 <div className='lens-changes__eyebrow'>SEMANTIC DIFF · SAME CHANGE SET</div>
-                <h3>Refresh Token の保存責務を分離</h3>
+                <div className='lens-changes__semantic-heading'>
+                    <h3>Refresh Token の保存先を Redis へ変更</h3>
+                    <span className='lens-changes__confidence'>Confidence: 中</span>
+                </div>
                 <div className='lens-changes__before-after'>
                     <div>
-                        <span>変更前</span>
-                        <strong>AuthService → Database</strong>
+                        <span>Before</span>
+                        <strong>AuthService → PostgreSQL</strong>
                     </div>
                     <div className='lens-changes__arrow' aria-hidden='true'>→</div>
                     <div>
-                        <span>変更後</span>
+                        <span>After</span>
                         <strong>AuthService → TokenStore → Redis</strong>
                     </div>
                 </div>
-                <p className='lens-changes__impact'>影響: Refresh / Logout / Session</p>
-                <button
-                    className='lens-changes__evidence'
-                    onClick={() => this.openEvidence()}
-                    title='sample-src/auth-service.ts の 12 行目を Editor で開く'
-                >
-                    <span className='codicon codicon-go-to-file' aria-hidden='true' />
-                    <span>
-                        <strong>根拠コードを開く</strong>
-                        <small>sample-src/auth-service.ts:12</small>
-                    </span>
-                </button>
+                <dl className='lens-changes__semantic-details'>
+                    <div><dt>責務・依存</dt><dd>保存責務を AuthService から TokenStore へ分離。Redis client への依存を追加。</dd></div>
+                    <div><dt>影響範囲</dt><dd><span>Refresh</span><span>Logout</span><span>Session</span></dd></div>
+                    <div className='lens-changes__unknown'><dt>不明</dt><dd>Session cleanup への影響は未解析。</dd></div>
+                </dl>
+                <div className='lens-changes__evidence-list'>
+                    <div className='lens-changes__evidence-title'>EVIDENCE · 3</div>
+                    {this.renderEvidence('src/auth/auth.service.ts', '82–103', true)}
+                    {this.renderEvidence('src/auth/token-store.ts', '1–64')}
+                    {this.renderEvidence('package.json', '24')}
+                </div>
                 {this.status && <div className='lens-changes__status' role='status'>{this.status}</div>}
             </section>
+        );
+    }
+
+    protected renderParallel(): React.ReactNode {
+        return (
+            <section className='lens-changes__representation lens-changes__parallel' aria-label='Parallel representation'>
+                <div>
+                    <div className='lens-changes__eyebrow'>CODE DIFF · EDITOR</div>
+                    <h3>3 files changed</h3>
+                    <p>既存 Diff Editor を main area に表示する。</p>
+                    <button className='theia-button lens-changes__open-diff' onClick={() => this.openCodeDiff()}>
+                        Diff Editor を開く
+                    </button>
+                </div>
+                <div>
+                    <div className='lens-changes__eyebrow'>SEMANTIC DIFF · CHANGES</div>
+                    <h3>Refresh Token の保存先を Redis へ変更</h3>
+                    <p>AuthService → TokenStore → Redis</p>
+                </div>
+            </section>
+        );
+    }
+
+    protected renderEvidence(path: string, range: string, primary = false): React.ReactNode {
+        return (
+            <button
+                className={`lens-changes__evidence${primary ? ' primary' : ''}`}
+                onClick={() => this.openEvidence()}
+                title={`${path}:${range} を Editor で開く`}
+            >
+                <span className='codicon codicon-go-to-file' aria-hidden='true' />
+                <span>
+                    <strong>{path}</strong>
+                    <small>Lines {range}</small>
+                </span>
+            </button>
         );
     }
 

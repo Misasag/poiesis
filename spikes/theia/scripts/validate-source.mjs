@@ -73,8 +73,8 @@ for (const marker of [
 }
 assert.ok(moduleSource.includes('ChangesWidget'));
 assert.ok(moduleSource.includes('ChangesContribution'));
-assert.ok(agentContribution.includes("area: 'right'"));
-assert.ok(changesContribution.includes("area: 'bottom'"));
+assert.ok(agentContribution.includes("isDesignVariant('d1-b') ? 'main' : 'right'"));
+assert.ok(changesContribution.includes("isDesignVariant('d2-b') ? 'main' : 'bottom'"));
 assert.ok(!changesContribution.includes('initializeLayout'));
 assert.ok(changesContribution.includes("setElement('lens-changes'"));
 assert.ok(changesContribution.includes("onclick: () => void this.openView"));

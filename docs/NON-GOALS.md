@@ -19,7 +19,14 @@ Reviewer
 Tester
 ```
 
-のようなAgent構成は完成後に検討する。単一Agentで第一完成点の体験を成立させる。
+のようなAgent構成は完成後に検討できる。第一完成点では一つのdefault compositionで体験を成立させてよく、Agent composition / wiringやteam assemblyのsettings screenは作らない。
+
+### Reference Runtimes
+
+第一完成点では以下を行わない。
+
+- DeepSeek Harness、Cordis、`dsh`をruntimeとしてembedまたは依存する
+- Orca productをembedまたはwrapする
 
 ### Team Features
 
@@ -64,7 +71,7 @@ Tester
 
 ### Plugin Marketplace
 
-独自Plugin Marketplaceは作らない。Plugin architecture自体も、第一完成点に必要な範囲だけ実装する。
+独自Plugin Marketplaceは作らない。plugin installのための新しいscreenも作らない。Plugin architecture自体も、第一完成点に必要な範囲だけ実装する。
 
 ### Everything Is a Plugin
 

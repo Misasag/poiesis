@@ -19,6 +19,7 @@
     "download:plugins": "theia download:plugins",
     "rebuild": "npm run rebuild --workspace=@lens/theia-browser-app",
     "rebuild:electron": "npm run rebuild --workspace=@lens/theia-electron-app",
+    "shots:design": "node scripts/capture-design-shots.mjs",
     "smoke:electron": "node scripts/smoke-electron.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
     "start": "npm run start --workspace=@lens/theia-browser-app",

@@ -171,7 +171,7 @@ Semantic Diffから根拠コードへ辿れるようにする。
 
 ## Architecture Philosophy
 
-DeepSeek Harnessのような以下の思想を参考にする。
+DeepSeek Harnessは参照にとどめ、以下の思想だけを参考にする。
 
 - Plugin-oriented
 - Event-driven
@@ -179,7 +179,19 @@ DeepSeek Harnessのような以下の思想を参考にする。
 - Agent実装を交換可能にする
 - UIとAgent Runtimeを疎結合にする
 
-ただし、特定のHarness実装やCordisそのものには依存しない。
+DeepSeek Harness、Cordis、`dsh`には依存しない。
+
+Skillは、Grok Botのpluginと同じ発想で、bundleをinstall / removeするinstallable pluginとする。pluginはファイルを含んでよいが、disk上にlooseな`SKILL.md` filesが置かれているだけのものではない。
+
+Skillの仕事は二つに分け、混ぜない。Agent skillはworkerがある種類の仕事をどう行うかを定める。Results skillはexecution Taskが終了した後のHTML canvasを生成する。appはTaskが完了またはcancelされたときにResults skillを開始し、Agent chatの会話途中ではResults skillを実行しない。
+
+Orcaも参照にとどめ、Orca productをembedまたはwrapしない。userが誰をcoordinatorにし、誰をimplementerにするかをcomposeできる考え方だけを借りる。たとえばGrok-like coordinatorとCodex-like implementerの組み合わせである。このcompositionはLensが所有し、`AgentProvider`の後ろに置く。
+
+Agent internalsは交換可能なままにし、UIは特定のCLIと直接話さない。第一完成点では、Agentをrewireするsettings screenを設けず、一つのdefault compositionを提供してよい。
+
+第一完成点では、plugin install、Agent wiring、team assemblyのための新しいscreenを追加しない。既存のAgent / Results / Code frameは`docs/ui/agent-window-spec.html`の指定を維持する。
+
+第一完成点にmarketplaceは不要である。pluginは将来local installできれば十分であり、この文書ではそのためのUIを定義しない。
 
 ## Primary User for First Completion
 
