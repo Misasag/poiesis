@@ -9,6 +9,11 @@ export class AuthService {
         await this.rotateRefreshToken(userId, refreshToken);
     }
 
+    logout(userId: string): void {
+        // ログアウト対象のユーザーの認証情報だけを無効化するために userId を使う。
+        // 失効処理は未実装
+    }
+
     async rotateRefreshToken(userId: string, token: string): Promise<void> {
         await this.tokenStore.saveRefreshToken(userId, token);
     }

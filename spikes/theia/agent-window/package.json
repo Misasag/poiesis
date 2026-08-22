@@ -22,7 +22,8 @@
   },
   "theiaExtensions": [
     {
-      "frontend": "lib/browser/agent-window-frontend-module"
+      "frontend": "lib/browser/agent-window-frontend-module",
+      "backend": "lib/node/agent-window-backend-module"
     }
   ]
 }

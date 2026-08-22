@@ -1,0 +1,168 @@
+import { Emitter, Event } from '@theia/core/lib/common';
+import { inject, injectable } from '@theia/core/shared/inversify';
+import { WorkspaceService } from '@theia/workspace/lib/browser';
+import {
+    AgentRuntimeServer,
+    GitChangeSetCapture,
+    GitSnapshotCapture
+} from '../common/agent-runtime-protocol';
+
+export type ExecutionTaskStatus = 'running' | 'completed' | 'cancelled';
+
+export interface TaskBaseline {
+    kind: 'workspace-snapshot';
+    capturedAt: string;
+}
+
+export interface TaskChangeSet {
+    source: 'task-diff' | 'empty';
+    diff: string;
+    files: string[];
+    capturedAt: string;
+    error?: string;
+}
+
+export interface ExecutionTask {
+    id: string;
+    sessionId: string;
+    title: string;
+    request: string;
+    status: ExecutionTaskStatus;
+    startedAt: string;
+    endedAt?: string;
+    baseline: TaskBaseline;
+    changeSet?: TaskChangeSet;
+}
+
+export interface TaskEvent {
+    type: 'started' | 'ended' | 'cancelled';
+    task: ExecutionTask;
+}
+
+/** Application-owned lifecycle and workspace change-set boundary. */
+@injectable()
+export class TaskService {
+    protected readonly tasks = new Map<string, ExecutionTask>();
+    protected readonly baselineCaptures = new Map<string, Promise<GitSnapshotCapture>>();
+    protected readonly onDidChangeEmitter = new Emitter<TaskEvent>();
+    readonly onDidChangeTask: Event<TaskEvent> = this.onDidChangeEmitter.event;
+    protected sequence = 0;
+
+    constructor(
+        @inject(AgentRuntimeServer) protected readonly runtimeServer: AgentRuntimeServer,
+        @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService
+    ) { }
+
+    start(sessionId: string, request: string): ExecutionTask {
+        const startedAt = new Date().toISOString();
+        const task: ExecutionTask = {
+            id: `task-${Date.now()}-${++this.sequence}`,
+            sessionId,
+            title: this.titleFor(request),
+            request,
+            status: 'running',
+            startedAt,
+            baseline: {
+                kind: 'workspace-snapshot',
+                capturedAt: startedAt
+            }
+        };
+        this.tasks.set(task.id, task);
+        this.baselineCaptures.set(task.id, this.captureBaseline());
+        this.onDidChangeEmitter.fire({ type: 'started', task });
+        return task;
+    }
+
+    async end(taskId: string): Promise<ExecutionTask | undefined> {
+        return this.finish(taskId, 'completed', 'ended');
+    }
+
+    async cancel(taskId: string): Promise<ExecutionTask | undefined> {
+        return this.finish(taskId, 'cancelled', 'cancelled');
+    }
+
+    async whenBaselineCaptured(taskId: string): Promise<void> {
+        await this.baselineCaptures.get(taskId);
+    }
+
+    get(taskId: string): ExecutionTask | undefined {
+        return this.tasks.get(taskId);
+    }
+
+    list(sessionId?: string): ExecutionTask[] {
+        return [...this.tasks.values()]
+            .filter(task => !sessionId || task.sessionId === sessionId)
+            .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+    }
+
+    protected async finish(
+        taskId: string,
+        status: Exclude<ExecutionTaskStatus, 'running'>,
+        eventType: Extract<TaskEvent['type'], 'ended' | 'cancelled'>
+    ): Promise<ExecutionTask | undefined> {
+        const current = this.tasks.get(taskId);
+        if (!current || current.status !== 'running') {
+            return current;
+        }
+
+        const capture = await this.captureChangeSet(taskId);
+        const task: ExecutionTask = {
+            ...current,
+            status,
+            endedAt: new Date().toISOString(),
+            changeSet: {
+                ...capture,
+                capturedAt: new Date().toISOString()
+            }
+        };
+        this.tasks.set(task.id, task);
+        this.onDidChangeEmitter.fire({ type: eventType, task });
+        return task;
+    }
+
+    protected async captureBaseline(): Promise<GitSnapshotCapture> {
+        const root = this.workspaceService.tryGetRoots()[0]
+            ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
+        try {
+            return await this.runtimeServer.captureGitSnapshot({
+                workspacePath: root?.resource.path.fsPath()
+            });
+        } catch (error) {
+            return {
+                source: 'empty',
+                error: error instanceof Error ? error.message : String(error)
+            };
+        }
+    }
+
+    protected async captureChangeSet(taskId: string): Promise<GitChangeSetCapture> {
+        const baselinePromise = this.baselineCaptures.get(taskId);
+        this.baselineCaptures.delete(taskId);
+        const baseline = await baselinePromise;
+        if (!baseline?.snapshotId) {
+            return {
+                source: 'empty',
+                diff: '',
+                files: [],
+                error: baseline?.error ?? 'The Task baseline snapshot was not available.'
+            };
+        }
+        try {
+            return await this.runtimeServer.captureGitChangeSet({
+                baselineSnapshotId: baseline.snapshotId
+            });
+        } catch (error) {
+            return {
+                source: 'empty',
+                diff: '',
+                files: [],
+                error: error instanceof Error ? error.message : String(error)
+            };
+        }
+    }
+
+    protected titleFor(request: string): string {
+        const compact = request.replace(/\s+/g, ' ').trim();
+        return compact.length > 46 ? `${compact.slice(0, 43)}…` : compact;
+    }
+}

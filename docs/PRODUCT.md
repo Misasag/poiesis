@@ -29,6 +29,8 @@ AIによる開発では、コード生成速度が人間の理解速度を上回
 
 ## Core Idea
 
+第一完成点の現行契約は[「First Completion Goal」](FIRST-COMPLETION.md#first-completion-goal)を正とする。
+
 人間に理解を強制しない。
 
 通常時はシンプルなAgent Windowだけを使う。AIが作業を終えたとき、基本表示は簡潔な結果だけにする。
@@ -185,9 +187,9 @@ Skillは、Grok Botのpluginと同じ発想で、bundleをinstall / removeする
 
 Skillの仕事は二つに分け、混ぜない。Agent skillはworkerがある種類の仕事をどう行うかを定める。Results skillはexecution Taskが終了した後のHTML canvasを生成する。appはTaskが完了またはcancelされたときにResults skillを開始し、Agent chatの会話途中ではResults skillを実行しない。
 
-Orcaも参照にとどめ、Orca productをembedまたはwrapしない。userが誰をcoordinatorにし、誰をimplementerにするかをcomposeできる考え方だけを借りる。たとえばGrok-like coordinatorとCodex-like implementerの組み合わせである。このcompositionはLensが所有し、`AgentProvider`の後ろに置く。
+Orcaも参照にとどめ、Orca productをembedまたはwrapしない。第一完成点でOrcaから借りるのは、installed Agent CLIの検出方法だけとする。
 
-Agent internalsは交換可能なままにし、UIは特定のCLIと直接話さない。第一完成点では、Agentをrewireするsettings screenを設けず、一つのdefault compositionを提供してよい。
+Agent internalsは交換可能なままにし、UIは特定のCLIと直接話さない。第一完成点では、Agentをrewireするsettings screenを設けず、単一のruntimeをhardcodeしない。PATHとwell-known install locationsから既知のAgent CLI（例: Codex、Claude Code）を検出して一つのdefault compositionを自動で決め、見つかったCLIをimplementerとして使用する。既知のCLIが見つからない場合は、chatをstreamするだけのmockを使用する。coordinatorとimplementerをcomposeするUIは第一完成点の後に扱う。
 
 第一完成点では、plugin install、Agent wiring、team assemblyのための新しいscreenを追加しない。既存のAgent / Results / Code frameは`docs/ui/agent-window-spec.html`の指定を維持する。
 

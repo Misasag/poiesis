@@ -27,6 +27,7 @@ Tester
 
 - DeepSeek Harness、Cordis、`dsh`をruntimeとしてembedまたは依存する
 - Orca productをembedまたはwrapする
+- 単一のAgent runtimeをhardcodeする
 
 ### Team Features
 

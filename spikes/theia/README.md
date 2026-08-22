@@ -1,17 +1,29 @@
-# Theia Technical Spike
+# Lens Theia technical spike
 
-Lens のコア UX を Eclipse Theia の browser application と独自 Theia extension で検証する最小構成です。Agent、Change Set、Semantic Diff はモックです。Agent Window と Changes は別の Theia Widget として実装しています。
+This directory contains the focused Eclipse Theia spike for Lens. The current implementation is the first, narrow August 2026 slice: a live `AgentProvider`-driven chat, application-owned execution Tasks, Windows CLI detection, and a separate Results frame. The existing Changes widget remains available, but it is not the Results implementation.
 
-## 前提
+## Implemented in this slice
 
-- Windows 10/11
+- `AgentProvider` is the UI boundary from `docs/ARCHITECTURE.md`. The widget imports that interface and the frontend composition binds it to `MockAgentProvider`.
+- `CliDetector` checks `PATH` and well-known Windows locations for Codex and Claude. The Agent header reports each CLI as found or missing and shows the detected name. Detection never launches either CLI.
+- `MockAgentProvider` creates one execution Task per sent message, streams a short reply, supports cancellation, and never reads or writes workspace files.
+- `TaskService` owns start, end, cancel, a baseline placeholder, and a captured change set. The backend uses a read-only real `git diff` when possible and otherwise records an empty change set.
+- One `BundledResultsSkill` runs only after a Task ends or is cancelled. It returns one complete HTML document; generation does not stream document fragments.
+- Agent and Results are separate tabs. Results contains a finished-Task switcher, one iframe canvas that hosts the complete skill document, and its own short composer. Task completion does not select Results or steal focus.
+- The pre-existing IDE Changes widget can still open code and semantic mock representations. It is separate from Results.
+
+This slice intentionally has no real agent execution, marketplace, agent-wiring settings screen, or full Code-mode chrome.
+
+## Prerequisites
+
+- Windows 10 or 11
 - Node.js 24.5.0
 - npm 11.11.0
-- Git CLI（Git ビューの確認用）
+- Git CLI for change-set capture and the existing Changes demonstrations
 
-## インストール
+## Install
 
-PowerShell でこのディレクトリへ移動して実行します。
+From PowerShell:
 
 ```powershell
 cd C:\Users\owner\github\lens\spikes\theia
@@ -20,107 +32,62 @@ npm install
 npm run download:plugins
 ```
 
-Puppeteer は Theia CLI の推移依存ですが、この browser app の build / start には Puppeteer 管理の Chrome は不要なため、install 時のダウンロードを抑止しています。
+Puppeteer is a Theia CLI dependency, but this browser application does not need Puppeteer to build or start. Skipping its browser download keeps installation smaller.
 
-## ビルド
+## Validate
 
-```powershell
-npm run build
-```
-
-依存取得前でも、ファイル構成と Spike の必須実装マーカーだけは次で検査できます。これは実ビルドの代替ではありません。
+The source contract validator covers the provider boundary, detector, TaskService, bundled skill, backend bridge, and Agent / Results separation:
 
 ```powershell
 npm run validate:source
 ```
 
-`npm run build` はネイティブ依存を現在の Node ABI 向けに再構築してから bundle を生成します。再構築だけを明示的に行う場合は次を実行します。
+For a targeted extension typecheck without a full Theia bundle:
 
 ```powershell
-npm run rebuild
+npm run compile --workspace=@lens/theia-agent-window
 ```
 
-この Spike は managed Windows sandbox でも再現できるよう、Theia が生成する設定を読む `browser-app/webpack.config.js` を使います。native `esbuild.exe` はこの sandbox では workspace 読み取りを拒否されたためです。通常の Windows 環境でも同じ webpack build を利用できます。
+A full browser application build remains available when needed:
 
-## 起動
+```powershell
+npm run build
+```
+
+## Try the slice
+
+Start the browser target:
 
 ```powershell
 npm start
 ```
 
-ブラウザで <http://127.0.0.1:3000> を開きます。`spikes/theia/` 自体が Workspace root として開きます。
+Then open `http://127.0.0.1:3000` manually. The spike opens `spikes/theia` as its workspace.
 
-## コア UX の確認
+1. In the Agent header, confirm Codex and Claude each report `found` or `missing`. Even when one is found, the header also says `MockAgentProvider active for this slice`.
+2. Type a request in the Agent composer and send it. The reply arrives in several short chunks while one Task is running.
+3. Let the Task finish, or use Cancel while it is running. The Agent tab remains selected.
+4. Select Results yourself. Choose the finished or cancelled Task in the switcher and inspect the bundled HTML document in the single canvas.
+5. Type into the Results composer. It stays scoped to Results and does not start a Task or post into Agent chat.
+6. If desired, open `IDE Changes` from the status bar or command palette to confirm the older Changes spike still works independently.
 
-1. 左の Explorer で `sample-src/auth-service.ts` を選び、Editor が開くことを確認する。
-2. 右側の `Agent Window` にモック結果と「質問」だけがあり、Change SetやSemantic Diffが表示されないことを確認する。
-3. 「質問」でモック質問欄が展開することを確認する。
-4. 起動直後に `IDE Changes` が表示されていないことを確認する。
-5. Status Bar の `IDE Changes`、Command Palette の `Lens: Open IDE Changes`、または `View > Views > IDE Changes` で底部のChanges Widgetを開く。
-6. `Code Diff`でChange Set ID `task-auth-redis-001`を確認し、「既存 Diff Editor で開く」でTheiaのMonaco Diff Editorが開くことを確認する。
-7. `Semantic Diff`へ切り替え、同じChange Set IDの意味表現が表示されることを確認する。
-8. 「根拠コードを開く」を押し、`sample-src/auth-service.ts` の12行目がEditorで選択されることを確認する。
-9. `View > Terminal`、左Activity BarのSource Control、TypeScriptファイルの言語機能を確認する。
+## Other targets
 
-Agent Windowを閉じた場合は`View > Views > Agent Window`から再表示できます。Changesはユーザー操作でのみ開き、Agentの作業完了時には自動表示しません。
-
-## 任意の headless smoke test
-
-ローカルに Google Chrome または Microsoft Edge がある場合、別の PowerShell でサーバを起動したまま実行します。
-
-```powershell
-npm run smoke:ui
-```
-
-Agent Windowが「質問」だけを持つこと、Changesの初期非表示、Command Paletteからの表示、Code/Semantic切り替え、既存Diff Editor、Evidenceから`auth-service.ts`の12行目への移動を検査します。標準以外の場所にChromeがある場合は`CHROME_PATH`環境変数で指定できます。
-
-## Electron target
-
-Electron 版は browser 版と同じ拡張構成を `electron-app/` で合成します。Theia と Electron はそれぞれ 1.73.1、39.8.7 に固定しています。
-
-Electron の取得先をリポジトリ配下へ固定してインストールします。
-
-```powershell
-cd C:\Users\owner\github\lens\spikes\theia
-$env:PUPPETEER_SKIP_DOWNLOAD = 'true'
-$env:electron_config_cache = (Join-Path (Get-Location) '.electron-cache')
-npm install
-npm run download:plugins
-```
-
-native dependency の Electron ABI 向け rebuild と bundle をまとめて実行します。ビルドは Node heap を 4 GB、webpack の並列度を 2 に制限します。
+The Electron target uses the same extension composition:
 
 ```powershell
 npm run build:electron
-```
-
-native dependency の rebuild だけを再実行する場合は次を使います。
-
-```powershell
-npm run rebuild:electron
-```
-
-Electron 版を起動すると、リポジトリルート `lens` を Workspace として開きます。
-
-```powershell
 npm run start:electron
 ```
 
-実起動を CDP で操作するスモークテストは次です。一意な user data、remote debugging port 9334、`--disable-gpu` を使い、終了時に Electron の process tree と port の停止を確認します。
+Existing optional UI and Electron smoke scripts remain under `scripts/`, but they are outside this source-only slice and require a local browser or Electron session.
 
-```powershell
-npm run smoke:electron
-```
+## Layout
 
-スモークテストは、Agent Window、Status Bar の `IDE Changes` からの手動オープン、Code Diff / Semantic Diff、既存 Diff Editor、Evidence jump、Git 状態、TypeScript hover を検証します。Terminal は統合端末の `cmd` タブ起動までを検出します。詳細と実測上の限界は `ELECTRON-REPORT.md` に記録しています。
-
-## 構成
-
-- `browser-app/`: 既存 Theia extension を組み合わせた browser application
-- `electron-app/`: 同じ extension 構成を組み合わせた Electron application
-- `agent-window/`: Agent Window Widget、Changes Widget、Editor連携
-- `sample-src/`: Change Setのbefore/afterとEvidence navigationの対象
-- `scripts/smoke-ui.mjs`: Chrome / Edge を使う任意の UI smoke test
-- `scripts/smoke-electron.mjs`: Electron を直接起動して CDP 操作する Windows smoke test
-- `SPIKE-REPORT.md`: 実装・動作確認結果と所見
-- `ELECTRON-REPORT.md`: Electron build、native rebuild、実起動、CI の実測記録
+- `agent-window/src/common/`: `AgentProvider` and backend runtime protocol
+- `agent-window/src/browser/`: Agent / Results widget, `MockAgentProvider`, `TaskService`, bundled Results skill, and Changes widget
+- `agent-window/src/node/`: Windows `CliDetector`, read-only Git diff capture, and backend RPC binding
+- `browser-app/`: browser target
+- `electron-app/`: Electron target
+- `scripts/validate-source.mjs`: focused source contract validation
+- `sample-src/`: existing Changes mock and evidence-navigation fixture

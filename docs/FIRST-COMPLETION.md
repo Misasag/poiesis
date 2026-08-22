@@ -2,101 +2,101 @@
 
 ## Purpose
 
-この文書は、第一完成点を明確に定義し、個人開発が無期限に続くことを防ぐための完成契約である。
-
-第一完成点に到達したら、改善余地が残っていても一度「完成」とする。
+この文書は、2026年8月に確定したLensの第一完成点を定義する完成契約である。個人開発が無期限に続くことを防ぎ、ここに書かれた条件を満たしたら、改善余地が残っていても一度「完成」とする。
 
 ## First Completion Goal
 
-自分の実プロジェクトをこのIDEで開き、Agentに実装を任せ、普段はチャットだけで進められ、気になった変更だけChanges領域でCode DiffやSemantic Diffとして理解し、さらに必要なら同じIDEのEditorで根拠コードを確認できる。
+実RepositoryをLensで開き、Agentと会話し、発見したAgent CLIを実装者として動かす。CLIが見つからなければchat-only mockで会話を成立させる。実行Taskの開始・終了・キャンセル、Baseline、実Workspace差分によるChange Setはアプリが所有する。
 
-これを日常開発で実用できる。
+Taskが終了またはキャンセルされたら、アプリがResults skillを開始し、Resultsの一つのキャンバスに完成したHTML文書を表示する。ユーザーはその確定済みのデザインを見ながらResults Composerで質問でき、その会話はAgentと混ぜない。ヘッダの`Code`はモード切替であり、左サイドバーをFiles／Gitへ、中央をEditorへ切り替える。設定は左サイドバーの歯車からTheia settingsを開く。
+
+これを自分の実開発で日常的に使える。
 
 ## Definition of Done
 
 ### Workspace
-- [ ] 既存Repositoryを開ける
+
+- [ ] 既存RepositoryをWorkspaceとして開ける
 - [ ] Workspace内のファイルをEditorで閲覧・編集できる
-- [ ] Git差分を確認できる
-- [ ] Terminalを利用できる
+- [ ] `Code`モードの左サイドバーでGitを開き、実際の差分を確認できる
+- [ ] Theiaに既存のTerminal機能がある場合はそれを利用でき、Lens固有の新しいTerminal productを作らない
 
 ### Agent
-- [ ] Agent Windowから自然言語で実装を依頼できる
-- [ ] AgentがWorkspace内のファイルを読める
-- [ ] Agentがファイルを編集できる
-- [ ] Agentがコマンドを実行できる
-- [ ] Agentがテスト・ビルド結果を確認できる
-- [ ] Agentの作業をキャンセルできる
-- [ ] 1つのTaskと、そのTaskによるChange Setを紐付けられる
 
-### Agent Window
-- [ ] 通常状態はシンプルなチャットUIである
-- [ ] 作業完了時に短い結果を表示できる
-- [ ] 作業結果に「質問」アクションがある
-- [ ] Agent Windowだけで通常の開発を継続できる
-- [ ] Agent WindowはChange Setの表示責務を持たない
+- [ ] `Agent`タブから自然言語で作業を依頼し、応答を受け取れる
+- [ ] 発見したAgent CLIをimplementerとして使い、見つからない場合はchat-only mockで会話できる
+- [ ] 実CLIを使う場合、Agentが対象Workspaceのファイルを読み、編集し、コマンドを実行できる
+- [ ] 実行中の作業をキャンセルできる
+- [ ] アプリが一つの実行Taskの開始・終了・キャンセル、Baseline、Change Setを管理できる
+- [ ] 実行Taskを、Agentの自己申告ではなく実WorkspaceのBaselineとの差から得たChange Setに紐付けられる
 
-### Question
-- [ ] 「質問」から、そのTaskを文脈として追加質問できる
-- [ ] ユーザーが対象Taskや変更内容を説明し直す必要がない
-- [ ] 質問は通常のチャットフローを壊さない
+### Agent Window Chrome
 
-### Change Set
-- [ ] Task開始時点の基準状態を取得できる
-- [ ] Task終了時点の状態との差分を取得できる
-- [ ] 複数ターンにまたがる修正を一つのTask Change Setとして扱える
-- [ ] Agentの自己申告ではなく、Workspaceの実差分を取得できる
+- [ ] `Agent`と`Results`は同じSession内の別タブであり、会話、Composer、下書き、スレッドを共有しない
+- [ ] Taskの終了やキャンセルで`Results`へ自動遷移せず、ユーザーが選んだタブのfocusを奪わない
+- [ ] `Code`は別のdestinationではなく、同じWindowのヘッダで切り替えるモードである
+- [ ] `Code`モードでは`Agent`／`Results`タブを隠し、`Code`をもう一度押すと直前の`Agent`または`Results`へ戻る
+- [ ] `Code`モードへの切替で、左サイドバーはFiles／Git、中央はEditorになる
+- [ ] 共通の左サイドバー下部に設定の歯車があり、中央にTheia／Workspace settingsを開ける
+- [ ] plugin install screenとAgent wiring screenを追加しない
 
-### Changes
-- [ ] ユーザーが必要なときにChanges領域を開ける
-- [ ] Changes領域で対象TaskのChange Setを確認できる
-- [ ] 同じChange SetのCode DiffとSemantic Diffを切り替えて確認できる
-- [ ] 必要な場合はCode DiffとSemantic Diffを並列に表示できる
-- [ ] Agentの作業完了時にChanges領域を強制表示しない
+### Results
 
-### Semantic Diff
-- [ ] Change SetからSemantic Diffを生成できる
-- [ ] Semantic Diffは実際のコード・設定・スキーマ等を一次情報とする
-- [ ] Semantic DiffをChanges領域で表示できる
-- [ ] Code DiffとSemantic Diffが同じChange Setを表現していることを識別できる
-- [ ] 変更前と変更後の意味の差を表示できる
-- [ ] 重要な責務・依存・データフロー等の変化を表現できる
-- [ ] Semantic Changeごとに根拠情報を保持できる
-- [ ] Semantic Diffから根拠となるコードへ移動できる
-- [ ] IntentとActual Changeを区別できる
+- [ ] アプリが固定するResultsの枠は、実行Taskの切替リスト、本体キャンバス一つ、その下の短いComposerだけである
+- [ ] 本体キャンバスにはResults skillが返した完成済みのHTML文書を一つ表示する
+- [ ] アプリはHTMLをSemantic Diffの節やカードへ分解して積み重ねず、文書の内部構成をSkillsに任せる
+- [ ] Before／After比較はResultsの必須契約ではない
+- [ ] Taskの終了やHTML生成完了でResultsを自動表示しない
+- [ ] HTML生成中は進行状態をアプリ枠で示し、不完全な文書断片を成果としてキャンバスへstreamしない
+- [ ] Results Composerから、選択中の実行Taskと表示中の確定済みSkill HTMLをscopeとして質問できる
+- [ ] Resultsの質問と回答はResults内だけに保持し、Agent会話、実行Task、Change Set、Skill HTMLを変更しない
 
-### Editor Integration
-- [ ] Semantic Diff上の項目から該当ファイル・行へ移動できる
-- [ ] EditorからChangesやAgent Windowへ自然に戻れる
-- [ ] Agent Window、Changes、Editorが別アプリ・別Workspaceとして分離されていない
-- [ ] ChangesのCode DiffとEditorでの本格的なコード閲覧の役割が重複しすぎていない
+### Skills
 
-### Practical Use
-- [ ] 自分の実プロジェクトで継続利用できる
-- [ ] 重大なデータ破壊・作業消失が起きない
-- [ ] Agent失敗時に復旧可能である
-- [ ] Semantic Diffが明らかな誤情報を頻繁に出さない
-- [ ] 「確認のためだけにCursor等へ戻る」ことが頻繁に発生しない
+- [ ] Skillをinstall／remove可能なplugin bundleとする契約がある
+- [ ] Agent skillとResults skillを分離し、Agent skillは作業方法、Results skillは成果のHTML canvas生成を担う
+- [ ] アプリが実行Taskの終了またはキャンセル時にResults skillを開始し、Agent会話の途中では開始しない
+- [ ] 第一完成点ではResults skillを一つbundledで提供すればよく、marketplaceやinstall UIを実装しなくてよい
+
+### Agent Runtime
+
+- [ ] PATHとwell-known install locationsから既知のAgent CLIを検出できる
+- [ ] CodexやClaude Codeを検出対象の例とし、単一runtimeをhardcodeしない
+- [ ] 検出したCLIをimplementerとして選ぶdefault compositionをアプリが決められる
+- [ ] 既知のCLIが見つからない場合はchatをstreamするだけのmockへfallbackし、Workspaceのread／edit／runを装わない
+- [ ] UIは特定のCLIと直接結合せず、Agent runtimeを交換可能な境界の後ろに置く
+- [ ] Orca product、DeepSeek Harness、Cordis、`dsh`をembed、wrap、runtime依存しない
+
+## Out of First Completion
+
+以下は第一完成点の外に置き、Definition of Doneには含めない。
+
+- Sessionのrename、終了、archive
+- 実行中Taskがある状態でのWorkspace切替
+- Composerの「＋」メニュー
+- Resultsのnotification dot
+- Explorerのsingle click／double clickとEditor tab固定のpolicy
+- Plugin Marketplace
+- Agent wiring UI
+- Multi-Agent compose UI
 
 ## Completion Trial
 
-Definition of Doneを満たした後、1〜2週間、自分の実開発でメインIDEとして利用する。
+Definition of Doneを満たした後、1〜2週間、自分の実RepositoryでメインIDEとして利用する。
 
-この期間に他IDEへ戻った場合は、理由を記録する。
+この期間に、Agentへ依頼し、必要な結果をResultsで見ながら質問し、必要なときだけCodeでGit差分や根拠コードを確認する一連の流れを実際に使う。他IDEへ戻った場合は理由を記録する。
 
 修正対象にするのは、
 
-> 第一完成点の体験を成立させない問題
+> 第一完成点のAgent＋Results＋Code体験を成立させない問題
 
-のみ。
-
-単なる改善案は第一完成点後へ回す。
+のみ。単なる改善案は第一完成点の後へ回す。
 
 ## Completion Rule
 
 以下の質問にYESなら第一完成とする。
 
-> AIに実装を任せ、普段はAgent Windowだけで進め、気になったときだけChangesでCode DiffやSemantic Diffを見て、さらに必要な場合だけ根拠コードへ降りる開発フローを、自分が実際に使いたいと思えるか？
+> 実RepositoryでAgentに作業を依頼し、必要なときだけResultsで確定した成果を見ながら質問し、さらに必要なときだけCodeでGit差分や根拠コードを確認する流れを、自分が日常開発に使いたいと思えるか？
 
 YESなら完成。
 
@@ -106,8 +106,8 @@ YESなら完成。
 
 開発中に新しいアイデアが出た場合、必ず以下を確認する。
 
-> これがないと第一完成点の体験が成立しないか？
+> これがないと第一完成点のAgent＋Results＋Code体験が成立しないか？
 
 YES: 第一完成点へ追加してよい。
 
-NO: AFTER-FIRST-COMPLETIONへ送る。
+NO: 第一完成点の後へ送る。
