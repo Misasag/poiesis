@@ -1,6 +1,7 @@
 import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { ExecutionTask, TaskChangeSet, TaskService } from './task-service';
+import { CustomizationService } from './customization-service';
 
 export const ResultsSkill = Symbol('ResultsSkill');
 
@@ -200,7 +201,8 @@ export class ResultsService {
 
     constructor(
         @inject(TaskService) protected readonly taskService: TaskService,
-        @inject(ResultsSkill) protected readonly resultsSkill: ResultsSkill
+        @inject(ResultsSkill) protected readonly resultsSkill: ResultsSkill,
+        @inject(CustomizationService) protected readonly customizationService: CustomizationService
     ) { }
 
     @postConstruct()
@@ -223,7 +225,7 @@ export class ResultsService {
     }
 
     protected async generate(task: ExecutionTask): Promise<void> {
-        if (!task.changeSet) {
+        if (!task.changeSet || !this.customizationService.isSkillEnabled('results')) {
             return;
         }
         this.set({ taskId: task.id, status: 'generating' });

@@ -35,7 +35,7 @@
     "build": "npm run rebuild && theia build --mode development",
     "clean": "theia clean",
     "rebuild": "theia rebuild:browser --cacheRoot ..",
-    "start": "set \"THEIA_CONFIG_DIR=%CD%\\..\\.theia-config\" && theia start .. --plugins=local-dir:../plugins --hostname 127.0.0.1 --port 3000"
+    "start": "set \"THEIA_CONFIG_DIR=%CD%\\..\\.theia-config\" && theia start ../../.. --plugins=local-dir:../plugins --hostname 127.0.0.1 --port 3000"
   },
   "theia": {
     "target": "browser"

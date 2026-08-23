@@ -3,6 +3,7 @@ import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import { StorageService, WidgetManager } from '@theia/core/lib/browser';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { Disposable } from '@theia/core/lib/common';
+import URI from '@theia/core/lib/common/uri';
 import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { Widget } from '@theia/core/shared/@lumino/widgets';
 import { EditorWidget } from '@theia/editor/lib/browser';
@@ -11,12 +12,17 @@ import { ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-prov
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
+import { FolderBrowserResult } from '../common/agent-runtime-protocol';
 import { ResultsService } from './results-skill';
 import { ExecutionTask, TaskService } from './task-service';
 import { getDesignVariant } from './design-variant';
+import { CustomizationService } from './customization-service';
+import { FolderExplorerService } from './folder-explorer-service';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'git';
+type AppPage = 'settings' | 'customize';
+type CustomizeTab = 'skills' | 'plugins';
 const NEW_SESSION_TITLE = '新しい会話';
 const SESSION_STORAGE_KEY = 'lens.agent-window.sessions.v1';
 const DEFAULT_RAIL_WIDTH = 252;
@@ -35,6 +41,8 @@ interface WindowAgentSession {
     createdAt: number;
     updatedAt: number;
     workspaceUri?: string;
+    branch?: string;
+    runTarget: 'local';
     agentSession?: AgentSession;
     title: string;
     hasUserMessage: boolean;
@@ -65,7 +73,10 @@ export class AgentWindowWidget extends ReactWidget {
     static readonly GIT_WIDGET_FACTORY_ID = 'scm-view';
     static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener';
     static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget';
+    static readonly PLUGINS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container';
     protected codeMode = false;
+    protected appPage?: AppPage;
+    protected customizeTab: CustomizeTab = 'skills';
     protected codeSidebarTab: CodeSidebarTab = 'files';
     protected codeFilesWidget?: Widget;
     protected codeGitWidget?: Widget;
@@ -75,6 +86,9 @@ export class AgentWindowWidget extends ReactWidget {
     protected codeEditorHost?: HTMLDivElement;
     protected codeSidebarResizeObserver?: ResizeObserver;
     protected codeEditorResizeObserver?: ResizeObserver;
+    protected pluginsWidget?: Widget;
+    protected pluginsHost?: HTMLDivElement;
+    protected pluginsResizeObserver?: ResizeObserver;
     protected readonly sessions: WindowAgentSession[] = [];
     protected selectedSessionId?: string;
     protected sessionSequence = 0;
@@ -89,6 +103,23 @@ export class AgentWindowWidget extends ReactWidget {
     protected workspaceExpanded = true;
     protected sessionSearchInput?: HTMLInputElement;
     protected agentComposerInput?: HTMLTextAreaElement;
+    protected agentSendButton?: HTMLButtonElement;
+    protected workspacePickerVisible = false;
+    protected workspaceSearchQuery = '';
+    protected workspaceSearchInput?: HTMLInputElement;
+    protected recentWorkspaceUris: string[] = [];
+    protected repositoryPickerVisible = false;
+    protected repositorySearchQuery = '';
+    protected repositorySearchInput?: HTMLInputElement;
+    protected branchPickerVisible = false;
+    protected folderExplorerVisible = false;
+    protected folderExplorerSessionId?: string;
+    protected folderExplorerResult?: FolderBrowserResult;
+    protected folderExplorerLoading = false;
+    protected folderExplorerError?: string;
+    protected folderExplorerAddress = '';
+    protected creatingFolder = false;
+    protected newFolderName = '';
     protected railResizeCleanup?: Disposable;
     protected readonly watchedScmProviders = new WeakSet<ScmProvider>();
     protected readonly watchedScmHistoryProviders = new WeakSet<ScmHistoryProvider>();
@@ -101,7 +132,9 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(FileDialogService) protected readonly fileDialogService: FileDialogService,
         @inject(ScmService) protected readonly scmService: ScmService,
         @inject(WidgetManager) protected readonly widgetManager: WidgetManager,
-        @inject(StorageService) protected readonly storageService: StorageService
+        @inject(StorageService) protected readonly storageService: StorageService,
+        @inject(CustomizationService) protected readonly customizationService: CustomizationService,
+        @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService
     ) {
         super();
     }
@@ -115,6 +148,19 @@ export class AgentWindowWidget extends ReactWidget {
         const closeSessionMenu = (event: PointerEvent): void => {
             if (this.openSessionMenuId && !(event.target as Element | null)?.closest('.lens-agent-window__session-actions')) {
                 this.openSessionMenuId = undefined;
+                this.update();
+            }
+            if ((this.repositoryPickerVisible || this.branchPickerVisible)
+                && !(event.target as Element | null)?.closest('.lens-agent-window__new-agent-context')) {
+                this.repositoryPickerVisible = false;
+                this.branchPickerVisible = false;
+                this.repositorySearchQuery = '';
+                this.update();
+            }
+            if (this.workspacePickerVisible
+                && !(event.target as Element | null)?.closest('.lens-agent-window__rail-heading')) {
+                this.workspacePickerVisible = false;
+                this.workspaceSearchQuery = '';
                 this.update();
             }
         };
@@ -132,8 +178,15 @@ export class AgentWindowWidget extends ReactWidget {
             this.update();
         }));
         this.toDispose.push(this.resultsService.onDidChange(() => this.update()));
-        this.toDispose.push(this.workspaceService.onWorkspaceChanged(() => this.update()));
-        this.toDispose.push(this.workspaceService.onWorkspaceLocationChanged(() => this.update()));
+        this.toDispose.push(this.customizationService.onDidChange(() => this.update()));
+        this.toDispose.push(this.workspaceService.onWorkspaceChanged(() => {
+            void this.refreshRecentWorkspaces();
+            this.update();
+        }));
+        this.toDispose.push(this.workspaceService.onWorkspaceLocationChanged(() => {
+            void this.refreshRecentWorkspaces();
+            this.update();
+        }));
         this.toDispose.push(this.scmService.onDidAddRepository(repository => {
             this.watchScmProvider(repository.provider);
             this.update();
@@ -146,6 +199,7 @@ export class AgentWindowWidget extends ReactWidget {
         }
 
         void this.initializeSessions();
+        void this.refreshRecentWorkspaces();
         this.update();
     }
 
@@ -156,7 +210,7 @@ export class AgentWindowWidget extends ReactWidget {
         return (
             <div
                 className='lens-agent-window__content'
-                data-mode={this.codeMode ? 'code' : activeTab}
+                data-mode={this.appPage ?? (this.codeMode ? 'code' : activeTab)}
                 data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}
                 style={{ '--lens-rail-width': `${this.railWidth}px` } as React.CSSProperties}
             >
@@ -164,22 +218,25 @@ export class AgentWindowWidget extends ReactWidget {
                 <main className='lens-agent-window__workspace'>
                     {this.renderHeader()}
                     <div className='lens-agent-window__viewport'>
-                        {this.codeMode
+                        {this.appPage
+                            ? this.renderAppPage()
+                            : this.codeMode
                             ? this.renderCode()
                             : activeTab === 'agent'
                                 ? this.renderAgent(session, runningTask)
                                 : this.renderResults(session)}
                     </div>
                 </main>
+                {this.folderExplorerVisible && this.renderFolderExplorer()}
             </div>
         );
     }
 
     protected renderRail(): React.ReactNode {
-        const activeSessions = this.filteredSessions(false);
+        const activeSessions = this.filteredSessions(false).filter(session => session.hasUserMessage);
         const pinnedSessions = activeSessions.filter(session => session.pinned);
         const recentSessions = activeSessions.filter(session => !session.pinned);
-        const archivedSessions = this.filteredSessions(true);
+        const archivedSessions = this.filteredSessions(true).filter(session => session.hasUserMessage);
         const toggleLabel = this.railCollapsed ? '左サイドバーを展開' : '左サイドバーを折りたたむ';
         return (
             <aside
@@ -254,10 +311,13 @@ export class AgentWindowWidget extends ReactWidget {
                         className='lens-agent-window__repository-open'
                         title='Open Folder'
                         aria-label='フォルダーを開いてリポジトリを選択または追加'
-                        onClick={() => void this.openRepository()}
+                        aria-expanded={this.workspacePickerVisible}
+                        aria-controls='lens-agent-window-workspace-picker'
+                        onClick={() => this.toggleWorkspacePicker()}
                     >
                         <span className='codicon codicon-add' aria-hidden='true' />
                     </button>
+                    {this.workspacePickerVisible && this.renderWorkspacePicker()}
                 </div>
                 <div className='lens-agent-window__sessions'>
                     <div className='lens-agent-window__workspace-group'>
@@ -306,9 +366,14 @@ export class AgentWindowWidget extends ReactWidget {
                 </div>
                 <div className='lens-agent-window__rail-footer'>
                     <span className='lens-agent-window__rail-footer-label'>Lens</span>
-                    <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
-                        <span className='codicon codicon-settings-gear' aria-hidden='true' />
-                    </button>
+                    <div className='lens-agent-window__rail-footer-actions'>
+                        <button type='button' title='Customize' aria-label='Customize' onClick={() => this.openCustomize()}>
+                            <span className='codicon codicon-tools' aria-hidden='true' />
+                        </button>
+                        <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
+                            <span className='codicon codicon-settings-gear' aria-hidden='true' />
+                        </button>
+                    </div>
                 </div>
                 {!this.railCollapsed && (
                     <div
@@ -633,7 +698,294 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
     }
 
+    protected repositoryChoices(): Array<{ uri: string; name: string; path: string }> {
+        return this.workspaceService.tryGetRoots().map(root => ({
+            uri: root.resource.toString(),
+            name: root.resource.path.base || root.resource.displayName,
+            path: root.resource.path.fsPath()
+        }));
+    }
+
+    protected toggleWorkspacePicker(): void {
+        this.workspacePickerVisible = !this.workspacePickerVisible;
+        this.workspaceSearchQuery = '';
+        this.update();
+        if (this.workspacePickerVisible) {
+            requestAnimationFrame(() => this.workspaceSearchInput?.focus());
+        }
+    }
+
+    protected async refreshRecentWorkspaces(): Promise<void> {
+        try {
+            this.recentWorkspaceUris = await this.workspaceService.recentWorkspaces();
+            this.update();
+        } catch {
+            this.recentWorkspaceUris = [];
+        }
+    }
+
+    protected workspaceChoices(): Array<{ uri: string; name: string; path: string; current: boolean }> {
+        const currentUris = new Set(this.repositoryChoices().map(choice => choice.uri));
+        const choices = this.repositoryChoices().map(choice => ({ ...choice, current: true }));
+        for (const workspaceUri of this.recentWorkspaceUris) {
+            if (currentUris.has(workspaceUri)) {
+                continue;
+            }
+            const resource = new URI(workspaceUri);
+            choices.push({
+                uri: workspaceUri,
+                name: resource.path.base || resource.displayName,
+                path: resource.path.fsPath(),
+                current: false
+            });
+        }
+        return choices;
+    }
+
+    protected setWorkspaceSearchQuery(value: string): void {
+        this.workspaceSearchQuery = value;
+        this.update();
+        requestAnimationFrame(() => {
+            this.workspaceSearchInput?.focus();
+            this.workspaceSearchInput?.setSelectionRange(value.length, value.length);
+        });
+    }
+
+    protected renderWorkspacePicker(): React.ReactNode {
+        const query = this.workspaceSearchQuery.trim().toLocaleLowerCase();
+        const choices = this.workspaceChoices().filter(choice => !query
+            || choice.name.toLocaleLowerCase().includes(query)
+            || choice.path.toLocaleLowerCase().includes(query));
+        const currentChoices = choices.filter(choice => choice.current);
+        const recentChoices = choices.filter(choice => !choice.current);
+        return (
+            <div
+                className='lens-agent-window__workspace-picker'
+                id='lens-agent-window-workspace-picker'
+                role='dialog'
+                aria-label='Workspaceを開く'
+            >
+                <div className='lens-agent-window__workspace-picker-title'>Open workspace</div>
+                <label className='lens-agent-window__workspace-picker-search'>
+                    <span className='codicon codicon-search' aria-hidden='true' />
+                    <input
+                        ref={input => { this.workspaceSearchInput = input ?? undefined; }}
+                        value={this.workspaceSearchQuery}
+                        placeholder='Search workspaces'
+                        aria-label='Workspaceを検索'
+                        onChange={event => this.setWorkspaceSearchQuery(event.currentTarget.value)}
+                        onKeyDown={event => {
+                            if (event.key === 'Escape') {
+                                this.workspacePickerVisible = false;
+                                this.workspaceSearchQuery = '';
+                                this.update();
+                            }
+                        }}
+                    />
+                </label>
+                {currentChoices.length > 0 && (
+                    <>
+                        <div className='lens-agent-window__workspace-picker-label'>Current</div>
+                        {currentChoices.map(choice => (
+                            <button
+                                type='button'
+                                className='lens-agent-window__workspace-picker-item'
+                                key={choice.uri}
+                                onClick={() => this.openKnownWorkspace(choice.uri)}
+                            >
+                                <span className='codicon codicon-folder-opened' aria-hidden='true' />
+                                <span><strong>{choice.name}</strong><small>{choice.path}</small></span>
+                                <span className='codicon codicon-arrow-right' aria-hidden='true' />
+                            </button>
+                        ))}
+                    </>
+                )}
+                {recentChoices.length > 0 && (
+                    <>
+                        <div className='lens-agent-window__workspace-picker-label'>Recent</div>
+                        {recentChoices.map(choice => (
+                            <button
+                                type='button'
+                                className='lens-agent-window__workspace-picker-item'
+                                key={choice.uri}
+                                onClick={() => this.openKnownWorkspace(choice.uri)}
+                            >
+                                <span className='codicon codicon-history' aria-hidden='true' />
+                                <span><strong>{choice.name}</strong><small>{choice.path}</small></span>
+                                <span className='codicon codicon-arrow-right' aria-hidden='true' />
+                            </button>
+                        ))}
+                    </>
+                )}
+                {choices.length === 0 && query && (
+                    <div className='lens-agent-window__workspace-picker-empty'>一致するWorkspaceはありません</div>
+                )}
+                <div className='lens-agent-window__workspace-picker-divider' />
+                <button
+                    type='button'
+                    className='lens-agent-window__workspace-picker-item action'
+                    onClick={() => void this.openRepository()}
+                >
+                    <span className='codicon codicon-folder-opened' aria-hidden='true' />
+                    <span><strong>Open Folder…</strong><small>Choose a folder on this computer</small></span>
+                </button>
+            </div>
+        );
+    }
+
+    protected openKnownWorkspace(workspaceUri: string): void {
+        this.workspacePickerVisible = false;
+        this.workspaceSearchQuery = '';
+        this.workspaceService.open(new URI(workspaceUri), { preserveWindow: true });
+    }
+
+    protected repositoryLabel(workspaceUri: string | undefined): string {
+        if (!workspaceUri) {
+            return 'Select repository';
+        }
+        const known = this.repositoryChoices().find(choice => choice.uri === workspaceUri);
+        return known?.name ?? new URI(workspaceUri).path.base ?? 'Repository';
+    }
+
+    protected toggleRepositoryPicker(): void {
+        this.repositoryPickerVisible = !this.repositoryPickerVisible;
+        this.branchPickerVisible = false;
+        this.repositorySearchQuery = '';
+        this.update();
+        if (this.repositoryPickerVisible) {
+            requestAnimationFrame(() => this.repositorySearchInput?.focus());
+        }
+    }
+
+    protected toggleBranchPicker(): void {
+        this.branchPickerVisible = !this.branchPickerVisible;
+        this.repositoryPickerVisible = false;
+        this.repositorySearchQuery = '';
+        this.update();
+    }
+
+    protected closeNewAgentPickers(): void {
+        this.repositoryPickerVisible = false;
+        this.branchPickerVisible = false;
+        this.repositorySearchQuery = '';
+        this.update();
+    }
+
+    protected setRepositorySearchQuery(value: string): void {
+        this.repositorySearchQuery = value;
+        this.update();
+        requestAnimationFrame(() => {
+            this.repositorySearchInput?.focus();
+            this.repositorySearchInput?.setSelectionRange(value.length, value.length);
+        });
+    }
+
+    protected selectRepository(session: WindowAgentSession, workspaceUri: string): void {
+        if (session.hasUserMessage || session.agentSession) {
+            return;
+        }
+        session.workspaceUri = workspaceUri;
+        session.branch = this.gitBranchForWorkspace(workspaceUri) ?? 'main';
+        session.updatedAt = Date.now();
+        this.closeNewAgentPickers();
+        this.persistWindowState();
+    }
+
+    protected async chooseExistingRepository(session: WindowAgentSession): Promise<void> {
+        const folder = await this.fileDialogService.showOpenDialog({
+            title: 'Select Repository',
+            canSelectFiles: false,
+            canSelectFolders: true
+        }, this.workspaceRoot());
+        if (!folder) {
+            return;
+        }
+        session.workspaceUri = folder.toString();
+        session.branch = 'main';
+        session.updatedAt = Date.now();
+        this.repositoryPickerVisible = false;
+        this.repositorySearchQuery = '';
+        this.persistWindowState();
+        this.update();
+        this.workspaceService.open(folder, { preserveWindow: true });
+    }
+
+    protected async openFolderExplorer(session: WindowAgentSession): Promise<void> {
+        this.folderExplorerVisible = true;
+        this.folderExplorerSessionId = session.id;
+        this.folderExplorerError = undefined;
+        this.creatingFolder = false;
+        this.newFolderName = '';
+        this.update();
+        await this.loadFolderExplorer(session.workspaceUri
+            ? new URI(session.workspaceUri).path.fsPath()
+            : this.workspaceRoot()?.resource.path.fsPath());
+    }
+
+    protected async loadFolderExplorer(path?: string): Promise<void> {
+        this.folderExplorerLoading = true;
+        this.folderExplorerError = undefined;
+        this.update();
+        try {
+            this.folderExplorerResult = await this.folderExplorerService.browse(path);
+            this.folderExplorerAddress = this.folderExplorerResult.path;
+        } catch (error) {
+            this.folderExplorerError = `フォルダーを開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
+        } finally {
+            this.folderExplorerLoading = false;
+            this.update();
+        }
+    }
+
+    protected closeFolderExplorer(): void {
+        this.folderExplorerVisible = false;
+        this.folderExplorerSessionId = undefined;
+        this.folderExplorerError = undefined;
+        this.creatingFolder = false;
+        this.update();
+    }
+
+    protected async createFolderInExplorer(): Promise<void> {
+        const parentPath = this.folderExplorerResult?.path;
+        const name = this.newFolderName.trim();
+        if (!parentPath || !name) {
+            return;
+        }
+        this.folderExplorerLoading = true;
+        this.folderExplorerError = undefined;
+        this.update();
+        try {
+            const folderPath = await this.folderExplorerService.create(parentPath, name);
+            this.creatingFolder = false;
+            this.newFolderName = '';
+            await this.loadFolderExplorer(folderPath);
+        } catch (error) {
+            this.folderExplorerLoading = false;
+            this.folderExplorerError = `フォルダーを作成できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            this.update();
+        }
+    }
+
+    protected selectFolderFromExplorer(): void {
+        const session = this.sessions.find(candidate => candidate.id === this.folderExplorerSessionId);
+        const selectedPath = this.folderExplorerResult?.path;
+        if (!session || !selectedPath) {
+            return;
+        }
+        const folder = URI.fromFilePath(selectedPath);
+        session.workspaceUri = folder.toString();
+        session.branch = 'main';
+        session.updatedAt = Date.now();
+        this.repositoryPickerVisible = false;
+        this.repositorySearchQuery = '';
+        this.closeFolderExplorer();
+        this.persistWindowState();
+        this.workspaceService.open(folder, { preserveWindow: true });
+    }
+
     protected async openRepository(): Promise<void> {
+        this.workspacePickerVisible = false;
+        this.workspaceSearchQuery = '';
         const folder = await this.fileDialogService.showOpenDialog({
             title: 'Open Folder',
             canSelectFiles: false,
@@ -657,6 +1009,20 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderHeader(): React.ReactNode {
+        if (this.appPage) {
+            return (
+                <header className='lens-agent-window__header lens-agent-window__app-header'>
+                    <div className='lens-agent-window__context'>
+                        <small>Lens</small>
+                        <strong>{this.appPage === 'settings' ? 'Settings' : 'Customize'}</strong>
+                    </div>
+                    <button type='button' className='lens-agent-window__app-close' onClick={() => this.closeAppPage()}>
+                        <span className='codicon codicon-close' aria-hidden='true' />
+                        <span>Close</span>
+                    </button>
+                </header>
+            );
+        }
         const session = this.selectedSession();
         const activeTab = session?.activeTab ?? 'agent';
         return (
@@ -674,9 +1040,9 @@ export class AgentWindowWidget extends ReactWidget {
                             <span>Code</span>
                         </button>
                     </div>
-                    <strong>{this.codeMode ? 'Code' : session?.title ?? NEW_SESSION_TITLE}</strong>
+                    <strong>{this.codeMode ? 'Code' : session?.hasUserMessage ? session.title : 'New Agent'}</strong>
                 </div>
-                {!this.codeMode && (
+                {!this.codeMode && session?.hasUserMessage && (
                     <nav className='lens-agent-window__tabs' aria-label='Agent と Results の切り替え'>
                         <button
                             type='button'
@@ -702,10 +1068,18 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
+        const newAgent = Boolean(session && !session.hasUserMessage);
         return (
             <section className='lens-agent-window__agent' aria-label='Agent の会話'>
                 <div className='lens-agent-window__messages' aria-live='polite'>
                     <div className='lens-agent-window__messages-inner'>
+                        {newAgent && session?.messages.length === 0 && (
+                            <div className='lens-agent-window__new-agent-empty'>
+                                <span className='codicon codicon-comment-add' aria-hidden='true' />
+                                <strong>What do you want to build?</strong>
+                                <small>Repository、branch、実行場所を選んでからAgentへ依頼します</small>
+                            </div>
+                        )}
                         {(session?.messages ?? []).map(message => (
                             <section
                                 key={message.id}
@@ -730,13 +1104,15 @@ export class AgentWindowWidget extends ReactWidget {
                 )}
                 <section className='lens-agent-window__composer' aria-label='Agent の入力欄'>
                     <textarea
+                        key={session?.id ?? 'no-session'}
                         ref={input => { this.agentComposerInput = input ?? undefined; }}
-                        value={session?.agentDraft ?? ''}
+                        defaultValue={session?.agentDraft ?? ''}
                         placeholder='次の変更内容や質問を入力…'
                         aria-label='Agent へのメッセージ'
                         rows={2}
                         disabled={!session || Boolean(runningTask)}
                         onChange={event => this.setAgentDraft(event.currentTarget.value)}
+                        onCompositionEnd={event => this.setAgentDraft(event.currentTarget.value)}
                         onKeyDown={event => {
                             if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                                 event.preventDefault();
@@ -745,11 +1121,13 @@ export class AgentWindowWidget extends ReactWidget {
                         }}
                     />
                     <div className='lens-agent-window__composer-footer'>
+                        {session && newAgent && this.renderNewAgentContext(session)}
                         <button
+                            ref={button => { this.agentSendButton = button ?? undefined; }}
                             className='lens-agent-window__send'
                             type='button'
                             aria-label='Agent へ送信'
-                            disabled={!session?.agentSession || Boolean(runningTask) || !session.agentDraft.trim()}
+                            disabled={!session?.workspaceUri || Boolean(runningTask) || !session.agentDraft.trim()}
                             onClick={() => void this.sendAgentMessage()}
                         >
                             <span className='codicon codicon-arrow-up' aria-hidden='true' />
@@ -757,6 +1135,391 @@ export class AgentWindowWidget extends ReactWidget {
                     </div>
                 </section>
             </section>
+        );
+    }
+
+    protected renderAppPage(): React.ReactNode {
+        const page = this.appPage ?? 'settings';
+        return (
+            <section className='lens-agent-window__app-page' aria-label={page === 'settings' ? 'Lensの設定' : 'Customize'}>
+                <nav className='lens-agent-window__app-nav' aria-label='Lens preferences'>
+                    <button
+                        type='button'
+                        className={page === 'settings' ? 'active' : ''}
+                        aria-current={page === 'settings' ? 'page' : undefined}
+                        onClick={() => this.openSettings()}
+                    >
+                        <span className='codicon codicon-settings-gear' aria-hidden='true' />
+                        <span>Settings</span>
+                    </button>
+                    <button
+                        type='button'
+                        className={page === 'customize' ? 'active' : ''}
+                        aria-current={page === 'customize' ? 'page' : undefined}
+                        onClick={() => this.openCustomize()}
+                    >
+                        <span className='codicon codicon-tools' aria-hidden='true' />
+                        <span>Customize</span>
+                    </button>
+                </nav>
+                <div className='lens-agent-window__app-page-body'>
+                    {page === 'settings' ? this.renderLensSettings() : this.renderCustomize()}
+                </div>
+            </section>
+        );
+    }
+
+    protected renderFolderExplorer(): React.ReactNode {
+        const result = this.folderExplorerResult;
+        return (
+            <section className='lens-folder-explorer' role='dialog' aria-modal='true' aria-label='フォルダーを選択'>
+                <header className='lens-folder-explorer__header'>
+                    <div>
+                        <span className='codicon codicon-folder-opened' aria-hidden='true' />
+                        <strong>Select workspace folder</strong>
+                    </div>
+                    <button type='button' aria-label='フォルダー選択を閉じる' onClick={() => this.closeFolderExplorer()}>
+                        <span className='codicon codicon-close' aria-hidden='true' />
+                    </button>
+                </header>
+                <div className='lens-folder-explorer__toolbar'>
+                    <button
+                        type='button'
+                        title='一つ上のフォルダーへ'
+                        aria-label='一つ上のフォルダーへ'
+                        disabled={!result?.parentPath || this.folderExplorerLoading}
+                        onClick={() => void this.loadFolderExplorer(result?.parentPath)}
+                    >
+                        <span className='codicon codicon-arrow-up' aria-hidden='true' />
+                    </button>
+                    <label>
+                        <span className='codicon codicon-folder' aria-hidden='true' />
+                        <input
+                            value={this.folderExplorerAddress}
+                            aria-label='フォルダーパス'
+                            onChange={event => {
+                                this.folderExplorerAddress = event.currentTarget.value;
+                                this.update();
+                            }}
+                            onKeyDown={event => {
+                                if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    void this.loadFolderExplorer(this.folderExplorerAddress);
+                                }
+                            }}
+                        />
+                    </label>
+                    <button type='button' title='再読み込み' aria-label='再読み込み' disabled={this.folderExplorerLoading} onClick={() => void this.loadFolderExplorer(result?.path)}>
+                        <span className='codicon codicon-refresh' aria-hidden='true' />
+                    </button>
+                </div>
+                <main className='lens-folder-explorer__body'>
+                    <div className='lens-folder-explorer__column-heading'><span>Name</span><span>Type</span></div>
+                    {this.creatingFolder && (
+                        <div className='lens-folder-explorer__new-folder-row'>
+                            <span className='codicon codicon-folder' aria-hidden='true' />
+                            <input
+                                autoFocus
+                                value={this.newFolderName}
+                                placeholder='New folder'
+                                aria-label='新しいフォルダー名'
+                                onChange={event => {
+                                    this.newFolderName = event.currentTarget.value;
+                                    this.update();
+                                }}
+                                onKeyDown={event => {
+                                    if (event.key === 'Enter') {
+                                        event.preventDefault();
+                                        void this.createFolderInExplorer();
+                                    } else if (event.key === 'Escape') {
+                                        this.creatingFolder = false;
+                                        this.newFolderName = '';
+                                        this.update();
+                                    }
+                                }}
+                            />
+                            <button type='button' disabled={!this.newFolderName.trim()} onClick={() => void this.createFolderInExplorer()}>Create</button>
+                        </div>
+                    )}
+                    {this.folderExplorerLoading && <div className='lens-folder-explorer__state'>Loading folders…</div>}
+                    {!this.folderExplorerLoading && this.folderExplorerError && <div className='lens-folder-explorer__state error' role='alert'>{this.folderExplorerError}</div>}
+                    {!this.folderExplorerLoading && !this.folderExplorerError && result?.directories.map(directory => (
+                        <button
+                            type='button'
+                            className='lens-folder-explorer__folder-row'
+                            key={directory.path}
+                            onDoubleClick={() => void this.loadFolderExplorer(directory.path)}
+                            onClick={() => void this.loadFolderExplorer(directory.path)}
+                        >
+                            <span><span className='codicon codicon-folder' aria-hidden='true' /><strong>{directory.name}</strong></span>
+                            <small>File folder</small>
+                            <span className='codicon codicon-chevron-right' aria-hidden='true' />
+                        </button>
+                    ))}
+                    {!this.folderExplorerLoading && !this.folderExplorerError && result?.directories.length === 0 && (
+                        <div className='lens-folder-explorer__state'>このフォルダーにサブフォルダーはありません。</div>
+                    )}
+                </main>
+                <footer className='lens-folder-explorer__footer'>
+                    <button
+                        type='button'
+                        className='lens-folder-explorer__new-folder'
+                        onClick={() => {
+                            this.creatingFolder = true;
+                            this.newFolderName = '';
+                            this.update();
+                        }}
+                    >
+                        <span className='codicon codicon-new-folder' aria-hidden='true' />
+                        New folder
+                    </button>
+                    <span className='lens-folder-explorer__selection'>{result?.path ?? ''}</span>
+                    <button type='button' onClick={() => this.closeFolderExplorer()}>Cancel</button>
+                    <button type='button' className='primary' disabled={!result || this.folderExplorerLoading} onClick={() => this.selectFolderFromExplorer()}>Select Folder</button>
+                </footer>
+            </section>
+        );
+    }
+
+    protected renderLensSettings(): React.ReactNode {
+        return (
+            <div className='lens-agent-window__settings-page'>
+                <div className='lens-agent-window__page-heading'>
+                    <span className='codicon codicon-settings-gear' aria-hidden='true' />
+                    <div><h1>Lens Settings</h1><p>Lens固有の動作とAgent環境を確認します。</p></div>
+                </div>
+                <section className='lens-agent-window__settings-section'>
+                    <h2>Workspace</h2>
+                    <div className='lens-agent-window__setting-row'>
+                        <div><strong>Open workspace</strong><small>サイドバー内のpickerでWorkspaceを選び、その後フォルダー選択を開きます。</small></div>
+                        <span className='lens-agent-window__status-badge'>Lens UI</span>
+                    </div>
+                </section>
+                <section className='lens-agent-window__settings-section'>
+                    <h2>Agent runtime</h2>
+                    <div className='lens-agent-window__setting-row'>
+                        <div><strong>Execution target</strong><small>Agentは現在のWorkspaceを対象に、このコンピューター上で実行されます。</small></div>
+                        <span className='lens-agent-window__status-badge active'>Local</span>
+                    </div>
+                </section>
+                <section className='lens-agent-window__settings-section'>
+                    <h2>Customization</h2>
+                    <div className='lens-agent-window__setting-row'>
+                        <div><strong>Skills and Plugins</strong><small>利用中の機能を確認し、アプリ所有のSkillを有効・無効にします。</small></div>
+                        <button type='button' className='lens-agent-window__secondary-action' onClick={() => this.openCustomize()}>
+                            Open Customize
+                        </button>
+                    </div>
+                </section>
+            </div>
+        );
+    }
+
+    protected renderCustomize(): React.ReactNode {
+        const resultsEnabled = this.customizationService.isSkillEnabled('results');
+        return (
+            <div className='lens-agent-window__customize-page'>
+                <div className='lens-agent-window__page-heading'>
+                    <span className='codicon codicon-tools' aria-hidden='true' />
+                    <div><h1>Customize Lens</h1><p>SkillsとPluginsを一か所で管理します。</p></div>
+                </div>
+                <div className='lens-agent-window__customize-tabs' role='tablist' aria-label='Customize categories'>
+                    <button type='button' role='tab' aria-selected={this.customizeTab === 'skills'} className={this.customizeTab === 'skills' ? 'active' : ''} onClick={() => this.selectCustomizeTab('skills')}>Skills</button>
+                    <button type='button' role='tab' aria-selected={this.customizeTab === 'plugins'} className={this.customizeTab === 'plugins' ? 'active' : ''} onClick={() => this.selectCustomizeTab('plugins')}>Plugins</button>
+                </div>
+                {this.customizeTab === 'skills' ? (
+                    <div className='lens-agent-window__customize-list'>
+                        <article className='lens-agent-window__customize-card'>
+                            <div className='lens-agent-window__customize-icon'><span className='codicon codicon-preview' aria-hidden='true' /></div>
+                            <div><div className='lens-agent-window__customize-title'><strong>Results</strong><span>Built-in</span></div><p>Task完了後に変更内容からResults文書を生成します。</p></div>
+                            <label className='lens-agent-window__switch'>
+                                <input type='checkbox' checked={resultsEnabled} aria-label='Results skillを有効化' onChange={event => this.customizationService.setSkillEnabled('results', event.currentTarget.checked)} />
+                                <span aria-hidden='true' />
+                            </label>
+                        </article>
+                    </div>
+                ) : (
+                    <div className='lens-agent-window__customize-list'>
+                        <article className='lens-agent-window__customize-card'>
+                            <div className='lens-agent-window__customize-icon'><span className='codicon codicon-extensions' aria-hidden='true' /></div>
+                            <div><div className='lens-agent-window__customize-title'><strong>VS Code built-in extensions</strong><span>Bundled</span></div><p>Editor、Git、検索などCodeモードの基盤Pluginです。アプリと一緒に管理されます。</p></div>
+                            <span className='lens-agent-window__status-badge active'>Active</span>
+                        </article>
+                        <section className='lens-agent-window__plugins-manager' aria-label='Plugin manager'>
+                            <div className='lens-agent-window__plugins-manager-heading'>
+                                <strong>Browse and manage Plugins</strong>
+                                <small>Open VSXから検索・インストールし、インストール済みPluginを管理します。</small>
+                            </div>
+                            <div className='lens-agent-window__plugins-host' ref={this.setPluginsHost} />
+                        </section>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    protected selectCustomizeTab(tab: CustomizeTab): void {
+        if (tab !== 'plugins') {
+            this.detachPluginsWidget();
+        }
+        this.customizeTab = tab;
+        this.update();
+        if (tab === 'plugins') {
+            requestAnimationFrame(() => void this.ensurePluginsWidget());
+        }
+    }
+
+    protected readonly setPluginsHost = (host: HTMLDivElement | null): void => {
+        if (!host) {
+            this.pluginsResizeObserver?.disconnect();
+            this.pluginsResizeObserver = undefined;
+            this.detachPluginsWidget();
+            this.pluginsHost = undefined;
+            return;
+        }
+        this.pluginsHost = host;
+        this.pluginsResizeObserver = new ResizeObserver(() => this.resizeCodeWidget(this.pluginsWidget, host));
+        this.pluginsResizeObserver.observe(host);
+        void this.ensurePluginsWidget();
+    };
+
+    protected async ensurePluginsWidget(): Promise<void> {
+        if (!this.pluginsWidget) {
+            this.pluginsWidget = await this.widgetManager.getOrCreateWidget(AgentWindowWidget.PLUGINS_WIDGET_FACTORY_ID);
+        }
+        if (this.appPage === 'customize' && this.customizeTab === 'plugins') {
+            this.attachCodeWidget(this.pluginsWidget, this.pluginsHost);
+        }
+    }
+
+    protected detachPluginsWidget(): void {
+        const parent = this.pluginsWidget?.node.parentElement;
+        if (this.pluginsWidget?.isAttached && parent === this.pluginsHost) {
+            Widget.detach(this.pluginsWidget);
+        }
+    }
+
+    protected renderNewAgentContext(session: WindowAgentSession): React.ReactNode {
+        const repositoryChoices = this.repositoryChoices();
+        const query = this.repositorySearchQuery.trim().toLocaleLowerCase();
+        const filteredChoices = repositoryChoices.filter(choice => !query
+            || choice.name.toLocaleLowerCase().includes(query)
+            || choice.path.toLocaleLowerCase().includes(query));
+        const branch = session.branch ?? this.gitBranchForWorkspace(session.workspaceUri) ?? 'main';
+        return (
+            <div className='lens-agent-window__new-agent-context'>
+                <button
+                    type='button'
+                    className='lens-agent-window__context-pill primary'
+                    aria-expanded={this.repositoryPickerVisible}
+                    aria-controls='lens-agent-window-repository-picker'
+                    onClick={() => this.toggleRepositoryPicker()}
+                >
+                    <span className='codicon codicon-folder' aria-hidden='true' />
+                    <span>{this.repositoryLabel(session.workspaceUri)}</span>
+                    <span className='codicon codicon-chevron-down' aria-hidden='true' />
+                </button>
+                <button
+                    type='button'
+                    className='lens-agent-window__context-pill'
+                    aria-expanded={this.branchPickerVisible}
+                    aria-controls='lens-agent-window-branch-picker'
+                    onClick={() => this.toggleBranchPicker()}
+                >
+                    <span className='codicon codicon-git-branch' aria-hidden='true' />
+                    <span>{branch}</span>
+                    <span className='codicon codicon-chevron-down' aria-hidden='true' />
+                </button>
+                <span className='lens-agent-window__context-pill static' title='現在利用できる実行先はLocalのみです'>
+                    <span className='codicon codicon-device-desktop' aria-hidden='true' />
+                    <span>Run on · This Computer</span>
+                </span>
+                {this.repositoryPickerVisible && (
+                    <div
+                        className='lens-agent-window__repository-picker'
+                        id='lens-agent-window-repository-picker'
+                        role='dialog'
+                        aria-label='Repositoryを選択'
+                    >
+                        <label className='lens-agent-window__repository-search'>
+                            <span className='codicon codicon-search' aria-hidden='true' />
+                            <input
+                                ref={input => { this.repositorySearchInput = input ?? undefined; }}
+                                value={this.repositorySearchQuery}
+                                placeholder='Search projects and repositories'
+                                aria-label='Repositoryを検索'
+                                onChange={event => this.setRepositorySearchQuery(event.currentTarget.value)}
+                                onKeyDown={event => {
+                                    if (event.key === 'Escape') {
+                                        this.closeNewAgentPickers();
+                                    }
+                                }}
+                            />
+                        </label>
+                        <div className='lens-agent-window__repository-group-label'>No Repo</div>
+                        <button type='button' className='lens-agent-window__repository-option' disabled title='Local実行にはRepositoryが必要です'>
+                            <span className='codicon codicon-circle-slash' aria-hidden='true' />
+                            <span><strong>No Repo</strong><small>Local runtimeでは未対応</small></span>
+                        </button>
+                        {repositoryChoices.length > 0 && (
+                            <>
+                                <div className='lens-agent-window__repository-group-label'>Recents</div>
+                                {repositoryChoices.slice(0, 2).map(choice => this.renderRepositoryChoice(session, choice, 'codicon-history'))}
+                            </>
+                        )}
+                        <div className='lens-agent-window__repository-group-label'>On This PC</div>
+                        {filteredChoices.map(choice => this.renderRepositoryChoice(session, choice, 'codicon-device-desktop'))}
+                        {!filteredChoices.length && (
+                            <div className='lens-agent-window__repository-empty'>一致するRepositoryはありません</div>
+                        )}
+                        <div className='lens-agent-window__repository-footer'>
+                            <button type='button' onClick={() => void this.chooseExistingRepository(session)}>
+                                <span className='codicon codicon-folder-opened' aria-hidden='true' />
+                                Use Existing…
+                            </button>
+                            <button type='button' onClick={() => void this.openFolderExplorer(session)}>
+                                <span className='codicon codicon-new-folder' aria-hidden='true' />
+                                New Folder
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {this.branchPickerVisible && (
+                    <div
+                        className='lens-agent-window__branch-picker'
+                        id='lens-agent-window-branch-picker'
+                        role='dialog'
+                        aria-label='Branchを選択'
+                    >
+                        <div className='lens-agent-window__repository-group-label'>Current branch</div>
+                        <button type='button' className='lens-agent-window__repository-option selected' onClick={() => this.closeNewAgentPickers()}>
+                            <span className='codicon codicon-git-branch' aria-hidden='true' />
+                            <span><strong>{branch}</strong><small>Local checkout</small></span>
+                            <span className='codicon codicon-check' aria-hidden='true' />
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    protected renderRepositoryChoice(
+        session: WindowAgentSession,
+        choice: { uri: string; name: string; path: string },
+        iconClass: string
+    ): React.ReactNode {
+        const selected = session.workspaceUri === choice.uri;
+        return (
+            <button
+                type='button'
+                key={`${iconClass}-${choice.uri}`}
+                className={`lens-agent-window__repository-option${selected ? ' selected' : ''}`}
+                onClick={() => this.selectRepository(session, choice.uri)}
+            >
+                <span className={`codicon ${iconClass}`} aria-hidden='true' />
+                <span><strong>{choice.name}</strong><small>{choice.path}</small></span>
+                {selected && <span className='codicon codicon-check' aria-hidden='true' />}
+            </button>
         );
     }
 
@@ -1071,11 +1834,27 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected openSettings(): void {
-        if (!this.codeMode) {
-            this.codeMode = true;
-            this.update();
+        this.detachCodeWidgets();
+        this.detachPluginsWidget();
+        this.codeMode = false;
+        this.appPage = 'settings';
+        this.update();
+    }
+
+    protected openCustomize(): void {
+        this.detachCodeWidgets();
+        this.codeMode = false;
+        this.appPage = 'customize';
+        this.update();
+        if (this.customizeTab === 'plugins') {
+            requestAnimationFrame(() => void this.ensurePluginsWidget());
         }
-        requestAnimationFrame(() => void this.openCodeSettings());
+    }
+
+    protected closeAppPage(): void {
+        this.detachPluginsWidget();
+        this.appPage = undefined;
+        this.update();
     }
 
     protected onBeforeDetach(message: Message): void {
@@ -1083,7 +1862,9 @@ export class AgentWindowWidget extends ReactWidget {
         this.railResizeCleanup = undefined;
         this.codeSidebarResizeObserver?.disconnect();
         this.codeEditorResizeObserver?.disconnect();
+        this.pluginsResizeObserver?.disconnect();
         this.detachCodeWidgets();
+        this.detachPluginsWidget();
         super.onBeforeDetach(message);
     }
 
@@ -1101,9 +1882,13 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         this.selectedSessionId = sessionId;
+        this.detachPluginsWidget();
+        this.appPage = undefined;
         session.updatedAt = Date.now();
         this.openSessionMenuId = undefined;
-        void this.ensureProviderSession(session);
+        if (session.hasUserMessage) {
+            void this.ensureProviderSession(session);
+        }
         this.persistWindowState();
         this.update();
     }
@@ -1117,24 +1902,28 @@ export class AgentWindowWidget extends ReactWidget {
         return this.workspaceRoot()?.resource.path.base || 'ワークスペースなし';
     }
 
-    protected workspaceContextLabel(): string {
-        const workspace = this.workspaceFolderName();
-        const branch = this.currentGitBranch();
+    protected workspaceContextLabel(session = this.selectedSession()): string {
+        const workspace = session?.workspaceUri ? this.repositoryLabel(session.workspaceUri) : this.workspaceFolderName();
+        const branch = session?.branch ?? this.gitBranchForWorkspace(session?.workspaceUri) ?? this.currentGitBranch();
         return branch ? `${workspace} / ${branch}` : workspace;
     }
 
-    protected currentGitBranch(): string | undefined {
-        const root = this.workspaceRoot();
-        const repository = root ? this.scmService.findRepository(root.resource) : undefined;
+    protected gitBranchForWorkspace(workspaceUri: string | undefined): string | undefined {
+        if (!workspaceUri) {
+            return undefined;
+        }
+        const repository = this.scmService.findRepository(new URI(workspaceUri));
         const provider = repository?.provider;
         if (provider?.id.toLowerCase() !== 'git') {
             return undefined;
         }
         const ref = provider.historyProvider?.currentHistoryItemRef;
-        if (!ref?.id.startsWith('refs/heads/')) {
-            return undefined;
-        }
-        return ref.name.trim() || undefined;
+        return ref?.id.startsWith('refs/heads/') ? ref.name.trim() || undefined : undefined;
+    }
+
+    protected currentGitBranch(): string | undefined {
+        const root = this.workspaceRoot();
+        return this.gitBranchForWorkspace(root?.resource.toString());
     }
 
     protected watchScmProvider(provider: ScmProvider): void {
@@ -1165,18 +1954,15 @@ export class AgentWindowWidget extends ReactWidget {
             createdAt: now,
             updatedAt: now,
             workspaceUri: this.workspaceRoot()?.resource.toString(),
+            branch: this.currentGitBranch() ?? 'main',
+            runTarget: 'local',
             title: NEW_SESSION_TITLE,
             hasUserMessage: false,
             pinned: false,
             archived: false,
             activeTab: 'agent',
             agentDraft: '',
-            messages: [{
-                id: `provider-pending-${id}`,
-                role: 'agent',
-                content: '利用できるエージェントを準備しています…',
-                complete: true
-            }],
+            messages: [],
             resultsDrafts: new Map<string, string>(),
             resultsNotices: new Map<string, string>()
         };
@@ -1185,18 +1971,21 @@ export class AgentWindowWidget extends ReactWidget {
         this.openSessionMenuId = undefined;
         this.persistWindowState();
         this.update();
-        await this.ensureProviderSession(session, true);
     }
 
-    protected async ensureProviderSession(session: WindowAgentSession, replaceStatus = false): Promise<void> {
+    protected async ensureProviderSession(
+        session: WindowAgentSession,
+        replaceStatus = false,
+        silent = false
+    ): Promise<boolean> {
         if (session.agentSession) {
-            return;
+            return true;
         }
         try {
             session.agentSession = await this.agentProvider.createSession({
-                workspaceUri: session.workspaceUri ?? this.workspaceRoot()?.resource.toString()
+                workspaceUri: session.workspaceUri
             });
-            if (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-'))) {
+            if (!silent && (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-')))) {
                 session.messages = [{
                     id: `provider-ready-${session.id}`,
                     role: 'agent',
@@ -1204,6 +1993,9 @@ export class AgentWindowWidget extends ReactWidget {
                     complete: true
                 }];
             }
+            this.persistWindowState();
+            this.update();
+            return true;
         } catch (error) {
             if (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-'))) {
                 session.messages = [{
@@ -1213,9 +2005,10 @@ export class AgentWindowWidget extends ReactWidget {
                     complete: true
                 }];
             }
+            this.persistWindowState();
+            this.update();
+            return false;
         }
-        this.persistWindowState();
-        this.update();
     }
 
     protected async restoreWindowState(): Promise<boolean> {
@@ -1236,7 +2029,11 @@ export class AgentWindowWidget extends ReactWidget {
                     id: candidate.id,
                     createdAt,
                     updatedAt: Number(candidate.updatedAt) || createdAt,
-                    workspaceUri: typeof candidate.workspaceUri === 'string' ? candidate.workspaceUri : undefined,
+                    workspaceUri: typeof candidate.workspaceUri === 'string'
+                        ? candidate.workspaceUri
+                        : this.workspaceRoot()?.resource.toString(),
+                    branch: typeof candidate.branch === 'string' ? candidate.branch : this.currentGitBranch() ?? 'main',
+                    runTarget: 'local',
                     title: candidate.title || NEW_SESSION_TITLE,
                     hasUserMessage: Boolean(candidate.hasUserMessage),
                     pinned: Boolean(candidate.pinned),
@@ -1307,16 +2104,27 @@ export class AgentWindowWidget extends ReactWidget {
         }
         this.selectedSessionId = selected.id;
         this.update();
-        await this.ensureProviderSession(selected);
+        if (selected.hasUserMessage) {
+            await this.ensureProviderSession(selected);
+        }
     }
 
     protected async sendAgentMessage(): Promise<void> {
         const session = this.selectedSession();
         const content = session?.agentDraft.trim() ?? '';
-        if (!session?.agentSession || !content || this.runningTask(session)) {
+        if (!session || !session.workspaceUri || !content || this.runningTask(session)) {
+            return;
+        }
+        if (!session.agentSession && !await this.ensureProviderSession(session, false, true)) {
+            return;
+        }
+        if (!session.agentSession) {
             return;
         }
         session.agentDraft = '';
+        if (this.agentComposerInput) {
+            this.agentComposerInput.value = '';
+        }
         session.messages.push({ id: `user-${Date.now()}`, role: 'user', content, complete: true });
         session.updatedAt = Date.now();
         if (!session.hasUserMessage) {
@@ -1395,6 +2203,8 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected toggleCodeMode(): void {
+        this.detachPluginsWidget();
+        this.appPage = undefined;
         if (this.codeMode) {
             this.detachCodeWidgets();
             this.codeMode = false;
@@ -1405,6 +2215,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected selectTab(tab: AgentWindowTab): void {
+        this.appPage = undefined;
         const session = this.selectedSession();
         if (session) {
             session.activeTab = tab;
@@ -1415,16 +2226,20 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async newChat(): Promise<void> {
         this.detachCodeWidgets();
+        this.detachPluginsWidget();
         this.codeMode = false;
+        this.appPage = undefined;
         this.sessionSearchVisible = false;
         this.sessionSearchQuery = '';
+        this.repositoryPickerVisible = false;
+        this.branchPickerVisible = false;
+        this.repositorySearchQuery = '';
         const current = this.selectedSession();
         if (current && !current.archived && !current.hasUserMessage) {
             current.activeTab = 'agent';
             this.persistWindowState();
             this.update();
             requestAnimationFrame(() => this.agentComposerInput?.focus());
-            void this.ensureProviderSession(current);
             return;
         }
         const creation = this.createSession();
@@ -1439,7 +2254,9 @@ export class AgentWindowWidget extends ReactWidget {
             session.agentDraft = value;
             this.persistWindowState();
         }
-        this.update();
+        if (this.agentSendButton) {
+            this.agentSendButton.disabled = !session?.workspaceUri || Boolean(this.runningTask(session)) || !value.trim();
+        }
     }
 
     protected selectResultsTask(taskId: string): void {

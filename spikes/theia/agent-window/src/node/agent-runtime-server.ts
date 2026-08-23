@@ -1,5 +1,5 @@
 import { ChildProcessByStdio, execFile, spawn } from 'node:child_process';
-import { lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { Readable } from 'node:stream';
@@ -9,6 +9,9 @@ import {
     AgentRuntimeServer,
     CliDetectionReport,
     CodexExecutionRequest,
+    CreateFolderRequest,
+    FolderBrowserRequest,
+    FolderBrowserResult,
     GitChangeSetCapture,
     GitChangeSetRequest,
     GitSnapshotCapture,
@@ -60,6 +63,38 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
 
     detectClis(): Promise<CliDetectionReport> {
         return this.cliDetector.detect();
+    }
+
+    async browseFolders({ path }: FolderBrowserRequest): Promise<FolderBrowserResult> {
+        const folderPath = resolve(path || process.cwd());
+        const folderStat = await stat(folderPath);
+        if (!folderStat.isDirectory()) {
+            throw new Error('The selected path is not a folder.');
+        }
+        const entries = await readdir(folderPath, { withFileTypes: true });
+        const parent = dirname(folderPath);
+        return {
+            path: folderPath,
+            parentPath: parent === folderPath ? undefined : parent,
+            directories: entries
+                .filter(entry => entry.isDirectory())
+                .map(entry => ({ name: entry.name, path: join(folderPath, entry.name) }))
+                .sort((left, right) => left.name.localeCompare(right.name))
+        };
+    }
+
+    async createFolder({ parentPath, name }: CreateFolderRequest): Promise<string> {
+        const normalizedName = name.trim();
+        if (!normalizedName || normalizedName === '.' || normalizedName === '..' || /[\\/:*?"<>|]/.test(normalizedName)) {
+            throw new Error('フォルダー名に使用できない文字が含まれています。');
+        }
+        const parent = resolve(parentPath);
+        const folderPath = resolve(parent, normalizedName);
+        if (dirname(folderPath) !== parent) {
+            throw new Error('フォルダーは現在の場所の直下に作成してください。');
+        }
+        await mkdir(folderPath);
+        return folderPath;
     }
 
     async captureGitSnapshot({ workspacePath }: GitSnapshotRequest): Promise<GitSnapshotCapture> {

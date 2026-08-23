@@ -31,6 +31,7 @@ const firstCompletion = await read('../../docs/FIRST-COMPLETION.md');
 
 assert.equal(rootPackage.devDependencies['@theia/cli'], '1.73.1');
 assert.equal(appPackage.theia.target, 'browser');
+assert.ok(appPackage.scripts.start.includes('theia start ../../..'), 'Browser app must open the Lens repository root');
 assert.ok(rootPackage.workspaces.includes('electron-app'));
 assert.equal(electronPackage.theia.target, 'electron');
 assert.equal(electronPackage.dependencies['@theia/electron'], '1.73.1');
@@ -227,8 +228,9 @@ for (const marker of [
     "const NEW_SESSION_TITLE = '新しい会話'",
     'interface WindowAgentSession',
     'protected readonly sessions: WindowAgentSession[] = []',
+    'this.filteredSessions(false).filter(session => session.hasUserMessage)',
     'const activeTab = session?.activeTab ?? \'agent\'',
-    "data-mode={this.codeMode ? 'code' : activeTab}",
+    "data-mode={this.appPage ?? (this.codeMode ? 'code' : activeTab)}",
     "data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}",
     '{!this.codeMode && this.renderRail()}',
     'pinnedSessions.map(session => this.renderSessionRow(session))',
@@ -244,7 +246,7 @@ for (const marker of [
     'session.activeTab = tab',
     'lens-agent-window__code-control',
     'aria-pressed={this.codeMode}',
-    '{!this.codeMode && (',
+    '{!this.codeMode && session?.hasUserMessage && (',
     "aria-label='Agent と Results の切り替え'",
     "<span className='lens-agent-window__rail-action-label'>New Chat</span>",
     "aria-label='Results 画面'",
@@ -283,9 +285,19 @@ for (const marker of [
     'widget.editor.refresh()',
     'Widget.attach(widget, host)',
     'Widget.detach(widget)',
-    'this.widgetManager.getOrCreateWidget(AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID)',
-    'protected async openCodeSettings(): Promise<void>',
-    'protected openSettings(): void'
+    'protected openSettings(): void',
+    "this.appPage = 'settings'",
+    'protected openCustomize(): void',
+    "this.appPage = 'customize'",
+    'protected renderAppPage(): React.ReactNode',
+    'protected renderLensSettings(): React.ReactNode',
+    'protected renderCustomize(): React.ReactNode',
+    "static readonly PLUGINS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container'",
+    'protected async ensurePluginsWidget(): Promise<void>',
+    "className='lens-agent-window__plugins-host'",
+    "aria-label='Results skillを有効化'",
+    'this.customizationService.setSkillEnabled',
+    'onCompositionEnd={event => this.setAgentDraft(event.currentTarget.value)}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
@@ -335,17 +347,32 @@ for (const marker of [
     'protected async persistWindowState(): Promise<void>',
     'protected async restoreWindowState(): Promise<boolean>',
     'protected async openRepository(): Promise<void>',
+    'protected renderWorkspacePicker(): React.ReactNode',
+    "aria-label='Workspaceを開く'",
+    "aria-label='Workspaceを検索'",
     'this.fileDialogService.showOpenDialog',
     'this.workspaceService.open(folder, { preserveWindow: true })',
+    "runTarget: 'local'",
+    "className='lens-agent-window__new-agent-context'",
+    "aria-label='Repositoryを選択'",
+    "aria-label='Repositoryを検索'",
+    '<span>Run on · This Computer</span>',
+    'protected repositoryChoices()',
+    'protected selectRepository(session: WindowAgentSession, workspaceUri: string): void',
+    'protected async chooseExistingRepository(session: WindowAgentSession): Promise<void>',
+    'protected async openFolderExplorer(session: WindowAgentSession): Promise<void>',
+    'this.folderExplorerService.browse',
+    'protected renderFolderExplorer(): React.ReactNode',
+    "aria-label='フォルダーを選択'",
+    'await this.ensureProviderSession(session, false, true)',
     'onClick={() => this.openSettings()}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent rail is missing ${marker}`);
 }
 assert.ok(!railSource.includes('<small>現在</small>'), 'Selected sessions must use quiet age metadata, not a current badge');
-assert.equal(
-    agentWidget.match(/onClick=\{\(\) => this\.openSettings\(\)\}/g)?.length,
-    2,
-    'Both Settings gears must open the shared settings route'
+assert.ok(
+    (agentWidget.match(/onClick=\{\(\) => this\.openSettings\(\)\}/g)?.length ?? 0) >= 2,
+    'Settings controls must open the Lens-owned settings page'
 );
 assert.ok(!agentWidget.includes('lens-agent-window__composer-tools'), 'Deferred composer tools must not be shown');
 assert.ok(!agentWidget.includes('protected activeTab:'), 'Agent / Results selection must belong to each session');
@@ -409,6 +436,7 @@ for (const marker of [
     ".lens-agent-window__rail[data-collapsed='true']",
     '.lens-agent-window__session-search',
     '.lens-agent-window__workspace-group',
+    '.lens-agent-window__workspace-picker',
     '.lens-agent-window__session-meta',
     '.lens-agent-window__session-menu',
     '.lens-agent-window__session-rename',
@@ -419,7 +447,17 @@ for (const marker of [
     '.lens-agent-window__code-sidebar-host',
     '.lens-agent-window__code-editor-host',
     '.lens-agent-window__code-footer',
+    '.lens-agent-window__app-page',
+    '.lens-agent-window__app-nav',
+    '.lens-agent-window__customize-card',
+    '.lens-agent-window__plugins-manager',
+    '.lens-agent-window__plugins-host',
+    '.lens-agent-window__switch',
     '.lens-agent-window__composer',
+    '.lens-agent-window__new-agent-empty',
+    '.lens-agent-window__new-agent-context',
+    '.lens-agent-window__repository-picker',
+    '.lens-agent-window__context-pill',
     'align-self: end',
     '.lens-results__main',
     'grid-template-rows: minmax(0, 1fr) auto auto',

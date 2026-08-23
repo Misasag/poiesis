@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import puppeteer from 'puppeteer-core';
 
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
+const uiUrl = process.env.THEIA_SMOKE_UI_URL ?? 'http://127.0.0.1:3000';
 const browserCandidates = [
     process.env.CHROME_PATH,
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -28,14 +29,15 @@ const browser = await puppeteer.launch({
 try {
     const page = await browser.newPage();
     page.setDefaultTimeout(uiTimeout);
-    await page.goto('http://127.0.0.1:3000', { waitUntil: 'domcontentloaded', timeout: uiTimeout });
+    await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout: uiTimeout });
     await page.waitForSelector('#lens-window-host .lens-agent-window__content', { timeout: uiTimeout });
     await page.waitForSelector('.lens-agent-window__agent');
     await page.waitForSelector('.lens-agent-window__rail');
 
     const initial = await page.evaluate(readState);
     assert(initial.mode === 'agent', `Expected Agent mode, got ${initial.mode}`);
-    assert(initial.activeSessionTab === 'Agent', `Expected Agent tab, got ${initial.activeSessionTab}`);
+    assert(initial.activeSessionTab === 'Agent' || initial.headerTitle === 'New Agent',
+        `Expected Agent or New Agent state, got ${initial.activeSessionTab ?? initial.headerTitle}`);
     assert(initial.agentComposerVisible, 'Agent Composer is missing');
     assert(initial.sessionRailVisible, 'Session rail is missing');
     assert(!initial.legacyChangesVisible, 'Historical Changes UI is still registered');
@@ -47,6 +49,17 @@ try {
     await page.waitForFunction(expected =>
         document.querySelectorAll('.lens-agent-window__session-row[data-session-archived="false"]').length === expected
         && document.activeElement?.getAttribute('aria-label') === 'Agent へのメッセージ', {}, blankSessionCount);
+    await page.focus('[aria-label="Agent へのメッセージ"]');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('A');
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Backspace');
+    await insertComposedText(page, 'あ');
+    const firstJapaneseInput = await page.$eval('[aria-label="Agent へのメッセージ"]', input => input.value);
+    assert(firstJapaneseInput === 'あ', `Composer duplicated the first Japanese input: ${JSON.stringify(firstJapaneseInput)}`);
+    await insertComposedText(page, 'ああ');
+    const repeatedJapaneseInput = await page.$eval('[aria-label="Agent へのメッセージ"]', input => input.value);
+    assert(repeatedJapaneseInput === 'ああ', `Composer duplicated repeated Japanese input: ${JSON.stringify(repeatedJapaneseInput)}`);
 
     await page.evaluate(() => {
         const now = Date.now();
@@ -120,8 +133,42 @@ try {
     const activeCountBeforeNewChat = await page.$$eval('.lens-agent-window__session-row[data-session-archived="false"]', rows => rows.length);
     await click(page, '.lens-agent-window__rail-action', 'New Chat');
     await page.waitForFunction(expected =>
-        document.querySelectorAll('.lens-agent-window__session-row[data-session-archived="false"]').length === expected + 1
+        document.querySelectorAll('.lens-agent-window__session-row[data-session-archived="false"]').length === expected
         && document.activeElement?.getAttribute('aria-label') === 'Agent へのメッセージ', {}, activeCountBeforeNewChat);
+    await page.waitForSelector('.lens-agent-window__new-agent-empty');
+    await page.waitForSelector('.lens-agent-window__new-agent-context');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__context > strong')?.textContent === 'New Agent');
+    const newAgentContext = await page.evaluate(() => ({
+        repository: document.querySelector('.lens-agent-window__context-pill.primary span:not(.codicon)')?.textContent,
+        branch: document.querySelectorAll('.lens-agent-window__context-pill')[1]?.textContent?.trim(),
+        runOn: document.querySelector('.lens-agent-window__context-pill.static')?.textContent?.trim(),
+        resultsTabVisible: [...document.querySelectorAll('.lens-agent-window__tabs button')]
+            .some(button => button.textContent?.trim() === 'Results')
+    }));
+    assert(newAgentContext.repository && newAgentContext.repository !== 'Select repository', 'New Agent must inherit an explicit repository');
+    assert(newAgentContext.branch, 'New Agent branch picker is missing');
+    assert(newAgentContext.runOn === 'Run on · This Computer', `Unexpected run target: ${newAgentContext.runOn}`);
+    assert(!newAgentContext.resultsTabVisible, 'New Agent must not expose Results before the first run');
+
+    await page.click('.lens-agent-window__context-pill.primary');
+    await page.waitForSelector('[aria-label="Repositoryを選択"]');
+    await page.waitForFunction(() => {
+        const labels = [...document.querySelectorAll('.lens-agent-window__repository-group-label')]
+            .map(label => label.textContent?.trim());
+        return labels.includes('No Repo') && labels.includes('Recents') && labels.includes('On This PC');
+    });
+    await page.type('[aria-label="Repositoryを検索"]', '__no_matching_repository__');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__repository-empty')?.textContent?.includes('一致するRepository'));
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('[aria-label="Repositoryを選択"]'));
+    await page.click('.lens-agent-window__context-pill.primary');
+    await page.waitForSelector('[aria-label="Repositoryを選択"]');
+    await click(page, '.lens-agent-window__repository-footer button', 'New Folder');
+    await page.waitForSelector('[aria-label="フォルダーを選択"]');
+    await page.waitForSelector('[aria-label="フォルダーパス"]');
+    await page.waitForFunction(() => document.querySelector('[aria-label="フォルダーパス"]')?.value?.length > 0);
+    await page.click('[aria-label="フォルダー選択を閉じる"]');
+    await page.waitForFunction(() => !document.querySelector('[aria-label="フォルダーを選択"]'));
 
     const resizedRailWidth = await page.$eval('.lens-agent-window__rail', element => element.getBoundingClientRect().width);
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -136,10 +183,22 @@ try {
         archivedCount: document.querySelectorAll('.lens-agent-window__session-row[data-session-archived="true"]').length
     }));
 
+    await page.click('.lens-agent-window__repository-open');
+    await page.waitForSelector('[aria-label="Workspaceを開く"]');
+    await page.waitForSelector('[aria-label="Workspaceを検索"]');
+    await page.type('[aria-label="Workspaceを検索"]', '__no_matching_workspace__');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__workspace-picker-empty')?.textContent?.includes('一致するWorkspace'));
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('[aria-label="Workspaceを開く"]'));
+
     await click(page, '.lens-agent-window__rail-action', 'Search');
     await page.waitForSelector('[aria-label="会話をタイトルで検索"]');
     await page.type('[aria-label="会話をタイトルで検索"]', '__no_matching_session__');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__session-empty')?.textContent?.includes('一致する会話'));
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('[aria-label="会話をタイトルで検索"]'));
+    await page.click('[data-session-id="smoke-beta"] .lens-agent-window__session');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__context > strong')?.textContent === 'Pinned session');
 
     await click(page, '.lens-agent-window__tabs button', 'Results');
     await page.waitForSelector('.lens-results');
@@ -174,22 +233,31 @@ try {
     });
     assert(settingsButtonHitTarget, 'An overlay is intercepting the Settings control');
     await page.click('.lens-agent-window__rail-footer button[aria-label="設定"]');
-    await page.waitForSelector('.lens-agent-window__code');
-    await page.waitForFunction(() => [...document.querySelectorAll('.lens-agent-window__code-editor-tabs button')]
-        .some(button => button.textContent?.trim() === 'Settings'));
+    await page.waitForSelector('.lens-agent-window__app-page[aria-label="Lensの設定"]');
     const settings = await page.evaluate(readState);
-    assert(settings.mode === 'code', 'Settings must open in Code mode');
-    assert(settings.editorTabs.includes('Settings'), 'Theia Settings widget was not opened');
+    assert(settings.mode === 'settings', 'Settings must open the Lens-owned settings page');
+    assert(!settings.codeSidebarVisible, 'Settings must not open the Code sidebar');
+
+    await click(page, '.lens-agent-window__app-nav button', 'Customize');
+    await page.waitForSelector('.lens-agent-window__app-page[aria-label="Customize"]');
+    await page.waitForSelector('[aria-label="Results skillを有効化"]');
+    await click(page, '.lens-agent-window__customize-tabs button', 'Plugins');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__customize-card')?.textContent?.includes('VS Code built-in extensions'));
+    await page.waitForSelector('.lens-agent-window__plugins-host > *');
+    const customize = await page.evaluate(readState);
+    assert(customize.mode === 'customize', 'Customize must be a Lens-owned page');
 
     console.log(JSON.stringify({
         executablePath,
+        uiUrl,
         viewport: { width: 1280, height: 720 },
         sidebar,
         initial,
         results,
         code,
         returned,
-        settings
+        settings,
+        customize
     }, null, 2));
 } finally {
     await browser.close();
@@ -211,12 +279,25 @@ async function click(page, selector, text) {
     }, { selector, text });
 }
 
+async function insertComposedText(page, value) {
+    await page.evaluate(nextValue => {
+        const input = document.querySelector('[aria-label="Agent へのメッセージ"]');
+        if (!(input instanceof HTMLTextAreaElement)) throw new Error('Agent composer is missing');
+        input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: 'あ' }));
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+        setter?.call(input, nextValue);
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, data: 'あ', inputType: 'insertCompositionText', isComposing: true }));
+        input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'あ' }));
+    }, value);
+}
+
 function readState() {
     const content = document.querySelector('.lens-agent-window__content');
     const activeSessionTab = document.querySelector('.lens-agent-window__tabs button.active')?.textContent?.trim();
     return {
         mode: content?.getAttribute('data-mode'),
         activeSessionTab,
+        headerTitle: document.querySelector('.lens-agent-window__context > strong')?.textContent?.trim(),
         sessionTabCount: document.querySelectorAll('.lens-agent-window__tabs button').length,
         sessionRailVisible: Boolean(document.querySelector('.lens-agent-window__rail')),
         agentComposerVisible: Boolean(document.querySelector('[aria-label="Agent の入力欄"]')),

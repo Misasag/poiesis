@@ -48,6 +48,21 @@ export interface CodexExecutionRequest {
     prompt: string;
 }
 
+export interface FolderBrowserRequest {
+    path?: string;
+}
+
+export interface FolderBrowserResult {
+    path: string;
+    parentPath?: string;
+    directories: Array<{ name: string; path: string }>;
+}
+
+export interface CreateFolderRequest {
+    parentPath: string;
+    name: string;
+}
+
 export type CodexExecutionEvent =
     | { type: 'output'; executionId: string; stream: 'stdout' | 'stderr'; delta: string }
     | { type: 'exit'; executionId: string; code: number | null; signal: string | null };
@@ -62,4 +77,6 @@ export interface AgentRuntimeServer extends RpcServer<AgentRuntimeClient> {
     captureGitChangeSet(request: GitChangeSetRequest): Promise<GitChangeSetCapture>;
     runCodex(request: CodexExecutionRequest): Promise<void>;
     cancelCodex(executionId: string): Promise<void>;
+    browseFolders(request: FolderBrowserRequest): Promise<FolderBrowserResult>;
+    createFolder(request: CreateFolderRequest): Promise<string>;
 }
