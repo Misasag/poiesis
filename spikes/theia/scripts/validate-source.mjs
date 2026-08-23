@@ -26,6 +26,7 @@ const taskService = await read('agent-window/src/browser/task-service.ts');
 const resultsSkill = await read('agent-window/src/browser/results-skill.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
+const electronSmoke = await read('scripts/smoke-electron.mjs');
 const readme = await read('README.md');
 const firstCompletion = await read('../../docs/FIRST-COMPLETION.md');
 
@@ -36,6 +37,23 @@ assert.ok(rootPackage.workspaces.includes('electron-app'));
 assert.equal(electronPackage.theia.target, 'electron');
 assert.equal(electronPackage.dependencies['@theia/electron'], '1.73.1');
 assert.equal(electronPackage.devDependencies.electron, '39.8.7');
+for (const marker of [
+    "'#lens-window-host .lens-agent-window__content'",
+    "'.lens-agent-window__code'",
+    "'.lens-agent-window__code-terminal-host > *'",
+    'dragExplorerFileToTabs',
+    'ELECTRON_SMOKE_RESULT='
+]) {
+    assert.ok(electronSmoke.includes(marker), `Electron smoke test is missing current Lens UI check ${marker}`);
+}
+for (const obsolete of [
+    "clickSelector(page, '#status-bar-lens-changes'",
+    'Code Diff representation',
+    'Semantic Diff representation',
+    "activateEditorTab(page, 'auth-service.ts'"
+]) {
+    assert.ok(!electronSmoke.includes(obsolete), `Electron smoke test still targets removed UI: ${obsolete}`);
+}
 for (const [name, version] of Object.entries(appPackage.dependencies)) {
     if (name.startsWith('@theia/')) {
         assert.equal(version, '1.73.1', `${name} must match the selected Theia version`);

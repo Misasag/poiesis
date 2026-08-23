@@ -1,17 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
 
 const root = process.cwd();
 const runtimeDir = resolve(root, '.electron-runtime');
-const terminalProof = resolve(runtimeDir, 'terminal-proof.txt');
 const userDataDir = resolve(runtimeDir, `user-data-${Date.now()}`);
 const debugPort = Number(process.env.THEIA_ELECTRON_DEBUG_PORT ?? 9334);
 const browserURL = `http://127.0.0.1:${debugPort}`;
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
 mkdirSync(runtimeDir, { recursive: true });
-rmSync(terminalProof, { force: true });
 
 const electronExecutable = resolve(root, 'node_modules/electron/dist/electron.exe');
 const startProcess = spawn(electronExecutable, [
@@ -51,138 +49,69 @@ try {
     page.setDefaultTimeout(uiTimeout);
     await page.bringToFront();
     await page.evaluate(() => window.focus());
-    await page.waitForSelector('.lens-agent-window__actions button', { timeout: uiTimeout });
-    await page.waitForSelector('#status-bar-lens-changes', { timeout: uiTimeout });
+    await page.waitForSelector('#lens-window-host .lens-agent-window__content', { timeout: uiTimeout });
+    await page.waitForSelector('.lens-agent-window__agent', { timeout: uiTimeout });
+    await page.waitForSelector('.lens-agent-window__rail', { timeout: uiTimeout });
 
-    const windowTitle = await page.title();
     const userAgent = await page.evaluate(() => navigator.userAgent);
-    const changesVisibleBeforeOpen = Boolean(await page.$('.lens-changes'));
-    const initialAgentButtonLabels = await page.$$eval(
-        '.lens-agent-window__actions button',
-        buttons => buttons.map(button => button.textContent?.trim())
-    );
-    if (initialAgentButtonLabels.length !== 1 || initialAgentButtonLabels[0] !== '質問') {
-        throw new Error(`Agent Window responsibility is invalid: ${JSON.stringify(initialAgentButtonLabels)}`);
+    const windowTitle = await page.title();
+    const initial = await page.evaluate(readLensState);
+    assert(userAgent.includes('Electron/'), `Expected Electron user agent, got ${userAgent}`);
+    assert(initial.mode === 'agent', `Expected Agent mode, got ${initial.mode}`);
+    assert(initial.agentComposerVisible, 'Agent Composer is missing in Electron');
+    assert(initial.sessionRailVisible, 'Session rail is missing in Electron');
+    assert(!initial.legacyChangesVisible, 'Removed Changes UI is still visible in Electron');
+
+    await clickByText(page, '.lens-agent-window__code-control', 'Code');
+    await page.waitForSelector('.lens-agent-window__code', { timeout: uiTimeout });
+    await page.waitForSelector('#files .theia-FileStatNode', { timeout: uiTimeout });
+    await page.waitForFunction(() => Boolean(document.querySelector('.lens-agent-window__code-terminal-host > *')), {
+        timeout: uiTimeout
+    });
+
+    const code = await page.evaluate(readLensState);
+    assert(code.mode === 'code', `Expected Code mode, got ${code.mode}`);
+    assert(code.codeSidebarVisible, 'Code sidebar is missing in Electron');
+    assert(code.codeEditorVisible, 'Code editor is missing in Electron');
+    assert(code.codeActivityVisible, 'Code Activity Bar is missing in Electron');
+    assert(code.codeTerminalVisible, 'Code terminal is missing in Electron');
+    assert(code.codeStatusVisible, 'Code status bar is missing in Electron');
+    assert(code.codeLuminoPanelCount === 0, 'Code reintroduced lm-Widget lm-Panel wrappers in Electron');
+    assert(code.codeLuminoTabContainerCount === 0, 'Code reintroduced lm-TabBar-content-container in Electron');
+    assert(!code.applicationShellVisible, 'Code mounted the Theia ApplicationShell in Electron');
+
+    while (await page.$('.lens-agent-window__code-editor-tab-close')) {
+        const count = await page.$$eval('.lens-agent-window__code-editor-tab', tabs => tabs.length);
+        await page.click('.lens-agent-window__code-editor-tab-close');
+        await page.waitForFunction(previous => document.querySelectorAll('.lens-agent-window__code-editor-tab').length < previous, {}, count);
     }
 
-    await clickButton(page, '.lens-agent-window', '質問');
-    await page.waitForSelector('[aria-label="Mock follow-up question"]', { timeout: uiTimeout });
+    await clickExplorerFile(page, '.gitignore');
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 1
+        && document.querySelector('.lens-agent-window__code-editor-tab.active.preview .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === '.gitignore');
+    await page.waitForSelector('.lens-agent-window__code-editor-host .monaco-editor', { timeout: uiTimeout });
 
-    await clickSelector(page, '#status-bar-lens-changes', 'IDE Changes status bar entry');
-    await page.waitForSelector('.lens-changes__content', { timeout: uiTimeout });
-    await page.waitForSelector('[aria-label="Code Diff representation"]', { timeout: uiTimeout });
-    const changeSetId = await page.$eval(
-        '.lens-changes__content',
-        element => element.getAttribute('data-change-set-id')
-    );
-    const codeDiffVisible = Boolean(await page.$('[aria-label="Code Diff representation"]'));
-    await clickSelector(page, '.lens-changes__open-diff', 'Code Diff action');
-    await page.waitForSelector('.monaco-diff-editor', { timeout: uiTimeout });
-    await page.waitForFunction(
-        () => document.querySelector('.lens-changes__status')?.textContent?.includes('既存 Diff Editor'),
-        { timeout: uiTimeout }
-    );
-
-    await clickButton(page, '.lens-changes__tabs', 'Semantic Diff');
-    await page.waitForSelector('[aria-label="Semantic Diff representation"]', { timeout: uiTimeout });
-    await clickSelector(page, '.lens-changes__evidence', 'Evidence action');
-    await page.waitForFunction(
-        () => document.querySelector('.lens-changes__status')?.textContent?.includes('12 行目'),
-        { timeout: uiTimeout }
-    );
-    await page.waitForFunction(
-        () => [...document.querySelectorAll('.lm-TabBar-tabLabel')]
-            .some(label => label.textContent?.trim() === 'auth-service.ts'),
-        { timeout: uiTimeout }
-    );
-
-    const evidenceResult = await page.evaluate(() => ({
-        status: document.querySelector('.lens-changes__status')?.textContent?.trim(),
-        activeLineNumbers: [...document.querySelectorAll('.monaco-editor .active-line-number')]
-            .map(line => line.textContent?.trim()),
-        cursorStatus: document.querySelector('#status-bar-editor-status-cursor-position')?.textContent?.trim()
-    }));
-
-    const terminalResult = await optionalCheck('Terminal', async () => {
-        await pressChord(page, ['Control'], 'Backquote');
-        await page.waitForFunction(
-            () => [...document.querySelectorAll('.lm-TabBar-tabLabel')]
-                .some(label => label.textContent?.trim().toLowerCase() === 'cmd'),
-            { timeout: 10_000 }
-        );
-        await activateEditorTab(page, 'cmd', 10_000);
-        await page.waitForSelector('.xterm-helper-textarea', { timeout: 10_000 });
-        const terminalInput = await page.$('.xterm-helper-textarea');
-        await terminalInput.focus();
-        await page.keyboard.type('echo LENS_ELECTRON_TERMINAL_OK> spikes\\theia\\.electron-runtime\\terminal-proof.txt');
-        await page.keyboard.press('Enter');
-        await waitFor(() => existsSync(terminalProof), 15_000, 'terminal proof file');
-        return { verified: true, output: readFileSync(terminalProof, 'utf8').trim() };
+    await page.evaluate(() => {
+        const docs = [...document.querySelectorAll('#files .theia-FileStatNode')]
+            .find(element => element.textContent?.trim() === 'docs');
+        docs?.querySelector('.theia-ExpansionToggle')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
     });
+    await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
+        .some(element => element.textContent?.trim() === 'UX.md'));
+    await dragExplorerFileToTabs(page, 'UX.md');
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 2
+        && document.querySelector('.lens-agent-window__code-editor-tab.active:not(.preview) .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
 
-    const gitResult = await optionalCheck('Git', async () => {
-        await page.waitForFunction(
-            () => [...document.querySelectorAll('[id^="status-bar-scm"]')]
-                .some(element => element.textContent?.trim()),
-            { timeout: 30_000 }
-        );
-        const statusBarEntries = await page.$$eval(
-            '[id^="status-bar-scm"]',
-            elements => elements.map(element => element.textContent?.trim()).filter(Boolean)
-        );
-        return { verified: statusBarEntries.length > 0, statusBarEntries };
-    });
+    const editorTabs = await page.$$eval('.lens-agent-window__code-editor-tab', tabs => tabs.map(tab => ({
+        name: tab.querySelector('.lens-agent-window__code-editor-tab-name')?.textContent?.trim(),
+        active: tab.classList.contains('active'),
+        preview: tab.dataset.preview === 'true'
+    })));
+    assert(editorTabs.some(tab => tab.name === '.gitignore' && tab.preview), 'Explorer click did not retain its preview tab');
+    assert(editorTabs.some(tab => tab.name === 'UX.md' && tab.active && !tab.preview), 'Explorer drag did not create a pinned tab');
 
-    const lspResult = await optionalCheck('TypeScript hover', async () => {
-        await activateEditorTab(page, 'auth-service.ts', 20_000);
-        await page.keyboard.press('Home');
-        for (let index = 0; index < 8; index += 1) {
-            await page.keyboard.press('ArrowRight');
-        }
-        await pressChord(page, ['Control'], 'KeyK');
-        await pressChord(page, ['Control'], 'KeyI');
-        await page.waitForSelector('.monaco-hover', { visible: true, timeout: 20_000 });
-        const hoverText = await page.$eval('.monaco-hover', element => element.textContent?.trim());
-        return { verified: Boolean(hoverText), hoverText };
-    });
-
-    const repositoryLabels = await page.$$eval(
-        '.theia-TreeNodeSegment, .theia-TreeNodeSegmentGrow',
-        elements => elements.map(element => element.textContent?.trim()).filter(Boolean).slice(0, 30)
-    );
-    const editorTabs = await page.$$eval(
-        '.lm-TabBar-tabLabel',
-        labels => labels.map(label => label.textContent?.trim()).filter(Boolean)
-    );
-
-    const result = {
-        userAgent,
-        windowTitle,
-        repositoryLabels,
-        changesVisibleBeforeOpen,
-        initialAgentButtonLabels,
-        questionVisible: Boolean(await page.$('[aria-label="Mock follow-up question"]')),
-        changeSetId,
-        codeDiffVisible,
-        nativeDiffEditorVisible: Boolean(await page.$('.monaco-diff-editor')),
-        semanticDiffVisible: Boolean(await page.$('[aria-label="Semantic Diff representation"]')),
-        evidenceResult,
-        editorTabs,
-        terminalResult,
-        gitResult,
-        lspResult
-    };
-    console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify(result, null, 2)}`);
-
-    if (changesVisibleBeforeOpen
-        || changeSetId !== 'task-auth-redis-001'
-        || !codeDiffVisible
-        || !result.semanticDiffVisible
-        || !result.nativeDiffEditorVisible
-        || !evidenceResult.status?.includes('12 行目')
-        || (!evidenceResult.activeLineNumbers.includes('12') && !evidenceResult.cursorStatus?.includes('Ln 12'))) {
-        throw new Error(`Electron verification failed: ${JSON.stringify(result)}`);
-    }
+    console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify({ userAgent, windowTitle, initial, code, editorTabs }, null, 2)}`);
 } catch (error) {
     console.error(`Electron start log (tail):\n${startLog}`);
     throw error;
@@ -194,17 +123,84 @@ try {
     await waitForCdpToStop(browserURL, 30_000).catch(error => console.warn(error.message));
 }
 
+function assert(condition, message) {
+    if (!condition) throw new Error(message);
+}
+
+function readLensState() {
+    const content = document.querySelector('.lens-agent-window__content');
+    return {
+        mode: content?.getAttribute('data-mode'),
+        sessionRailVisible: Boolean(document.querySelector('.lens-agent-window__rail')),
+        agentComposerVisible: Boolean(document.querySelector('.lens-agent-window__composer textarea')),
+        codeSidebarVisible: Boolean(document.querySelector('.lens-agent-window__code-sidebar-host')),
+        codeEditorVisible: Boolean(document.querySelector('.lens-agent-window__code-editor-host')),
+        codeActivityVisible: Boolean(document.querySelector('.lens-agent-window__code-activity')),
+        codeTerminalVisible: Boolean(document.querySelector('.lens-agent-window__code-terminal-host > *')),
+        codeStatusVisible: Boolean(document.querySelector('.lens-agent-window__code-status')),
+        codeLuminoPanelCount: document.querySelectorAll('.lens-agent-window__code .lm-Widget.lm-Panel').length,
+        codeLuminoTabContainerCount: document.querySelectorAll('.lens-agent-window__code .lm-TabBar-content-container').length,
+        applicationShellVisible: Boolean(document.querySelector('.lens-agent-window__code #theia-app-shell')),
+        legacyChangesVisible: Boolean(document.querySelector('.lens-changes, #status-bar-lens-changes'))
+    };
+}
+
+async function clickByText(page, selector, text) {
+    await page.waitForFunction(({ selector: currentSelector, text: currentText }) =>
+        [...document.querySelectorAll(currentSelector)]
+            .some(element => element.textContent?.trim() === currentText), {}, { selector, text });
+    await page.evaluate(({ selector: currentSelector, text: currentText }) => {
+        const element = [...document.querySelectorAll(currentSelector)]
+            .find(candidate => candidate.textContent?.trim() === currentText);
+        if (!(element instanceof HTMLElement)) throw new Error(`${currentText} was not clickable`);
+        element.click();
+    }, { selector, text });
+}
+
+async function clickExplorerFile(page, label) {
+    const point = await page.evaluate(fileLabel => {
+        const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+            .find(element => element.textContent?.trim() === fileLabel);
+        if (!(file instanceof HTMLElement)) throw new Error(`${fileLabel} was not found in Explorer`);
+        file.scrollIntoView({ block: 'center' });
+        const bounds = file.getBoundingClientRect();
+        return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+    }, label);
+    await page.mouse.click(point.x, point.y);
+}
+
+async function dragExplorerFileToTabs(page, label) {
+    const points = await page.evaluate(fileLabel => {
+        const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+            .find(element => element.textContent?.trim() === fileLabel);
+        const tabs = document.querySelector('.lens-agent-window__code-editor-tabs');
+        if (!(file instanceof HTMLElement) || !(tabs instanceof HTMLElement)) {
+            throw new Error(`Could not drag ${fileLabel} to the editor tabs`);
+        }
+        file.scrollIntoView({ block: 'center' });
+        const source = file.getBoundingClientRect();
+        const target = tabs.getBoundingClientRect();
+        return {
+            source: { x: source.left + source.width / 2, y: source.top + source.height / 2 },
+            target: { x: target.right - 24, y: target.top + target.height / 2 }
+        };
+    }, label);
+    await page.mouse.move(points.source.x, points.source.y);
+    await page.mouse.down();
+    await page.mouse.move(points.source.x + 12, points.source.y, { steps: 4 });
+    await page.mouse.move(points.target.x, points.target.y, { steps: 16 });
+    assert(await page.$eval('.lens-agent-window__code-editor-tabs', tabs => tabs.classList.contains('drop-target')),
+        `${label} drag did not enter the tab drop target in Electron`);
+    await page.mouse.up();
+}
+
 async function waitForCdp(url, process, timeout) {
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
-        if (process.exitCode !== null) {
-            throw new Error(`Electron exited before CDP was ready: ${process.exitCode}`);
-        }
+        if (process.exitCode !== null) throw new Error(`Electron exited before CDP was ready: ${process.exitCode}`);
         try {
             const response = await fetch(`${url}/json/version`);
-            if (response.ok) {
-                return;
-            }
+            if (response.ok) return;
         } catch {
             // Electron is still starting.
         }
@@ -215,110 +211,31 @@ async function waitForCdp(url, process, timeout) {
 
 async function findWorkbenchPage(browser, timeout) {
     const deadline = Date.now() + timeout;
+    let observations = [];
     while (Date.now() < deadline) {
-        for (const page of await browser.pages()) {
+        const pages = await browser.pages();
+        observations = await Promise.all(pages.map(async page => {
             try {
-                if (await page.$('.lens-agent-window')) {
-                    return page;
-                }
+                return {
+                    url: page.url(),
+                    title: await page.title(),
+                    hasLensHost: Boolean(await page.$('#lens-window-host')),
+                    hasLensWindow: Boolean(await page.$('.lens-agent-window'))
+                };
             } catch {
-                // A splash page may disappear while targets are inspected.
+                return { url: page.url(), unavailable: true };
             }
-        }
+        }));
+        const workbenchIndex = observations.findIndex(observation => observation.hasLensHost || observation.hasLensWindow);
+        if (workbenchIndex >= 0) return pages[workbenchIndex];
         await delay(500);
     }
-    throw new Error('Theia Electron workbench page was not found');
-}
-
-async function clickButton(page, rootSelector, label) {
-    await page.waitForFunction(
-        ({ rootSelector: rootSelectorValue, label: labelValue }) =>
-            [...document.querySelectorAll(`${rootSelectorValue} button`)]
-                .some(candidate => candidate.textContent?.trim() === labelValue),
-        { timeout: uiTimeout },
-        { rootSelector, label }
-    );
-    await page.evaluate(({ rootSelector: rootSelectorValue, label: labelValue }) => {
-        const button = [...document.querySelectorAll(`${rootSelectorValue} button`)]
-            .find(candidate => candidate.textContent?.trim() === labelValue);
-        if (!(button instanceof HTMLElement)) {
-            throw new Error(`${labelValue} button was not found in ${rootSelectorValue}`);
-        }
-        button.click();
-    }, { rootSelector, label });
-}
-
-async function clickSelector(page, selector, label) {
-    await page.waitForSelector(selector, { timeout: uiTimeout });
-    await page.$eval(selector, (element, labelValue) => {
-        if (!(element instanceof HTMLElement)) {
-            throw new Error(`${labelValue} was not an HTML element`);
-        }
-        element.click();
-    }, label);
-}
-
-async function pressChord(page, modifiers, key) {
-    await page.bringToFront();
-    await page.evaluate(() => window.focus());
-    for (const modifier of modifiers) {
-        await page.keyboard.down(modifier);
-    }
-    await page.keyboard.press(key);
-    for (const modifier of [...modifiers].reverse()) {
-        await page.keyboard.up(modifier);
-    }
-}
-
-async function activateEditorTab(page, label, timeout = uiTimeout) {
-    await page.waitForFunction(
-        labelValue => [...document.querySelectorAll('.lm-TabBar-tabLabel')]
-            .some(candidate => candidate.textContent?.trim() === labelValue),
-        { timeout },
-        label
-    );
-    await page.evaluate(labelValue => {
-        const tab = [...document.querySelectorAll('.lm-TabBar-tab')]
-            .find(candidate => candidate.querySelector('.lm-TabBar-tabLabel')?.textContent?.trim() === labelValue);
-        if (!(tab instanceof HTMLElement)) {
-            throw new Error(`${labelValue} editor tab was not found`);
-        }
-        tab.click();
-    }, label);
-    await page.waitForFunction(
-        labelValue => [...document.querySelectorAll('.lm-TabBar-tab.lm-mod-current .lm-TabBar-tabLabel')]
-            .some(candidate => candidate.textContent?.trim() === labelValue),
-        { timeout },
-        label
-    );
-}
-
-async function waitFor(predicate, timeout, label) {
-    const deadline = Date.now() + timeout;
-    while (Date.now() < deadline) {
-        if (await predicate()) {
-            return;
-        }
-        await delay(250);
-    }
-    throw new Error(`Timed out waiting for ${label}`);
-}
-
-async function optionalCheck(label, check) {
-    try {
-        return await check();
-    } catch (error) {
-        return {
-            verified: false,
-            error: `${label}: ${error instanceof Error ? error.message : String(error)}`
-        };
-    }
+    const targets = browser.targets().map(target => ({ type: target.type(), url: target.url() }));
+    throw new Error(`Theia Electron workbench page was not found: ${JSON.stringify({ observations, targets })}`);
 }
 
 function stopProcessTree(pid) {
-    if (!pid) {
-        return;
-    }
+    if (!pid) return;
     if (process.platform === 'win32') {
         spawnSync('taskkill.exe', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
     } else {
