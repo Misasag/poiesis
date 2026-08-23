@@ -2976,51 +2976,6 @@ body.lens-code-file-pointer-drag * {
     margin: 4px 0 0;
 }
 
-.lens-agent-window__plugins-manager {
-    background: #20211f;
-    border: 1px solid #363833;
-    border-radius: 10px;
-    display: grid;
-    grid-template-rows: auto minmax(320px, 52vh);
-    margin-top: 4px;
-    min-height: 0;
-    overflow: hidden;
-}
-
-.lens-agent-window__plugins-manager-heading {
-    border-bottom: 1px solid var(--lens-chrome-line);
-    padding: 12px 14px;
-}
-
-.lens-agent-window__plugins-manager-heading strong,
-.lens-agent-window__plugins-manager-heading small {
-    display: block;
-}
-
-.lens-agent-window__plugins-manager-heading strong {
-    color: var(--lens-chrome-text);
-    font-size: 11px;
-}
-
-.lens-agent-window__plugins-manager-heading small {
-    color: var(--lens-chrome-muted);
-    font-size: 9px;
-    margin-top: 3px;
-}
-
-.lens-agent-window__plugins-host {
-    min-height: 0;
-    overflow: hidden;
-    position: relative;
-}
-
-.lens-agent-window__plugins-host > * {
-    height: 100%;
-    inset: 0;
-    position: absolute;
-    width: 100%;
-}
-
 .lens-agent-window__status-badge,
 .lens-agent-window__customize-title span {
     background: #30312e;

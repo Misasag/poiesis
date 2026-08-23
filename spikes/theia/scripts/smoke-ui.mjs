@@ -266,6 +266,19 @@ try {
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Search');
     await page.click('.lens-agent-window__code-activity button[aria-label="Source Control"]');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
+    await page.click('.lens-agent-window__code-activity button[aria-label="Extensions"]');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Extensions');
+    await page.waitForSelector('.lens-agent-window__code-sidebar-host > *');
+    await page.waitForFunction(() => document.querySelector('#vsx-extensions-search-bar input')?.value === '@builtin');
+    await page.waitForFunction(() => (document.getElementById('vsx-extensions:builtin')?.querySelectorAll('.theia-TreeNode').length ?? 0) > 0);
+    assert(!await page.$('.lens-agent-window__customize-page'), 'Code Extensions must stay in Code mode');
+    await page.click('.lens-agent-window__code-activity-footer button[aria-label="Settings"]');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
+    await page.waitForSelector('.lens-agent-window__code-editor-host #settings_widget');
+    assert(await page.$('.lens-agent-window__code'), 'Code Settings must stay in Code mode');
+    await page.click('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close');
+    await page.waitForFunction(() => ![...document.querySelectorAll('.lens-agent-window__code-editor-tab-name')]
+        .some(element => element.textContent?.trim() === 'Settings'));
     await page.click('.lens-agent-window__code-activity button[aria-label="Explorer"]');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Explorer');
     await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
@@ -443,8 +456,9 @@ try {
     await page.waitForSelector('.lens-agent-window__app-page[aria-label="Customize"]');
     await page.waitForSelector('[aria-label="Results skillを有効化"]');
     await click(page, '.lens-agent-window__customize-tabs button', 'Plugins');
-    await page.waitForFunction(() => document.querySelector('.lens-agent-window__customize-card')?.textContent?.includes('VS Code built-in extensions'));
-    await page.waitForSelector('.lens-agent-window__plugins-host > *');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__customize-card')?.textContent?.includes('Lens plugin bundles'));
+    assert(!await page.$('.lens-agent-window__plugins-host'), 'Lens Customize must not host the Code extensions manager');
+    assert(!(await page.$eval('.lens-agent-window__customize-page', element => element.textContent ?? '')).includes('VS Code built-in extensions'), 'Lens Customize still describes Code extensions');
     const customize = await page.evaluate(readState);
     assert(customize.mode === 'customize', 'Customize must be a Lens-owned page');
 

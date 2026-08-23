@@ -15,6 +15,7 @@ import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-contribution';
+import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
 import { AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
 import { FolderBrowserResult } from '../common/agent-runtime-protocol';
 import { ResultsService } from './results-skill';
@@ -24,7 +25,7 @@ import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
 
 type AgentWindowTab = 'agent' | 'results';
-type CodeSidebarTab = 'files' | 'search' | 'git';
+type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
 type AppPage = 'settings' | 'customize';
 type CustomizeTab = 'skills' | 'plugins';
 const NEW_SESSION_TITLE = '新しい会話';
@@ -81,7 +82,7 @@ export class AgentWindowWidget extends ReactWidget {
     static readonly GIT_WIDGET_FACTORY_ID = 'scm-view';
     static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener';
     static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget';
-    static readonly PLUGINS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container';
+    static readonly EXTENSIONS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container';
     protected codeMode = false;
     protected appPage?: AppPage;
     protected customizeTab: CustomizeTab = 'skills';
@@ -89,6 +90,8 @@ export class AgentWindowWidget extends ReactWidget {
     protected codeFilesWidget?: Widget;
     protected codeSearchWidget?: Widget;
     protected codeGitWidget?: Widget;
+    protected codeExtensionsWidget?: Widget;
+    protected codeExtensionsInitialized = false;
     protected codeTerminalWidget?: Widget;
     protected readonly codeCenterWidgets: Widget[] = [];
     protected readonly codeCenterWidgetListeners = new Map<Widget, Disposable>();
@@ -116,9 +119,6 @@ export class AgentWindowWidget extends ReactWidget {
     };
     protected suppressNextCodeFileClick = false;
     protected explorerMoreVisible = false;
-    protected pluginsWidget?: Widget;
-    protected pluginsHost?: HTMLDivElement;
-    protected pluginsResizeObserver?: ResizeObserver;
     protected readonly sessions: WindowAgentSession[] = [];
     protected selectedSessionId?: string;
     protected sessionSequence = 0;
@@ -166,6 +166,7 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(EditorManager) protected readonly editorManager: EditorManager,
         @inject(CommandService) protected readonly commandService: CommandService,
         @inject(IconThemeService) protected readonly iconThemeService: IconThemeService,
+        @inject(VSXExtensionsSearchModel) protected readonly extensionsSearchModel: VSXExtensionsSearchModel,
         @inject(StorageService) protected readonly storageService: StorageService,
         @inject(CustomizationService) protected readonly customizationService: CustomizationService,
         @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService
@@ -1399,17 +1400,10 @@ export class AgentWindowWidget extends ReactWidget {
                 ) : (
                     <div className='lens-agent-window__customize-list'>
                         <article className='lens-agent-window__customize-card'>
-                            <div className='lens-agent-window__customize-icon'><span className='codicon codicon-extensions' aria-hidden='true' /></div>
-                            <div><div className='lens-agent-window__customize-title'><strong>VS Code built-in extensions</strong><span>Bundled</span></div><p>Editor、Git、検索などCodeモードの基盤Pluginです。アプリと一緒に管理されます。</p></div>
-                            <span className='lens-agent-window__status-badge active'>Active</span>
+                            <div className='lens-agent-window__customize-icon'><span className='codicon codicon-package' aria-hidden='true' /></div>
+                            <div><div className='lens-agent-window__customize-title'><strong>Lens plugin bundles</strong><span>App</span></div><p>LensのAgent、Skill、外部サービス連携を追加するアプリ用Pluginです。Code拡張機能とは別に管理されます。</p></div>
+                            <span className='lens-agent-window__status-badge'>No additions</span>
                         </article>
-                        <section className='lens-agent-window__plugins-manager' aria-label='Plugin manager'>
-                            <div className='lens-agent-window__plugins-manager-heading'>
-                                <strong>Browse and manage Plugins</strong>
-                                <small>Open VSXから検索・インストールし、インストール済みPluginを管理します。</small>
-                            </div>
-                            <div className='lens-agent-window__plugins-host' ref={this.setPluginsHost} />
-                        </section>
                     </div>
                 )}
             </div>
@@ -1417,70 +1411,8 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected selectCustomizeTab(tab: CustomizeTab): void {
-        if (tab !== 'plugins') {
-            this.detachPluginsWidget();
-        }
         this.customizeTab = tab;
         this.update();
-        if (tab === 'plugins') {
-            requestAnimationFrame(() => void this.ensurePluginsWidget());
-        }
-    }
-
-    protected readonly setPluginsHost = (host: HTMLDivElement | null): void => {
-        if (!host) {
-            this.pluginsResizeObserver?.disconnect();
-            this.pluginsResizeObserver = undefined;
-            this.detachPluginsWidget();
-            this.pluginsHost = undefined;
-            return;
-        }
-        this.pluginsHost = host;
-        this.pluginsResizeObserver = new ResizeObserver(() => this.resizeEmbeddedWidget(this.pluginsWidget, host));
-        this.pluginsResizeObserver.observe(host);
-        void this.ensurePluginsWidget();
-    };
-
-    protected async ensurePluginsWidget(): Promise<void> {
-        if (!this.pluginsWidget) {
-            this.pluginsWidget = await this.widgetManager.getOrCreateWidget(AgentWindowWidget.PLUGINS_WIDGET_FACTORY_ID);
-        }
-        if (this.appPage === 'customize' && this.customizeTab === 'plugins') {
-            this.attachEmbeddedWidget(this.pluginsWidget, this.pluginsHost);
-        }
-    }
-
-    protected attachEmbeddedWidget(widget: Widget | undefined, host: HTMLDivElement | undefined): void {
-        if (!widget || !host) {
-            return;
-        }
-        if (widget.node.parentElement !== host) {
-            if (widget.parent) {
-                widget.parent = null;
-            }
-            if (widget.isAttached) {
-                Widget.detach(widget);
-            }
-            Widget.attach(widget, host);
-        }
-        widget.show();
-        widget.update();
-        this.resizeEmbeddedWidget(widget, host);
-    }
-
-    protected resizeEmbeddedWidget(widget: Widget | undefined, host: HTMLDivElement): void {
-        if (!widget?.isAttached || widget.node.parentElement !== host) {
-            return;
-        }
-        MessageLoop.sendMessage(widget, new Widget.ResizeMessage(host.clientWidth, host.clientHeight));
-        widget.update();
-    }
-
-    protected detachPluginsWidget(): void {
-        const parent = this.pluginsWidget?.node.parentElement;
-        if (this.pluginsWidget?.isAttached && parent === this.pluginsHost) {
-            Widget.detach(this.pluginsWidget);
-        }
     }
 
     protected renderNewAgentContext(session: WindowAgentSession): React.ReactNode {
@@ -1693,7 +1625,8 @@ export class AgentWindowWidget extends ReactWidget {
         const sidebarLabels: Record<CodeSidebarTab, string> = {
             files: 'Explorer',
             search: 'Search',
-            git: 'Source Control'
+            git: 'Source Control',
+            extensions: 'Extensions'
         };
         return (
             <section
@@ -1706,12 +1639,10 @@ export class AgentWindowWidget extends ReactWidget {
                         {this.renderCodeActivity('files', 'files', 'Explorer')}
                         {this.renderCodeActivity('search', 'search', 'Search')}
                         {this.renderCodeActivity('git', 'source-control', 'Source Control')}
-                        <button type='button' title='Extensions' aria-label='Extensions' onClick={() => this.openCustomize()}>
-                            <span className='codicon codicon-extensions' aria-hidden='true' />
-                        </button>
+                        {this.renderCodeActivity('extensions', 'extensions', 'Extensions')}
                     </div>
                     <div className='lens-agent-window__code-activity-footer'>
-                        <button type='button' title='Settings' aria-label='Settings' onClick={() => this.openSettings()}>
+                        <button type='button' title='Settings' aria-label='Settings' onClick={() => void this.openCodeSettings()}>
                             <span className='codicon codicon-settings-gear' aria-hidden='true' />
                         </button>
                     </div>
@@ -2001,6 +1932,9 @@ export class AgentWindowWidget extends ReactWidget {
         } else if (factoryId === AgentWindowWidget.GIT_WIDGET_FACTORY_ID) {
             changed = this.codeGitWidget !== widget;
             this.codeGitWidget = widget;
+        } else if (factoryId === AgentWindowWidget.EXTENSIONS_WIDGET_FACTORY_ID) {
+            changed = this.codeExtensionsWidget !== widget;
+            this.codeExtensionsWidget = widget;
         } else if (this.isCodeCenterWidget(factoryId, widget)
             && !this.codeCenterWidgets.includes(widget)) {
             if (widget instanceof EditorWidget) {
@@ -2130,7 +2064,10 @@ export class AgentWindowWidget extends ReactWidget {
         if (this.codeSidebarTab === 'search') {
             return this.codeSearchWidget;
         }
-        return this.codeGitWidget;
+        if (this.codeSidebarTab === 'git') {
+            return this.codeGitWidget;
+        }
+        return this.codeExtensionsWidget;
     }
 
     protected syncCodeWidgetAttachments(): void {
@@ -2221,7 +2158,26 @@ export class AgentWindowWidget extends ReactWidget {
         this.explorerMoreVisible = false;
         this.codeSidebarTab = tab;
         this.update();
-        this.syncCodeWidgetAttachments();
+        if (tab === 'extensions') {
+            void this.ensureCodeExtensionsWidget();
+        } else {
+            this.syncCodeWidgetAttachments();
+        }
+    }
+
+    protected async ensureCodeExtensionsWidget(): Promise<void> {
+        if (!this.codeExtensionsWidget) {
+            this.codeExtensionsWidget = await this.widgetManager.getOrCreateWidget(AgentWindowWidget.EXTENSIONS_WIDGET_FACTORY_ID);
+        }
+        if (!this.codeExtensionsInitialized) {
+            this.codeExtensionsInitialized = true;
+            if (!this.extensionsSearchModel.query.trim()) {
+                this.extensionsSearchModel.query = BUILTIN_QUERY;
+            }
+        }
+        if (this.codeMode && this.codeSidebarTab === 'extensions') {
+            this.attachCodeWidget(this.codeExtensionsWidget, this.codeSidebarHost);
+        }
     }
 
     protected startCodeSidebarResize(event: React.PointerEvent<HTMLDivElement>): void {
@@ -2409,6 +2365,12 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected closeCodeCenterWidget(widget: Widget): void {
+        if (widget.id === AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID) {
+            this.detachCodeWidget(widget);
+            widget.hide();
+            this.removeCodeCenterWidget(widget);
+            return;
+        }
         if (!Saveable.isDirty(widget)) {
             widget.close();
             return;
@@ -2524,7 +2486,6 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected openSettings(): void {
         this.detachCodeWidgets();
-        this.detachPluginsWidget();
         this.codeMode = false;
         this.appPage = 'settings';
         this.update();
@@ -2535,13 +2496,9 @@ export class AgentWindowWidget extends ReactWidget {
         this.codeMode = false;
         this.appPage = 'customize';
         this.update();
-        if (this.customizeTab === 'plugins') {
-            requestAnimationFrame(() => void this.ensurePluginsWidget());
-        }
     }
 
     protected closeAppPage(): void {
-        this.detachPluginsWidget();
         this.appPage = undefined;
         this.update();
     }
@@ -2554,9 +2511,7 @@ export class AgentWindowWidget extends ReactWidget {
         this.codeSidebarResizeObserver?.disconnect();
         this.codeEditorResizeObserver?.disconnect();
         this.codeTerminalResizeObserver?.disconnect();
-        this.pluginsResizeObserver?.disconnect();
         this.detachCodeWidgets();
-        this.detachPluginsWidget();
         super.onBeforeDetach(message);
     }
 
@@ -2574,7 +2529,6 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         this.selectedSessionId = sessionId;
-        this.detachPluginsWidget();
         this.appPage = undefined;
         session.updatedAt = Date.now();
         this.openSessionMenuId = undefined;
@@ -2895,7 +2849,6 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected toggleCodeMode(): void {
-        this.detachPluginsWidget();
         this.appPage = undefined;
         if (this.codeMode) {
             this.detachCodeWidgets();
@@ -2920,7 +2873,6 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async newChat(): Promise<void> {
         this.detachCodeWidgets();
-        this.detachPluginsWidget();
         this.codeMode = false;
         this.appPage = undefined;
         this.sessionSearchVisible = false;

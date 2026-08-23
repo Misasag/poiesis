@@ -86,6 +86,24 @@ try {
         await page.waitForFunction(previous => document.querySelectorAll('.lens-agent-window__code-editor-tab').length < previous, {}, count);
     }
 
+    await page.click('.lens-agent-window__code-activity button[aria-label="Extensions"]');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Extensions');
+    await page.waitForSelector('.lens-agent-window__code-sidebar-host > *', { timeout: uiTimeout });
+    await page.waitForFunction(() => document.querySelector('#vsx-extensions-search-bar input')?.value === '@builtin');
+    await page.waitForFunction(() => (document.getElementById('vsx-extensions:builtin')?.querySelectorAll('.theia-TreeNode').length ?? 0) > 0);
+    assert(!await page.$('.lens-agent-window__customize-page'), 'Code Extensions opened Lens Customize in Electron');
+
+    await page.click('.lens-agent-window__code-activity-footer button[aria-label="Settings"]');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
+    await page.waitForSelector('.lens-agent-window__code-editor-host #settings_widget', { timeout: uiTimeout });
+    assert(await page.$('.lens-agent-window__code'), 'Code Settings left Code mode in Electron');
+    await page.click('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close');
+    await page.waitForFunction(() => ![...document.querySelectorAll('.lens-agent-window__code-editor-tab-name')]
+        .some(element => element.textContent?.trim() === 'Settings'));
+
+    await page.click('.lens-agent-window__code-activity button[aria-label="Explorer"]');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Explorer');
+    await page.waitForSelector('#files .theia-FileStatNode', { timeout: uiTimeout });
     await clickExplorerFile(page, '.gitignore');
     await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 1
         && document.querySelector('.lens-agent-window__code-editor-tab.active.preview .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === '.gitignore');

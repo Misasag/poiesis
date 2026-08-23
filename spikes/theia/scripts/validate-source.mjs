@@ -234,15 +234,17 @@ assert.ok(!resultsSkill.includes('task.baseline.note'), 'Results must not render
 
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
-    "type CodeSidebarTab = 'files' | 'search' | 'git'",
+    "type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions'",
     'protected codeMode = false',
     "static readonly FILES_WIDGET_FACTORY_ID = 'files'",
     "static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace'",
     "static readonly GIT_WIDGET_FACTORY_ID = 'scm-view'",
+    "static readonly EXTENSIONS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container'",
     "static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener'",
     "static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget'",
     "import { EditorManager, EditorWidget } from '@theia/editor/lib/browser'",
     "import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service'",
+    "import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model'",
     "import { FileDialogService } from '@theia/filesystem/lib/browser'",
     "import { ScmService } from '@theia/scm/lib/browser/scm-service'",
     "const NEW_SESSION_TITLE = '新しい会話'",
@@ -304,7 +306,11 @@ for (const marker of [
     "this.renderCodeActivity('files', 'files', 'Explorer')",
     "this.renderCodeActivity('search', 'search', 'Search')",
     "this.renderCodeActivity('git', 'source-control', 'Source Control')",
+    "this.renderCodeActivity('extensions', 'extensions', 'Extensions')",
+    'onClick={() => void this.openCodeSettings()}',
     'protected async ensureCodeTerminal(): Promise<void>',
+    'protected async ensureCodeExtensionsWidget(): Promise<void>',
+    'this.extensionsSearchModel.query = BUILTIN_QUERY',
     'registerCodeWidget(factoryId: string, widget: Widget, pinned = false): void',
     'protected previewCodeCenterWidget?: Widget',
     'protected pinCodeCenterWidget(widget: Widget): void',
@@ -342,9 +348,7 @@ for (const marker of [
     'protected renderAppPage(): React.ReactNode',
     'protected renderLensSettings(): React.ReactNode',
     'protected renderCustomize(): React.ReactNode',
-    "static readonly PLUGINS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container'",
-    'protected async ensurePluginsWidget(): Promise<void>',
-    "className='lens-agent-window__plugins-host'",
+    '<strong>Lens plugin bundles</strong>',
     "aria-label='Results skillを有効化'",
     'this.customizationService.setSkillEnabled',
     'onCompositionEnd={event => this.setAgentDraft(event.currentTarget.value)}'
@@ -352,6 +356,9 @@ for (const marker of [
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
 assert.ok(!agentWidget.includes('Saveable.confirmSaveBeforeClose'), 'Editor close must use the Lens-owned confirmation dialog');
+assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.openCustomize()}"), 'Code Extensions must not open Lens Customize');
+assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Lens Settings');
+assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Lens Customize must not manage Code extensions');
 for (const dummyChrome of [
     '<small>lens / main</small>',
     '<strong>lens</strong>',
@@ -513,8 +520,6 @@ for (const marker of [
     '.lens-agent-window__app-page',
     '.lens-agent-window__app-nav',
     '.lens-agent-window__customize-card',
-    '.lens-agent-window__plugins-manager',
-    '.lens-agent-window__plugins-host',
     '.lens-agent-window__switch',
     '.lens-agent-window__composer',
     '.lens-agent-window__new-agent-empty',
