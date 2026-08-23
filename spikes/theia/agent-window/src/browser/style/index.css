@@ -1621,6 +1621,32 @@
     outline: none;
 }
 
+.lens-agent-window__code-header {
+    gap: 12px;
+    justify-content: flex-start;
+    min-height: 38px;
+    padding: 5px 10px;
+}
+
+.lens-agent-window__code-header .lens-agent-window__code-control {
+    font-size: 10px;
+    padding: 4px 8px;
+}
+
+.lens-agent-window__code-workspace {
+    color: #a5a69f;
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lens-agent-window__code-hint {
+    color: #6f716b;
+    font-size: 9px;
+    margin-left: auto;
+}
+
 .lens-agent-window__tabs {
     align-items: center;
     border: 1px solid #393a36;
@@ -2195,9 +2221,10 @@
 }
 
 .lens-agent-window__code {
-    background: #171817;
+    background: #181818;
     display: grid;
-    grid-template-columns: minmax(190px, 224px) minmax(0, 1fr);
+    grid-template-columns: 46px var(--lens-code-sidebar-width, 260px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 22px;
     height: 100%;
     min-height: 0;
     min-width: 0;
@@ -2213,10 +2240,193 @@
 }
 
 .lens-agent-window__code-sidebar {
-    background: #20211f;
+    background: #181818;
     border-right: 1px solid var(--lens-chrome-line);
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-column: 2;
+    grid-row: 1;
+    grid-template-rows: 35px minmax(0, 1fr);
+    position: relative;
+}
+
+.lens-agent-window__code-sidebar.explorer {
+    grid-template-rows: 35px 22px minmax(0, 1fr);
+}
+
+.lens-agent-window__code-activity {
+    align-items: stretch;
+    background: #181818;
+    border-right: 1px solid var(--lens-chrome-line);
+    display: flex;
+    flex-direction: column;
+    grid-column: 1;
+    grid-row: 1;
+    justify-content: space-between;
+    min-height: 0;
+}
+
+.lens-agent-window__code-activity-main,
+.lens-agent-window__code-activity-footer {
+    display: flex;
+    flex-direction: column;
+}
+
+.lens-agent-window__code-activity button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-left: 2px solid transparent;
+    color: #8f8f8f;
+    cursor: pointer;
+    display: flex;
+    height: 48px;
+    justify-content: center;
+    padding: 0;
+    width: 46px;
+}
+
+.lens-agent-window__code-activity button:hover,
+.lens-agent-window__code-activity button:focus-visible {
+    color: #d4d4d4;
+    outline: none;
+}
+
+.lens-agent-window__code-activity button.active {
+    border-left-color: #d7d7d7;
+    color: #f1f1f1;
+}
+
+.lens-agent-window__code-activity .codicon {
+    font-size: 23px;
+}
+
+.lens-agent-window__code-sidebar-title {
+    align-items: center;
+    border-bottom: 1px solid #242424;
+    color: #bbbbbb;
+    display: flex;
+    font-size: 10px;
+    justify-content: space-between;
+    letter-spacing: .04em;
+    padding: 0 8px 0 12px;
+    text-transform: uppercase;
+}
+
+.lens-agent-window__code-sidebar-title button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: #a3a3a3;
+    display: flex;
+    height: 24px;
+    justify-content: center;
+    width: 24px;
+}
+
+.lens-agent-window__code-sidebar-actions {
+    align-items: center;
+    display: flex;
+    gap: 1px;
+}
+
+.lens-agent-window__code-explorer-more {
+    position: relative;
+}
+
+.lens-agent-window__code-explorer-menu {
+    background: #252526;
+    border: 1px solid #454545;
+    border-radius: 5px;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 36%);
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    padding: 4px;
+    position: absolute;
+    right: 0;
+    text-transform: none;
+    top: 27px;
+    z-index: 20;
+}
+
+.lens-agent-window__code-sidebar-title .lens-agent-window__code-explorer-menu button {
+    color: #d4d4d4;
+    font-size: 11px;
+    height: 26px;
+    justify-content: flex-start;
+    padding: 0 8px;
+    white-space: nowrap;
+    width: 100%;
+}
+
+.lens-agent-window__code-explorer-menu-separator {
+    border-top: 1px solid #454545;
+    margin: 4px 3px;
+}
+
+.lens-agent-window__code-sidebar-actions button {
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.lens-agent-window__code-sidebar-actions button:hover,
+.lens-agent-window__code-sidebar-actions button:focus-visible {
+    background: #2d2d2d;
+    color: #eeeeee;
+    outline: none;
+}
+
+.lens-agent-window__code-explorer-root {
+    align-items: center;
+    color: #d0d0d0;
+    display: flex;
+    font-size: 10px;
+    gap: 3px;
+    min-width: 0;
+    padding: 0 8px;
+    text-transform: uppercase;
+}
+
+.lens-agent-window__code-explorer-root strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lens-agent-window__code-sidebar-resize {
+    bottom: 0;
+    cursor: ew-resize;
+    position: absolute;
+    right: -3px;
+    top: 0;
+    width: 6px;
+    z-index: 5;
+}
+
+.lens-agent-window__code-sidebar-resize:hover,
+.lens-agent-window__code-sidebar-resize:focus-visible,
+.lens-code-sidebar-resizing .lens-agent-window__code-sidebar-resize {
+    background: #4b77a8;
+    outline: none;
+}
+
+.lens-code-sidebar-resizing,
+.lens-code-sidebar-resizing * {
+    cursor: ew-resize !important;
+    user-select: none !important;
+}
+
+.lens-agent-window__code-sidebar-host .theia-TreeNode {
+    min-height: 22px;
+}
+
+.lens-agent-window__code-sidebar-host .theia-TreeNode:hover {
+    background: #2a2d2e;
+}
+
+.lens-agent-window__code-sidebar-host .theia-TreeNode.theia-mod-selected {
+    background: #37373d;
+    color: #ffffff;
 }
 
 .lens-agent-window__code-sidebar-tabs,
@@ -2264,13 +2474,64 @@
     white-space: nowrap;
 }
 
+.lens-agent-window__code-editor-tab {
+    align-items: stretch;
+    border-right: 1px solid var(--lens-chrome-line);
+    display: flex;
+    flex: none;
+    max-width: 240px;
+    min-width: 104px;
+}
+
+.lens-agent-window__code-editor-tab.active {
+    background: #262724;
+    color: var(--lens-chrome-text);
+}
+
+.lens-agent-window__code-editor-tabs .lens-agent-window__code-editor-tab-label {
+    border-right: 0;
+    flex: 1;
+    min-width: 0;
+    padding: 0 6px 0 12px;
+}
+
+.lens-agent-window__code-editor-tabs .lens-agent-window__code-editor-tab-close {
+    border-radius: 4px;
+    border-right: 0;
+    justify-content: center;
+    margin: 7px 5px 7px 0;
+    opacity: 0;
+    padding: 0;
+    width: 20px;
+}
+
+.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close,
+.lens-agent-window__code-editor-tab:hover .lens-agent-window__code-editor-tab-close,
+.lens-agent-window__code-editor-tab-close:focus-visible {
+    opacity: 1;
+}
+
+.lens-agent-window__code-editor-tab-close:hover {
+    background: #3a3a3a;
+}
+
 .lens-agent-window__code-editor {
     display: grid;
+    grid-column: 3;
+    grid-row: 1;
     grid-template-rows: auto minmax(0, 1fr);
 }
 
+.lens-agent-window__code-editor-stack {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) 190px;
+    min-height: 0;
+    min-width: 0;
+}
+
 .lens-agent-window__code-sidebar-host,
-.lens-agent-window__code-editor-host {
+.lens-agent-window__code-editor-host,
+.lens-agent-window__code-terminal-host {
     height: 100%;
     min-height: 0;
     min-width: 0;
@@ -2279,7 +2540,8 @@
 }
 
 .lens-agent-window__code-sidebar-host > *,
-.lens-agent-window__code-editor-host > * {
+.lens-agent-window__code-editor-host > *,
+.lens-agent-window__code-terminal-host > * {
     height: 100%;
     inset: 0;
     position: absolute;
@@ -2321,6 +2583,58 @@
     display: flex;
     font-size: 11px;
     justify-content: center;
+}
+
+.lens-agent-window__code-panel {
+    background: #181818;
+    border-top: 1px solid #2b2b2b;
+    display: grid;
+    grid-template-rows: 34px minmax(0, 1fr);
+    min-height: 0;
+    min-width: 0;
+}
+
+.lens-agent-window__code-panel-tabs {
+    align-items: stretch;
+    display: flex;
+    gap: 4px;
+    padding: 0 8px;
+}
+
+.lens-agent-window__code-panel-tab,
+.lens-agent-window__code-panel-tabs button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid transparent;
+    color: #929292;
+    display: flex;
+    font-size: 9px;
+    padding: 0 8px;
+}
+
+.lens-agent-window__code-panel-tab.active,
+.lens-agent-window__code-panel-tabs button.active {
+    border-bottom-color: #d0d0d0;
+    color: #d4d4d4;
+}
+
+.lens-agent-window__code-panel-spacer,
+.lens-agent-window__code-status-spacer {
+    flex: 1;
+}
+
+.lens-agent-window__code-status {
+    align-items: center;
+    background: #181818;
+    border-top: 1px solid #2b2b2b;
+    color: #b7b7b7;
+    display: flex;
+    font-size: 9px;
+    gap: 12px;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding: 0 8px;
 }
 
 .lens-agent-window__rail-footer-actions {

@@ -43,7 +43,7 @@ Taskが終了またはキャンセルされたら、アプリがResults skillを
 - [ ] Session一覧とComposer下書きは再読み込み後も復元できる
 - [ ] 左サイドバーは196〜420pxでpointer／keyboard resizeでき、double clickで既定幅へ戻せる
 
-Code does not host ApplicationShell; Lens hosts Files/Git/Editor widgets only.
+Code does not host ApplicationShell; Lens hosts Files/Search/Git/Editor/Terminal widgets in its own Cursor-style chrome.
 
 - [ ] plugin install screenとAgent wiring screenを追加しない
 

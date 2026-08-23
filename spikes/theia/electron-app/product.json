@@ -1,0 +1,11 @@
+{
+  "nameShort": "Lens",
+  "nameLong": "Lens",
+  "applicationName": "lens",
+  "dataFolderName": ".lens",
+  "version": "0.0.0",
+  "quality": "development",
+  "extensionAllowedBadgeProviders": [],
+  "extensionAllowedBadgeProvidersRegex": [],
+  "extensionEnabledApiProposals": {}
+}

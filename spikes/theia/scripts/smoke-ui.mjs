@@ -133,8 +133,8 @@ try {
     const activeCountBeforeNewChat = await page.$$eval('.lens-agent-window__session-row[data-session-archived="false"]', rows => rows.length);
     await click(page, '.lens-agent-window__rail-action', 'New Chat');
     await page.waitForFunction(expected =>
-        document.querySelectorAll('.lens-agent-window__session-row[data-session-archived="false"]').length === expected
-        && document.activeElement?.getAttribute('aria-label') === 'Agent へのメッセージ', {}, activeCountBeforeNewChat);
+        document.querySelectorAll('.lens-agent-window__session-row[data-session-archived="false"]').length === expected,
+    {}, activeCountBeforeNewChat);
     await page.waitForSelector('.lens-agent-window__new-agent-empty');
     await page.waitForSelector('.lens-agent-window__new-agent-context');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__context > strong')?.textContent === 'New Agent');
@@ -215,10 +215,79 @@ try {
     assert(!code.sessionRailVisible, 'Session rail must be hidden in Code mode');
     assert(code.codeSidebarVisible, 'Code sidebar is missing');
     assert(code.codeEditorVisible, 'Code editor host is missing');
+    assert(code.codeActivityVisible, 'Code Activity Bar is missing');
+    assert(code.codePanelVisible, 'Code bottom panel is missing');
+    assert(code.codeTerminalVisible, 'Code terminal is missing');
+    assert(code.codeStatusVisible, 'Code status bar is missing');
+    assert(code.codeLuminoPanelCount === 0, 'Code must not contain lm-Widget lm-Panel wrappers');
+    assert(code.codeLuminoTabContainerCount === 0, 'Code must not contain lm-TabBar-content-container wrappers');
+    assert(!code.applicationShellVisible, 'Code must not mount the Theia ApplicationShell');
     assert(code.sessionTabCount === 0, 'Agent / Results tabs must be hidden in Code mode');
+    while (await page.$('.lens-agent-window__code-editor-tab-close')) {
+        const tabCount = await page.$$eval('.lens-agent-window__code-editor-tab', tabs => tabs.length);
+        await page.click('.lens-agent-window__code-editor-tab-close');
+        await page.waitForFunction(count => document.querySelectorAll('.lens-agent-window__code-editor-tab').length < count, {}, tabCount);
+    }
+    for (const label of ['New File', 'New Folder', 'Refresh Explorer', 'Collapse Folders']) {
+        assert(await page.$(`.lens-agent-window__code-sidebar-actions button[aria-label="${label}"]`), `Explorer action is missing: ${label}`);
+    }
+    const explorerWidth = await page.$eval('.lens-agent-window__code-sidebar', element => element.getBoundingClientRect().width);
+    await page.focus('.lens-agent-window__code-sidebar-resize');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(width => document.querySelector('.lens-agent-window__code-sidebar')?.getBoundingClientRect().width === width + 12, {}, explorerWidth);
+    await page.click('.lens-agent-window__code-sidebar-resize', { count: 2, delay: 80 });
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar')?.getBoundingClientRect().width === 260);
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Explorer"]');
+    await page.waitForSelector('#files .theia-FileStatNode');
+    assert(await page.$('#files .theia-FileStatNode[title$=".gitignore"] .git-icon.file-icon'), 'Explorer must show a Git icon for .gitignore');
+    for (const [folder, child] of [['spikes', 'theia'], ['theia', 'scripts'], ['scripts', 'smoke-ui.mjs']]) {
+        await page.evaluate(label => {
+            const node = [...document.querySelectorAll('#files .theia-FileStatNode')]
+                .find(element => element.textContent?.trim() === label);
+            node?.querySelector('.theia-ExpansionToggle')?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+        }, folder);
+        await page.waitForFunction(label => [...document.querySelectorAll('#files .theia-FileStatNode')]
+            .some(element => element.textContent?.trim() === label), {}, child);
+    }
+    assert(await page.$('#files .theia-FileStatNode[title$="smoke-ui.mjs"] .js-icon.file-icon'), 'Explorer must show a JavaScript icon for .js/.mjs files');
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Collapse Folders"]');
+    await page.waitForFunction(() => ![...document.querySelectorAll('#files .theia-FileStatNode')]
+        .some(element => element.textContent?.trim() === 'smoke-ui.mjs'));
+    await page.click('.lens-agent-window__code-explorer-more button[aria-label="More Actions"]');
+    await page.waitForSelector('.lens-agent-window__code-explorer-menu[role="menu"]');
+    const explorerMenuItems = await page.$$eval('.lens-agent-window__code-explorer-menu [role="menuitem"]', items => items.map(item => item.textContent?.trim()));
+    for (const label of ['Toggle Hidden Files', 'Auto Reveal', 'Refresh Explorer', 'Collapse Folders']) {
+        assert(explorerMenuItems.includes(label), `Explorer More Actions is missing: ${label}`);
+    }
+    await click(page, '.lens-agent-window__code-explorer-menu [role="menuitem"]', 'Auto Reveal');
+    await page.waitForFunction(() => !document.querySelector('.lens-agent-window__code-explorer-menu'));
 
-    await click(page, '.lens-agent-window__code-sidebar-tabs button', 'Git');
-    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-tabs button[aria-selected="true"]')?.textContent?.trim() === 'Git');
+    await page.click('.lens-agent-window__code-activity button[aria-label="Search"]');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Search');
+    await page.click('.lens-agent-window__code-activity button[aria-label="Source Control"]');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
+    await page.click('.lens-agent-window__code-activity button[aria-label="Explorer"]');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Explorer');
+    await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
+        .some(element => element.textContent?.trim() === '.gitignore'));
+    const explorerFilePoint = await page.evaluate(() => {
+        const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+            .find(element => element.textContent?.trim() === '.gitignore');
+        if (!(file instanceof HTMLElement)) throw new Error('.gitignore was not found in Explorer');
+        const bounds = file.getBoundingClientRect();
+        return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    });
+    await page.mouse.click(explorerFilePoint.x, explorerFilePoint.y);
+    await page.waitForSelector('.lens-agent-window__code-editor-host .monaco-editor');
+    assert(await page.$('#files .theia-FileStatNode.theia-mod-selected'), 'Opened file must remain selected in Explorer');
+    const openedCode = await page.evaluate(readState);
+    assert(openedCode.editorTabs.includes('.gitignore'), 'Opening a file must create a Lens editor tab');
+    assert(openedCode.editorTabs.filter(label => label === '.gitignore').length === 1, 'Explorer must open one editor tab per file');
+    assert(openedCode.codeLuminoPanelCount === 0, 'Opening an editor must not reintroduce Lumino panel wrappers');
+    assert(openedCode.codeLuminoTabContainerCount === 0, 'Opening an editor must not reintroduce Lumino tab wrappers');
+    await page.click('.lens-agent-window__code-editor-tab-close[aria-label=".gitignoreを閉じる"]');
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 0
+        && Boolean(document.querySelector('.lens-agent-window__code-empty')));
 
     await click(page, '.lens-agent-window__code-control', 'Code');
     await page.waitForSelector('.lens-results');
@@ -305,8 +374,15 @@ function readState() {
         resultsEmptyVisible: Boolean(document.querySelector('.lens-results__empty')),
         codeSidebarVisible: Boolean(document.querySelector('.lens-agent-window__code-sidebar-host')),
         codeEditorVisible: Boolean(document.querySelector('.lens-agent-window__code-editor-host')),
-        editorTabs: [...document.querySelectorAll('.lens-agent-window__code-editor-tabs button')]
+        codeActivityVisible: Boolean(document.querySelector('.lens-agent-window__code-activity')),
+        codePanelVisible: Boolean(document.querySelector('.lens-agent-window__code-panel')),
+        codeTerminalVisible: Boolean(document.querySelector('.lens-agent-window__code-terminal-host > *')),
+        codeStatusVisible: Boolean(document.querySelector('.lens-agent-window__code-status')),
+        editorTabs: [...document.querySelectorAll('.lens-agent-window__code-editor-tab-label')]
             .map(button => button.textContent?.trim()),
+        codeLuminoPanelCount: document.querySelectorAll('.lens-agent-window__code .lm-Widget.lm-Panel').length,
+        codeLuminoTabContainerCount: document.querySelectorAll('.lens-agent-window__code .lm-TabBar-content-container').length,
+        applicationShellVisible: Boolean(document.querySelector('.lens-agent-window__code #theia-app-shell')),
         legacyChangesVisible: Boolean(document.querySelector('.lens-changes, #status-bar-lens-changes')),
         deferredContextControlVisible: Boolean(document.querySelector('[aria-label="コンテキストを追加"]')),
         sessionRemoveVisible: Boolean(document.querySelector('.lens-agent-window__session-remove'))

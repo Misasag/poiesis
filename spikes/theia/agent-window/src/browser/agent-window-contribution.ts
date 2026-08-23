@@ -17,8 +17,6 @@ export class AgentWindowContribution implements FrontendApplicationContribution 
     ) { }
 
     initialize(): void {
-        // onCreated fires while WidgetManager is still resolving creation, before
-        // WidgetOpenHandler can add an unattached editor to the workbench shell.
         this.toDispose.push(this.editorManager.onCreated(widget => {
             const factoryId = this.widgetManager.getDescription(widget)?.factoryId
                 ?? AgentWindowWidget.EDITOR_WIDGET_FACTORY_ID;
@@ -30,11 +28,13 @@ export class AgentWindowContribution implements FrontendApplicationContribution 
     }
 
     async onDidInitializeLayout(): Promise<void> {
-        const [files, git] = await Promise.all([
+        const [files, search, git] = await Promise.all([
             this.widgetManager.getOrCreateWidget(AgentWindowWidget.FILES_WIDGET_FACTORY_ID),
+            this.widgetManager.getOrCreateWidget(AgentWindowWidget.SEARCH_WIDGET_FACTORY_ID),
             this.widgetManager.getOrCreateWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID)
         ]);
         this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.FILES_WIDGET_FACTORY_ID, files);
+        this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.SEARCH_WIDGET_FACTORY_ID, search);
         this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID, git);
         for (const editor of this.editorManager.all) {
             const factoryId = this.widgetManager.getDescription(editor)?.factoryId

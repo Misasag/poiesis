@@ -17,7 +17,7 @@ The product contract is defined by:
 - `TaskService` owns Task start, completion, failure, cancellation, the pre-run Workspace snapshot, and the resulting Change Set.
 - `ResultsService` starts one bundled `ResultsSkill` after a Task reaches a terminal state. The skill returns one complete HTML document; partial HTML is not streamed into the canvas.
 - Results is user-opened and does not steal focus when a Task ends.
-- Code mounts Theia's Files, Git, Editor, and Settings widgets into Lens-owned slots. It does not attach the full Theia `ApplicationShell`.
+- Code mounts Theia's Files, Search, Git, Editor, and Terminal widgets into Lens-owned Cursor-style chrome. It does not attach the full Theia `ApplicationShell`.
 
 The old `ChangesWidget` source and the older Spike Reports are retained only as historical technical experiments. They are not registered in the current product navigation.
 

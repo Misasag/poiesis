@@ -216,13 +216,15 @@ assert.ok(!resultsSkill.includes('task.baseline.note'), 'Results must not render
 
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
-    "type CodeSidebarTab = 'files' | 'git'",
+    "type CodeSidebarTab = 'files' | 'search' | 'git'",
     'protected codeMode = false',
     "static readonly FILES_WIDGET_FACTORY_ID = 'files'",
+    "static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace'",
     "static readonly GIT_WIDGET_FACTORY_ID = 'scm-view'",
     "static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener'",
     "static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget'",
     "import { EditorWidget } from '@theia/editor/lib/browser'",
+    "import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service'",
     "import { FileDialogService } from '@theia/filesystem/lib/browser'",
     "import { ScmService } from '@theia/scm/lib/browser/scm-service'",
     "const NEW_SESSION_TITLE = '新しい会話'",
@@ -261,10 +263,19 @@ for (const marker of [
     'submitResultsQuestion',
     'protected toggleCodeMode(): void',
     'protected renderCode(): React.ReactNode',
+    "this.iconThemeService.current = 'theia-file-icons'",
+    'protected renderExplorerMoreMenu(): React.ReactNode',
+    "FileNavigatorCommands.TOGGLE_HIDDEN_FILES.id",
+    "FileNavigatorCommands.TOGGLE_AUTO_REVEAL.id",
     "className='lens-agent-window__code-sidebar-host'",
     "className='lens-agent-window__code-editor-host'",
-    "this.selectCodeSidebarTab('files')",
-    "this.selectCodeSidebarTab('git')",
+    "className='lens-agent-window__code-activity'",
+    "className='lens-agent-window__code-terminal-host'",
+    "className='lens-agent-window__code-status'",
+    "this.renderCodeActivity('files', 'files', 'Explorer')",
+    "this.renderCodeActivity('search', 'search', 'Search')",
+    "this.renderCodeActivity('git', 'source-control', 'Source Control')",
+    'protected async ensureCodeTerminal(): Promise<void>',
     'registerCodeWidget(factoryId: string, widget: Widget): void',
     'protected isCodeCenterWidget(factoryId: string, widget: Widget): boolean',
     'widget instanceof EditorWidget',
@@ -272,6 +283,7 @@ for (const marker of [
     'protected syncCodeWidgetAttachments(): void',
     'this.attachCodeWidget(this.activeCodeSidebarWidget(), this.codeSidebarHost)',
     'this.attachCodeWidget(this.activeCodeCenterWidget, this.codeEditorHost)',
+    'this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost)',
     'this.resizeCodeWidget(this.activeCodeSidebarWidget(), host)',
     'this.resizeCodeWidget(this.activeCodeCenterWidget, host)',
     'widget.parent = null',
@@ -444,9 +456,13 @@ for (const marker of [
     '.lens-agent-window__rail-resize-handle',
     '.lens-agent-window__viewport',
     '.lens-agent-window__code',
+    '.lens-agent-window__code-activity',
+    '.lens-agent-window__code-sidebar-title',
     '.lens-agent-window__code-sidebar-host',
     '.lens-agent-window__code-editor-host',
-    '.lens-agent-window__code-footer',
+    '.lens-agent-window__code-terminal-host',
+    '.lens-agent-window__code-panel',
+    '.lens-agent-window__code-status',
     '.lens-agent-window__app-page',
     '.lens-agent-window__app-nav',
     '.lens-agent-window__customize-card',
@@ -494,7 +510,7 @@ assert.match(
 );
 assert.match(
     agentStyles,
-    /\.lens-agent-window__code-sidebar-host,\s*\.lens-agent-window__code-editor-host\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/,
+    /\.lens-agent-window__code-sidebar-host,\s*\.lens-agent-window__code-editor-host,\s*\.lens-agent-window__code-terminal-host\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/,
     'Code widget hosts must fill their minmax rows without collapsing'
 );
 assert.match(
@@ -519,6 +535,7 @@ for (const marker of [
     'this.widgetManager.onDidCreateWidget',
     'async onDidInitializeLayout(): Promise<void>',
     'this.widgetManager.getOrCreateWidget(AgentWindowWidget.FILES_WIDGET_FACTORY_ID)',
+    'this.widgetManager.getOrCreateWidget(AgentWindowWidget.SEARCH_WIDGET_FACTORY_ID)',
     'this.widgetManager.getOrCreateWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID)',
     'for (const editor of this.editorManager.all)',
     'this.agentWindowWidget.registerCodeWidget(factoryId, widget)',
@@ -573,7 +590,7 @@ for (const forbidden of ['theia-ApplicationShell', 'theia-tabBar-tab-row', '.the
     assert.ok(!agentStyles.includes(forbidden), `Code chrome must not CSS-hide ${forbidden}`);
 }
 assert.ok(
-    firstCompletion.includes('Code does not host ApplicationShell; Lens hosts Files/Git/Editor widgets only.'),
+    firstCompletion.includes('Code does not host ApplicationShell; Lens hosts Files/Search/Git/Editor/Terminal widgets in its own Cursor-style chrome.'),
     'FIRST-COMPLETION must state the Code widget-hosting boundary'
 );
 for (const marker of ['AgentProvider', 'Codex CLI', 'TaskService', 'ResultsSkill', 'Agent / Results / Code']) {

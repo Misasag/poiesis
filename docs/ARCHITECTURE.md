@@ -35,7 +35,7 @@ Application services
 └─ AgentRuntimeServer
 ```
 
-Lensは外枠を所有する。Theia `ApplicationShell`はdocumentへattachせず、Codeが必要とするFiles、Git、Editor、Settings Widgetだけを専用slotへattachする。
+Lensは外枠を所有する。Theia `ApplicationShell`はdocumentへattachせず、Codeが必要とするFiles、Search、Git、Editor、Terminal WidgetだけをLens専用slotへattachする。
 
 ## Core concepts
 

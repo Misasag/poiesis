@@ -66,7 +66,7 @@ Session行の三点メニューから、ピン留め／解除、inline rename、
 
 ### Code
 
-Codeへ入るとSession一覧を隠し、同じ左領域をFiles／Gitへ切り替える。中央にはTheia既存のEditorまたはSettings Widgetを載せる。ApplicationShell全体は埋め込まない。
+Codeへ入るとSession一覧を隠し、Lens管理のActivity BarからFiles／Search／Gitを切り替える。中央にはEditor、下部にはTerminalとStatus Barを載せる。ApplicationShell全体は埋め込まない。
 
 Codeをもう一度押すと、直前のAgentまたはResultsへ戻る。Editor tabと左ペインの選択は保持する。
 

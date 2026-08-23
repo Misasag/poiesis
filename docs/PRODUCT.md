@@ -83,7 +83,7 @@ Lens Window
    └ Editor / Settings
 ```
 
-CodeはTheia ApplicationShell全体をhostせず、必要なFiles／Git／Editor／Settings WidgetだけをLensのslotへ載せる。
+CodeはTheia ApplicationShell全体をhostせず、必要なFiles／Search／Git／Editor／Terminal WidgetだけをCursor型のLens専用レイアウトへ載せる。
 
 ## Interaction Principles
 

@@ -1,8 +1,9 @@
 import * as React from '@theia/core/shared/react';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { StorageService, WidgetManager } from '@theia/core/lib/browser';
+import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
-import { Disposable } from '@theia/core/lib/common';
+import { CommandService, Disposable } from '@theia/core/lib/common';
 import URI from '@theia/core/lib/common/uri';
 import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { Widget } from '@theia/core/shared/@lumino/widgets';
@@ -11,6 +12,8 @@ import { FileDialogService } from '@theia/filesystem/lib/browser';
 import { ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-provider';
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
+import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
+import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-contribution';
 import { AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
 import { FolderBrowserResult } from '../common/agent-runtime-protocol';
 import { ResultsService } from './results-skill';
@@ -20,7 +23,7 @@ import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
 
 type AgentWindowTab = 'agent' | 'results';
-type CodeSidebarTab = 'files' | 'git';
+type CodeSidebarTab = 'files' | 'search' | 'git';
 type AppPage = 'settings' | 'customize';
 type CustomizeTab = 'skills' | 'plugins';
 const NEW_SESSION_TITLE = '新しい会話';
@@ -28,6 +31,9 @@ const SESSION_STORAGE_KEY = 'lens.agent-window.sessions.v1';
 const DEFAULT_RAIL_WIDTH = 252;
 const MIN_RAIL_WIDTH = 196;
 const MAX_RAIL_WIDTH = 420;
+const DEFAULT_CODE_SIDEBAR_WIDTH = 260;
+const MIN_CODE_SIDEBAR_WIDTH = 180;
+const MAX_CODE_SIDEBAR_WIDTH = 520;
 
 interface ChatMessage {
     id: string;
@@ -70,6 +76,7 @@ interface PersistedAgentWindowState {
 export class AgentWindowWidget extends ReactWidget {
     static readonly ID = 'lens-agent-window';
     static readonly FILES_WIDGET_FACTORY_ID = 'files';
+    static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace';
     static readonly GIT_WIDGET_FACTORY_ID = 'scm-view';
     static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener';
     static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget';
@@ -79,13 +86,20 @@ export class AgentWindowWidget extends ReactWidget {
     protected customizeTab: CustomizeTab = 'skills';
     protected codeSidebarTab: CodeSidebarTab = 'files';
     protected codeFilesWidget?: Widget;
+    protected codeSearchWidget?: Widget;
     protected codeGitWidget?: Widget;
+    protected codeTerminalWidget?: Widget;
     protected readonly codeCenterWidgets: Widget[] = [];
     protected activeCodeCenterWidget?: Widget;
     protected codeSidebarHost?: HTMLDivElement;
     protected codeEditorHost?: HTMLDivElement;
+    protected codeTerminalHost?: HTMLDivElement;
     protected codeSidebarResizeObserver?: ResizeObserver;
     protected codeEditorResizeObserver?: ResizeObserver;
+    protected codeTerminalResizeObserver?: ResizeObserver;
+    protected codeSidebarWidth = DEFAULT_CODE_SIDEBAR_WIDTH;
+    protected codeSidebarResizeCleanup?: Disposable;
+    protected explorerMoreVisible = false;
     protected pluginsWidget?: Widget;
     protected pluginsHost?: HTMLDivElement;
     protected pluginsResizeObserver?: ResizeObserver;
@@ -131,7 +145,10 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
         @inject(FileDialogService) protected readonly fileDialogService: FileDialogService,
         @inject(ScmService) protected readonly scmService: ScmService,
+        @inject(TerminalService) protected readonly terminalService: TerminalService,
         @inject(WidgetManager) protected readonly widgetManager: WidgetManager,
+        @inject(CommandService) protected readonly commandService: CommandService,
+        @inject(IconThemeService) protected readonly iconThemeService: IconThemeService,
         @inject(StorageService) protected readonly storageService: StorageService,
         @inject(CustomizationService) protected readonly customizationService: CustomizationService,
         @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService
@@ -161,6 +178,11 @@ export class AgentWindowWidget extends ReactWidget {
                 && !(event.target as Element | null)?.closest('.lens-agent-window__rail-heading')) {
                 this.workspacePickerVisible = false;
                 this.workspaceSearchQuery = '';
+                this.update();
+            }
+            if (this.explorerMoreVisible
+                && !(event.target as Element | null)?.closest('.lens-agent-window__code-explorer-more')) {
+                this.explorerMoreVisible = false;
                 this.update();
             }
         };
@@ -1023,6 +1045,24 @@ export class AgentWindowWidget extends ReactWidget {
                 </header>
             );
         }
+        if (this.codeMode) {
+            return (
+                <header className='lens-agent-window__header lens-agent-window__code-header'>
+                    <button
+                        type='button'
+                        className='lens-agent-window__code-control active'
+                        aria-pressed='true'
+                        aria-label='Agentへ戻る'
+                        onClick={() => this.toggleCodeMode()}
+                    >
+                        <span className='codicon codicon-code' aria-hidden='true' />
+                        <span>Code</span>
+                    </button>
+                    <span className='lens-agent-window__code-workspace'>{this.workspaceContextLabel()}</span>
+                    <span className='lens-agent-window__code-hint'>Lens Workbench</span>
+                </header>
+            );
+        }
         const session = this.selectedSession();
         const activeTab = session?.activeTab ?? 'agent';
         return (
@@ -1378,7 +1418,7 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         this.pluginsHost = host;
-        this.pluginsResizeObserver = new ResizeObserver(() => this.resizeCodeWidget(this.pluginsWidget, host));
+        this.pluginsResizeObserver = new ResizeObserver(() => this.resizeEmbeddedWidget(this.pluginsWidget, host));
         this.pluginsResizeObserver.observe(host);
         void this.ensurePluginsWidget();
     };
@@ -1388,8 +1428,34 @@ export class AgentWindowWidget extends ReactWidget {
             this.pluginsWidget = await this.widgetManager.getOrCreateWidget(AgentWindowWidget.PLUGINS_WIDGET_FACTORY_ID);
         }
         if (this.appPage === 'customize' && this.customizeTab === 'plugins') {
-            this.attachCodeWidget(this.pluginsWidget, this.pluginsHost);
+            this.attachEmbeddedWidget(this.pluginsWidget, this.pluginsHost);
         }
+    }
+
+    protected attachEmbeddedWidget(widget: Widget | undefined, host: HTMLDivElement | undefined): void {
+        if (!widget || !host) {
+            return;
+        }
+        if (widget.node.parentElement !== host) {
+            if (widget.parent) {
+                widget.parent = null;
+            }
+            if (widget.isAttached) {
+                Widget.detach(widget);
+            }
+            Widget.attach(widget, host);
+        }
+        widget.show();
+        widget.update();
+        this.resizeEmbeddedWidget(widget, host);
+    }
+
+    protected resizeEmbeddedWidget(widget: Widget | undefined, host: HTMLDivElement): void {
+        if (!widget?.isAttached || widget.node.parentElement !== host) {
+            return;
+        }
+        MessageLoop.sendMessage(widget, new Widget.ResizeMessage(host.clientWidth, host.clientHeight));
+        widget.update();
     }
 
     protected detachPluginsWidget(): void {
@@ -1606,60 +1672,220 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderCode(): React.ReactNode {
+        const sidebarLabels: Record<CodeSidebarTab, string> = {
+            files: 'Explorer',
+            search: 'Search',
+            git: 'Source Control'
+        };
         return (
-            <section className='lens-agent-window__code' aria-label='Code モード'>
-                <aside className='lens-agent-window__code-sidebar' aria-label='Code のサイドバー'>
-                    <div className='lens-agent-window__code-sidebar-tabs' role='tablist' aria-label='Code の表示'>
-                        <button
-                            type='button'
-                            role='tab'
-                            aria-selected={this.codeSidebarTab === 'files'}
-                            className={this.codeSidebarTab === 'files' ? 'active' : ''}
-                            onClick={() => this.selectCodeSidebarTab('files')}
-                        >
-                            Files
-                        </button>
-                        <button
-                            type='button'
-                            role='tab'
-                            aria-selected={this.codeSidebarTab === 'git'}
-                            className={this.codeSidebarTab === 'git' ? 'active' : ''}
-                            onClick={() => this.selectCodeSidebarTab('git')}
-                        >
-                            Git
+            <section
+                className='lens-agent-window__code'
+                aria-label='Code モード'
+                style={{ '--lens-code-sidebar-width': `${this.codeSidebarWidth}px` } as React.CSSProperties}
+            >
+                <nav className='lens-agent-window__code-activity' aria-label='Code Activity Bar'>
+                    <div className='lens-agent-window__code-activity-main'>
+                        {this.renderCodeActivity('files', 'files', 'Explorer')}
+                        {this.renderCodeActivity('search', 'search', 'Search')}
+                        {this.renderCodeActivity('git', 'source-control', 'Source Control')}
+                        <button type='button' title='Extensions' aria-label='Extensions' onClick={() => this.openCustomize()}>
+                            <span className='codicon codicon-extensions' aria-hidden='true' />
                         </button>
                     </div>
-                    <div className='lens-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
-                    <footer className='lens-agent-window__code-footer'>
-                        <span>{this.codeSidebarTab === 'files' ? 'Files' : 'Git'}</span>
-                        <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
+                    <div className='lens-agent-window__code-activity-footer'>
+                        <button type='button' title='Settings' aria-label='Settings' onClick={() => this.openSettings()}>
                             <span className='codicon codicon-settings-gear' aria-hidden='true' />
                         </button>
-                    </footer>
+                    </div>
+                </nav>
+                <aside
+                    className={`lens-agent-window__code-sidebar${this.codeSidebarTab === 'files' ? ' explorer' : ''}`}
+                    aria-label='Code のサイドバー'
+                >
+                    <div className='lens-agent-window__code-sidebar-title'>
+                        <span>{sidebarLabels[this.codeSidebarTab]}</span>
+                        <div className='lens-agent-window__code-sidebar-actions'>
+                            {this.codeSidebarTab === 'files' && (
+                                <React.Fragment>
+                                    {this.renderExplorerAction('new-file', 'New File', FileNavigatorCommands.NEW_FILE_TOOLBAR.id)}
+                                    {this.renderExplorerAction('new-folder', 'New Folder', FileNavigatorCommands.NEW_FOLDER_TOOLBAR.id)}
+                                    {this.renderExplorerAction('refresh', 'Refresh Explorer', FileNavigatorCommands.REFRESH_NAVIGATOR.id)}
+                                    {this.renderExplorerAction('collapse-all', 'Collapse Folders', FileNavigatorCommands.COLLAPSE_ALL.id)}
+                                </React.Fragment>
+                            )}
+                            {this.codeSidebarTab === 'files' && (
+                                <div className='lens-agent-window__code-explorer-more'>
+                                    <button
+                                        type='button'
+                                        title='More Actions'
+                                        aria-label='More Actions'
+                                        aria-haspopup='menu'
+                                        aria-expanded={this.explorerMoreVisible}
+                                        onClick={() => {
+                                            this.explorerMoreVisible = !this.explorerMoreVisible;
+                                            this.update();
+                                        }}
+                                    >
+                                        <span className='codicon codicon-ellipsis' aria-hidden='true' />
+                                    </button>
+                                    {this.explorerMoreVisible && this.renderExplorerMoreMenu()}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {this.codeSidebarTab === 'files' && (
+                        <div className='lens-agent-window__code-explorer-root'>
+                            <span className='codicon codicon-chevron-down' aria-hidden='true' />
+                            <strong>{this.workspaceFolderName()}</strong>
+                        </div>
+                    )}
+                    <div className='lens-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
+                    <div
+                        className='lens-agent-window__code-sidebar-resize'
+                        role='separator'
+                        aria-label='Explorerの幅を変更'
+                        aria-orientation='vertical'
+                        aria-valuemin={MIN_CODE_SIDEBAR_WIDTH}
+                        aria-valuemax={MAX_CODE_SIDEBAR_WIDTH}
+                        aria-valuenow={this.codeSidebarWidth}
+                        tabIndex={0}
+                        onPointerDown={event => this.startCodeSidebarResize(event)}
+                        onDoubleClick={() => this.setCodeSidebarWidth(DEFAULT_CODE_SIDEBAR_WIDTH)}
+                        onKeyDown={event => {
+                            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                                event.preventDefault();
+                                this.setCodeSidebarWidth(this.codeSidebarWidth + (event.key === 'ArrowLeft' ? -12 : 12));
+                            }
+                        }}
+                    />
                 </aside>
                 <main className='lens-agent-window__code-editor' aria-label='Editor'>
                     <div className='lens-agent-window__code-editor-tabs' role='tablist' aria-label='開いているEditor'>
                         {this.codeCenterWidgets.map(widget => (
-                            <button
+                            <div
                                 key={widget.id}
-                                type='button'
                                 role='tab'
                                 aria-selected={this.activeCodeCenterWidget === widget}
-                                className={this.activeCodeCenterWidget === widget ? 'active' : ''}
-                                onClick={() => this.selectCodeCenterWidget(widget)}
+                                className={`lens-agent-window__code-editor-tab${this.activeCodeCenterWidget === widget ? ' active' : ''}`}
+                                onAuxClick={event => {
+                                    if (event.button === 1) {
+                                        event.preventDefault();
+                                        this.closeCodeCenterWidget(widget);
+                                    }
+                                }}
                             >
-                                {widget.title.iconClass && <span className={widget.title.iconClass} aria-hidden='true' />}
-                                <span>{this.codeCenterWidgetLabel(widget)}</span>
-                            </button>
+                                <button
+                                    type='button'
+                                    className='lens-agent-window__code-editor-tab-label'
+                                    onClick={() => this.selectCodeCenterWidget(widget)}
+                                >
+                                    {widget.title.iconClass && <span className={widget.title.iconClass} aria-hidden='true' />}
+                                    <span>{this.codeCenterWidgetLabel(widget)}</span>
+                                </button>
+                                <button
+                                    type='button'
+                                    className='lens-agent-window__code-editor-tab-close'
+                                    title='Close'
+                                    aria-label={`${this.codeCenterWidgetLabel(widget)}を閉じる`}
+                                    onClick={() => this.closeCodeCenterWidget(widget)}
+                                >
+                                    <span className='codicon codicon-close' aria-hidden='true' />
+                                </button>
+                            </div>
                         ))}
                     </div>
-                    <div className='lens-agent-window__code-editor-host' ref={this.setCodeEditorHost}>
-                        {!this.activeCodeCenterWidget && (
-                            <div className='lens-agent-window__code-empty'>Filesからファイルを開いてください。</div>
-                        )}
+                    <div className='lens-agent-window__code-editor-stack'>
+                        <div className='lens-agent-window__code-editor-host' ref={this.setCodeEditorHost}>
+                            {!this.activeCodeCenterWidget && (
+                                <div className='lens-agent-window__code-empty'>ファイルを開いて編集を開始</div>
+                            )}
+                        </div>
+                        <section className='lens-agent-window__code-panel' aria-label='Bottom Panel'>
+                            <div className='lens-agent-window__code-panel-tabs'>
+                                <span className='lens-agent-window__code-panel-tab active'>TERMINAL</span>
+                                <span className='lens-agent-window__code-panel-spacer' />
+                                <button type='button' title='New Terminal' aria-label='New Terminal' onClick={() => void this.createCodeTerminal()}>
+                                    <span className='codicon codicon-add' aria-hidden='true' />
+                                </button>
+                            </div>
+                            <div className='lens-agent-window__code-terminal-host' ref={this.setCodeTerminalHost} />
+                        </section>
                     </div>
                 </main>
+                <footer className='lens-agent-window__code-status' aria-label='Status Bar'>
+                    <span><span className='codicon codicon-source-control' aria-hidden='true' /> {this.currentGitBranch() ?? 'main'}</span>
+                    <span><span className='codicon codicon-sync' aria-hidden='true' /></span>
+                    <span><span className='codicon codicon-error' aria-hidden='true' /> 0</span>
+                    <span><span className='codicon codicon-warning' aria-hidden='true' /> 0</span>
+                    <span className='lens-agent-window__code-status-spacer' />
+                    <span>UTF-8</span>
+                    <span>LF</span>
+                    <span>Spaces: 4</span>
+                    <span><span className='codicon codicon-bell' aria-hidden='true' /></span>
+                </footer>
             </section>
+        );
+    }
+
+    protected renderCodeActivity(tab: CodeSidebarTab, icon: string, label: string): React.ReactNode {
+        return (
+            <button
+                type='button'
+                className={this.codeSidebarTab === tab ? 'active' : ''}
+                aria-pressed={this.codeSidebarTab === tab}
+                title={label}
+                aria-label={label}
+                onClick={() => this.selectCodeSidebarTab(tab)}
+            >
+                <span className={`codicon codicon-${icon}`} aria-hidden='true' />
+            </button>
+        );
+    }
+
+    protected ensureCodeFileIcons(): void {
+        if (this.iconThemeService.current === 'none' && this.iconThemeService.getDefinition('theia-file-icons')) {
+            this.iconThemeService.current = 'theia-file-icons';
+        }
+    }
+
+    protected renderExplorerAction(icon: string, label: string, command: string): React.ReactNode {
+        return (
+            <button
+                type='button'
+                title={label}
+                aria-label={label}
+                onClick={() => void this.commandService.executeCommand(command, this.codeFilesWidget)}
+            >
+                <span className={`codicon codicon-${icon}`} aria-hidden='true' />
+            </button>
+        );
+    }
+
+    protected renderExplorerMoreMenu(): React.ReactNode {
+        return (
+            <div className='lens-agent-window__code-explorer-menu' role='menu' aria-label='Explorer More Actions'>
+                {this.renderExplorerMenuItem('Toggle Hidden Files', FileNavigatorCommands.TOGGLE_HIDDEN_FILES.id)}
+                {this.renderExplorerMenuItem('Auto Reveal', FileNavigatorCommands.TOGGLE_AUTO_REVEAL.id)}
+                <div className='lens-agent-window__code-explorer-menu-separator' role='separator' />
+                {this.renderExplorerMenuItem('Refresh Explorer', FileNavigatorCommands.REFRESH_NAVIGATOR.id)}
+                {this.renderExplorerMenuItem('Collapse Folders', FileNavigatorCommands.COLLAPSE_ALL.id)}
+            </div>
+        );
+    }
+
+    protected renderExplorerMenuItem(label: string, command: string): React.ReactNode {
+        return (
+            <button
+                type='button'
+                role='menuitem'
+                onClick={() => {
+                    this.explorerMoreVisible = false;
+                    void this.commandService.executeCommand(command, this.codeFilesWidget);
+                    this.update();
+                }}
+            >
+                {label}
+            </button>
         );
     }
 
@@ -1668,6 +1894,9 @@ export class AgentWindowWidget extends ReactWidget {
         if (factoryId === AgentWindowWidget.FILES_WIDGET_FACTORY_ID) {
             changed = this.codeFilesWidget !== widget;
             this.codeFilesWidget = widget;
+        } else if (factoryId === AgentWindowWidget.SEARCH_WIDGET_FACTORY_ID) {
+            changed = this.codeSearchWidget !== widget;
+            this.codeSearchWidget = widget;
         } else if (factoryId === AgentWindowWidget.GIT_WIDGET_FACTORY_ID) {
             changed = this.codeGitWidget !== widget;
             this.codeGitWidget = widget;
@@ -1723,8 +1952,29 @@ export class AgentWindowWidget extends ReactWidget {
         this.syncCodeWidgetAttachments();
     };
 
+    protected readonly setCodeTerminalHost = (host: HTMLDivElement | null): void => {
+        if (!host) {
+            this.codeTerminalResizeObserver?.disconnect();
+            this.codeTerminalResizeObserver = undefined;
+            this.detachCodeWidget(this.codeTerminalWidget);
+            this.codeTerminalHost = undefined;
+            return;
+        }
+        this.codeTerminalHost = host;
+        this.codeTerminalResizeObserver = new ResizeObserver(() =>
+            this.resizeCodeWidget(this.codeTerminalWidget, host));
+        this.codeTerminalResizeObserver.observe(host);
+        void this.ensureCodeTerminal();
+    };
+
     protected activeCodeSidebarWidget(): Widget | undefined {
-        return this.codeSidebarTab === 'files' ? this.codeFilesWidget : this.codeGitWidget;
+        if (this.codeSidebarTab === 'files') {
+            return this.codeFilesWidget;
+        }
+        if (this.codeSidebarTab === 'search') {
+            return this.codeSearchWidget;
+        }
+        return this.codeGitWidget;
     }
 
     protected syncCodeWidgetAttachments(): void {
@@ -1734,6 +1984,23 @@ export class AgentWindowWidget extends ReactWidget {
         }
         this.attachCodeWidget(this.activeCodeSidebarWidget(), this.codeSidebarHost);
         this.attachCodeWidget(this.activeCodeCenterWidget, this.codeEditorHost);
+        this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
+    }
+
+    protected async ensureCodeTerminal(): Promise<void> {
+        if (!this.codeTerminalWidget) {
+            this.codeTerminalWidget = this.terminalService.all[0] ?? await this.terminalService.newTerminal({});
+        }
+        if (this.codeMode) {
+            this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
+        }
+    }
+
+    protected async createCodeTerminal(): Promise<void> {
+        this.detachCodeWidget(this.codeTerminalWidget);
+        this.codeTerminalWidget = await this.terminalService.newTerminal({});
+        this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
+        this.update();
     }
 
     protected attachCodeWidget(widget: Widget | undefined, host: HTMLDivElement | undefined): void {
@@ -1741,8 +2008,6 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         if (widget.node.parentElement !== host) {
-            // Files and Git normally belong to ViewContainerPart; editors may
-            // already belong to the detached shell. Make each a root first.
             if (widget.parent) {
                 widget.parent = null;
             }
@@ -1784,7 +2049,7 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected detachCodeWidget(widget: Widget | undefined): void {
         const parent = widget?.node.parentElement;
-        if (widget?.isAttached && (parent === this.codeSidebarHost || parent === this.codeEditorHost)) {
+        if (widget?.isAttached && (parent === this.codeSidebarHost || parent === this.codeEditorHost || parent === this.codeTerminalHost)) {
             Widget.detach(widget);
         }
     }
@@ -1792,13 +2057,47 @@ export class AgentWindowWidget extends ReactWidget {
     protected detachCodeWidgets(): void {
         this.detachCodeWidget(this.activeCodeSidebarWidget());
         this.detachCodeWidget(this.activeCodeCenterWidget);
+        this.detachCodeWidget(this.codeTerminalWidget);
     }
 
     protected selectCodeSidebarTab(tab: CodeSidebarTab): void {
         this.detachCodeWidget(this.activeCodeSidebarWidget());
+        this.explorerMoreVisible = false;
         this.codeSidebarTab = tab;
         this.update();
         this.syncCodeWidgetAttachments();
+    }
+
+    protected startCodeSidebarResize(event: React.PointerEvent<HTMLDivElement>): void {
+        event.preventDefault();
+        this.codeSidebarResizeCleanup?.dispose();
+        const startX = event.clientX;
+        const startWidth = this.codeSidebarWidth;
+        const onPointerMove = (moveEvent: PointerEvent): void => {
+            this.setCodeSidebarWidth(startWidth + moveEvent.clientX - startX);
+        };
+        const finish = (): void => {
+            this.codeSidebarResizeCleanup?.dispose();
+            this.codeSidebarResizeCleanup = undefined;
+        };
+        document.body.classList.add('lens-code-sidebar-resizing');
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup', finish, { once: true });
+        document.addEventListener('pointercancel', finish, { once: true });
+        this.codeSidebarResizeCleanup = Disposable.create(() => {
+            document.body.classList.remove('lens-code-sidebar-resizing');
+            document.removeEventListener('pointermove', onPointerMove);
+            document.removeEventListener('pointerup', finish);
+            document.removeEventListener('pointercancel', finish);
+        });
+    }
+
+    protected setCodeSidebarWidth(width: number): void {
+        this.codeSidebarWidth = Math.max(MIN_CODE_SIDEBAR_WIDTH, Math.min(MAX_CODE_SIDEBAR_WIDTH, width));
+        const code = this.node.querySelector<HTMLElement>('.lens-agent-window__code');
+        code?.style.setProperty('--lens-code-sidebar-width', `${this.codeSidebarWidth}px`);
+        this.node.querySelector('.lens-agent-window__code-sidebar-resize')
+            ?.setAttribute('aria-valuenow', `${this.codeSidebarWidth}`);
     }
 
     protected selectCodeCenterWidget(widget: Widget): void {
@@ -1806,6 +2105,10 @@ export class AgentWindowWidget extends ReactWidget {
         this.activeCodeCenterWidget = widget;
         this.update();
         this.syncCodeWidgetAttachments();
+    }
+
+    protected closeCodeCenterWidget(widget: Widget): void {
+        widget.close();
     }
 
     protected removeCodeCenterWidget(widget: Widget): void {
@@ -1860,8 +2163,11 @@ export class AgentWindowWidget extends ReactWidget {
     protected onBeforeDetach(message: Message): void {
         this.railResizeCleanup?.dispose();
         this.railResizeCleanup = undefined;
+        this.codeSidebarResizeCleanup?.dispose();
+        this.codeSidebarResizeCleanup = undefined;
         this.codeSidebarResizeObserver?.disconnect();
         this.codeEditorResizeObserver?.disconnect();
+        this.codeTerminalResizeObserver?.disconnect();
         this.pluginsResizeObserver?.disconnect();
         this.detachCodeWidgets();
         this.detachPluginsWidget();
@@ -2209,7 +2515,9 @@ export class AgentWindowWidget extends ReactWidget {
             this.detachCodeWidgets();
             this.codeMode = false;
         } else {
+            this.ensureCodeFileIcons();
             this.codeMode = true;
+            requestAnimationFrame(() => void this.ensureCodeTerminal());
         }
         this.update();
     }
