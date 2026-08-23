@@ -1,94 +1,98 @@
-# Lens Theia technical spike
+# Lens Theia application
 
-This directory contains the focused Eclipse Theia spike for Lens. The current implementation is the first, narrow August 2026 slice: a live `AgentProvider`-driven chat, application-owned execution Tasks, Windows CLI detection, and a separate Results frame. The existing Changes widget remains available, but it is not the Results implementation.
+This directory contains the current Lens first-completion implementation on Eclipse Theia.
 
-## Implemented in this slice
+The product contract is defined by:
 
-- `AgentProvider` is the UI boundary from `docs/ARCHITECTURE.md`. The widget imports that interface and the frontend composition binds it to `MockAgentProvider`.
-- `CliDetector` checks `PATH` and well-known Windows locations for Codex and Claude. The Agent header reports each CLI as found or missing and shows the detected name. Detection never launches either CLI.
-- `MockAgentProvider` creates one execution Task per sent message, streams a short reply, supports cancellation, and never reads or writes workspace files.
-- `TaskService` owns start, end, cancel, a baseline placeholder, and a captured change set. The backend uses a read-only real `git diff` when possible and otherwise records an empty change set.
-- One `BundledResultsSkill` runs only after a Task ends or is cancelled. It returns one complete HTML document; generation does not stream document fragments.
-- Lens owns the outer window and its Agent / Results tabs. They are not Theia dock tabs. Results contains a finished-Task switcher, one iframe canvas that hosts the complete skill document, and its own short composer. Task completion does not select Results or steal focus.
-- Code mode mounts the Theia application shell inside the Lens window, retaining Theia's Editor, Files, Git, settings, and editor file tabs without creating an `Agent Window` tab.
-- The pre-existing IDE Changes widget can still open code and semantic mock representations. It is separate from Results.
+- `../../docs/FIRST-COMPLETION.md`
+- `../../docs/UX.md`
+- `../../docs/ARCHITECTURE.md`
+- `../../docs/ui/agent-window-spec.html`
+- `../../docs/IMPLEMENTATION-STATUS.md`
 
-This slice intentionally has no real agent execution, marketplace, agent-wiring settings screen, or full Code-mode chrome.
+## Current structure
+
+- Lens owns the outer window and the Agent / Results / Code navigation.
+- Agent uses the exchangeable `AgentProvider` boundary. The default provider runs a detected Codex CLI and falls back to the honest chat-only `MockAgentProvider` when Codex is unavailable.
+- `TaskService` owns Task start, completion, failure, cancellation, the pre-run Workspace snapshot, and the resulting Change Set.
+- `ResultsService` starts one bundled `ResultsSkill` after a Task reaches a terminal state. The skill returns one complete HTML document; partial HTML is not streamed into the canvas.
+- Results is user-opened and does not steal focus when a Task ends.
+- Code mounts Theia's Files, Git, Editor, and Settings widgets into Lens-owned slots. It does not attach the full Theia `ApplicationShell`.
+
+The old `ChangesWidget` source and the older Spike Reports are retained only as historical technical experiments. They are not registered in the current product navigation.
+
+## Known first-completion gaps
+
+- Results questions do not yet have a scoped answer service.
+- Session, Task, and Result state is not yet restored after restart.
+- Only Codex has an execution adapter; Claude is detected but is not selected as an implementer.
+- The current Electron shell still needs a fresh end-to-end verification.
+
+See `../../docs/IMPLEMENTATION-STATUS.md` for the maintained status matrix.
 
 ## Prerequisites
 
 - Windows 10 or 11
-- Node.js 24.5.0
-- npm 11.11.0
-- Git CLI for change-set capture and the existing Changes demonstrations
+- Node.js 20–24
+- npm 10 or newer
+- Git CLI
+- Optional: an authenticated Codex CLI installation
 
-## Install
-
-From PowerShell:
+## Install and build
 
 ```powershell
 cd C:\Users\owner\github\lens\spikes\theia
 $env:PUPPETEER_SKIP_DOWNLOAD = 'true'
 npm install
 npm run download:plugins
-```
-
-Puppeteer is a Theia CLI dependency, but this browser application does not need Puppeteer to build or start. Skipping its browser download keeps installation smaller.
-
-## Validate
-
-The source contract validator covers the provider boundary, detector, TaskService, bundled skill, backend bridge, and Agent / Results separation:
-
-```powershell
-npm run validate:source
-```
-
-For a targeted extension typecheck without a full Theia bundle:
-
-```powershell
-npm run compile --workspace=@lens/theia-agent-window
-```
-
-A full browser application build remains available when needed:
-
-```powershell
 npm run build
 ```
 
-## Try the slice
+## Validate
 
-Start the browser target:
+```powershell
+npm run validate:source
+npm run compile --workspace=@lens/theia-agent-window
+```
+
+To run the browser UI smoke, start the application in one terminal and run the smoke in another:
+
+```powershell
+npm start
+npm run smoke:ui
+```
+
+## Run
+
+Browser target:
 
 ```powershell
 npm start
 ```
 
-Then open `http://127.0.0.1:3000` manually. The spike opens `spikes/theia` as its workspace.
+To keep the browser server running after the launching terminal or automation session ends:
 
-1. In the Agent header, confirm Codex and Claude each report `found` or `missing`. Even when one is found, the header also says `MockAgentProvider active for this slice`.
-2. Type a request in the Agent composer and send it. The reply arrives in several short chunks while one Task is running.
-3. Let the Task finish, or use Cancel while it is running. The Agent tab remains selected.
-4. Select Results yourself. Choose the finished or cancelled Task in the switcher and inspect the bundled HTML document in the single canvas.
-5. Type into the Results composer. It stays scoped to Results and does not start a Task or post into Agent chat.
-6. If desired, open `IDE Changes` from the status bar or command palette to confirm the older Changes spike still works independently.
+```powershell
+npm run start:background
+# Stop it later with:
+npm run stop:background
+```
 
-## Other targets
+Background startup writes its PID and server log under the ignored `.run/` directory.
 
-The Electron target uses the same extension composition:
+Electron target:
 
 ```powershell
 npm run build:electron
 npm run start:electron
 ```
 
-Existing optional UI and Electron smoke scripts remain under `scripts/`, but they are outside this source-only slice and require a local browser or Electron session.
+## Source layout
 
-## Layout
-
-- `agent-window/src/common/`: `AgentProvider` and backend runtime protocol
-- `agent-window/src/browser/`: Agent / Results widget, `MockAgentProvider`, `TaskService`, bundled Results skill, and Changes widget
-- `agent-window/src/node/`: Windows `CliDetector`, read-only Git diff capture, and backend RPC binding
+- `agent-window/src/common/`: provider and backend protocol boundaries
+- `agent-window/src/browser/`: Lens window, Agent / Results / Code UI, Task and Results services
+- `agent-window/src/node/`: CLI detection and execution, Workspace snapshot and Change Set capture
 - `browser-app/`: browser target
 - `electron-app/`: Electron target
-- `scripts/validate-source.mjs`: focused source contract validation
-- `sample-src/`: existing Changes mock and evidence-navigation fixture
+- `scripts/validate-source.mjs`: source contract checks
+- `scripts/smoke-ui.mjs`: current Agent / Results / Code browser smoke

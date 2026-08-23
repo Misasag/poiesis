@@ -1,6 +1,6 @@
 import * as React from '@theia/core/shared/react';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { WidgetManager } from '@theia/core/lib/browser';
+import { StorageService, WidgetManager } from '@theia/core/lib/browser';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { Disposable } from '@theia/core/lib/common';
 import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
@@ -18,6 +18,10 @@ import { getDesignVariant } from './design-variant';
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'git';
 const NEW_SESSION_TITLE = '新しい会話';
+const SESSION_STORAGE_KEY = 'lens.agent-window.sessions.v1';
+const DEFAULT_RAIL_WIDTH = 252;
+const MIN_RAIL_WIDTH = 196;
+const MAX_RAIL_WIDTH = 420;
 
 interface ChatMessage {
     id: string;
@@ -29,15 +33,29 @@ interface ChatMessage {
 interface WindowAgentSession {
     id: string;
     createdAt: number;
+    updatedAt: number;
+    workspaceUri?: string;
     agentSession?: AgentSession;
     title: string;
     hasUserMessage: boolean;
+    pinned: boolean;
+    archived: boolean;
     activeTab: AgentWindowTab;
     agentDraft: string;
     messages: ChatMessage[];
     selectedResultsTaskId?: string;
     readonly resultsDrafts: Map<string, string>;
     readonly resultsNotices: Map<string, string>;
+}
+
+interface PersistedAgentWindowState {
+    version: 1;
+    selectedSessionId?: string;
+    railWidth: number;
+    railCollapsed: boolean;
+    sessions: Array<Omit<WindowAgentSession, 'agentSession' | 'resultsDrafts' | 'resultsNotices'> & {
+        resultsDrafts: Array<[string, string]>;
+    }>;
 }
 
 @injectable()
@@ -61,10 +79,17 @@ export class AgentWindowWidget extends ReactWidget {
     protected selectedSessionId?: string;
     protected sessionSequence = 0;
     protected railCollapsed = false;
+    protected railWidth = DEFAULT_RAIL_WIDTH;
+    protected openSessionMenuId?: string;
+    protected renamingSessionId?: string;
+    protected renameDraft = '';
+    protected showArchivedSessions = false;
     protected sessionSearchVisible = false;
     protected sessionSearchQuery = '';
     protected workspaceExpanded = true;
     protected sessionSearchInput?: HTMLInputElement;
+    protected agentComposerInput?: HTMLTextAreaElement;
+    protected railResizeCleanup?: Disposable;
     protected readonly watchedScmProviders = new WeakSet<ScmProvider>();
     protected readonly watchedScmHistoryProviders = new WeakSet<ScmHistoryProvider>();
 
@@ -75,7 +100,8 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
         @inject(FileDialogService) protected readonly fileDialogService: FileDialogService,
         @inject(ScmService) protected readonly scmService: ScmService,
-        @inject(WidgetManager) protected readonly widgetManager: WidgetManager
+        @inject(WidgetManager) protected readonly widgetManager: WidgetManager,
+        @inject(StorageService) protected readonly storageService: StorageService
     ) {
         super();
     }
@@ -86,12 +112,23 @@ export class AgentWindowWidget extends ReactWidget {
         this.id = AgentWindowWidget.ID;
         this.addClass('lens-agent-window');
 
+        const closeSessionMenu = (event: PointerEvent): void => {
+            if (this.openSessionMenuId && !(event.target as Element | null)?.closest('.lens-agent-window__session-actions')) {
+                this.openSessionMenuId = undefined;
+                this.update();
+            }
+        };
+        document.addEventListener('pointerdown', closeSessionMenu);
+        this.toDispose.push(Disposable.create(() => document.removeEventListener('pointerdown', closeSessionMenu)));
+
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
         this.toDispose.push(this.taskService.onDidChangeTask(event => {
             const session = this.findSessionByAgentId(event.task.sessionId);
-            if ((event.type === 'ended' || event.type === 'cancelled') && session && !session.selectedResultsTaskId) {
+            if ((event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled')
+                && session && !session.selectedResultsTaskId) {
                 session.selectedResultsTaskId = event.task.id;
             }
+            this.persistWindowState();
             this.update();
         }));
         this.toDispose.push(this.resultsService.onDidChange(() => this.update()));
@@ -108,7 +145,7 @@ export class AgentWindowWidget extends ReactWidget {
             this.watchScmProvider(repository.provider);
         }
 
-        void this.initializeSession();
+        void this.initializeSessions();
         this.update();
     }
 
@@ -121,6 +158,7 @@ export class AgentWindowWidget extends ReactWidget {
                 className='lens-agent-window__content'
                 data-mode={this.codeMode ? 'code' : activeTab}
                 data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}
+                style={{ '--lens-rail-width': `${this.railWidth}px` } as React.CSSProperties}
             >
                 {!this.codeMode && this.renderRail()}
                 <main className='lens-agent-window__workspace'>
@@ -138,7 +176,10 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderRail(): React.ReactNode {
-        const filteredSessions = this.filteredSessions();
+        const activeSessions = this.filteredSessions(false);
+        const pinnedSessions = activeSessions.filter(session => session.pinned);
+        const recentSessions = activeSessions.filter(session => !session.pinned);
+        const archivedSessions = this.filteredSessions(true);
         const toggleLabel = this.railCollapsed ? '左サイドバーを展開' : '左サイドバーを折りたたむ';
         return (
             <aside
@@ -233,48 +274,153 @@ export class AgentWindowWidget extends ReactWidget {
                                 aria-hidden='true'
                             />
                         </button>
-                        {this.workspaceExpanded && filteredSessions.map(session => {
-                            const selected = session.id === this.selectedSessionId;
-                            return (
-                                <div
-                                    key={session.id}
-                                    className={`lens-agent-window__session-row${selected ? ' active' : ''}`}
-                                >
-                                    <button
-                                        type='button'
-                                        className='lens-agent-window__session'
-                                        aria-current={selected ? 'true' : undefined}
-                                        onClick={() => this.selectSession(session.id)}
-                                    >
-                                        <span className='lens-agent-window__session-title'>{session.title}</span>
-                                        <small className='lens-agent-window__session-meta'>{this.sessionMeta(session)}</small>
-                                    </button>
-                                    <button
-                                        type='button'
-                                        className='lens-agent-window__session-remove'
-                                        title={`${session.title}を削除`}
-                                        aria-label={`${session.title}をセッション一覧から削除`}
-                                        onClick={() => this.removeSession(session.id)}
-                                    >
-                                        <span className='codicon codicon-close' aria-hidden='true' />
-                                    </button>
-                                </div>
-                            );
-                        })}
-                        {this.workspaceExpanded && !filteredSessions.length && (
+                        {this.workspaceExpanded && pinnedSessions.length > 0 && (
+                            <div className='lens-agent-window__session-section-label'>Pinned</div>
+                        )}
+                        {this.workspaceExpanded && pinnedSessions.map(session => this.renderSessionRow(session))}
+                        {this.workspaceExpanded && pinnedSessions.length > 0 && recentSessions.length > 0 && (
+                            <div className='lens-agent-window__session-section-label'>Recent</div>
+                        )}
+                        {this.workspaceExpanded && recentSessions.map(session => this.renderSessionRow(session))}
+                        {this.workspaceExpanded && !activeSessions.length && (
                             <div className='lens-agent-window__session-empty'>
                                 {this.sessionSearchQuery.trim() ? '一致する会話はありません。' : 'セッションはありません。'}
                             </div>
+                        )}
+                        {this.workspaceExpanded && archivedSessions.length > 0 && (
+                            <>
+                                <button
+                                    type='button'
+                                    className='lens-agent-window__archived-toggle'
+                                    aria-expanded={this.showArchivedSessions}
+                                    onClick={() => this.toggleArchivedSessions()}
+                                >
+                                    <span className={`codicon codicon-chevron-${this.showArchivedSessions ? 'down' : 'right'}`} aria-hidden='true' />
+                                    <span>Archived</span>
+                                    <small>{archivedSessions.length}</small>
+                                </button>
+                                {this.showArchivedSessions && archivedSessions.map(session => this.renderSessionRow(session))}
+                            </>
                         )}
                     </div>
                 </div>
                 <div className='lens-agent-window__rail-footer'>
                     <span className='lens-agent-window__rail-footer-label'>Lens</span>
-                    <button type='button' title='設定' aria-label='設定'>
+                    <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
                         <span className='codicon codicon-settings-gear' aria-hidden='true' />
                     </button>
                 </div>
+                {!this.railCollapsed && (
+                    <div
+                        className='lens-agent-window__rail-resize-handle'
+                        role='separator'
+                        aria-label='サイドバーの幅を変更'
+                        aria-orientation='vertical'
+                        aria-valuemin={MIN_RAIL_WIDTH}
+                        aria-valuemax={MAX_RAIL_WIDTH}
+                        aria-valuenow={this.railWidth}
+                        tabIndex={0}
+                        onPointerDown={event => this.startRailResize(event)}
+                        onDoubleClick={() => this.resetRailWidth()}
+                        onKeyDown={event => this.resizeRailWithKeyboard(event)}
+                    />
+                )}
             </aside>
+        );
+    }
+
+    protected renderSessionRow(session: WindowAgentSession): React.ReactNode {
+        const selected = session.id === this.selectedSessionId;
+        const renaming = session.id === this.renamingSessionId;
+        const menuOpen = session.id === this.openSessionMenuId;
+        const running = Boolean(this.runningTask(session));
+        return (
+            <div
+                key={session.id}
+                className={`lens-agent-window__session-row${selected ? ' active' : ''}${session.archived ? ' archived' : ''}`}
+                data-session-id={session.id}
+                data-session-archived={session.archived ? 'true' : 'false'}
+                data-session-pinned={session.pinned ? 'true' : 'false'}
+            >
+                {renaming ? (
+                    <input
+                        className='lens-agent-window__session-rename'
+                        value={this.renameDraft}
+                        aria-label='セッション名を変更'
+                        autoFocus
+                        onChange={event => {
+                            this.renameDraft = event.currentTarget.value;
+                            this.update();
+                        }}
+                        onBlur={() => this.commitSessionRename(session.id)}
+                        onKeyDown={event => {
+                            if (event.key === 'Enter') {
+                                event.preventDefault();
+                                this.commitSessionRename(session.id);
+                            } else if (event.key === 'Escape') {
+                                event.preventDefault();
+                                this.cancelSessionRename();
+                            }
+                        }}
+                    />
+                ) : (
+                    <button
+                        type='button'
+                        className='lens-agent-window__session'
+                        aria-current={selected ? 'true' : undefined}
+                        onClick={() => session.archived ? this.restoreSession(session.id, true) : this.selectSession(session.id)}
+                    >
+                        {session.pinned && <span className='codicon codicon-pinned' aria-label='ピン留め済み' />}
+                        <span className='lens-agent-window__session-title'>{session.title}</span>
+                        <small className={`lens-agent-window__session-meta${running ? ' running' : ''}`}>
+                            {running ? '実行中' : this.sessionMeta(session)}
+                        </small>
+                    </button>
+                )}
+                {!renaming && (
+                    <div className='lens-agent-window__session-actions'>
+                        <button
+                            type='button'
+                            className='lens-agent-window__session-menu-trigger'
+                            title='その他の操作'
+                            aria-label={`${session.title}のその他の操作`}
+                            aria-haspopup='menu'
+                            aria-expanded={menuOpen}
+                            onClick={() => this.toggleSessionMenu(session.id)}
+                        >
+                            <span className='codicon codicon-more' aria-hidden='true' />
+                        </button>
+                        {menuOpen && (
+                            <div className='lens-agent-window__session-menu' role='menu'>
+                                {session.archived ? (
+                                    <>
+                                        <button type='button' role='menuitem' onClick={() => this.restoreSession(session.id)}>
+                                            <span className='codicon codicon-archive' aria-hidden='true' />復元
+                                        </button>
+                                        <button type='button' role='menuitem' className='danger' onClick={() => void this.deleteSession(session.id)}>
+                                            <span className='codicon codicon-trash' aria-hidden='true' />完全に削除
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button type='button' role='menuitem' onClick={() => this.togglePinnedSession(session.id)}>
+                                            <span className={`codicon codicon-${session.pinned ? 'pinned-dirty' : 'pin'}`} aria-hidden='true' />
+                                            {session.pinned ? 'ピン留めを外す' : 'ピン留め'}
+                                        </button>
+                                        <button type='button' role='menuitem' onClick={() => this.beginSessionRename(session.id)}>
+                                            <span className='codicon codicon-edit' aria-hidden='true' />名前を変更
+                                        </button>
+                                        <button type='button' role='menuitem' disabled={running} onClick={() => void this.archiveSession(session.id)}>
+                                            <span className='codicon codicon-archive' aria-hidden='true' />
+                                            {running ? '実行中はアーカイブ不可' : 'アーカイブ'}
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
         );
     }
 
@@ -282,15 +428,182 @@ export class AgentWindowWidget extends ReactWidget {
         this.sessionSearchInput = input ?? undefined;
     };
 
-    protected filteredSessions(): WindowAgentSession[] {
+    protected filteredSessions(archived: boolean): WindowAgentSession[] {
         const query = this.sessionSearchQuery.trim().toLocaleLowerCase();
-        return query
-            ? this.sessions.filter(session => session.title.toLocaleLowerCase().includes(query))
-            : this.sessions;
+        return this.sessions
+            .filter(session => session.archived === archived)
+            .filter(session => !query
+                || session.title.toLocaleLowerCase().includes(query)
+                || session.messages.some(message => message.content.toLocaleLowerCase().includes(query)))
+            .sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt);
+    }
+
+    protected toggleSessionMenu(sessionId: string): void {
+        this.openSessionMenuId = this.openSessionMenuId === sessionId ? undefined : sessionId;
+        this.update();
+    }
+
+    protected beginSessionRename(sessionId: string): void {
+        const session = this.sessions.find(candidate => candidate.id === sessionId);
+        if (!session) {
+            return;
+        }
+        this.openSessionMenuId = undefined;
+        this.renamingSessionId = sessionId;
+        this.renameDraft = session.title;
+        this.update();
+    }
+
+    protected commitSessionRename(sessionId: string): void {
+        if (this.renamingSessionId !== sessionId) {
+            return;
+        }
+        const session = this.sessions.find(candidate => candidate.id === sessionId);
+        const title = this.renameDraft.replace(/\s+/g, ' ').trim();
+        if (session && title) {
+            session.title = title.slice(0, 80);
+            session.updatedAt = Date.now();
+        }
+        this.renamingSessionId = undefined;
+        this.renameDraft = '';
+        this.persistWindowState();
+        this.update();
+    }
+
+    protected cancelSessionRename(): void {
+        this.renamingSessionId = undefined;
+        this.renameDraft = '';
+        this.update();
+    }
+
+    protected togglePinnedSession(sessionId: string): void {
+        const session = this.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
+        if (!session) {
+            return;
+        }
+        session.pinned = !session.pinned;
+        session.updatedAt = Date.now();
+        this.openSessionMenuId = undefined;
+        this.persistWindowState();
+        this.update();
+    }
+
+    protected async archiveSession(sessionId: string): Promise<void> {
+        const session = this.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
+        if (!session || this.runningTask(session)) {
+            return;
+        }
+        session.archived = true;
+        session.pinned = false;
+        session.updatedAt = Date.now();
+        this.openSessionMenuId = undefined;
+        if (this.selectedSessionId === sessionId) {
+            const next = this.filteredSessions(false)[0];
+            this.selectedSessionId = next?.id;
+            if (!next) {
+                await this.createSession();
+                return;
+            }
+        }
+        this.persistWindowState();
+        this.update();
+    }
+
+    protected restoreSession(sessionId: string, select = false): void {
+        const session = this.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
+        if (!session) {
+            return;
+        }
+        session.archived = false;
+        session.updatedAt = Date.now();
+        this.openSessionMenuId = undefined;
+        if (select) {
+            this.selectedSessionId = session.id;
+            session.activeTab = 'agent';
+            void this.ensureProviderSession(session);
+        }
+        this.persistWindowState();
+        this.update();
+    }
+
+    protected async deleteSession(sessionId: string): Promise<void> {
+        const session = this.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
+        if (!session || !window.confirm(`「${session.title}」を完全に削除しますか？この操作は取り消せません。`)) {
+            return;
+        }
+        if (session.agentSession) {
+            const taskIds = this.taskService.removeSession(session.agentSession.id);
+            this.resultsService.remove(taskIds);
+        }
+        const index = this.sessions.indexOf(session);
+        if (index !== -1) {
+            this.sessions.splice(index, 1);
+        }
+        this.openSessionMenuId = undefined;
+        this.persistWindowState();
+        this.update();
+    }
+
+    protected toggleArchivedSessions(): void {
+        this.showArchivedSessions = !this.showArchivedSessions;
+        this.update();
+    }
+
+    protected startRailResize(event: React.PointerEvent<HTMLDivElement>): void {
+        if (event.button !== 0) {
+            return;
+        }
+        event.preventDefault();
+        const startX = event.clientX;
+        const startWidth = this.railWidth;
+        const resize = (moveEvent: PointerEvent): void => {
+            this.railWidth = this.clampRailWidth(startWidth + moveEvent.clientX - startX);
+            this.update();
+        };
+        const finish = (): void => {
+            this.railResizeCleanup?.dispose();
+            this.railResizeCleanup = undefined;
+            this.persistWindowState();
+        };
+        this.railResizeCleanup?.dispose();
+        document.body.classList.add('lens-is-resizing-rail');
+        document.addEventListener('pointermove', resize);
+        document.addEventListener('pointerup', finish, { once: true });
+        this.railResizeCleanup = Disposable.create(() => {
+            document.body.classList.remove('lens-is-resizing-rail');
+            document.removeEventListener('pointermove', resize);
+            document.removeEventListener('pointerup', finish);
+        });
+    }
+
+    protected resizeRailWithKeyboard(event: React.KeyboardEvent<HTMLDivElement>): void {
+        const delta = event.key === 'ArrowLeft' ? -12 : event.key === 'ArrowRight' ? 12 : 0;
+        if (!delta && event.key !== 'Home' && event.key !== 'End') {
+            return;
+        }
+        event.preventDefault();
+        this.railWidth = event.key === 'Home'
+            ? MIN_RAIL_WIDTH
+            : event.key === 'End'
+                ? MAX_RAIL_WIDTH
+                : this.clampRailWidth(this.railWidth + delta);
+        this.persistWindowState();
+        this.update();
+    }
+
+    protected resetRailWidth(): void {
+        this.railWidth = DEFAULT_RAIL_WIDTH;
+        this.persistWindowState();
+        this.update();
+    }
+
+    protected clampRailWidth(width: number): number {
+        return Math.min(MAX_RAIL_WIDTH, Math.max(MIN_RAIL_WIDTH, Math.round(width)));
     }
 
     protected toggleRail(): void {
         this.railCollapsed = !this.railCollapsed;
+        this.persistWindowState();
         this.update();
         if (!this.railCollapsed && this.sessionSearchVisible) {
             requestAnimationFrame(() => this.sessionSearchInput?.focus());
@@ -329,19 +642,6 @@ export class AgentWindowWidget extends ReactWidget {
         if (folder) {
             this.workspaceService.open(folder, { preserveWindow: true });
         }
-    }
-
-    protected removeSession(sessionId: string): void {
-        const index = this.sessions.findIndex(session => session.id === sessionId);
-        if (index === -1) {
-            return;
-        }
-        const removingSelectedSession = this.selectedSessionId === sessionId;
-        this.sessions.splice(index, 1);
-        if (removingSelectedSession) {
-            this.selectedSessionId = this.sessions[index]?.id ?? this.sessions[index - 1]?.id;
-        }
-        this.update();
     }
 
     protected sessionMeta(session: WindowAgentSession): string {
@@ -430,11 +730,12 @@ export class AgentWindowWidget extends ReactWidget {
                 )}
                 <section className='lens-agent-window__composer' aria-label='Agent の入力欄'>
                     <textarea
+                        ref={input => { this.agentComposerInput = input ?? undefined; }}
                         value={session?.agentDraft ?? ''}
                         placeholder='次の変更内容や質問を入力…'
                         aria-label='Agent へのメッセージ'
                         rows={2}
-                        disabled={!session?.agentSession || Boolean(runningTask)}
+                        disabled={!session || Boolean(runningTask)}
                         onChange={event => this.setAgentDraft(event.currentTarget.value)}
                         onKeyDown={event => {
                             if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -444,11 +745,6 @@ export class AgentWindowWidget extends ReactWidget {
                         }}
                     />
                     <div className='lens-agent-window__composer-footer'>
-                        <div className='lens-agent-window__composer-tools' aria-label='コンテキスト設定'>
-                            <button type='button' aria-label='コンテキストを追加'>＋</button>
-                            <span>@ コンテキスト</span>
-                            <span>自動</span>
-                        </div>
                         <button
                             className='lens-agent-window__send'
                             type='button'
@@ -532,7 +828,10 @@ export class AgentWindowWidget extends ReactWidget {
                                 className={selectedTask?.id === task.id ? 'active' : ''}
                                 onClick={() => this.selectResultsTask(task.id)}
                             >
-                                <small>{index === 0 ? '最新 · ' : ''}{task.status === 'cancelled' ? 'キャンセル' : '完了'}</small>
+                                <small>
+                                    {index === 0 ? '最新 · ' : ''}
+                                    {task.status === 'cancelled' ? 'キャンセル' : task.status === 'failed' ? '失敗' : '完了'}
+                                </small>
                                 <span>{task.title}</span>
                             </button>
                         ))}
@@ -570,7 +869,7 @@ export class AgentWindowWidget extends ReactWidget {
                     <div className='lens-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
                     <footer className='lens-agent-window__code-footer'>
                         <span>{this.codeSidebarTab === 'files' ? 'Files' : 'Git'}</span>
-                        <button type='button' title='設定' aria-label='設定' onClick={() => void this.openCodeSettings()}>
+                        <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
                             <span className='codicon codicon-settings-gear' aria-hidden='true' />
                         </button>
                     </footer>
@@ -771,7 +1070,17 @@ export class AgentWindowWidget extends ReactWidget {
         this.selectCodeCenterWidget(settings);
     }
 
+    protected openSettings(): void {
+        if (!this.codeMode) {
+            this.codeMode = true;
+            this.update();
+        }
+        requestAnimationFrame(() => void this.openCodeSettings());
+    }
+
     protected onBeforeDetach(message: Message): void {
+        this.railResizeCleanup?.dispose();
+        this.railResizeCleanup = undefined;
         this.codeSidebarResizeObserver?.disconnect();
         this.codeEditorResizeObserver?.disconnect();
         this.detachCodeWidgets();
@@ -787,10 +1096,16 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected selectSession(sessionId: string): void {
-        if (this.sessions.some(session => session.id === sessionId)) {
-            this.selectedSessionId = sessionId;
-            this.update();
+        const session = this.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
+        if (!session) {
+            return;
         }
+        this.selectedSessionId = sessionId;
+        session.updatedAt = Date.now();
+        this.openSessionMenuId = undefined;
+        void this.ensureProviderSession(session);
+        this.persistWindowState();
+        this.update();
     }
 
     protected workspaceRoot() {
@@ -844,11 +1159,16 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async createSession(): Promise<void> {
         const id = `window-session-${Date.now()}-${++this.sessionSequence}`;
+        const now = Date.now();
         const session: WindowAgentSession = {
             id,
-            createdAt: Date.now(),
+            createdAt: now,
+            updatedAt: now,
+            workspaceUri: this.workspaceRoot()?.resource.toString(),
             title: NEW_SESSION_TITLE,
             hasUserMessage: false,
+            pinned: false,
+            archived: false,
             activeTab: 'agent',
             agentDraft: '',
             messages: [{
@@ -862,27 +1182,110 @@ export class AgentWindowWidget extends ReactWidget {
         };
         this.sessions.push(session);
         this.selectedSessionId = session.id;
+        this.openSessionMenuId = undefined;
+        this.persistWindowState();
         this.update();
+        await this.ensureProviderSession(session, true);
+    }
 
+    protected async ensureProviderSession(session: WindowAgentSession, replaceStatus = false): Promise<void> {
+        if (session.agentSession) {
+            return;
+        }
         try {
             session.agentSession = await this.agentProvider.createSession({
-                workspaceUri: this.workspaceRoot()?.resource.toString()
+                workspaceUri: session.workspaceUri ?? this.workspaceRoot()?.resource.toString()
             });
-            session.messages = [{
-                id: `provider-ready-${id}`,
-                role: 'agent',
-                content: '準備ができました。変更したい内容を入力してください。',
-                complete: true
-            }];
+            if (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-'))) {
+                session.messages = [{
+                    id: `provider-ready-${session.id}`,
+                    role: 'agent',
+                    content: '準備ができました。変更したい内容を入力してください。',
+                    complete: true
+                }];
+            }
         } catch (error) {
-            session.messages = [{
-                id: `provider-error-${id}`,
-                role: 'agent',
-                content: `エージェントを準備できませんでした: ${error instanceof Error ? error.message : String(error)}`,
-                complete: true
-            }];
+            if (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-'))) {
+                session.messages = [{
+                    id: `provider-error-${session.id}`,
+                    role: 'agent',
+                    content: `エージェントを準備できませんでした: ${error instanceof Error ? error.message : String(error)}`,
+                    complete: true
+                }];
+            }
         }
+        this.persistWindowState();
         this.update();
+    }
+
+    protected async restoreWindowState(): Promise<boolean> {
+        try {
+            const state = await this.storageService.getData<Partial<PersistedAgentWindowState>>(SESSION_STORAGE_KEY);
+            if (!state) {
+                return false;
+            }
+            if (state.version !== 1 || !Array.isArray(state.sessions) || state.sessions.length === 0) {
+                return false;
+            }
+            this.sessions.splice(0, this.sessions.length, ...state.sessions.flatMap(candidate => {
+                if (!candidate || typeof candidate.id !== 'string' || typeof candidate.title !== 'string') {
+                    return [];
+                }
+                const createdAt = Number(candidate.createdAt) || Date.now();
+                const restored: WindowAgentSession = {
+                    id: candidate.id,
+                    createdAt,
+                    updatedAt: Number(candidate.updatedAt) || createdAt,
+                    workspaceUri: typeof candidate.workspaceUri === 'string' ? candidate.workspaceUri : undefined,
+                    title: candidate.title || NEW_SESSION_TITLE,
+                    hasUserMessage: Boolean(candidate.hasUserMessage),
+                    pinned: Boolean(candidate.pinned),
+                    archived: Boolean(candidate.archived),
+                    activeTab: candidate.activeTab === 'results' ? 'results' : 'agent',
+                    agentDraft: typeof candidate.agentDraft === 'string' ? candidate.agentDraft : '',
+                    messages: Array.isArray(candidate.messages) ? candidate.messages.filter(message =>
+                        message && typeof message.id === 'string'
+                        && (message.role === 'user' || message.role === 'agent')
+                        && typeof message.content === 'string'
+                    ).map(message => ({ ...message, complete: Boolean(message.complete) })) : [],
+                    selectedResultsTaskId: typeof candidate.selectedResultsTaskId === 'string'
+                        ? candidate.selectedResultsTaskId
+                        : undefined,
+                    resultsDrafts: new Map(Array.isArray(candidate.resultsDrafts) ? candidate.resultsDrafts : []),
+                    resultsNotices: new Map<string, string>()
+                };
+                return [restored];
+            }));
+            this.selectedSessionId = typeof state.selectedSessionId === 'string' ? state.selectedSessionId : undefined;
+            this.railWidth = this.clampRailWidth(Number(state.railWidth) || DEFAULT_RAIL_WIDTH);
+            this.railCollapsed = Boolean(state.railCollapsed);
+            this.sessionSequence = this.sessions.length;
+            return this.sessions.length > 0;
+        } catch (error) {
+            console.warn('[Lens] Could not restore Agent Window sessions.', error);
+            return false;
+        }
+    }
+
+    protected async persistWindowState(): Promise<void> {
+        try {
+            const state: PersistedAgentWindowState = {
+                version: 1,
+                selectedSessionId: this.selectedSessionId,
+                railWidth: this.railWidth,
+                railCollapsed: this.railCollapsed,
+                sessions: this.sessions.map(session => {
+                    const { agentSession: _agentSession, resultsDrafts, resultsNotices: _resultsNotices, ...persisted } = session;
+                    return {
+                        ...persisted,
+                        resultsDrafts: [...resultsDrafts.entries()]
+                    };
+                })
+            };
+            await this.storageService.setData(SESSION_STORAGE_KEY, state);
+        } catch (error) {
+            console.warn('[Lens] Could not persist Agent Window sessions.', error);
+        }
     }
 
     protected titleForSession(message: string): string {
@@ -890,8 +1293,21 @@ export class AgentWindowWidget extends ReactWidget {
         return compact.length > 46 ? `${compact.slice(0, 43)}…` : compact;
     }
 
-    protected async initializeSession(): Promise<void> {
-        await this.createSession();
+    protected async initializeSessions(): Promise<void> {
+        const restored = await this.restoreWindowState();
+        if (!restored) {
+            await this.createSession();
+            return;
+        }
+        const activeSessions = this.filteredSessions(false);
+        const selected = activeSessions.find(session => session.id === this.selectedSessionId) ?? activeSessions[0];
+        if (!selected) {
+            await this.createSession();
+            return;
+        }
+        this.selectedSessionId = selected.id;
+        this.update();
+        await this.ensureProviderSession(selected);
     }
 
     protected async sendAgentMessage(): Promise<void> {
@@ -902,10 +1318,12 @@ export class AgentWindowWidget extends ReactWidget {
         }
         session.agentDraft = '';
         session.messages.push({ id: `user-${Date.now()}`, role: 'user', content, complete: true });
+        session.updatedAt = Date.now();
         if (!session.hasUserMessage) {
             session.title = this.titleForSession(content);
             session.hasUserMessage = true;
         }
+        this.persistWindowState();
         this.update();
         try {
             await this.agentProvider.sendMessage(session.agentSession.id, { role: 'user', content });
@@ -916,6 +1334,7 @@ export class AgentWindowWidget extends ReactWidget {
                 content: `エージェントとの通信でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
                 complete: true
             });
+            this.persistWindowState();
             this.update();
         }
     }
@@ -944,7 +1363,15 @@ export class AgentWindowWidget extends ReactWidget {
                 content: `${message.content} 実行をキャンセルしました。`.trim(),
                 complete: true
             }));
+        } else if (event.type === 'task-failed') {
+            this.updateAgentMessage(session, event.taskId, message => ({
+                ...message,
+                content: `${message.content} 実行に失敗しました。`.trim(),
+                complete: true
+            }));
         }
+        session.updatedAt = Date.now();
+        this.persistWindowState();
         this.update();
     }
 
@@ -981,6 +1408,7 @@ export class AgentWindowWidget extends ReactWidget {
         const session = this.selectedSession();
         if (session) {
             session.activeTab = tab;
+            this.persistWindowState();
         }
         this.update();
     }
@@ -988,13 +1416,28 @@ export class AgentWindowWidget extends ReactWidget {
     protected async newChat(): Promise<void> {
         this.detachCodeWidgets();
         this.codeMode = false;
-        await this.createSession();
+        this.sessionSearchVisible = false;
+        this.sessionSearchQuery = '';
+        const current = this.selectedSession();
+        if (current && !current.archived && !current.hasUserMessage) {
+            current.activeTab = 'agent';
+            this.persistWindowState();
+            this.update();
+            requestAnimationFrame(() => this.agentComposerInput?.focus());
+            void this.ensureProviderSession(current);
+            return;
+        }
+        const creation = this.createSession();
+        requestAnimationFrame(() => this.agentComposerInput?.focus());
+        await creation;
+        requestAnimationFrame(() => this.agentComposerInput?.focus());
     }
 
     protected setAgentDraft(value: string): void {
         const session = this.selectedSession();
         if (session) {
             session.agentDraft = value;
+            this.persistWindowState();
         }
         this.update();
     }
@@ -1003,6 +1446,7 @@ export class AgentWindowWidget extends ReactWidget {
         const session = this.selectedSession();
         if (session) {
             session.selectedResultsTaskId = taskId;
+            this.persistWindowState();
         }
         this.update();
     }
@@ -1011,6 +1455,7 @@ export class AgentWindowWidget extends ReactWidget {
         const session = this.selectedSession();
         session?.resultsDrafts.set(taskId, value);
         session?.resultsNotices.delete(taskId);
+        this.persistWindowState();
         this.update();
     }
 
@@ -1022,6 +1467,7 @@ export class AgentWindowWidget extends ReactWidget {
         }
         session.resultsDrafts.set(taskId, '');
         session.resultsNotices.set(taskId, 'この質問は Results 内だけに保存され、Agent の会話やタスクには送信されません。');
+        this.persistWindowState();
         this.update();
     }
 }

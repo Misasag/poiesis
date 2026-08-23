@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Accepted（Theia採用）
+
+> Update (2026-08-23): Theia採用の決定は有効。旧Agent Window／Changes配置は後続の第一完成点でAgent／Results／Codeへ置き換えた。現行UIは`FIRST-COMPLETION.md`、`UX.md`、`ARCHITECTURE.md`、`ui/agent-window-spec.html`を正本とする。以下のUI記述は選定時の根拠として保持する。
 
 ## Date
 

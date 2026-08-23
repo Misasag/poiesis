@@ -12,13 +12,11 @@ const electronPackage = JSON.parse(await read('electron-app/package.json'));
 const extensionPackage = JSON.parse(await read('agent-window/package.json'));
 const agentWidget = await read('agent-window/src/browser/agent-window-widget.tsx');
 const agentStyles = await read('agent-window/src/browser/style/index.css');
-const changesWidget = await read('agent-window/src/browser/changes-widget.tsx');
 const moduleSource = await read('agent-window/src/browser/agent-window-frontend-module.ts');
 const lensFrontendApplication = await read('agent-window/src/browser/lens-frontend-application.ts');
 const designShotContribution = await read('agent-window/src/browser/design-shot-contribution.ts');
 const backendModule = await read('agent-window/src/node/agent-window-backend-module.ts');
 const agentContribution = await read('agent-window/src/browser/agent-window-contribution.ts');
-const changesContribution = await read('agent-window/src/browser/changes-contribution.ts');
 const providerSource = await read('agent-window/src/common/agent-provider.ts');
 const runtimeProtocol = await read('agent-window/src/common/agent-runtime-protocol.ts');
 const runtimeClient = await read('agent-window/src/browser/agent-runtime-client.ts');
@@ -29,8 +27,6 @@ const resultsSkill = await read('agent-window/src/browser/results-skill.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const readme = await read('README.md');
-const sample = await read('sample-src/auth-service.ts');
-const baseline = await read('sample-src/auth-service.before.ts');
 const firstCompletion = await read('../../docs/FIRST-COMPLETION.md');
 
 assert.equal(rootPackage.devDependencies['@theia/cli'], '1.73.1');
@@ -119,6 +115,7 @@ for (const forbidden of ['FileService', 'WorkspaceService', 'readFile', 'writeFi
 for (const marker of [
     "start(sessionId: string, request: string)",
     "async end(taskId: string)",
+    "async fail(taskId: string)",
     "async cancel(taskId: string)",
     "kind: 'workspace-snapshot'",
     'baselineCaptures',
@@ -166,10 +163,9 @@ assert.ok(backendModule.includes('server.setClient(client)'));
 
 for (const marker of [
     "'exec'",
-    "'--model', 'gpt-5.6-sol'",
-    "'--config', 'model_reasoning_effort=xhigh'",
+    "'--sandbox', 'workspace-write'",
     "'--approve-for-me'",
-    "'-C', sampleWorkspace",
+    "'-C', resolvedWorkspace",
     'prompt',
     "cwd, windowsHide: true",
     "child.stdout.on('data'",
@@ -177,13 +173,13 @@ for (const marker of [
     "type: 'output'",
     "type: 'exit'",
     "'taskkill'",
-    "join(resolvedWorkspace, 'spikes', 'theia', 'sample-src')",
-    'const sampleWorkspace = await this.resolveSampleWorkspace(workspacePath)',
-    'const snapshot = await this.captureWorkspace(sampleWorkspace)'
+    'const resolvedWorkspace = await this.resolveWorkspace(workspacePath)',
+    'const snapshot = await this.captureWorkspace(resolvedWorkspace)'
 ]) {
     assert.ok(runtimeServer.includes(marker), `Codex runtime is missing ${marker}`);
 }
-assert.ok(!runtimeServer.includes("'--sandbox'"), 'Codex exec must not receive a separate sandbox option');
+assert.ok(!runtimeServer.includes("'--model'"), 'Lens must respect the model selected by Codex configuration');
+assert.ok(!runtimeServer.includes('resolveSampleWorkspace'), 'Codex must run in the open Workspace');
 assert.ok(!runtimeServer.includes('C:\\Users\\owner\\github\\lens'), 'Codex runtime must not hard-code the repository root');
 
 for (const marker of [
@@ -197,7 +193,7 @@ for (const marker of [
     'この Task ではファイルは変更されませんでした。',
     'role="img" aria-label="変更された設計境界"',
     '<cite class="citation"',
-    "event.type === 'ended' || event.type === 'cancelled'",
+    "event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled'",
     "status: 'generating'",
     "status: 'ready'",
     'one complete HTML document'
@@ -235,8 +231,8 @@ for (const marker of [
     "data-mode={this.codeMode ? 'code' : activeTab}",
     "data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}",
     '{!this.codeMode && this.renderRail()}',
-    'filteredSessions.map(session => {',
-    'onClick={() => this.selectSession(session.id)}',
+    'pinnedSessions.map(session => this.renderSessionRow(session))',
+    'protected renderSessionRow(session: WindowAgentSession): React.ReactNode',
     '{this.workspaceFolderName()}',
     '{this.workspaceContextLabel()}',
     "ref?.id.startsWith('refs/heads/')",
@@ -288,7 +284,8 @@ for (const marker of [
     'Widget.attach(widget, host)',
     'Widget.detach(widget)',
     'this.widgetManager.getOrCreateWidget(AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID)',
-    'protected async openCodeSettings(): Promise<void>'
+    'protected async openCodeSettings(): Promise<void>',
+    'protected openSettings(): void'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
@@ -300,9 +297,10 @@ for (const dummyChrome of [
 ]) {
     assert.ok(!agentWidget.includes(dummyChrome), `Dummy Agent chrome must not return: ${dummyChrome}`);
 }
-for (const persistenceApi of ['localStorage', 'sessionStorage']) {
-    assert.ok(!agentWidget.includes(persistenceApi), `Window sessions must not use ${persistenceApi}`);
-}
+assert.ok(agentWidget.includes('@inject(StorageService)'), 'Window sessions must use the application storage boundary');
+assert.ok(agentWidget.includes('this.storageService.setData'), 'Window sessions must persist across reloads');
+assert.ok(!agentWidget.includes('window.localStorage'), 'The Agent widget must not write browser storage directly');
+assert.ok(!agentWidget.includes('sessionStorage'), 'Window sessions must survive a browser session');
 const railSource = agentWidget.match(
     /protected renderRail\(\): React\.ReactNode \{[\s\S]*?\n    protected readonly setSessionSearchInput/
 )?.[0];
@@ -325,24 +323,31 @@ for (const marker of [
     '<span>Workspaces</span>',
     "className='lens-agent-window__workspace-group'",
     "className='lens-agent-window__session-title'",
-    "className='lens-agent-window__session-meta'",
+    'lens-agent-window__session-meta',
     'protected sessionMeta(session: WindowAgentSession): string',
+    'protected togglePinnedSession(sessionId: string): void',
+    'protected beginSessionRename(sessionId: string): void',
+    'protected async archiveSession(sessionId: string): Promise<void>',
+    'protected async deleteSession(sessionId: string): Promise<void>',
+    'protected restoreSession(sessionId: string, select = false): void',
+    "aria-label='サイドバーの幅を変更'",
+    'protected startRailResize(event: React.PointerEvent<HTMLDivElement>): void',
+    'protected async persistWindowState(): Promise<void>',
+    'protected async restoreWindowState(): Promise<boolean>',
     'protected async openRepository(): Promise<void>',
     'this.fileDialogService.showOpenDialog',
     'this.workspaceService.open(folder, { preserveWindow: true })',
-    'protected removeSession(sessionId: string): void',
-    'this.sessions.splice(index, 1)',
-    "className='lens-agent-window__session-remove'"
+    'onClick={() => this.openSettings()}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent rail is missing ${marker}`);
 }
 assert.ok(!railSource.includes('<small>現在</small>'), 'Selected sessions must use quiet age metadata, not a current badge');
-assert.ok(!railSource.includes('openCodeSettings'), 'Agent rail gear must not open the Code settings widget');
 assert.equal(
-    agentWidget.match(/onClick=\{\(\) => void this\.openCodeSettings\(\)\}/g)?.length,
-    1,
-    'Only the Code footer gear may open the editor settings widget'
+    agentWidget.match(/onClick=\{\(\) => this\.openSettings\(\)\}/g)?.length,
+    2,
+    'Both Settings gears must open the shared settings route'
 );
+assert.ok(!agentWidget.includes('lens-agent-window__composer-tools'), 'Deferred composer tools must not be shown');
 assert.ok(!agentWidget.includes('protected activeTab:'), 'Agent / Results selection must belong to each session');
 assert.ok(!agentWidget.includes('Widget.ResizeMessage.UnknownSize'), 'Code widgets must receive measured pixel resize messages');
 assert.equal(
@@ -394,16 +399,21 @@ for (const forbidden of ['AgentRuntimeServer', 'CliDetectionReport', 'detectClis
 }
 for (const marker of [
     '#lens-window-host',
+    '.theia-preload.theia-hidden',
+    'pointer-events: none',
     '--lens-chrome-bg: #181918',
     '--lens-chrome-panel: #1d1e1c',
-    'grid-template-columns: 238px minmax(0, 1fr)',
+    'grid-template-columns: var(--lens-rail-width, 252px) minmax(0, 1fr)',
     ".lens-agent-window__content[data-mode='code']",
     ".lens-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true']",
     ".lens-agent-window__rail[data-collapsed='true']",
     '.lens-agent-window__session-search',
     '.lens-agent-window__workspace-group',
     '.lens-agent-window__session-meta',
-    '.lens-agent-window__session-remove',
+    '.lens-agent-window__session-menu',
+    '.lens-agent-window__session-rename',
+    '.lens-agent-window__archived-toggle',
+    '.lens-agent-window__rail-resize-handle',
     '.lens-agent-window__viewport',
     '.lens-agent-window__code',
     '.lens-agent-window__code-sidebar-host',
@@ -428,16 +438,7 @@ assert.match(
     /\.lens-agent-window__rail-heading\s*\{[^}]*font-size:\s*10px;/,
     'Workspaces text must match the sidebar spec'
 );
-assert.match(
-    agentStyles,
-    /\.lens-agent-window__session-remove\s*\{[^}]*opacity:\s*0;/,
-    'Session delete controls must remain hidden until row hover or focus'
-);
-assert.match(
-    agentStyles,
-    /\.lens-agent-window__composer-tools\s*\{[^}]*font-size:\s*11px;/,
-    'Composer tools text must remain legible'
-);
+assert.ok(!agentStyles.includes('.lens-agent-window__composer-tools'), 'Deferred composer tool styles must not remain');
 assert.match(
     agentStyles,
     /\.lens-agent-window__send \.codicon,[\s\S]*?color:\s*#222320;/,
@@ -464,19 +465,8 @@ assert.match(
     'Editor host must occupy the remaining row below its tabs'
 );
 
-for (const marker of [
-    'IDE Changes',
-    'task-auth-redis-001',
-    'Code Diff',
-    'Semantic Diff',
-    'DiffUris.encode',
-    'this.editorManager.open',
-    "line: 11"
-]) {
-    assert.ok(changesWidget.includes(marker), `Changes Widget is missing ${marker}`);
-}
-assert.ok(moduleSource.includes('ChangesWidget'));
-assert.ok(moduleSource.includes('ChangesContribution'));
+assert.ok(!moduleSource.includes('ChangesWidget'), 'Historical Changes must not be registered');
+assert.ok(!moduleSource.includes('ChangesContribution'), 'Historical Changes must not be registered');
 assert.ok(moduleSource.includes('bind(AgentWindowWidget).toSelf().inSingletonScope()'));
 assert.ok(moduleSource.includes('bind(AgentWindowContribution).toSelf().inSingletonScope()'));
 assert.ok(!moduleSource.includes('bindViewContribution(bind, AgentWindowContribution)'));
@@ -495,6 +485,7 @@ for (const marker of [
     'for (const editor of this.editorManager.all)',
     'this.agentWindowWidget.registerCodeWidget(factoryId, widget)',
     "host.id = 'lens-window-host'",
+    'document.body.appendChild(host)',
     'Widget.attach(this.agentWindowWidget, host)'
 ]) {
     assert.ok(agentContribution.includes(marker), `Lens-owned Agent host is missing ${marker}`);
@@ -547,16 +538,7 @@ assert.ok(
     firstCompletion.includes('Code does not host ApplicationShell; Lens hosts Files/Git/Editor widgets only.'),
     'FIRST-COMPLETION must state the Code widget-hosting boundary'
 );
-assert.ok(changesContribution.includes("isDesignVariant('d2-b') ? 'main' : 'bottom'"));
-assert.ok(!changesContribution.includes('initializeLayout'));
-assert.ok(changesContribution.includes("setElement('lens-changes'"));
-assert.ok(changesContribution.includes("onclick: () => void this.openView"));
-assert.ok(changesContribution.includes('Lens: Open IDE Changes'));
-assert.match(sample, /logout\(userId: string\): void/);
-assert.match(sample, /失効処理は未実装/);
-assert.match(sample, /async rotateRefreshToken/);
-assert.match(baseline, /Database/);
-for (const marker of ['AgentProvider', 'CliDetector', 'TaskService', 'BundledResultsSkill', 'Agent / Results']) {
+for (const marker of ['AgentProvider', 'Codex CLI', 'TaskService', 'ResultsSkill', 'Agent / Results / Code']) {
     assert.ok(readme.includes(marker), `README is missing ${marker}`);
 }
 

@@ -22,7 +22,7 @@ AIによる開発では、コード生成速度が人間の理解速度を上回
 - 生成されたコードを毎回すべて読むのは現実的ではない
 - AIの報告書を読むだけでは人間が受動的になりやすい
 - チャットによる説明は一時的で、理解がプロジェクト知識として残りにくい
-- Agent Window、Changes、Editorの往復が思考を分断する
+- Agent、成果確認、Editorの文脈が別画面へ分断されやすい
 - 「理解のための専用画面」は教育的になり、使われなくなる
 
 という問題が起こる。
@@ -33,131 +33,65 @@ AIによる開発では、コード生成速度が人間の理解速度を上回
 
 人間に理解を強制しない。
 
-通常時はシンプルなAgent Windowだけを使う。AIが作業を終えたとき、基本表示は簡潔な結果だけにする。
+通常時はAgentだけを使う。AIが作業を終えても、現在のfocusを奪わず、短い結果だけを会話へ残す。
 
 ```text
-AI
-認証処理を変更しました。
-
-- Refresh Tokenの保存先をRedisへ変更
-- TokenStoreを追加
-- Logout時の失効処理を変更
-
-[質問]
+Agent  作業を依頼する
+  ↓ user opens Results
+Results 確定した成果を見ながら質問する
+  ↓ user opens Code
+Code   Git差分や根拠コードを確認する
 ```
 
-変更を確認したいときは、ユーザーがIDEのChanges領域を開く。Changes領域では、同じChange SetをCode DiffとSemantic Diffの2つの表現で確認する。
+Taskが終了・失敗・キャンセルされたら、アプリが実WorkspaceのBaselineとの差からChange Setを確定し、Results skillを開始する。Skillは完成済みHTML文書を一つ返し、Resultsはその文書を表示する枠だけを持つ。
 
-ユーザーが気になったときだけ深く入る。
+ユーザーは必要なときだけResultsを開く。成果について質問したい場合はResults Composerを使い、その質問と回答をAgent会話や新しい実行Taskへ混ぜない。
 
-```text
-Level 1: Agent Window / AIの作業結果・質問
-    ↓ user opens Changes
-Level 2: Changes / Code Diff・Semantic Diff
-    ↓ user opens Evidence
-Level 3: Editor / Evidence・Code
-```
+実コードを確認したい場合は、同じWindowのCodeモードへ切り替える。左サイドバーはFiles／Git、中央はTheia既存Editorになる。Agent／Resultsへ戻っても状態を保持する。
 
-ChangesはAgentの作業完了時に自動表示しない。ユーザーが必要な深さまで開く。
+## Results
 
-Changes内では、Code DiffとSemantic Diffを切り替えるか、必要に応じて並列に表示できる。
+Resultsは、終了した実行Taskを手掛かりに成果を確認するSession内の画面である。
 
-## Semantic Diff
+アプリが固定するのは次の要素だけとする。
 
-Semantic Diffは、AIの自己申告ではなく、実際の変更を根拠に生成する。
+- Task切替リスト
+- 完成済みHTML文書を一つ表示するキャンバス
+- 表示中のTaskとHTMLをscopeにする短いComposer
 
-### Intent
+HTML文書の見出し、図、比較、引用などの内部構成はResults skillが決める。Before／After、Semantic Diff、Confidenceなどをアプリの固定UI契約にしない。
 
-ユーザーの依頼・チャット・Agentの計画から得られる「何をしようとしたか」。
+## Actual Change and evidence
 
-### Actual Change
+Agentの回答は作業報告であり、変更の正本ではない。
 
-作業前後のWorkspaceから得られる「実際に何が変わったか」。
+アプリはTask開始前のBaselineと終了時のWorkspaceからChange Setを取得する。Results skillはChange Setを材料に成果を説明できるが、存在しない変更や根拠を作らない。
 
-### Semantic Diff
-
-Actual Changeを解析し、
-
-> 変更前と変更後で、システムの意味がどう変化したのか
-
-を人間が理解しやすい形で表現する。
-
-チャットはIntentの補助情報として利用できるが、Semantic Diffの一次情報にはしない。
-
-## Semantic Diff Example
-
-```text
-変更前
-
-AuthService
-    ↓
-PostgreSQL
-    ↓
-Refresh Token
-
-変更後
-
-AuthService
-    ↓
-TokenStore
-    ↓
-Redis
-    ↓
-Refresh Token
-```
-
-意味として変わったこと:
-
-```text
-保存場所
-PostgreSQL → Redis
-
-責務
-AuthServiceが直接保存
-→ TokenStoreに分離
-
-影響
-Refresh / Logout / Session
-```
-
-各Semantic Changeは、可能な限り根拠となるコード・設定・スキーマ・参照関係を保持する。
+Skillが根拠を示す場合は、Workspace内のファイルと位置を引用する。引用からCodeへ移動し、Theia Editorで実コードを確認できるようにする。
 
 ## IDE Structure
 
-IDE内にAgent Window、Changes、Editorを共存させる。
+Lensは一つのWindowを所有する。
 
 ```text
-IDE
-├ Agent Window
-│  ├ Chat
-│  ├ Task Result
-│  └ Question
-│
-├ Changes
-│  ├ Change Set
-│  ├ Code Diff
-│  └ Semantic Diff
-│
-└ Editor
-   ├ Code
-   ├ LSP
-   ├ Git
-   └ Evidence
+Lens Window
+├ Agent / Results
+│  ├ Workspace / Session sidebar
+│  └ Agent conversation or Results canvas
+└ Code
+   ├ Files / Git
+   └ Editor / Settings
 ```
 
-Agent Windowの中にもう一つEditorを作らない。
-
-Agent Windowは「Intent / Result / Question」を扱う場所。ChangesはActual ChangeをCode DiffとSemantic Diffで確認する場所。Editorは「Evidence / Implementation」を見る場所。
-
-すべて同じIDE内に存在し、別の画面・アプリへ移動しなくて済むようにする。
+CodeはTheia ApplicationShell全体をhostせず、必要なFiles／Git／Editor／Settings WidgetだけをLensのslotへ載せる。
 
 ## Interaction Principles
 
 ### 1. Simple by default
-通常時はチャットだけでよい。
+通常時はAgentだけでよい。
 
 ### 2. Depth on demand
-深く知りたいときだけChangesでCode DiffやSemantic Diffを開き、さらに必要ならEditorでコードを開く。
+成果を見たいときだけResultsを開き、さらに必要ならCodeでGit差分や根拠コードを開く。
 
 ### 3. No forced education
 AIから理解確認の質問をしない。理解度テストをしない。報告書を読ませない。
@@ -169,7 +103,7 @@ AIから理解確認の質問をしない。理解度テストをしない。報
 AIの説明より、実際の変更を優先する。
 
 ### 6. Evidence-backed understanding
-Semantic Diffから根拠コードへ辿れるようにする。
+Results skillの引用から根拠コードへ辿れるようにする。
 
 ## Architecture Philosophy
 

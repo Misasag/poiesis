@@ -48,8 +48,10 @@ export class AgentWindowContribution implements FrontendApplicationContribution 
         const host = document.createElement('div');
         host.id = 'lens-window-host';
         host.setAttribute('aria-label', 'Lens');
-        const preload = document.querySelector('.theia-preload');
-        document.body.insertBefore(host, preload);
+        // Theia keeps its preload node in the document after startup. Appending
+        // Lens after it prevents the transparent preload layer from intercepting
+        // controls near the bottom edge of the window.
+        document.body.appendChild(host);
         Widget.attach(this.agentWindowWidget, host);
         this.host = host;
     }

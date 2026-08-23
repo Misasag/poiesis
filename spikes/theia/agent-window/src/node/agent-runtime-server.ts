@@ -67,8 +67,8 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
             return { source: 'empty', error: 'No workspace root is open.' };
         }
         try {
-            const sampleWorkspace = await this.resolveSampleWorkspace(workspacePath);
-            const snapshot = await this.captureWorkspace(sampleWorkspace);
+            const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
+            const snapshot = await this.captureWorkspace(resolvedWorkspace);
             const snapshotId = `git-snapshot-${Date.now()}-${++this.snapshotSequence}`;
             this.snapshots.set(snapshotId, snapshot);
             return { source: 'git-snapshot', snapshotId };
@@ -129,16 +129,15 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
             throw new Error('Codex is not installed.');
         }
 
-        const sampleWorkspace = await this.resolveSampleWorkspace(workspacePath);
+        const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
         const args = [
             'exec',
-            '--model', 'gpt-5.6-sol',
-            '--config', 'model_reasoning_effort=xhigh',
+            '--sandbox', 'workspace-write',
             '--approve-for-me',
-            '-C', sampleWorkspace,
+            '-C', resolvedWorkspace,
             '--', prompt
         ];
-        const child = this.spawnCodex(codex.path, args, sampleWorkspace);
+        const child = this.spawnCodex(codex.path, args, resolvedWorkspace);
         const run: CodexRun = { process: child, cancelled: false };
         this.codexRuns.set(executionId, run);
 
@@ -208,28 +207,16 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         return { repositoryRoot, workspacePath: resolvedWorkspacePath, entries };
     }
 
-    protected async resolveSampleWorkspace(workspacePath: string): Promise<string> {
+    protected async resolveWorkspace(workspacePath: string): Promise<string> {
         const resolvedWorkspace = resolve(workspacePath);
-        const candidates = [
-            resolvedWorkspace,
-            join(resolvedWorkspace, 'sample-src'),
-            join(resolvedWorkspace, 'spikes', 'theia', 'sample-src'),
-            resolve(__dirname, '..', '..', '..', 'sample-src')
-        ];
-        const expectedSuffix = join('spikes', 'theia', 'sample-src').toLocaleLowerCase();
-        for (const candidate of candidates) {
-            if (!candidate.toLocaleLowerCase().endsWith(expectedSuffix)) {
-                continue;
+        try {
+            if ((await stat(resolvedWorkspace)).isDirectory()) {
+                return resolvedWorkspace;
             }
-            try {
-                if ((await stat(candidate)).isDirectory()) {
-                    return candidate;
-                }
-            } catch {
-                // Probe the next fixed sample-src location.
-            }
+        } catch {
+            // Report one stable error below.
         }
-        throw new Error('The spikes/theia/sample-src implementer directory was not found.');
+        throw new Error(`The Workspace directory was not found: ${resolvedWorkspace}`);
     }
 
     protected spawnCodex(command: string, args: string[], cwd: string): CodexProcess {

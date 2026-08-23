@@ -23,6 +23,8 @@
     "smoke:electron": "node scripts/smoke-electron.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
     "start": "npm run start --workspace=@lens/theia-browser-app",
+    "start:background": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-background.ps1",
+    "stop:background": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-background.ps1",
     "start:electron": "npm run start --workspace=@lens/theia-electron-app --",
     "validate:source": "node scripts/validate-source.mjs"
   },

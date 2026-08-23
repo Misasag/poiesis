@@ -1,15 +1,11 @@
 import { ContainerModule } from '@theia/core/shared/inversify';
 import {
-    bindViewContribution,
     FrontendApplication,
     FrontendApplicationContribution,
     WebSocketConnectionProvider
 } from '@theia/core/lib/browser';
-import { WidgetFactory } from '@theia/core/lib/browser/widget-manager';
 import { AgentWindowContribution } from './agent-window-contribution';
 import { AgentWindowWidget } from './agent-window-widget';
-import { ChangesContribution } from './changes-contribution';
-import { ChangesWidget } from './changes-widget';
 import { AgentRuntimeClientImpl } from './agent-runtime-client';
 import { CliAgentProvider } from './cli-agent-provider';
 import { DesignShotContribution } from './design-shot-contribution';
@@ -45,11 +41,4 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     bind(AgentWindowContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(AgentWindowContribution);
 
-    bind(ChangesWidget).toSelf();
-    bind(WidgetFactory).toDynamicValue(context => ({
-        id: ChangesWidget.ID,
-        createWidget: () => context.container.get(ChangesWidget)
-    })).inSingletonScope();
-    bindViewContribution(bind, ChangesContribution);
-    bind(FrontendApplicationContribution).toService(ChangesContribution);
 });

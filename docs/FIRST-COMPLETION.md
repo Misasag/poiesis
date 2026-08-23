@@ -38,6 +38,10 @@ Taskが終了またはキャンセルされたら、アプリがResults skillを
 - [ ] `Code`モードでは`Agent`／`Results`タブを隠し、`Code`をもう一度押すと直前の`Agent`または`Results`へ戻る
 - [ ] `Code`モードへの切替で、左サイドバーはFiles／Git、中央はEditorになる
 - [ ] 共通の左サイドバー下部に設定の歯車があり、中央にTheia／Workspace settingsを開ける
+- [ ] `New Chat`は未送信の空Sessionを重複作成せず、そのComposerへ戻してfocusする。会話済みなら新しいSessionを作る
+- [ ] Sessionをピン留め、rename、archiveでき、Archivedから復元または確認付きで完全削除できる
+- [ ] Session一覧とComposer下書きは再読み込み後も復元できる
+- [ ] 左サイドバーは196〜420pxでpointer／keyboard resizeでき、double clickで既定幅へ戻せる
 
 Code does not host ApplicationShell; Lens hosts Files/Git/Editor widgets only.
 
@@ -74,7 +78,6 @@ Code does not host ApplicationShell; Lens hosts Files/Git/Editor widgets only.
 
 以下は第一完成点の外に置き、Definition of Doneには含めない。
 
-- Sessionのrename、終了、archive
 - 実行中Taskがある状態でのWorkspace切替
 - Composerの「＋」メニュー
 - Resultsのnotification dot

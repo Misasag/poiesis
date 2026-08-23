@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lens UI Spec — Agent Window</title>
+  <title>Lens UI Spec — Agent / Results / Code</title>
   <style>
     :root {
       color-scheme: light;
@@ -1414,7 +1414,7 @@
 <body>
   <header class="page-header">
     <div>
-      <h1>Lens UI Spec — Agent Window</h1>
+      <h1>Lens UI Spec — Agent / Results / Code</h1>
       <p>第一完成点・画面仕様テンプレート</p>
     </div>
     <nav id="screen-tabs" class="screen-tabs" aria-label="画面状態"></nav>
@@ -1573,9 +1573,8 @@
       <section class="document-section">
         <h3>未確定事項</h3>
         <ul>
-          <li>Sessionの名称変更、終了・アーカイブ操作。</li>
           <li>Workspace切替時の実行中Taskの扱い。</li>
-          <li>入力欄左下の＋で開くコンテキスト追加メニューの項目。</li>
+          <li>Composerの＋／context menuは第一完成点の対象外。追加時に項目と権限を再設計する。</li>
           <li>Resultsの更新をdotなどで通知するか。</li>
           <li>Resultsの質問スレッドをどのscopeで検索・複数化するか。</li>
           <li>Explorerでのsingle click／double clickとEditor tabの固定方法。</li>
@@ -1593,10 +1592,11 @@
     // Screen definitions are intentionally kept in this file so the spec can be
     // opened directly from disk. Marker coordinates are percentages of the image.
     const NAV_ITEMS = [
-      { id: "01", x: 10.5, y: 6.5, title: "New Chat", summary: "新しいAgent会話の空画面を開く。", action: "クリック", result: "優先Workspaceを初期選択しComposerへfocusする。", state: "送信前はTaskを作らず、Workspace／branch／実行先を変更できる。" },
+      { id: "01", x: 10.5, y: 6.5, title: "New Chat", summary: "新しいAgent会話の空画面を開く。", action: "クリック", result: "未送信Sessionなら重複作成せずComposerへfocusし、会話済みなら新しいSessionを作る。", state: "送信前はTaskを作らず、Workspace／branch／実行先を変更できる。" },
       { id: "02", x: 10.5, y: 12.0, title: "会話検索", summary: "過去のAgent会話を名前・本文・PR番号から横断検索する。", action: "クリック／Ctrl+K", result: "会話検索パレットを開き、選択したSessionへ移動する。", state: "コード検索は対象外。コード検索はCodeモードの左サイドバーで行う。" },
       { id: "03", x: 10.5, y: 15.0, title: "Workspaces", summary: "作業対象ごとにAgent Sessionをまとめる。", action: "展開／追加", result: "Workspace配下のSessionを表示する。", state: "SessionはWorkspace単位でグループ化する。" },
-      { id: "04", x: 11.5, y: 29.0, title: "Session一覧", summary: "Workspace配下のAgent会話とResultsへの入口を表示する。", action: "クリック", result: "選択SessionのAgent会話とResults表示を別状態として復元する。", state: "Agent Composer下書きはSession単位、Resultsの下書きと質問スレッドは選択中の実行Task単位。EditorのtabとCode内の左ペイン選択も保持する。" },
+      { id: "04", x: 11.5, y: 29.0, title: "Session一覧", summary: "Workspace配下のAgent会話とResultsへの入口を表示する。", action: "選択／三点メニュー", result: "会話を開くほか、pin、rename、archive、Archivedからの復元／完全削除を行う。", state: "Session一覧、会話、下書き、pin／archive状態を再読み込み後も保持する。" },
+      { id: "12", x: 21.0, y: 50.0, title: "サイドバー幅", summary: "Agent／Resultsの左サイドバー幅を変更する。", action: "境界をdrag／矢印キー。double clickでreset", result: "196〜420pxの範囲で中央領域との比率を変更する。", state: "Windowを再読み込みしても幅を保持する。" },
       { id: "11", x: 17.0, y: 4.2, collapsedX: 6.0, title: "左サイドバーの折りたたみ", summary: "展開時のWorkspace／Session一覧と、New Chat／Searchを残すアイコンレールを切り替える。", action: "サイドバー上部のボタンをクリック", result: "展開時は折りたたみ、折りたたみ時は同じ位置の操作で再展開する。", state: "Window単位で保持し、Agent／Resultsを切り替えてもリセットしない。" }
     ];
     const SETTINGS_ITEM = { id: "13", x: 10.5, y: 94.0, collapsedX: 6.0, title: "設定", summary: "Session一覧とCodeで共通の左サイドバー下部の歯車。", action: "歯車をクリック", result: "中央にTheia / ワークスペース設定を開く。Code中はEditorに設定タブを追加する。", state: "選択SessionとEditorの既存tabを保持する。第一完成点ではLens専用設定画面を作らない。" };
@@ -1617,8 +1617,7 @@
           { id: "06", x: 86.0, y: 8.5, title: "Session view", summary: "同じSessionに紐づくAgent／Resultsを切り替える。", action: "クリック", result: "現在のSessionの会話または成果へ移動する。", state: "会話とComposer下書きは閉じずに保持する。" },
           { id: "07", x: 64.0, y: 25.0, title: "会話", summary: "人間の作業指示と作業者AIの回答を、発言者ラベルに頼らず配置で区別する。", action: "閲覧", result: "Agent内の作業依頼、結果、作業上の追質問を同じ時系列で確認する。Resultsの質問と回答は表示しない。", state: "Agent会話のSession履歴として保持する。" },
           { id: "08", x: 62.0, y: 42.0, title: "実行結果", summary: "作業結果と検証結果を短く表示する。", action: "展開／折り畳み", result: "必要な場合だけTool実行詳細を表示する。", state: "Change Set自体はここへ表示しない。" },
-          { id: "09", x: 64.0, y: 88.0, title: "Composer", summary: "Agentタブ内で作業者AIへ指示する入力欄。", action: "入力／送信", result: "選択SessionのAgent会話へmessageを追加し、必要な作業Taskを開始する。", state: "Agent会話の文脈だけを継承し、Resultsの質問下書きや回答は共有しない。" },
-          { id: "10", x: 34.5, y: 91.5, title: "コンテキスト追加", summary: "ファイルや画像などを入力へ追加する。", action: "クリック", result: "コンテキスト追加メニューを開く。", state: "New Chatの作成操作には使用しない。" }
+          { id: "09", x: 64.0, y: 88.0, title: "Composer", summary: "Agentタブ内で作業者AIへ指示する入力欄。", action: "入力／送信", result: "選択SessionのAgent会話へmessageを追加し、必要な作業Taskを開始する。", state: "Agent会話の文脈だけを継承し、Resultsの質問下書きや回答は共有しない。" }
         ]
       },
       {
@@ -1846,7 +1845,6 @@
             <div class="agent-mock__composer">
               <div class="agent-mock__composer-copy">
                 <span>Ask anything, or describe the next change…</span>
-                <span class="agent-mock__composer-tools"><span>${icon("plus")}</span><span>@ Context</span><span class="agent-mock__icon-label">Auto${icon("chevron-down")}</span></span>
               </div>
               <button class="agent-mock__send" type="button" aria-label="送信">${icon("send")}</button>
             </div>

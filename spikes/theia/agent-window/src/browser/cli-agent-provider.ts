@@ -175,10 +175,15 @@ export class CliAgentProvider implements AgentProvider {
             sessionId: run.sessionId,
             taskId: run.taskId
         });
+        const successful = event.code === 0 && !event.signal;
         this.runs.delete(run.sessionId);
-        await this.taskService.end(run.taskId);
+        if (successful) {
+            await this.taskService.end(run.taskId);
+        } else {
+            await this.taskService.fail(run.taskId);
+        }
         this.eventEmitter.fire({
-            type: 'task-completed',
+            type: successful ? 'task-completed' : 'task-failed',
             sessionId: run.sessionId,
             taskId: run.taskId
         });
@@ -200,9 +205,9 @@ export class CliAgentProvider implements AgentProvider {
             taskId: run.taskId
         });
         this.runs.delete(run.sessionId);
-        await this.taskService.end(run.taskId);
+        await this.taskService.fail(run.taskId);
         this.eventEmitter.fire({
-            type: 'task-completed',
+            type: 'task-failed',
             sessionId: run.sessionId,
             taskId: run.taskId
         });

@@ -7,7 +7,7 @@ import {
     GitSnapshotCapture
 } from '../common/agent-runtime-protocol';
 
-export type ExecutionTaskStatus = 'running' | 'completed' | 'cancelled';
+export type ExecutionTaskStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface TaskBaseline {
     kind: 'workspace-snapshot';
@@ -35,7 +35,7 @@ export interface ExecutionTask {
 }
 
 export interface TaskEvent {
-    type: 'started' | 'ended' | 'cancelled';
+    type: 'started' | 'ended' | 'failed' | 'cancelled';
     task: ExecutionTask;
 }
 
@@ -81,6 +81,10 @@ export class TaskService {
         return this.finish(taskId, 'cancelled', 'cancelled');
     }
 
+    async fail(taskId: string): Promise<ExecutionTask | undefined> {
+        return this.finish(taskId, 'failed', 'failed');
+    }
+
     async whenBaselineCaptured(taskId: string): Promise<void> {
         await this.baselineCaptures.get(taskId);
     }
@@ -95,10 +99,19 @@ export class TaskService {
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
     }
 
+    removeSession(sessionId: string): string[] {
+        const taskIds = this.list(sessionId).map(task => task.id);
+        for (const taskId of taskIds) {
+            this.tasks.delete(taskId);
+            this.baselineCaptures.delete(taskId);
+        }
+        return taskIds;
+    }
+
     protected async finish(
         taskId: string,
         status: Exclude<ExecutionTaskStatus, 'running'>,
-        eventType: Extract<TaskEvent['type'], 'ended' | 'cancelled'>
+        eventType: Extract<TaskEvent['type'], 'ended' | 'failed' | 'cancelled'>
     ): Promise<ExecutionTask | undefined> {
         const current = this.tasks.get(taskId);
         if (!current || current.status !== 'running') {

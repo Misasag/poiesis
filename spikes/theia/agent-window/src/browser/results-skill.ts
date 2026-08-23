@@ -41,7 +41,7 @@ export class BundledResultsSkill implements ResultsSkill {
         const diff = changeSet.diff.trim();
         const page = this.describe(task, changeSet, diff);
         const diagram = page.nodes.length > 0 ? this.renderDiagram(page.nodes) : '';
-        const state = task.status === 'cancelled' ? 'キャンセル' : '完了';
+        const state = task.status === 'cancelled' ? 'キャンセル' : task.status === 'failed' ? '失敗' : '完了';
 
         return `<!doctype html>
 <html lang="ja">
@@ -206,7 +206,7 @@ export class ResultsService {
     @postConstruct()
     protected init(): void {
         this.taskService.onDidChangeTask(event => {
-            if (event.type === 'ended' || event.type === 'cancelled') {
+            if (event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled') {
                 void this.generate(event.task);
             }
         });
@@ -214,6 +214,12 @@ export class ResultsService {
 
     get(taskId: string): TaskResultDocument | undefined {
         return this.documents.get(taskId);
+    }
+
+    remove(taskIds: Iterable<string>): void {
+        for (const taskId of taskIds) {
+            this.documents.delete(taskId);
+        }
     }
 
     protected async generate(task: ExecutionTask): Promise<void> {

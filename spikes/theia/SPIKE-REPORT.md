@@ -1,5 +1,7 @@
 # Theia Technical Spike Report
 
+> Historical note (2026-08-23): このレポートは旧「右Agent Window／下部Changes」構成の技術検証記録である。現在の製品仕様は `docs/FIRST-COMPLETION.md`、`docs/UX.md`、`docs/ui/agent-window-spec.html` を参照する。
+
 ## 結論
 
 Theia 1.73.1をNode.js 24.5.0 / npm 11.11.0 / Windows上で再ビルドし、新仕様のコアUXをヘッドレス操作で確認した。

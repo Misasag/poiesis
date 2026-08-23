@@ -1,5 +1,7 @@
 # Theia Electron Target 実証レポート
 
+> Historical note (2026-08-23): このレポートのUI検証は旧「Agent Window／Changes」構成に対するものである。Electron基盤の実証結果として保持し、現行Agent／Results／Code shellの合格証跡には使用しない。
+
 ## 結論
 
 Theia 1.73.1 の Windows Electron target はビルド、native dependency rebuild、実起動、lens Repository の Workspace open、新しいコア UX の操作まで実証できた。ADR 0001 が最初のマイルストーンとした「Electron target を未実証」のリスクは、開発 build と起動の範囲では解消した。

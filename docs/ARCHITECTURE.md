@@ -1,327 +1,132 @@
-# ARCHITECTURE.md
+# Lens Architecture
 
-## Status
+## Status and source of truth
 
-Architecture Draft for First Completion.
+Decided architecture for First Completion (2026-08-23).
 
-この文書では第一完成点に必要な大枠のみを定義する。将来の一般公開や大規模Plugin Platformに必要な抽象化は、必要になるまで追加しない。
+完成条件は [`FIRST-COMPLETION.md`](FIRST-COMPLETION.md)、画面契約は [`ui/agent-window-spec.html`](ui/agent-window-spec.html) を正本とする。旧「Agent Window／Changes／Editor」三領域モデルは採用せず、現在はLensが所有する一つのWindow内のAgent／Results／Codeモデルを採用する。
 
-## Architectural Goals
+## Goals
 
-- Agent Window、Changes、Editorを同一IDE内に統合する
-- Agent RuntimeとUIを疎結合にする
-- Agentによる実変更を追跡できる
-- Semantic Diffを実コード解析に基づいて生成する
-- Semantic Diffから根拠コードへ辿れる
-- 将来Agent Runtimeを交換可能にする
-- 第一完成点を超える過剰な汎用化を避ける
+- 実RepositoryをWorkspaceとして扱う。
+- Agent RuntimeをUIから交換可能な境界の後ろへ置く。
+- Task lifecycle、Baseline、Change Setをアプリが所有する。
+- Resultsの枠と、Skillが生成するHTML文書を分離する。
+- Files、Git、Editor、SettingsはTheia既存Widgetを再利用する。
+- Agent／Results／Code間で状態とfocusを保つ。
 
-## High-Level Architecture
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                            IDE                               │
-│                                                              │
-│ ┌──────────────┐  ┌─────────────────┐  ┌──────────────────┐ │
-│ │ Agent Window │  │     Changes     │  │      Editor      │ │
-│ │ Chat         │  │ Change Set      │  │ Code / LSP / Git │ │
-│ │ Task Result  │  │ Code Diff       │  │ Evidence         │ │
-│ │ Question     │  │ Semantic Diff   │  │                  │ │
-│ └──────┬───────┘  └────────┬────────┘  └────────┬─────────┘ │
-│        │                   │                    │           │
-│        └───────────────────┼────────────────────┘           │
-│                            │                                │
-│                     Application Core                       │
-│                            │                                │
-│       ┌────────────────────┼────────────────────┐           │
-│       │                    │                    │           │
-│   Event Bus       Workspace Service       Task / Change     │
-│                                             Tracking        │
-└────────────────────────────┬─────────────────────────────────┘
-                             │
-                 ┌───────────┼────────────┐
-                 │           │            │
-          AgentProvider  SemanticDiff   Tool/Process
-                         Provider       Services
-```
-
-## Core Concepts
-
-### Task
-
-ユーザーがAgentへ依頼し、一定の作業結果が得られるまでの単位。Taskはチャットメッセージ単位ではない。
+## High-level structure
 
 ```text
-User: 認証をRedis方式に変更して
-Agent: 実装
-User: そこは違う
-Agent: 再修正
-User: OK
+Lens Window
+├─ Session UI
+│  ├─ Agent
+│  └─ Results
+└─ Code
+   ├─ Files / Git       (Theia widgets)
+   └─ Editor / Settings (Theia widgets)
+
+Application services
+├─ AgentProvider
+├─ TaskService
+├─ ResultsService
+├─ ResultsSkill
+├─ Workspace adapter
+└─ AgentRuntimeServer
 ```
 
-この一連を一つのTaskとして扱える必要がある。
+Lensは外枠を所有する。Theia `ApplicationShell`はdocumentへattachせず、Codeが必要とするFiles、Git、Editor、Settings Widgetだけを専用slotへattachする。
+
+## Core concepts
+
+### Session
+
+一つのWorkspace内のAgent会話単位。Agent会話、Agent Composer下書き、選択タブ、タイトル、pin／archive状態を持つ。一つのSessionに複数の実行Taskが属する。
+
+### Execution Task
+
+Agentへの一回の作業依頼に対応するアプリ所有の実行単位。
+
+```ts
+type ExecutionTaskStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+```
+
+Taskは開始時刻、終了時刻、request、Baseline、Change Setを持つ。CLIのprocessやAgentの自己申告をTaskの正本にしない。
 
 ### Baseline
-Task開始時点のWorkspace状態。
+
+Task開始前のWorkspace snapshot。AgentがWorkspaceを書き換える前に確定しなければならない。
 
 ### Change Set
-BaselineとTask終了時点のWorkspace状態との差。
 
-```text
-ChangeSet = Workspace(Before) → Workspace(After)
-```
+BaselineとTask終了時Workspaceの差。Agentの回答文から推測しない。取得失敗と「変更なし」を区別する。
 
-Change SetはCode Diffの元データであり、Semantic Diffの一次入力になる。
+### Result document
 
-### Intent
-ユーザーのPrompt、チャット、Agent Plan等から得られる「何をしようとしたか」。
+Results skillがTaskとChange Setから生成する完成済みHTML文書。生成状態は`generating | ready | failed`で管理し、不完全なHTMLをcanvasへstreamしない。
 
-### Actual Change
-実コード、設定、依存、スキーマなどの変化。
-
-### Semantic Change
-Actual Changeから抽出された、人間が理解できる意味単位の変化。
-
-```text
-AuthServiceがPostgreSQLへ直接Refresh Tokenを書き込む構造
-↓
-TokenStore経由でRedisへ保存する構造
-```
-
-### Evidence
-Semantic Changeを裏付けるコード・設定・スキーマ・参照関係など。
-
-## Core Interfaces
-
-第一完成点では、以下の境界を優先して作る。
+## Boundaries
 
 ### AgentProvider
 
-```ts
-interface AgentProvider {
-  createSession(input: CreateSessionInput): Promise<AgentSession>
-  sendMessage(sessionId: string, message: AgentMessage): Promise<void>
-  cancel(sessionId: string): Promise<void>
-  onEvent(listener: (event: AgentEvent) => void): Disposable
-}
-```
+UIが依存するAgent境界。Session作成、message送信、cancel、stream eventを提供する。UIはCodex、Claude、mockなどの具体的実装を知らない。
 
-責務:
-- Agent Session
-- Prompt送信
-- Tool実行イベント
-- Agent状態
-- Cancel
-- Completion
+第一完成点のdefault compositionは、検出済みで実行adapterがあるCLIを選び、なければchat-only mockへfallbackする。検出だけ実装されたCLIを実行可能として扱わない。
 
-UIは具体的なAgent実装へ直接依存しない。
+### AgentRuntimeServer
 
-### SemanticDiffProvider
+backend processでCLI起動、cancel、Workspace snapshot、Change Set取得を行う。CLIは開いているWorkspaceをworking directoryとして起動し、固定sample directoryへ置き換えない。
 
-```ts
-interface SemanticDiffProvider {
-  analyze(input: SemanticDiffInput): Promise<SemanticDiffResult>
-}
-```
+CLI固有のmodelやreasoning effortはLensから固定せず、ユーザーのCLI設定を尊重する。Lensが指定するのは、非対話実行、Workspace、sandboxなど実行境界に必要な項目だけとする。
 
-入力候補:
-- Change Set
-- AST / Symbol情報
-- Reference情報
-- Config Diff
-- Dependency Diff
-- Schema Diff
-- Test Diff
-- Intent（補助情報）
+### TaskService
 
-出力:
+Taskの開始、完了、失敗、キャンセルを管理する。終了状態を確定してからChange Setを発行し、ResultsServiceへ通知する。
 
-```ts
-interface SemanticDiffResult {
-  changes: SemanticChange[]
-  intent?: IntentSummary
-  warnings?: SemanticWarning[]
-}
-```
+### ResultsSkill and ResultsService
 
-### SemanticChange
+ResultsSkillは成果HTMLの生成方法を担う。ResultsServiceはTask終了後の起動、生成状態、完成文書の保持を担う。
 
-```ts
-interface SemanticChange {
-  id: string
-  title: string
-  before?: SemanticState
-  after?: SemanticState
-  affectedAreas: string[]
-  evidence: EvidenceRef[]
-  confidence?: number
-}
-```
+Resultsの質問スレッドはTaskと表示中のResult documentをscopeに持つが、Agent会話や新しいExecution Taskを作らない。
 
-### WorkspaceService
+### Code integration
 
-責務:
-- Repository / Folderを開く
-- File read/write
-- Workspace snapshot / baseline
-- File watch
-- Git状態
-- Diff
+CodeはTheia Files、SCM、Editor、Settings Widgetを再利用する。Lens固有EditorやGit UIを再実装しない。Widgetのattach／detach時は、選択、tab、scroll位置を可能な限り保持する。
 
-### EditorService
-
-責務:
-- File open
-- Range navigation
-- Diff open
-- Reveal evidence
-- Changes、Agent Windowとの連携
-
-## Event Model
-
-重要な状態変化はEventとして流す。
+## Event flow
 
 ```text
-task/started
-agent/message
-agent/tool-call
-workspace/file-changed
-test/started
-test/completed
-task/completed
-semantic-diff/started
-semantic-diff/completed
-editor/evidence-opened
+User sends message
+  → TaskService captures Baseline
+  → AgentProvider starts runtime
+  → message delta events update Agent
+  → runtime exits as completed / failed / cancelled
+  → TaskService captures Change Set
+  → ResultsService starts ResultsSkill
+  → complete HTML becomes available
+  → user explicitly opens Results
 ```
 
-第一完成点では、汎用Event Frameworkを作ること自体を目的にしない。必要なイベントだけ定義する。
+Task終了、Results生成完了、streaming更新は、現在のtabやfocusを変更しない。
 
-## Agent Window
+## Security
 
-Agent Windowは以下の責務を持つ。
+- Agent CLIのworking directoryはユーザーが開いたWorkspaceとする。
+- unattended実行ではworkspace-write相当のsandboxを使用する。
+- Lensからsandbox無効化やunrestricted filesystem accessを要求しない。
+- Results HTMLはsandboxed iframeで表示する。
+- HTMLからCodeを開く場合は、定義済みmessage schema、Workspace内path検証、line範囲検証を通す。
+- CLI path検出は実行と分け、検出時に未知のbinaryを起動しない。
 
-- Chat
-- Task result
-- Question
+## Persistence
 
-通常時はChatとTask resultのみを主表示とする。Questionは対象Taskの文脈を引き継ぐ。
+Session一覧、Agent会話、Composer下書き、タイトル、pin／archive状態、サイドバー幅はTheia `StorageService`境界から再読み込み後に復元する。Widgetは`window.localStorage`へ直接依存しない。実行中processは復元せず、Task metadataとResult documentの永続化は別のApplication serviceへ分離する。
 
-Agent WindowはChange Set、Code Diff、Semantic Diffを表示しない。
+## Architectural rules
 
-## Changes
-
-Changesは実際のChange Setを確認する領域である。
-
-- 対象TaskとChange Setの対応
-- Code Diff
-- Semantic Diff
-- Semantic ChangeからEvidenceへの移動
-
-Code DiffとSemantic Diffは、同じChange Setの異なる表現である。切り替えて表示でき、必要な場合は並列に表示できる。
-
-ChangesはAgentの作業完了時に自動表示しない。ユーザーが必要なときに開く。
-
-Level 1 / Level 2 / Level 3を同時表示しない。
-
-```text
-Level 1: Agent Window / Task Result・Question
-↓ user opens Changes
-Level 2: Changes / Code Diff・Semantic Diff
-↓ user opens Evidence
-Level 3: Editor / Evidence・Code
-```
-
-## Editor
-
-Editorは以下を担当する。
-
-- コード閲覧
-- コード編集
-- LSP
-- Git Diff
-- Evidence navigation
-
-Agent WindowやChanges内に本格的なEditorを再実装しない。ChangesのCode DiffはChange Setのコード表現に限定する。
-
-## Semantic Diff Pipeline
-
-```text
-Task Started
-    ↓
-Capture Baseline
-    ↓
-Agent Work
-    ↓
-Task Completed
-    ↓
-Build Change Set
-    ├─ Generate Code Diff
-    └─ Static / Structural Analysis
-           ↓
-       Semantic Change Extraction
-           ↓
-       LLM-assisted Human-readable Representation
-           ↓
-       Evidence Validation
-           ↓
-       Generate Semantic Diff
-    ↓
-Publish Code Diff and Semantic Diff to Changes
-```
-
-LLMは説明生成・統合に利用できるが、一次情報にはしない。
-
-## Evidence Principle
-
-Semantic Diffは、可能な限りEvidenceを持つ。
-
-```text
-Semantic Change:
-Refresh Token保存先がPostgreSQLからRedisへ変更
-
-Evidence:
-- src/auth/auth.service.ts:82-103
-- src/auth/token-store.ts:1-96
-- src/infra/redis/client.ts:12-55
-- package.json redis dependency
-```
-
-UIではEvidenceを常時表示しなくてよい。必要なときだけEditorで開けるようにする。
-
-## Plugin Philosophy
-
-DeepSeek Harnessの思想を参考に、Capabilityの境界を意識する。
-
-ただし第一完成点では「Everything is a Plugin」を完全実装しない。
-
-優先する交換可能境界:
-
-```text
-AgentProvider
-SemanticDiffProvider
-```
-
-必要になった場合のみ増やす。
-
-## Technology Selection
-
-技術選定は別途確定する。
-
-候補:
-- IDE base: Eclipse Theia または Code-OSS
-- Editor: Monaco
-- Desktop shell: Electron
-- Git: underlying git CLI / library
-- LSP: IDE baseの既存機構
-- Semantic analysis: language-specific AST / LSP / tree-sitter 等
-- Agent runtime: Provider abstraction経由
-
-技術はProduct Goalより優先しない。
-
-## Architectural Rule
-
-新しい抽象化・Framework・Plugin機構を追加する前に確認する。
-
-> 第一完成点の機能を実装するために、今この抽象化が本当に必要か？
-
-将来必要になる「かもしれない」だけなら追加しない。
+- 正本となるWorkspace pathをsample pathや開発者固有pathへ置き換えない。
+- UIへ未実装機能を装って表示しない。
+- process exit失敗をTask完了として記録しない。
+- Agent messageをChange SetまたはResult documentの正本にしない。
+- 旧Changes WidgetをResultsと並ぶ第二の成果導線として復活させない。
+- 第一完成点に不要なplugin platformやAgent wiring UIを先行実装しない。
