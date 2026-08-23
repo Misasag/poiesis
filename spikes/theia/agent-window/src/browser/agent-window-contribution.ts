@@ -39,7 +39,7 @@ export class AgentWindowContribution implements FrontendApplicationContribution 
         for (const editor of this.editorManager.all) {
             const factoryId = this.widgetManager.getDescription(editor)?.factoryId
                 ?? AgentWindowWidget.EDITOR_WIDGET_FACTORY_ID;
-            this.agentWindowWidget.registerCodeWidget(factoryId, editor);
+            this.agentWindowWidget.registerCodeWidget(factoryId, editor, true);
         }
         for (const settings of this.widgetManager.getWidgets(AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID)) {
             this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID, settings);

@@ -270,22 +270,154 @@ try {
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Explorer');
     await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
         .some(element => element.textContent?.trim() === '.gitignore'));
-    const explorerFilePoint = await page.evaluate(() => {
-        const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
-            .find(element => element.textContent?.trim() === '.gitignore');
-        if (!(file instanceof HTMLElement)) throw new Error('.gitignore was not found in Explorer');
-        const bounds = file.getBoundingClientRect();
-        return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const clickExplorerFile = async label => {
+        const point = await page.evaluate(fileLabel => {
+            const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+                .find(element => element.textContent?.trim() === fileLabel);
+            if (!(file instanceof HTMLElement)) throw new Error(`${fileLabel} was not found in Explorer`);
+            file.scrollIntoView({ block: 'center' });
+            const bounds = file.getBoundingClientRect();
+            return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+        }, label);
+        await page.mouse.click(point.x, point.y);
+        assert(await page.evaluate(fileLabel => {
+            const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+                .find(element => element.textContent?.trim() === fileLabel);
+            return file instanceof HTMLElement
+                && file.draggable
+                && !document.body.classList.contains('lens-code-file-pointer-drag');
+        }, label), `${label} click left stale drag state behind`);
+    };
+    const dragExplorerFileToTabs = async label => {
+        const points = await page.evaluate(fileLabel => {
+            const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+                .find(element => element.textContent?.trim() === fileLabel);
+            const tabs = document.querySelector('.lens-agent-window__code-editor-tabs');
+            if (!(file instanceof HTMLElement) || !(tabs instanceof HTMLElement)) {
+                throw new Error(`Could not drag ${fileLabel} to the editor tabs`);
+            }
+            file.scrollIntoView({ block: 'center' });
+            const source = file.getBoundingClientRect();
+            const target = tabs.getBoundingClientRect();
+            return {
+                source: { x: source.left + source.width / 2, y: source.top + source.height / 2 },
+                target: { x: target.right - 24, y: target.top + target.height / 2 }
+            };
+        }, label);
+        await page.mouse.move(points.source.x, points.source.y);
+        await page.mouse.down();
+        await page.mouse.move(points.source.x + 12, points.source.y, { steps: 4 });
+        await page.mouse.move(points.target.x, points.target.y, { steps: 16 });
+        assert(await page.$eval('.lens-agent-window__code-editor-tabs', tabs => tabs.classList.contains('drop-target')),
+            `${label} drag did not enter an accepted tab-bar drop target`);
+        assert(await page.evaluate(({ x, y }) => {
+            const target = document.elementFromPoint(x, y);
+            return document.body.classList.contains('lens-code-file-pointer-drag')
+                && !!target
+                && getComputedStyle(target).cursor === 'copy';
+        }, points.target), `${label} drag did not switch from the browser no-drop cursor to copy`);
+        await page.mouse.up();
+        assert(await page.evaluate(fileLabel => {
+            const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+                .find(element => element.textContent?.trim() === fileLabel);
+            return file instanceof HTMLElement
+                && file.draggable
+                && !document.body.classList.contains('lens-code-file-pointer-drag');
+        }, label), `${label} drop left stale drag state behind`);
+    };
+    await clickExplorerFile('.gitignore');
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 1
+        && document.querySelector('.lens-agent-window__code-editor-tab.active.preview .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === '.gitignore');
+    await page.evaluate(() => {
+        const docs = [...document.querySelectorAll('#files .theia-FileStatNode')]
+            .find(element => element.textContent?.trim() === 'docs');
+        docs?.querySelector('.theia-ExpansionToggle')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
     });
-    await page.mouse.click(explorerFilePoint.x, explorerFilePoint.y);
+    await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
+        .some(element => element.textContent?.trim() === 'UX.md'));
+    await clickExplorerFile('UX.md');
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 1
+        && document.querySelector('.lens-agent-window__code-editor-tab.active.preview .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
+    assert(!await page.evaluate(() => [...document.querySelectorAll('.lens-agent-window__code-editor-tab-name')]
+        .some(tab => tab.textContent?.trim() === '.gitignore')), 'A new Explorer click must replace the previous preview tab');
+
+    await dragExplorerFileToTabs('.gitignore');
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 2
+        && [...document.querySelectorAll('.lens-agent-window__code-editor-tab')].some(tab =>
+            tab.dataset.preview === 'false' && tab.querySelector('.lens-agent-window__code-editor-tab-name')?.textContent?.trim() === '.gitignore'));
+
+    await clickExplorerFile('PRODUCT.md');
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 2
+        && document.querySelector('.lens-agent-window__code-editor-tab.active.preview .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'PRODUCT.md'
+        && ![...document.querySelectorAll('.lens-agent-window__code-editor-tab-name')].some(tab => tab.textContent?.trim() === 'UX.md'));
+
+    await dragExplorerFileToTabs('UX.md');
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 3
+        && document.querySelector('.lens-agent-window__code-editor-tab.active:not(.preview) .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
     await page.waitForSelector('.lens-agent-window__code-editor-host .monaco-editor');
     assert(await page.$('#files .theia-FileStatNode.theia-mod-selected'), 'Opened file must remain selected in Explorer');
     const openedCode = await page.evaluate(readState);
-    assert(openedCode.editorTabs.includes('.gitignore'), 'Opening a file must create a Lens editor tab');
+    assert(openedCode.editorTabs.includes('.gitignore'), 'Dragging a file must create a pinned Lens editor tab');
+    assert(openedCode.editorTabs.includes('UX.md') && openedCode.editorTabs.includes('PRODUCT.md'), 'Pinned tabs and the current preview must coexist');
     assert(openedCode.editorTabs.filter(label => label === '.gitignore').length === 1, 'Explorer must open one editor tab per file');
     assert(openedCode.codeLuminoPanelCount === 0, 'Opening an editor must not reintroduce Lumino panel wrappers');
     assert(openedCode.codeLuminoTabContainerCount === 0, 'Opening an editor must not reintroduce Lumino tab wrappers');
-    await page.click('.lens-agent-window__code-editor-tab-close[aria-label=".gitignoreを閉じる"]');
+    const editorTabState = await page.$$eval('.lens-agent-window__code-editor-tab', tabs => tabs.map(tab => ({
+        name: tab.querySelector('.lens-agent-window__code-editor-tab-name')?.textContent?.trim(),
+        active: tab.classList.contains('active'),
+        preview: tab.dataset.preview === 'true',
+        role: tab.querySelector('.lens-agent-window__code-editor-tab-label')?.getAttribute('role'),
+        selected: tab.querySelector('.lens-agent-window__code-editor-tab-label')?.getAttribute('aria-selected'),
+        width: Math.round(tab.getBoundingClientRect().width),
+        fontStyle: getComputedStyle(tab.querySelector('.lens-agent-window__code-editor-tab-name')).fontStyle,
+        fontWeight: Number(getComputedStyle(tab.querySelector('.lens-agent-window__code-editor-tab-name')).fontWeight)
+    })));
+    assert(editorTabState.every(tab => tab.role === 'tab' && tab.width >= 80 && tab.width <= 220), 'Editor tabs must stay within the content-fit width bounds and preserve tab semantics');
+    assert(new Set(editorTabState.map(tab => tab.width)).size > 1, 'Editor tab widths must vary with file name length');
+    assert(editorTabState.filter(tab => tab.active && tab.selected === 'true').length === 1, 'Exactly one editor tab must be active and selected');
+    assert(editorTabState.every(tab => tab.fontWeight >= 600), 'Editor tab names must use a bold weight');
+    assert(editorTabState.filter(tab => !tab.active).every(tab => tab.fontStyle === 'italic'), 'Inactive editor tab names must be italic');
+    assert(editorTabState.find(tab => tab.name === 'PRODUCT.md')?.preview, 'The last Explorer click must remain the single preview tab');
+    assert(await page.$('.lens-agent-window__code-editor-tab .git-icon.file-icon'), 'The Git editor tab icon is missing');
+    assert(await page.$('.lens-agent-window__code-editor-tab .markdown-icon.file-icon'), 'The Markdown editor tab icon is missing');
+
+    await click(page, '.lens-agent-window__code-editor-tab-label', 'PRODUCT.md');
+    await page.click('.lens-agent-window__code-editor-host .monaco-editor .view-lines');
+    await page.keyboard.type('x');
+    await page.waitForSelector('.lens-agent-window__code-editor-tab.active.dirty .lens-agent-window__code-editor-tab-dirty');
+    assert(!await page.$('.lens-agent-window__code-editor-tab.active.preview'), 'Editing a preview tab must pin it before another preview can replace it');
+    await page.click('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close');
+    await page.waitForSelector('.lens-agent-window__code-close-dialog[role="dialog"]');
+    await page.waitForFunction(() => document.body.textContent?.includes('Save changes to PRODUCT.md?'));
+    assert(!await page.$('.dialogBlock'), 'Unsaved close must not use the Theia/VS Code dialogBlock');
+    assert(await page.$('.lens-agent-window__code-editor-tab.active.dirty'), 'Unsaved close confirmation must appear before the tab is removed');
+    await click(page, '.lens-agent-window__code-close-dialog footer button', 'Cancel');
+    await page.waitForFunction(() => !document.querySelector('.lens-agent-window__code-close-dialog'));
+    assert(await page.$('.lens-agent-window__code-editor-tab.active.dirty'), 'Cancel must preserve the dirty editor tab');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyZ');
+    await page.keyboard.up('Control');
+    await page.waitForFunction(() => !document.querySelector('.lens-agent-window__code-editor-tab.active.dirty'));
+
+    await page.focus('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-label');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'PRODUCT.md');
+    await page.click('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close');
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 2
+        && document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
+
+    await page.focus('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-label');
+    await page.keyboard.press('Home');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === '.gitignore');
+    await page.keyboard.press('End');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
+    await page.click('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-label', { button: 'middle' });
+    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 1
+        && document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === '.gitignore');
+    await page.click('.lens-agent-window__code-editor-tab-close');
     await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 0
         && Boolean(document.querySelector('.lens-agent-window__code-empty')));
 

@@ -1,13 +1,14 @@
 import * as React from '@theia/core/shared/react';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { StorageService, WidgetManager } from '@theia/core/lib/browser';
+import { Saveable, StorageService, WidgetManager } from '@theia/core/lib/browser';
 import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { CommandService, Disposable } from '@theia/core/lib/common';
+import { FileUri } from '@theia/core/lib/common/file-uri';
 import URI from '@theia/core/lib/common/uri';
 import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { Widget } from '@theia/core/shared/@lumino/widgets';
-import { EditorWidget } from '@theia/editor/lib/browser';
+import { EditorManager, EditorWidget } from '@theia/editor/lib/browser';
 import { FileDialogService } from '@theia/filesystem/lib/browser';
 import { ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-provider';
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
@@ -90,7 +91,13 @@ export class AgentWindowWidget extends ReactWidget {
     protected codeGitWidget?: Widget;
     protected codeTerminalWidget?: Widget;
     protected readonly codeCenterWidgets: Widget[] = [];
+    protected readonly codeCenterWidgetListeners = new Map<Widget, Disposable>();
+    protected readonly pendingDuplicateCodeWidgets = new WeakSet<Widget>();
+    protected readonly pendingPinnedEditorUris = new Set<string>();
     protected activeCodeCenterWidget?: Widget;
+    protected previewCodeCenterWidget?: Widget;
+    protected pendingCodeCenterClose?: Widget;
+    protected pendingCodeCenterCloseBusy = false;
     protected codeSidebarHost?: HTMLDivElement;
     protected codeEditorHost?: HTMLDivElement;
     protected codeTerminalHost?: HTMLDivElement;
@@ -99,6 +106,15 @@ export class AgentWindowWidget extends ReactWidget {
     protected codeTerminalResizeObserver?: ResizeObserver;
     protected codeSidebarWidth = DEFAULT_CODE_SIDEBAR_WIDTH;
     protected codeSidebarResizeCleanup?: Disposable;
+    protected codeFilePointerDrag?: {
+        pointerId: number;
+        uri: string;
+        startX: number;
+        startY: number;
+        active: boolean;
+        sourceNode: HTMLElement;
+    };
+    protected suppressNextCodeFileClick = false;
     protected explorerMoreVisible = false;
     protected pluginsWidget?: Widget;
     protected pluginsHost?: HTMLDivElement;
@@ -147,6 +163,7 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(ScmService) protected readonly scmService: ScmService,
         @inject(TerminalService) protected readonly terminalService: TerminalService,
         @inject(WidgetManager) protected readonly widgetManager: WidgetManager,
+        @inject(EditorManager) protected readonly editorManager: EditorManager,
         @inject(CommandService) protected readonly commandService: CommandService,
         @inject(IconThemeService) protected readonly iconThemeService: IconThemeService,
         @inject(StorageService) protected readonly storageService: StorageService,
@@ -188,6 +205,7 @@ export class AgentWindowWidget extends ReactWidget {
         };
         document.addEventListener('pointerdown', closeSessionMenu);
         this.toDispose.push(Disposable.create(() => document.removeEventListener('pointerdown', closeSessionMenu)));
+        this.installCodeTabDropTarget();
 
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
         this.toDispose.push(this.taskService.onDidChangeTask(event => {
@@ -1760,39 +1778,56 @@ export class AgentWindowWidget extends ReactWidget {
                     />
                 </aside>
                 <main className='lens-agent-window__code-editor' aria-label='Editor'>
-                    <div className='lens-agent-window__code-editor-tabs' role='tablist' aria-label='開いているEditor'>
-                        {this.codeCenterWidgets.map(widget => (
-                            <div
-                                key={widget.id}
-                                role='tab'
-                                aria-selected={this.activeCodeCenterWidget === widget}
-                                className={`lens-agent-window__code-editor-tab${this.activeCodeCenterWidget === widget ? ' active' : ''}`}
-                                onAuxClick={event => {
-                                    if (event.button === 1) {
-                                        event.preventDefault();
-                                        this.closeCodeCenterWidget(widget);
-                                    }
-                                }}
-                            >
-                                <button
-                                    type='button'
-                                    className='lens-agent-window__code-editor-tab-label'
-                                    onClick={() => this.selectCodeCenterWidget(widget)}
+                    <div
+                        className='lens-agent-window__code-editor-tabs'
+                        role='tablist'
+                        aria-label='開いているEditor'
+                    >
+                        {this.codeCenterWidgets.map(widget => {
+                            const active = this.activeCodeCenterWidget === widget;
+                            const dirty = Saveable.isDirty(widget);
+                            const preview = this.previewCodeCenterWidget === widget;
+                            const label = this.codeCenterWidgetLabel(widget);
+                            return (
+                                <div
+                                    key={widget.id}
+                                    className={`lens-agent-window__code-editor-tab${active ? ' active' : ''}${dirty ? ' dirty' : ''}${preview ? ' preview' : ''}`}
+                                    data-code-widget-id={widget.id}
+                                    data-preview={preview}
+                                    onDoubleClick={() => this.pinCodeCenterWidget(widget)}
+                                    onAuxClick={event => {
+                                        if (event.button === 1) {
+                                            event.preventDefault();
+                                            void this.closeCodeCenterWidget(widget);
+                                        }
+                                    }}
                                 >
-                                    {widget.title.iconClass && <span className={widget.title.iconClass} aria-hidden='true' />}
-                                    <span>{this.codeCenterWidgetLabel(widget)}</span>
-                                </button>
-                                <button
-                                    type='button'
-                                    className='lens-agent-window__code-editor-tab-close'
-                                    title='Close'
-                                    aria-label={`${this.codeCenterWidgetLabel(widget)}を閉じる`}
-                                    onClick={() => this.closeCodeCenterWidget(widget)}
-                                >
-                                    <span className='codicon codicon-close' aria-hidden='true' />
-                                </button>
-                            </div>
-                        ))}
+                                    <button
+                                        type='button'
+                                        role='tab'
+                                        aria-selected={active}
+                                        tabIndex={active ? 0 : -1}
+                                        title={widget.title.caption || label}
+                                        className='lens-agent-window__code-editor-tab-label'
+                                        onClick={() => this.selectCodeCenterWidget(widget)}
+                                        onKeyDown={event => this.handleCodeTabKeyDown(event, widget)}
+                                    >
+                                        {widget.title.iconClass && <span className={widget.title.iconClass} aria-hidden='true' />}
+                                        <span className='lens-agent-window__code-editor-tab-name'>{label}</span>
+                                    </button>
+                                    <button
+                                        type='button'
+                                        className='lens-agent-window__code-editor-tab-close'
+                                        title='Close'
+                                        aria-label={`${label}を閉じる`}
+                                        onClick={() => void this.closeCodeCenterWidget(widget)}
+                                    >
+                                        {dirty && <span className='codicon codicon-circle-filled lens-agent-window__code-editor-tab-dirty' aria-hidden='true' />}
+                                        <span className='codicon codicon-close lens-agent-window__code-editor-tab-close-icon' aria-hidden='true' />
+                                    </button>
+                                </div>
+                            );
+                        })}
                     </div>
                     <div className='lens-agent-window__code-editor-stack'>
                         <div className='lens-agent-window__code-editor-host' ref={this.setCodeEditorHost}>
@@ -1823,7 +1858,73 @@ export class AgentWindowWidget extends ReactWidget {
                     <span>Spaces: 4</span>
                     <span><span className='codicon codicon-bell' aria-hidden='true' /></span>
                 </footer>
+                {this.renderCodeCenterCloseDialog()}
             </section>
+        );
+    }
+
+    protected renderCodeCenterCloseDialog(): React.ReactNode {
+        const widget = this.pendingCodeCenterClose;
+        if (!widget) {
+            return undefined;
+        }
+        const label = this.codeCenterWidgetLabel(widget);
+        return (
+            <div
+                className='lens-agent-window__code-close-overlay'
+                onKeyDown={event => {
+                    if (event.key === 'Escape' && !this.pendingCodeCenterCloseBusy) {
+                        event.preventDefault();
+                        this.cancelCodeCenterClose();
+                    }
+                }}
+            >
+                <section
+                    className='lens-agent-window__code-close-dialog'
+                    role='dialog'
+                    aria-modal='true'
+                    aria-labelledby='lens-code-close-title'
+                >
+                    <header>
+                        <h2 id='lens-code-close-title'>Save changes to {label}?</h2>
+                        <button
+                            type='button'
+                            title='Cancel'
+                            aria-label='Cancel'
+                            disabled={this.pendingCodeCenterCloseBusy}
+                            onClick={() => this.cancelCodeCenterClose()}
+                        >
+                            <span className='codicon codicon-close' aria-hidden='true' />
+                        </button>
+                    </header>
+                    <p>Your changes will be lost if you don't save them.</p>
+                    <footer>
+                        <button
+                            type='button'
+                            disabled={this.pendingCodeCenterCloseBusy}
+                            onClick={() => this.cancelCodeCenterClose()}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type='button'
+                            disabled={this.pendingCodeCenterCloseBusy}
+                            onClick={() => void this.resolveCodeCenterClose(false)}
+                        >
+                            Don't Save
+                        </button>
+                        <button
+                            type='button'
+                            className='primary'
+                            autoFocus
+                            disabled={this.pendingCodeCenterCloseBusy}
+                            onClick={() => void this.resolveCodeCenterClose(true)}
+                        >
+                            Save
+                        </button>
+                    </footer>
+                </section>
+            </div>
         );
     }
 
@@ -1889,7 +1990,7 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
-    registerCodeWidget(factoryId: string, widget: Widget): void {
+    registerCodeWidget(factoryId: string, widget: Widget, pinned = false): void {
         let changed = false;
         if (factoryId === AgentWindowWidget.FILES_WIDGET_FACTORY_ID) {
             changed = this.codeFilesWidget !== widget;
@@ -1902,18 +2003,73 @@ export class AgentWindowWidget extends ReactWidget {
             this.codeGitWidget = widget;
         } else if (this.isCodeCenterWidget(factoryId, widget)
             && !this.codeCenterWidgets.includes(widget)) {
+            if (widget instanceof EditorWidget) {
+                const uri = widget.editor.uri.toString();
+                const shouldPin = pinned || this.pendingPinnedEditorUris.has(uri);
+                const existing = this.codeCenterWidgets.find(candidate => candidate instanceof EditorWidget
+                    && candidate.editor.uri.toString() === uri);
+                if (existing) {
+                    if (shouldPin) {
+                        this.pinCodeCenterWidget(existing);
+                    }
+                    this.selectCodeCenterWidget(existing);
+                    this.closeDuplicateCodeWidget(widget);
+                    return;
+                }
+                if (!shouldPin) {
+                    const previousPreview = this.previewCodeCenterWidget;
+                    if (previousPreview && previousPreview !== widget) {
+                        if (Saveable.isDirty(previousPreview)) {
+                            this.pinCodeCenterWidget(previousPreview);
+                        } else {
+                            this.previewCodeCenterWidget = undefined;
+                            previousPreview.close();
+                        }
+                    }
+                    this.previewCodeCenterWidget = widget;
+                }
+            }
             this.detachCodeWidget(this.activeCodeCenterWidget);
             this.codeCenterWidgets.push(widget);
             this.activeCodeCenterWidget = widget;
             changed = true;
             const onDisposed = (): void => this.removeCodeCenterWidget(widget);
+            const onTitleChanged = (): void => this.update();
             widget.disposed.connect(onDisposed);
-            this.toDispose.push(Disposable.create(() => widget.disposed.disconnect(onDisposed)));
+            widget.title.changed.connect(onTitleChanged);
+            const dirtyListener = Saveable.get(widget)?.onDirtyChanged(() => {
+                if (Saveable.isDirty(widget)) {
+                    this.pinCodeCenterWidget(widget);
+                } else {
+                    this.update();
+                }
+            });
+            const listeners = Disposable.create(() => {
+                widget.disposed.disconnect(onDisposed);
+                widget.title.changed.disconnect(onTitleChanged);
+                dirtyListener?.dispose();
+            });
+            this.codeCenterWidgetListeners.set(widget, listeners);
+            this.toDispose.push(listeners);
+            requestAnimationFrame(() => this.revealCodeCenterTab(widget));
         }
         if (changed && this.codeMode) {
             this.update();
             this.syncCodeWidgetAttachments();
         }
+    }
+
+    protected closeDuplicateCodeWidget(widget: Widget): void {
+        if (this.pendingDuplicateCodeWidgets.has(widget)) {
+            return;
+        }
+        this.pendingDuplicateCodeWidgets.add(widget);
+        requestAnimationFrame(() => {
+            this.pendingDuplicateCodeWidgets.delete(widget);
+            if (!widget.isDisposed) {
+                widget.close();
+            }
+        });
     }
 
     protected isCodeCenterWidget(factoryId: string, widget: Widget): boolean {
@@ -2100,27 +2256,257 @@ export class AgentWindowWidget extends ReactWidget {
             ?.setAttribute('aria-valuenow', `${this.codeSidebarWidth}`);
     }
 
-    protected selectCodeCenterWidget(widget: Widget): void {
+    protected selectCodeCenterWidget(widget: Widget, focusTab = false): void {
         this.detachCodeWidget(this.activeCodeCenterWidget);
         this.activeCodeCenterWidget = widget;
         this.update();
         this.syncCodeWidgetAttachments();
+        requestAnimationFrame(() => this.revealCodeCenterTab(widget, focusTab));
+    }
+
+    protected pinCodeCenterWidget(widget: Widget): void {
+        if (this.previewCodeCenterWidget === widget) {
+            this.previewCodeCenterWidget = undefined;
+            this.update();
+        }
+    }
+
+    protected installCodeTabDropTarget(): void {
+        const onPointerDown = (event: PointerEvent): void => {
+            if (event.button !== 0 || !(event.target instanceof Element)) {
+                return;
+            }
+            const node = event.target.closest<HTMLElement>('#files .theia-FileStatNode[draggable="true"]');
+            if (!node || node.classList.contains('theia-ExpandableTreeNode') || !node.title) {
+                return;
+            }
+            this.finishCodeFilePointerDrag();
+            const uri = FileUri.create(node.title).toString();
+            this.codeFilePointerDrag = {
+                pointerId: event.pointerId,
+                uri,
+                startX: event.clientX,
+                startY: event.clientY,
+                active: false,
+                sourceNode: node
+            };
+            node.draggable = false;
+        };
+        const onPointerMove = (event: PointerEvent): void => {
+            const drag = this.codeFilePointerDrag;
+            if (!drag || drag.pointerId !== event.pointerId) {
+                return;
+            }
+            if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) {
+                return;
+            }
+            drag.active = true;
+            event.preventDefault();
+            document.body?.classList.add('lens-code-file-pointer-drag');
+            this.setCodeTabDropActive(!!this.codeTabsAtPoint(event.clientX, event.clientY));
+        };
+        const onPointerUp = (event: PointerEvent): void => {
+            const drag = this.codeFilePointerDrag;
+            if (!drag || drag.pointerId !== event.pointerId) {
+                return;
+            }
+            const droppedOnTabs = drag.active && !!this.codeTabsAtPoint(event.clientX, event.clientY);
+            if (drag.active) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.suppressNextCodeFileClick = true;
+                setTimeout(() => this.suppressNextCodeFileClick = false, 0);
+            }
+            const uri = drag.uri;
+            this.finishCodeFilePointerDrag();
+            if (droppedOnTabs) {
+                void this.openDraggedCodeFile(uri);
+            }
+        };
+        const onPointerCancel = (event: PointerEvent): void => {
+            if (this.codeFilePointerDrag?.pointerId === event.pointerId) {
+                this.finishCodeFilePointerDrag();
+            }
+        };
+        const onKeyDown = (event: KeyboardEvent): void => {
+            if (event.key === 'Escape' && this.codeFilePointerDrag?.active) {
+                event.preventDefault();
+                this.finishCodeFilePointerDrag();
+            }
+        };
+        const onWindowBlur = (): void => this.finishCodeFilePointerDrag();
+        const onClick = (event: MouseEvent): void => {
+            if (!this.suppressNextCodeFileClick) {
+                return;
+            }
+            this.suppressNextCodeFileClick = false;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        };
+        document.addEventListener('pointerdown', onPointerDown, true);
+        document.addEventListener('pointermove', onPointerMove, true);
+        document.addEventListener('pointerup', onPointerUp, true);
+        document.addEventListener('pointercancel', onPointerCancel, true);
+        document.addEventListener('keydown', onKeyDown, true);
+        document.addEventListener('click', onClick, true);
+        window.addEventListener('blur', onWindowBlur);
+        this.toDispose.push(Disposable.create(() => {
+            document.removeEventListener('pointerdown', onPointerDown, true);
+            document.removeEventListener('pointermove', onPointerMove, true);
+            document.removeEventListener('pointerup', onPointerUp, true);
+            document.removeEventListener('pointercancel', onPointerCancel, true);
+            document.removeEventListener('keydown', onKeyDown, true);
+            document.removeEventListener('click', onClick, true);
+            window.removeEventListener('blur', onWindowBlur);
+            this.finishCodeFilePointerDrag();
+        }));
+    }
+
+    protected codeTabsAtPoint(clientX: number, clientY: number): HTMLElement | undefined {
+        const tabs = this.node.querySelector<HTMLElement>('.lens-agent-window__code-editor-tabs');
+        if (!tabs) {
+            return undefined;
+        }
+        const bounds = tabs.getBoundingClientRect();
+        return clientX >= bounds.left && clientX <= bounds.right
+            && clientY >= bounds.top && clientY <= bounds.bottom
+            ? tabs
+            : undefined;
+    }
+
+    protected finishCodeFilePointerDrag(): void {
+        const drag = this.codeFilePointerDrag;
+        if (drag) {
+            drag.sourceNode.draggable = true;
+        }
+        this.codeFilePointerDrag = undefined;
+        document.body?.classList.remove('lens-code-file-pointer-drag');
+        this.setCodeTabDropActive(false);
+    }
+
+    protected setCodeTabDropActive(active: boolean): void {
+        this.node.querySelector('.lens-agent-window__code-editor-tabs')?.classList.toggle('drop-target', active);
+    }
+
+    protected async openDraggedCodeFile(rawUri: string): Promise<void> {
+        if (!rawUri) {
+            return;
+        }
+        const uri = new URI(rawUri);
+        const uriKey = uri.toString();
+        this.pendingPinnedEditorUris.add(uriKey);
+        try {
+            await this.editorManager.open(uri);
+            const opened = this.codeCenterWidgets.find(candidate => candidate instanceof EditorWidget
+                && candidate.editor.uri.toString() === uriKey);
+            if (opened) {
+                this.pinCodeCenterWidget(opened);
+                this.selectCodeCenterWidget(opened);
+            }
+        } finally {
+            this.pendingPinnedEditorUris.delete(uriKey);
+        }
     }
 
     protected closeCodeCenterWidget(widget: Widget): void {
-        widget.close();
+        if (!Saveable.isDirty(widget)) {
+            widget.close();
+            return;
+        }
+        this.pendingCodeCenterClose = widget;
+        this.pendingCodeCenterCloseBusy = false;
+        this.update();
+    }
+
+    protected cancelCodeCenterClose(): void {
+        if (this.pendingCodeCenterCloseBusy) {
+            return;
+        }
+        this.pendingCodeCenterClose = undefined;
+        this.update();
+    }
+
+    protected async resolveCodeCenterClose(save: boolean): Promise<void> {
+        const widget = this.pendingCodeCenterClose;
+        if (!widget || this.pendingCodeCenterCloseBusy) {
+            return;
+        }
+        const saveable = Saveable.get(widget);
+        this.pendingCodeCenterCloseBusy = true;
+        this.update();
+        try {
+            if (save) {
+                await saveable?.save();
+                if (Saveable.isDirty(widget)) {
+                    return;
+                }
+            } else {
+                await saveable?.revert?.();
+            }
+            this.pendingCodeCenterClose = undefined;
+            widget.close();
+        } finally {
+            this.pendingCodeCenterCloseBusy = false;
+            this.update();
+        }
     }
 
     protected removeCodeCenterWidget(widget: Widget): void {
         const index = this.codeCenterWidgets.indexOf(widget);
+        const nextWidget = index === -1
+            ? undefined
+            : this.codeCenterWidgets[index + 1] ?? this.codeCenterWidgets[index - 1];
         if (index !== -1) {
             this.codeCenterWidgets.splice(index, 1);
         }
+        this.codeCenterWidgetListeners.get(widget)?.dispose();
+        this.codeCenterWidgetListeners.delete(widget);
+        if (this.previewCodeCenterWidget === widget) {
+            this.previewCodeCenterWidget = undefined;
+        }
+        if (this.pendingCodeCenterClose === widget) {
+            this.pendingCodeCenterClose = undefined;
+            this.pendingCodeCenterCloseBusy = false;
+        }
         if (this.activeCodeCenterWidget === widget) {
-            this.activeCodeCenterWidget = this.codeCenterWidgets.at(-1);
+            this.activeCodeCenterWidget = nextWidget;
         }
         this.update();
         this.syncCodeWidgetAttachments();
+        if (this.activeCodeCenterWidget) {
+            requestAnimationFrame(() => this.revealCodeCenterTab(this.activeCodeCenterWidget));
+        }
+    }
+
+    protected handleCodeTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, widget: Widget): void {
+        const index = this.codeCenterWidgets.indexOf(widget);
+        if (index === -1 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+            return;
+        }
+        event.preventDefault();
+        let nextIndex = index;
+        if (event.key === 'ArrowLeft') {
+            nextIndex = (index - 1 + this.codeCenterWidgets.length) % this.codeCenterWidgets.length;
+        } else if (event.key === 'ArrowRight') {
+            nextIndex = (index + 1) % this.codeCenterWidgets.length;
+        } else if (event.key === 'Home') {
+            nextIndex = 0;
+        } else if (event.key === 'End') {
+            nextIndex = this.codeCenterWidgets.length - 1;
+        }
+        this.selectCodeCenterWidget(this.codeCenterWidgets[nextIndex], true);
+    }
+
+    protected revealCodeCenterTab(widget: Widget | undefined, focus = false): void {
+        if (!widget) {
+            return;
+        }
+        const tab = Array.from(this.node.querySelectorAll<HTMLElement>('.lens-agent-window__code-editor-tab'))
+            .find(candidate => candidate.dataset.codeWidgetId === widget.id);
+        tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        if (focus) {
+            tab?.querySelector<HTMLButtonElement>('.lens-agent-window__code-editor-tab-label')?.focus();
+        }
     }
 
     protected codeCenterWidgetLabel(widget: Widget): string {
