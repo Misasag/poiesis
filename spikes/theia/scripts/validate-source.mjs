@@ -58,6 +58,7 @@ assert.equal(
     extensionPackage.theiaExtensions[0].backend,
     'lib/node/agent-window-backend-module'
 );
+assert.equal(extensionPackage.dependencies['@theia/scm'], '1.73.1');
 for (const dependency of [
     '@theia/editor',
     '@theia/filesystem',
@@ -225,15 +226,31 @@ for (const marker of [
     "static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener'",
     "static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget'",
     "import { EditorWidget } from '@theia/editor/lib/browser'",
-    "this.activeTab === 'agent'",
-    "data-mode={this.codeMode ? 'code' : this.activeTab}",
+    "import { FileDialogService } from '@theia/filesystem/lib/browser'",
+    "import { ScmService } from '@theia/scm/lib/browser/scm-service'",
+    "const NEW_SESSION_TITLE = '新しい会話'",
+    'interface WindowAgentSession',
+    'protected readonly sessions: WindowAgentSession[] = []',
+    'const activeTab = session?.activeTab ?? \'agent\'',
+    "data-mode={this.codeMode ? 'code' : activeTab}",
+    "data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}",
     '{!this.codeMode && this.renderRail()}',
-    "<small>lens / main</small>",
+    'filteredSessions.map(session => {',
+    'onClick={() => this.selectSession(session.id)}',
+    '{this.workspaceFolderName()}',
+    '{this.workspaceContextLabel()}',
+    "ref?.id.startsWith('refs/heads/')",
+    'provider.historyProvider?.currentHistoryItemRef',
+    'session.title = this.titleForSession(content)',
+    'session.hasUserMessage = true',
+    'protected async createSession(): Promise<void>',
+    "activeTab: 'agent'",
+    'session.activeTab = tab',
     'lens-agent-window__code-control',
     'aria-pressed={this.codeMode}',
     '{!this.codeMode && (',
     "aria-label='Agent と Results の切り替え'",
-    '<span>New Chat</span>',
+    "<span className='lens-agent-window__rail-action-label'>New Chat</span>",
     "aria-label='Results 画面'",
     'lens-results__main',
     'lens-results__task-switcher',
@@ -275,6 +292,58 @@ for (const marker of [
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
+for (const dummyChrome of [
+    '<small>lens / main</small>',
+    '<strong>lens</strong>',
+    '認証を Redis 方式へ変更',
+    "<span className='codicon codicon-settings-gear' title='設定'"
+]) {
+    assert.ok(!agentWidget.includes(dummyChrome), `Dummy Agent chrome must not return: ${dummyChrome}`);
+}
+for (const persistenceApi of ['localStorage', 'sessionStorage']) {
+    assert.ok(!agentWidget.includes(persistenceApi), `Window sessions must not use ${persistenceApi}`);
+}
+const railSource = agentWidget.match(
+    /protected renderRail\(\): React\.ReactNode \{[\s\S]*?\n    protected readonly setSessionSearchInput/
+)?.[0];
+assert.ok(railSource, 'Agent rail render source is missing');
+const newChatPosition = railSource.indexOf("<span className='lens-agent-window__rail-action-label'>New Chat</span>");
+const searchPosition = railSource.indexOf("<span className='lens-agent-window__rail-action-label'>Search</span>");
+assert.ok(newChatPosition !== -1, 'Agent rail must contain New Chat');
+assert.ok(searchPosition > newChatPosition, 'Conversation Search must sit directly under New Chat');
+for (const marker of [
+    'protected railCollapsed = false',
+    'protected toggleRail(): void',
+    'this.railCollapsed = !this.railCollapsed',
+    "data-collapsed={this.railCollapsed ? 'true' : 'false'}",
+    'protected sessionSearchQuery = \'\'',
+    "aria-label='会話をタイトルで検索'",
+    'session.title.toLocaleLowerCase().includes(query)',
+    'protected workspaceExpanded = true',
+    'protected toggleWorkspace(): void',
+    "<div className='lens-agent-window__rail-heading'>",
+    '<span>Workspaces</span>',
+    "className='lens-agent-window__workspace-group'",
+    "className='lens-agent-window__session-title'",
+    "className='lens-agent-window__session-meta'",
+    'protected sessionMeta(session: WindowAgentSession): string',
+    'protected async openRepository(): Promise<void>',
+    'this.fileDialogService.showOpenDialog',
+    'this.workspaceService.open(folder, { preserveWindow: true })',
+    'protected removeSession(sessionId: string): void',
+    'this.sessions.splice(index, 1)',
+    "className='lens-agent-window__session-remove'"
+]) {
+    assert.ok(agentWidget.includes(marker), `Agent rail is missing ${marker}`);
+}
+assert.ok(!railSource.includes('<small>現在</small>'), 'Selected sessions must use quiet age metadata, not a current badge');
+assert.ok(!railSource.includes('openCodeSettings'), 'Agent rail gear must not open the Code settings widget');
+assert.equal(
+    agentWidget.match(/onClick=\{\(\) => void this\.openCodeSettings\(\)\}/g)?.length,
+    1,
+    'Only the Code footer gear may open the editor settings widget'
+);
+assert.ok(!agentWidget.includes('protected activeTab:'), 'Agent / Results selection must belong to each session');
 assert.ok(!agentWidget.includes('Widget.ResizeMessage.UnknownSize'), 'Code widgets must receive measured pixel resize messages');
 assert.equal(
     agentWidget.match(/this\.selectTab\('results'\)/g)?.length,
@@ -327,8 +396,14 @@ for (const marker of [
     '#lens-window-host',
     '--lens-chrome-bg: #181918',
     '--lens-chrome-panel: #1d1e1c',
-    'grid-template-columns: minmax(164px, 196px) minmax(0, 1fr)',
+    'grid-template-columns: 238px minmax(0, 1fr)',
     ".lens-agent-window__content[data-mode='code']",
+    ".lens-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true']",
+    ".lens-agent-window__rail[data-collapsed='true']",
+    '.lens-agent-window__session-search',
+    '.lens-agent-window__workspace-group',
+    '.lens-agent-window__session-meta',
+    '.lens-agent-window__session-remove',
     '.lens-agent-window__viewport',
     '.lens-agent-window__code',
     '.lens-agent-window__code-sidebar-host',
@@ -343,6 +418,31 @@ for (const marker of [
 ]) {
     assert.ok(agentStyles.includes(marker), `Agent chrome styles are missing ${marker}`);
 }
+assert.match(
+    agentStyles,
+    /\.lens-agent-window__rail-action\s*\{[^}]*font-size:\s*11px;/,
+    'New Chat and Search text must match the sidebar spec'
+);
+assert.match(
+    agentStyles,
+    /\.lens-agent-window__rail-heading\s*\{[^}]*font-size:\s*10px;/,
+    'Workspaces text must match the sidebar spec'
+);
+assert.match(
+    agentStyles,
+    /\.lens-agent-window__session-remove\s*\{[^}]*opacity:\s*0;/,
+    'Session delete controls must remain hidden until row hover or focus'
+);
+assert.match(
+    agentStyles,
+    /\.lens-agent-window__composer-tools\s*\{[^}]*font-size:\s*11px;/,
+    'Composer tools text must remain legible'
+);
+assert.match(
+    agentStyles,
+    /\.lens-agent-window__send \.codicon,[\s\S]*?color:\s*#222320;/,
+    'Send icons must contrast their light button background'
+);
 assert.match(
     agentStyles,
     /\.lens-agent-window__viewport\s*\{[^}]*height:\s*100%;/,
