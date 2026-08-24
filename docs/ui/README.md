@@ -1,4 +1,4 @@
-# Lens UI specifications
+# Poiesis UI specifications
 
 `agent-window-spec.html`は、Agent／Results／Codeの画面モック、番号付き注釈、操作結果、状態保持、画面遷移を一緒にレビューするための自己完結型HTMLである。
 

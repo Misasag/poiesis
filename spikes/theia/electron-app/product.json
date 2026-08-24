@@ -1,8 +1,8 @@
 {
-  "nameShort": "Lens",
-  "nameLong": "Lens",
-  "applicationName": "lens",
-  "dataFolderName": ".lens",
+  "nameShort": "Poiesis",
+  "nameLong": "Poiesis",
+  "applicationName": "poiesis",
+  "dataFolderName": ".poiesis",
   "version": "0.0.0",
   "quality": "development",
   "extensionAllowedBadgeProviders": [],

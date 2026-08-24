@@ -1,7 +1,7 @@
 import { RpcServer } from '@theia/core/lib/common/messaging/proxy-factory';
 
 export const AgentRuntimeServer = Symbol('AgentRuntimeServer');
-export const agentRuntimeServerPath = '/services/lens/agent-runtime';
+export const agentRuntimeServerPath = '/services/poiesis/agent-runtime';
 
 export type KnownCliId = 'codex' | 'claude';
 export type CliLocationSource = 'PATH' | 'well-known';

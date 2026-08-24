@@ -12,7 +12,7 @@ type ChangesMode = 'code' | 'semantic' | 'parallel';
 
 @injectable()
 export class ChangesWidget extends ReactWidget {
-    static readonly ID = 'lens-changes';
+    static readonly ID = 'poiesis-changes';
     static readonly LABEL = 'IDE Changes';
     static readonly CHANGE_SET_ID = 'task-auth-redis-001';
 
@@ -36,7 +36,7 @@ export class ChangesWidget extends ReactWidget {
         this.title.caption = 'Code Diff and Semantic Diff for one Change Set';
         this.title.iconClass = 'codicon codicon-diff';
         this.title.closable = true;
-        this.addClass('lens-changes');
+        this.addClass('poiesis-changes');
         if (isDesignVariant('d7-b', 'semantic-card-closeup')) {
             this.mode = 'semantic';
         }
@@ -45,18 +45,18 @@ export class ChangesWidget extends ReactWidget {
 
     protected render(): React.ReactNode {
         return (
-            <div className='lens-changes__content' data-change-set-id={ChangesWidget.CHANGE_SET_ID}>
-                <header className='lens-changes__header'>
+            <div className='poiesis-changes__content' data-change-set-id={ChangesWidget.CHANGE_SET_ID}>
+                <header className='poiesis-changes__header'>
                     <div>
-                        <div className='lens-changes__eyebrow'>CHANGE SET · 完了 · 14:32</div>
+                        <div className='poiesis-changes__eyebrow'>CHANGE SET · 完了 · 14:32</div>
                         <h2>認証を Redis 方式へ変更</h2>
                     </div>
-                    <button className='lens-changes__task-selector' aria-label='Select Task and Change Set'>
+                    <button className='poiesis-changes__task-selector' aria-label='Select Task and Change Set'>
                         <span>Task 1 / 3</span>
                         <span className='codicon codicon-chevron-down' aria-hidden='true' />
                     </button>
                 </header>
-                <div className='lens-changes__tabs' role='tablist' aria-label='Change Set representations'>
+                <div className='poiesis-changes__tabs' role='tablist' aria-label='Change Set representations'>
                     <button
                         className={this.mode === 'code' ? 'theia-button active' : 'theia-button secondary'}
                         role='tab'
@@ -84,7 +84,7 @@ export class ChangesWidget extends ReactWidget {
                         </button>
                     )}
                     {!isDesignVariant('d3-b') && (
-                        <button className='theia-button secondary lens-changes__parallel-action' onClick={() => this.selectMode('parallel')}>
+                        <button className='theia-button secondary poiesis-changes__parallel-action' onClick={() => this.selectMode('parallel')}>
                             <span className='codicon codicon-layout-panel' aria-hidden='true' />
                             並列表示
                         </button>
@@ -99,79 +99,79 @@ export class ChangesWidget extends ReactWidget {
 
     protected renderCodeDiff(): React.ReactNode {
         return (
-            <section className='lens-changes__representation' aria-label='Code Diff representation'>
-                <div className='lens-changes__eyebrow'>CODE DIFF · SAME CHANGE SET</div>
-                <div className='lens-changes__summary'>3 files changed <span>+83 −9</span></div>
-                <div className='lens-changes__files'>
-                    <button className='lens-changes__file lens-changes__open-diff' onClick={() => this.openCodeDiff()}>
-                        <span className='lens-changes__file-status modified'>M</span>
-                        <span className='lens-changes__file-path'>src/auth/auth.service.ts</span>
-                        <span className='lens-changes__lines'>+18 −9</span>
+            <section className='poiesis-changes__representation' aria-label='Code Diff representation'>
+                <div className='poiesis-changes__eyebrow'>CODE DIFF · SAME CHANGE SET</div>
+                <div className='poiesis-changes__summary'>3 files changed <span>+83 −9</span></div>
+                <div className='poiesis-changes__files'>
+                    <button className='poiesis-changes__file poiesis-changes__open-diff' onClick={() => this.openCodeDiff()}>
+                        <span className='poiesis-changes__file-status modified'>M</span>
+                        <span className='poiesis-changes__file-path'>src/auth/auth.service.ts</span>
+                        <span className='poiesis-changes__lines'>+18 −9</span>
                     </button>
-                    <button className='lens-changes__file' onClick={() => this.openCodeDiff()}>
-                        <span className='lens-changes__file-status added'>A</span>
-                        <span className='lens-changes__file-path'>src/auth/token-store.ts</span>
-                        <span className='lens-changes__lines'>+64</span>
+                    <button className='poiesis-changes__file' onClick={() => this.openCodeDiff()}>
+                        <span className='poiesis-changes__file-status added'>A</span>
+                        <span className='poiesis-changes__file-path'>src/auth/token-store.ts</span>
+                        <span className='poiesis-changes__lines'>+64</span>
                     </button>
-                    <button className='lens-changes__file' onClick={() => this.openCodeDiff()}>
-                        <span className='lens-changes__file-status modified'>M</span>
-                        <span className='lens-changes__file-path'>package.json</span>
-                        <span className='lens-changes__lines'>+1</span>
+                    <button className='poiesis-changes__file' onClick={() => this.openCodeDiff()}>
+                        <span className='poiesis-changes__file-status modified'>M</span>
+                        <span className='poiesis-changes__file-path'>package.json</span>
+                        <span className='poiesis-changes__lines'>+1</span>
                     </button>
                 </div>
-                {this.status && <div className='lens-changes__status' role='status'>{this.status}</div>}
+                {this.status && <div className='poiesis-changes__status' role='status'>{this.status}</div>}
             </section>
         );
     }
 
     protected renderSemanticDiff(): React.ReactNode {
         return (
-            <section className='lens-changes__representation' aria-label='Semantic Diff representation'>
-                <div className='lens-changes__eyebrow'>SEMANTIC DIFF · SAME CHANGE SET</div>
-                <div className='lens-changes__semantic-heading'>
+            <section className='poiesis-changes__representation' aria-label='Semantic Diff representation'>
+                <div className='poiesis-changes__eyebrow'>SEMANTIC DIFF · SAME CHANGE SET</div>
+                <div className='poiesis-changes__semantic-heading'>
                     <h3>Refresh Token の保存先を Redis へ変更</h3>
-                    <span className='lens-changes__confidence'>Confidence: 中</span>
+                    <span className='poiesis-changes__confidence'>Confidence: 中</span>
                 </div>
-                <div className='lens-changes__before-after'>
+                <div className='poiesis-changes__before-after'>
                     <div>
                         <span>Before</span>
                         <strong>AuthService → PostgreSQL</strong>
                     </div>
-                    <div className='lens-changes__arrow' aria-hidden='true'>→</div>
+                    <div className='poiesis-changes__arrow' aria-hidden='true'>→</div>
                     <div>
                         <span>After</span>
                         <strong>AuthService → TokenStore → Redis</strong>
                     </div>
                 </div>
-                <dl className='lens-changes__semantic-details'>
+                <dl className='poiesis-changes__semantic-details'>
                     <div><dt>責務・依存</dt><dd>保存責務を AuthService から TokenStore へ分離。Redis client への依存を追加。</dd></div>
                     <div><dt>影響範囲</dt><dd><span>Refresh</span><span>Logout</span><span>Session</span></dd></div>
-                    <div className='lens-changes__unknown'><dt>不明</dt><dd>Session cleanup への影響は未解析。</dd></div>
+                    <div className='poiesis-changes__unknown'><dt>不明</dt><dd>Session cleanup への影響は未解析。</dd></div>
                 </dl>
-                <div className='lens-changes__evidence-list'>
-                    <div className='lens-changes__evidence-title'>EVIDENCE · 3</div>
+                <div className='poiesis-changes__evidence-list'>
+                    <div className='poiesis-changes__evidence-title'>EVIDENCE · 3</div>
                     {this.renderEvidence('src/auth/auth.service.ts', '82–103', true)}
                     {this.renderEvidence('src/auth/token-store.ts', '1–64')}
                     {this.renderEvidence('package.json', '24')}
                 </div>
-                {this.status && <div className='lens-changes__status' role='status'>{this.status}</div>}
+                {this.status && <div className='poiesis-changes__status' role='status'>{this.status}</div>}
             </section>
         );
     }
 
     protected renderParallel(): React.ReactNode {
         return (
-            <section className='lens-changes__representation lens-changes__parallel' aria-label='Parallel representation'>
+            <section className='poiesis-changes__representation poiesis-changes__parallel' aria-label='Parallel representation'>
                 <div>
-                    <div className='lens-changes__eyebrow'>CODE DIFF · EDITOR</div>
+                    <div className='poiesis-changes__eyebrow'>CODE DIFF · EDITOR</div>
                     <h3>3 files changed</h3>
                     <p>既存 Diff Editor を main area に表示する。</p>
-                    <button className='theia-button lens-changes__open-diff' onClick={() => this.openCodeDiff()}>
+                    <button className='theia-button poiesis-changes__open-diff' onClick={() => this.openCodeDiff()}>
                         Diff Editor を開く
                     </button>
                 </div>
                 <div>
-                    <div className='lens-changes__eyebrow'>SEMANTIC DIFF · CHANGES</div>
+                    <div className='poiesis-changes__eyebrow'>SEMANTIC DIFF · CHANGES</div>
                     <h3>Refresh Token の保存先を Redis へ変更</h3>
                     <p>AuthService → TokenStore → Redis</p>
                 </div>
@@ -182,7 +182,7 @@ export class ChangesWidget extends ReactWidget {
     protected renderEvidence(path: string, range: string, primary = false): React.ReactNode {
         return (
             <button
-                className={`lens-changes__evidence${primary ? ' primary' : ''}`}
+                className={`poiesis-changes__evidence${primary ? ' primary' : ''}`}
                 onClick={() => this.openEvidence()}
                 title={`${path}:${range} を Editor で開く`}
             >

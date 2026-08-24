@@ -31,7 +31,7 @@ type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
 type AppPage = 'settings' | 'customize';
 type CustomizeTab = 'skills' | 'plugins';
 const NEW_SESSION_TITLE = '新しい会話';
-const SESSION_STORAGE_KEY = 'lens.agent-window.sessions.v1';
+const SESSION_STORAGE_KEY = 'poiesis.agent-window.sessions.v1';
 const DEFAULT_RAIL_WIDTH = 252;
 const MIN_RAIL_WIDTH = 196;
 const MAX_RAIL_WIDTH = 420;
@@ -80,7 +80,7 @@ interface PersistedAgentWindowState {
 
 @injectable()
 export class AgentWindowWidget extends ReactWidget {
-    static readonly ID = 'lens-agent-window';
+    static readonly ID = 'poiesis-agent-window';
     static readonly FILES_WIDGET_FACTORY_ID = 'files';
     static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace';
     static readonly GIT_WIDGET_FACTORY_ID = 'scm-view';
@@ -196,28 +196,28 @@ export class AgentWindowWidget extends ReactWidget {
     protected init(): void {
         getDesignVariant();
         this.id = AgentWindowWidget.ID;
-        this.addClass('lens-agent-window');
+        this.addClass('poiesis-agent-window');
 
         const closeSessionMenu = (event: PointerEvent): void => {
-            if (this.openSessionMenuId && !(event.target as Element | null)?.closest('.lens-agent-window__session-actions')) {
+            if (this.openSessionMenuId && !(event.target as Element | null)?.closest('.poiesis-agent-window__session-actions')) {
                 this.openSessionMenuId = undefined;
                 this.update();
             }
             if ((this.repositoryPickerVisible || this.branchPickerVisible)
-                && !(event.target as Element | null)?.closest('.lens-agent-window__new-agent-context')) {
+                && !(event.target as Element | null)?.closest('.poiesis-agent-window__new-agent-context')) {
                 this.repositoryPickerVisible = false;
                 this.branchPickerVisible = false;
                 this.repositorySearchQuery = '';
                 this.update();
             }
             if (this.workspacePickerVisible
-                && !(event.target as Element | null)?.closest('.lens-agent-window__rail-heading')) {
+                && !(event.target as Element | null)?.closest('.poiesis-agent-window__rail-heading')) {
                 this.workspacePickerVisible = false;
                 this.workspaceSearchQuery = '';
                 this.update();
             }
             if (this.explorerMoreVisible
-                && !(event.target as Element | null)?.closest('.lens-agent-window__code-explorer-more')) {
+                && !(event.target as Element | null)?.closest('.poiesis-agent-window__code-explorer-more')) {
                 this.explorerMoreVisible = false;
                 this.update();
             }
@@ -270,15 +270,15 @@ export class AgentWindowWidget extends ReactWidget {
         const runningTask = this.runningTask(session);
         return (
             <div
-                className='lens-agent-window__content'
+                className='poiesis-agent-window__content'
                 data-mode={this.appPage ?? (this.codeMode ? 'code' : activeTab)}
                 data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}
-                style={{ '--lens-rail-width': `${this.railWidth}px` } as React.CSSProperties}
+                style={{ '--poiesis-rail-width': `${this.railWidth}px` } as React.CSSProperties}
             >
                 {!this.codeMode && this.renderRail()}
-                <main className='lens-agent-window__workspace'>
+                <main className='poiesis-agent-window__workspace'>
                     {this.renderHeader()}
-                    <div className='lens-agent-window__viewport'>
+                    <div className='poiesis-agent-window__viewport'>
                         {this.appPage
                             ? this.renderAppPage()
                             : this.codeMode
@@ -301,15 +301,15 @@ export class AgentWindowWidget extends ReactWidget {
         const toggleLabel = this.railCollapsed ? '左サイドバーを展開' : '左サイドバーを折りたたむ';
         return (
             <aside
-                className='lens-agent-window__rail'
+                className='poiesis-agent-window__rail'
                 data-collapsed={this.railCollapsed ? 'true' : 'false'}
                 aria-label='セッションのサイドバー'
             >
-                <div className='lens-agent-window__rail-top'>
-                    <div className='lens-agent-window__rail-controls'>
+                <div className='poiesis-agent-window__rail-top'>
+                    <div className='poiesis-agent-window__rail-controls'>
                         <button
                             type='button'
-                            className='lens-agent-window__rail-toggle'
+                            className='poiesis-agent-window__rail-toggle'
                             title={toggleLabel}
                             aria-label={toggleLabel}
                             onClick={() => this.toggleRail()}
@@ -324,30 +324,30 @@ export class AgentWindowWidget extends ReactWidget {
                     </div>
                     <button
                         type='button'
-                        className='lens-agent-window__rail-action'
+                        className='poiesis-agent-window__rail-action'
                         title='New Chat'
                         onClick={() => void this.newChat()}
                     >
-                        <span className='lens-agent-window__rail-action-icon' aria-hidden='true'>
+                        <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
                             <span className='codicon codicon-comment-add' />
                         </span>
-                        <span className='lens-agent-window__rail-action-label'>New Chat</span>
+                        <span className='poiesis-agent-window__rail-action-label'>New Chat</span>
                     </button>
                     <button
                         type='button'
-                        className={`lens-agent-window__rail-action${this.sessionSearchVisible ? ' active' : ''}`}
+                        className={`poiesis-agent-window__rail-action${this.sessionSearchVisible ? ' active' : ''}`}
                         aria-expanded={this.sessionSearchVisible && !this.railCollapsed}
-                        aria-controls='lens-agent-window-session-search'
+                        aria-controls='poiesis-agent-window-session-search'
                         title='Search'
                         onClick={() => this.showSessionSearch()}
                     >
-                        <span className='lens-agent-window__rail-action-icon' aria-hidden='true'>
+                        <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
                             <span className='codicon codicon-search' />
                         </span>
-                        <span className='lens-agent-window__rail-action-label'>Search</span>
+                        <span className='poiesis-agent-window__rail-action-label'>Search</span>
                     </button>
                     {this.sessionSearchVisible && !this.railCollapsed && (
-                        <label className='lens-agent-window__session-search' id='lens-agent-window-session-search'>
+                        <label className='poiesis-agent-window__session-search' id='poiesis-agent-window-session-search'>
                             <span className='codicon codicon-search' aria-hidden='true' />
                             <input
                                 ref={this.setSessionSearchInput}
@@ -365,26 +365,26 @@ export class AgentWindowWidget extends ReactWidget {
                         </label>
                     )}
                 </div>
-                <div className='lens-agent-window__rail-heading'>
+                <div className='poiesis-agent-window__rail-heading'>
                     <span>Workspaces</span>
                     <button
                         type='button'
-                        className='lens-agent-window__repository-open'
+                        className='poiesis-agent-window__repository-open'
                         title='Open Folder'
                         aria-label='フォルダーを開いてリポジトリを選択または追加'
                         aria-expanded={this.workspacePickerVisible}
-                        aria-controls='lens-agent-window-workspace-picker'
+                        aria-controls='poiesis-agent-window-workspace-picker'
                         onClick={() => this.toggleWorkspacePicker()}
                     >
                         <span className='codicon codicon-add' aria-hidden='true' />
                     </button>
                     {this.workspacePickerVisible && this.renderWorkspacePicker()}
                 </div>
-                <div className='lens-agent-window__sessions'>
-                    <div className='lens-agent-window__workspace-group'>
+                <div className='poiesis-agent-window__sessions'>
+                    <div className='poiesis-agent-window__workspace-group'>
                         <button
                             type='button'
-                            className='lens-agent-window__workspace-name'
+                            className='poiesis-agent-window__workspace-name'
                             aria-expanded={this.workspaceExpanded}
                             onClick={() => this.toggleWorkspace()}
                         >
@@ -396,15 +396,15 @@ export class AgentWindowWidget extends ReactWidget {
                             />
                         </button>
                         {this.workspaceExpanded && pinnedSessions.length > 0 && (
-                            <div className='lens-agent-window__session-section-label'>Pinned</div>
+                            <div className='poiesis-agent-window__session-section-label'>Pinned</div>
                         )}
                         {this.workspaceExpanded && pinnedSessions.map(session => this.renderSessionRow(session))}
                         {this.workspaceExpanded && pinnedSessions.length > 0 && recentSessions.length > 0 && (
-                            <div className='lens-agent-window__session-section-label'>Recent</div>
+                            <div className='poiesis-agent-window__session-section-label'>Recent</div>
                         )}
                         {this.workspaceExpanded && recentSessions.map(session => this.renderSessionRow(session))}
                         {this.workspaceExpanded && !activeSessions.length && (
-                            <div className='lens-agent-window__session-empty'>
+                            <div className='poiesis-agent-window__session-empty'>
                                 {this.sessionSearchQuery.trim() ? '一致する会話はありません。' : 'セッションはありません。'}
                             </div>
                         )}
@@ -412,7 +412,7 @@ export class AgentWindowWidget extends ReactWidget {
                             <>
                                 <button
                                     type='button'
-                                    className='lens-agent-window__archived-toggle'
+                                    className='poiesis-agent-window__archived-toggle'
                                     aria-expanded={this.showArchivedSessions}
                                     onClick={() => this.toggleArchivedSessions()}
                                 >
@@ -425,9 +425,9 @@ export class AgentWindowWidget extends ReactWidget {
                         )}
                     </div>
                 </div>
-                <div className='lens-agent-window__rail-footer'>
-                    <span className='lens-agent-window__rail-footer-label'>Lens</span>
-                    <div className='lens-agent-window__rail-footer-actions'>
+                <div className='poiesis-agent-window__rail-footer'>
+                    <span className='poiesis-agent-window__rail-footer-label'>Poiesis</span>
+                    <div className='poiesis-agent-window__rail-footer-actions'>
                         <button type='button' title='Customize' aria-label='Customize' onClick={() => this.openCustomize()}>
                             <span className='codicon codicon-tools' aria-hidden='true' />
                         </button>
@@ -438,7 +438,7 @@ export class AgentWindowWidget extends ReactWidget {
                 </div>
                 {!this.railCollapsed && (
                     <div
-                        className='lens-agent-window__rail-resize-handle'
+                        className='poiesis-agent-window__rail-resize-handle'
                         role='separator'
                         aria-label='サイドバーの幅を変更'
                         aria-orientation='vertical'
@@ -463,14 +463,14 @@ export class AgentWindowWidget extends ReactWidget {
         return (
             <div
                 key={session.id}
-                className={`lens-agent-window__session-row${selected ? ' active' : ''}${session.archived ? ' archived' : ''}`}
+                className={`poiesis-agent-window__session-row${selected ? ' active' : ''}${session.archived ? ' archived' : ''}`}
                 data-session-id={session.id}
                 data-session-archived={session.archived ? 'true' : 'false'}
                 data-session-pinned={session.pinned ? 'true' : 'false'}
             >
                 {renaming ? (
                     <input
-                        className='lens-agent-window__session-rename'
+                        className='poiesis-agent-window__session-rename'
                         value={this.renameDraft}
                         aria-label='セッション名を変更'
                         autoFocus
@@ -492,22 +492,22 @@ export class AgentWindowWidget extends ReactWidget {
                 ) : (
                     <button
                         type='button'
-                        className='lens-agent-window__session'
+                        className='poiesis-agent-window__session'
                         aria-current={selected ? 'true' : undefined}
                         onClick={() => session.archived ? this.restoreSession(session.id, true) : this.selectSession(session.id)}
                     >
                         {session.pinned && <span className='codicon codicon-pinned' aria-label='ピン留め済み' />}
-                        <span className='lens-agent-window__session-title'>{session.title}</span>
-                        <small className={`lens-agent-window__session-meta${running ? ' running' : ''}`}>
+                        <span className='poiesis-agent-window__session-title'>{session.title}</span>
+                        <small className={`poiesis-agent-window__session-meta${running ? ' running' : ''}`}>
                             {running ? '実行中' : this.sessionMeta(session)}
                         </small>
                     </button>
                 )}
                 {!renaming && (
-                    <div className='lens-agent-window__session-actions'>
+                    <div className='poiesis-agent-window__session-actions'>
                         <button
                             type='button'
-                            className='lens-agent-window__session-menu-trigger'
+                            className='poiesis-agent-window__session-menu-trigger'
                             title='その他の操作'
                             aria-label={`${session.title}のその他の操作`}
                             aria-haspopup='menu'
@@ -517,7 +517,7 @@ export class AgentWindowWidget extends ReactWidget {
                             <span className='codicon codicon-more' aria-hidden='true' />
                         </button>
                         {menuOpen && (
-                            <div className='lens-agent-window__session-menu' role='menu'>
+                            <div className='poiesis-agent-window__session-menu' role='menu'>
                                 {session.archived ? (
                                     <>
                                         <button type='button' role='menuitem' onClick={() => this.restoreSession(session.id)}>
@@ -692,11 +692,11 @@ export class AgentWindowWidget extends ReactWidget {
             this.persistWindowState();
         };
         this.railResizeCleanup?.dispose();
-        document.body.classList.add('lens-is-resizing-rail');
+        document.body.classList.add('poiesis-is-resizing-rail');
         document.addEventListener('pointermove', resize);
         document.addEventListener('pointerup', finish, { once: true });
         this.railResizeCleanup = Disposable.create(() => {
-            document.body.classList.remove('lens-is-resizing-rail');
+            document.body.classList.remove('poiesis-is-resizing-rail');
             document.removeEventListener('pointermove', resize);
             document.removeEventListener('pointerup', finish);
         });
@@ -821,13 +821,13 @@ export class AgentWindowWidget extends ReactWidget {
         const recentChoices = choices.filter(choice => !choice.current);
         return (
             <div
-                className='lens-agent-window__workspace-picker'
-                id='lens-agent-window-workspace-picker'
+                className='poiesis-agent-window__workspace-picker'
+                id='poiesis-agent-window-workspace-picker'
                 role='dialog'
                 aria-label='Workspaceを開く'
             >
-                <div className='lens-agent-window__workspace-picker-title'>Open workspace</div>
-                <label className='lens-agent-window__workspace-picker-search'>
+                <div className='poiesis-agent-window__workspace-picker-title'>Open workspace</div>
+                <label className='poiesis-agent-window__workspace-picker-search'>
                     <span className='codicon codicon-search' aria-hidden='true' />
                     <input
                         ref={input => { this.workspaceSearchInput = input ?? undefined; }}
@@ -846,11 +846,11 @@ export class AgentWindowWidget extends ReactWidget {
                 </label>
                 {currentChoices.length > 0 && (
                     <>
-                        <div className='lens-agent-window__workspace-picker-label'>Current</div>
+                        <div className='poiesis-agent-window__workspace-picker-label'>Current</div>
                         {currentChoices.map(choice => (
                             <button
                                 type='button'
-                                className='lens-agent-window__workspace-picker-item'
+                                className='poiesis-agent-window__workspace-picker-item'
                                 key={choice.uri}
                                 onClick={() => this.openKnownWorkspace(choice.uri)}
                             >
@@ -863,11 +863,11 @@ export class AgentWindowWidget extends ReactWidget {
                 )}
                 {recentChoices.length > 0 && (
                     <>
-                        <div className='lens-agent-window__workspace-picker-label'>Recent</div>
+                        <div className='poiesis-agent-window__workspace-picker-label'>Recent</div>
                         {recentChoices.map(choice => (
                             <button
                                 type='button'
-                                className='lens-agent-window__workspace-picker-item'
+                                className='poiesis-agent-window__workspace-picker-item'
                                 key={choice.uri}
                                 onClick={() => this.openKnownWorkspace(choice.uri)}
                             >
@@ -879,12 +879,12 @@ export class AgentWindowWidget extends ReactWidget {
                     </>
                 )}
                 {choices.length === 0 && query && (
-                    <div className='lens-agent-window__workspace-picker-empty'>一致するWorkspaceはありません</div>
+                    <div className='poiesis-agent-window__workspace-picker-empty'>一致するWorkspaceはありません</div>
                 )}
-                <div className='lens-agent-window__workspace-picker-divider' />
+                <div className='poiesis-agent-window__workspace-picker-divider' />
                 <button
                     type='button'
-                    className='lens-agent-window__workspace-picker-item action'
+                    className='poiesis-agent-window__workspace-picker-item action'
                     onClick={() => void this.openRepository()}
                 >
                     <span className='codicon codicon-folder-opened' aria-hidden='true' />
@@ -1072,12 +1072,12 @@ export class AgentWindowWidget extends ReactWidget {
     protected renderHeader(): React.ReactNode {
         if (this.appPage) {
             return (
-                <header className='lens-agent-window__header lens-agent-window__app-header'>
-                    <div className='lens-agent-window__context'>
-                        <small>Lens</small>
+                <header className='poiesis-agent-window__header poiesis-agent-window__app-header'>
+                    <div className='poiesis-agent-window__context'>
+                        <small>Poiesis</small>
                         <strong>{this.appPage === 'settings' ? 'Settings' : 'Customize'}</strong>
                     </div>
-                    <button type='button' className='lens-agent-window__app-close' onClick={() => this.closeAppPage()}>
+                    <button type='button' className='poiesis-agent-window__app-close' onClick={() => this.closeAppPage()}>
                         <span className='codicon codicon-close' aria-hidden='true' />
                         <span>Close</span>
                     </button>
@@ -1086,10 +1086,10 @@ export class AgentWindowWidget extends ReactWidget {
         }
         if (this.codeMode) {
             return (
-                <header className='lens-agent-window__header lens-agent-window__code-header'>
+                <header className='poiesis-agent-window__header poiesis-agent-window__code-header'>
                     <button
                         type='button'
-                        className='lens-agent-window__code-control active'
+                        className='poiesis-agent-window__code-control active'
                         aria-pressed='true'
                         aria-label='Agentへ戻る'
                         onClick={() => this.toggleCodeMode()}
@@ -1097,21 +1097,21 @@ export class AgentWindowWidget extends ReactWidget {
                         <span className='codicon codicon-code' aria-hidden='true' />
                         <span>Code</span>
                     </button>
-                    <span className='lens-agent-window__code-workspace'>{this.workspaceContextLabel()}</span>
-                    <span className='lens-agent-window__code-hint'>Lens Workbench</span>
+                    <span className='poiesis-agent-window__code-workspace'>{this.workspaceContextLabel()}</span>
+                    <span className='poiesis-agent-window__code-hint'>Poiesis Workbench</span>
                 </header>
             );
         }
         const session = this.selectedSession();
         const activeTab = session?.activeTab ?? 'agent';
         return (
-            <header className='lens-agent-window__header'>
-                <div className='lens-agent-window__context'>
-                    <div className='lens-agent-window__context-scope'>
+            <header className='poiesis-agent-window__header'>
+                <div className='poiesis-agent-window__context'>
+                    <div className='poiesis-agent-window__context-scope'>
                         <small>{this.workspaceContextLabel()}</small>
                         <button
                             type='button'
-                            className={`lens-agent-window__code-control${this.codeMode ? ' active' : ''}`}
+                            className={`poiesis-agent-window__code-control${this.codeMode ? ' active' : ''}`}
                             aria-pressed={this.codeMode}
                             onClick={() => this.toggleCodeMode()}
                         >
@@ -1122,7 +1122,7 @@ export class AgentWindowWidget extends ReactWidget {
                     <strong>{this.codeMode ? 'Code' : session?.hasUserMessage ? session.title : 'New Agent'}</strong>
                 </div>
                 {!this.codeMode && session?.hasUserMessage && (
-                    <nav className='lens-agent-window__tabs' aria-label='Agent と Results の切り替え'>
+                    <nav className='poiesis-agent-window__tabs' aria-label='Agent と Results の切り替え'>
                         <button
                             type='button'
                             className={activeTab === 'agent' ? 'active' : ''}
@@ -1131,7 +1131,7 @@ export class AgentWindowWidget extends ReactWidget {
                         >
                             Agent
                         </button>
-                        <span className='lens-agent-window__tab-divider' aria-hidden='true'>|</span>
+                        <span className='poiesis-agent-window__tab-divider' aria-hidden='true'>|</span>
                         <button
                             type='button'
                             className={activeTab === 'results' ? 'active' : ''}
@@ -1149,11 +1149,11 @@ export class AgentWindowWidget extends ReactWidget {
     protected renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
         const newAgent = Boolean(session && !session.hasUserMessage);
         return (
-            <section className='lens-agent-window__agent' aria-label='Agent の会話'>
-                <div className='lens-agent-window__messages' aria-live='polite'>
-                    <div className='lens-agent-window__messages-inner'>
+            <section className='poiesis-agent-window__agent' aria-label='Agent の会話'>
+                <div className='poiesis-agent-window__messages' aria-live='polite'>
+                    <div className='poiesis-agent-window__messages-inner'>
                         {newAgent && session?.messages.length === 0 && (
-                            <div className='lens-agent-window__new-agent-empty'>
+                            <div className='poiesis-agent-window__new-agent-empty'>
                                 <span className='codicon codicon-comment-add' aria-hidden='true' />
                                 <strong>What do you want to build?</strong>
                                 <small>Repository、branch、実行場所を選んでからAgentへ依頼します</small>
@@ -1164,24 +1164,24 @@ export class AgentWindowWidget extends ReactWidget {
                                 key={message.id}
                                 aria-label={message.role === 'user' ? 'あなたのメッセージ' : 'Agent のメッセージ'}
                                 className={message.role === 'user'
-                                    ? 'lens-agent-window__user-message'
-                                    : 'lens-agent-window__message'}
+                                    ? 'poiesis-agent-window__user-message'
+                                    : 'poiesis-agent-window__message'}
                             >
                                 <p>{message.content || '…'}</p>
-                                {!message.complete && <small className='lens-agent-window__message-state'>作業中…</small>}
+                                {!message.complete && <small className='poiesis-agent-window__message-state'>作業中…</small>}
                             </section>
                         ))}
                     </div>
                 </div>
                 {runningTask && (
-                    <div className='lens-agent-window__task-state' role='status'>
+                    <div className='poiesis-agent-window__task-state' role='status'>
                         <span>タスクを実行中 · {runningTask.title}</span>
                         <button type='button' onClick={() => void this.cancelRun()}>
                             キャンセル
                         </button>
                     </div>
                 )}
-                <section className='lens-agent-window__composer' aria-label='Agent の入力欄'>
+                <section className='poiesis-agent-window__composer' aria-label='Agent の入力欄'>
                     <textarea
                         key={session?.id ?? 'no-session'}
                         ref={input => { this.agentComposerInput = input ?? undefined; }}
@@ -1199,11 +1199,11 @@ export class AgentWindowWidget extends ReactWidget {
                             }
                         }}
                     />
-                    <div className='lens-agent-window__composer-footer'>
+                    <div className='poiesis-agent-window__composer-footer'>
                         {session && newAgent && this.renderNewAgentContext(session)}
                         <button
                             ref={button => { this.agentSendButton = button ?? undefined; }}
-                            className='lens-agent-window__send'
+                            className='poiesis-agent-window__send'
                             type='button'
                             aria-label='Agent へ送信'
                             disabled={!session?.workspaceUri || Boolean(runningTask) || !session.agentDraft.trim()}
@@ -1220,8 +1220,8 @@ export class AgentWindowWidget extends ReactWidget {
     protected renderAppPage(): React.ReactNode {
         const page = this.appPage ?? 'settings';
         return (
-            <section className='lens-agent-window__app-page' aria-label={page === 'settings' ? 'Lensの設定' : 'Customize'}>
-                <nav className='lens-agent-window__app-nav' aria-label='Lens preferences'>
+            <section className='poiesis-agent-window__app-page' aria-label={page === 'settings' ? 'Poiesisの設定' : 'Customize'}>
+                <nav className='poiesis-agent-window__app-nav' aria-label='Poiesis preferences'>
                     <button
                         type='button'
                         className={page === 'settings' ? 'active' : ''}
@@ -1241,8 +1241,8 @@ export class AgentWindowWidget extends ReactWidget {
                         <span>Customize</span>
                     </button>
                 </nav>
-                <div className='lens-agent-window__app-page-body'>
-                    {page === 'settings' ? this.renderLensSettings() : this.renderCustomize()}
+                <div className='poiesis-agent-window__app-page-body'>
+                    {page === 'settings' ? this.renderPoiesisSettings() : this.renderCustomize()}
                 </div>
             </section>
         );
@@ -1251,8 +1251,8 @@ export class AgentWindowWidget extends ReactWidget {
     protected renderFolderExplorer(): React.ReactNode {
         const result = this.folderExplorerResult;
         return (
-            <section className='lens-folder-explorer' role='dialog' aria-modal='true' aria-label='フォルダーを選択'>
-                <header className='lens-folder-explorer__header'>
+            <section className='poiesis-folder-explorer' role='dialog' aria-modal='true' aria-label='フォルダーを選択'>
+                <header className='poiesis-folder-explorer__header'>
                     <div>
                         <span className='codicon codicon-folder-opened' aria-hidden='true' />
                         <strong>Select workspace folder</strong>
@@ -1261,7 +1261,7 @@ export class AgentWindowWidget extends ReactWidget {
                         <span className='codicon codicon-close' aria-hidden='true' />
                     </button>
                 </header>
-                <div className='lens-folder-explorer__toolbar'>
+                <div className='poiesis-folder-explorer__toolbar'>
                     <button
                         type='button'
                         title='一つ上のフォルダーへ'
@@ -1292,10 +1292,10 @@ export class AgentWindowWidget extends ReactWidget {
                         <span className='codicon codicon-refresh' aria-hidden='true' />
                     </button>
                 </div>
-                <main className='lens-folder-explorer__body'>
-                    <div className='lens-folder-explorer__column-heading'><span>Name</span><span>Type</span></div>
+                <main className='poiesis-folder-explorer__body'>
+                    <div className='poiesis-folder-explorer__column-heading'><span>Name</span><span>Type</span></div>
                     {this.creatingFolder && (
-                        <div className='lens-folder-explorer__new-folder-row'>
+                        <div className='poiesis-folder-explorer__new-folder-row'>
                             <span className='codicon codicon-folder' aria-hidden='true' />
                             <input
                                 autoFocus
@@ -1320,12 +1320,12 @@ export class AgentWindowWidget extends ReactWidget {
                             <button type='button' disabled={!this.newFolderName.trim()} onClick={() => void this.createFolderInExplorer()}>Create</button>
                         </div>
                     )}
-                    {this.folderExplorerLoading && <div className='lens-folder-explorer__state'>Loading folders…</div>}
-                    {!this.folderExplorerLoading && this.folderExplorerError && <div className='lens-folder-explorer__state error' role='alert'>{this.folderExplorerError}</div>}
+                    {this.folderExplorerLoading && <div className='poiesis-folder-explorer__state'>Loading folders…</div>}
+                    {!this.folderExplorerLoading && this.folderExplorerError && <div className='poiesis-folder-explorer__state error' role='alert'>{this.folderExplorerError}</div>}
                     {!this.folderExplorerLoading && !this.folderExplorerError && result?.directories.map(directory => (
                         <button
                             type='button'
-                            className='lens-folder-explorer__folder-row'
+                            className='poiesis-folder-explorer__folder-row'
                             key={directory.path}
                             onDoubleClick={() => void this.loadFolderExplorer(directory.path)}
                             onClick={() => void this.loadFolderExplorer(directory.path)}
@@ -1336,13 +1336,13 @@ export class AgentWindowWidget extends ReactWidget {
                         </button>
                     ))}
                     {!this.folderExplorerLoading && !this.folderExplorerError && result?.directories.length === 0 && (
-                        <div className='lens-folder-explorer__state'>このフォルダーにサブフォルダーはありません。</div>
+                        <div className='poiesis-folder-explorer__state'>このフォルダーにサブフォルダーはありません。</div>
                     )}
                 </main>
-                <footer className='lens-folder-explorer__footer'>
+                <footer className='poiesis-folder-explorer__footer'>
                     <button
                         type='button'
-                        className='lens-folder-explorer__new-folder'
+                        className='poiesis-folder-explorer__new-folder'
                         onClick={() => {
                             this.creatingFolder = true;
                             this.newFolderName = '';
@@ -1352,7 +1352,7 @@ export class AgentWindowWidget extends ReactWidget {
                         <span className='codicon codicon-new-folder' aria-hidden='true' />
                         New folder
                     </button>
-                    <span className='lens-folder-explorer__selection'>{result?.path ?? ''}</span>
+                    <span className='poiesis-folder-explorer__selection'>{result?.path ?? ''}</span>
                     <button type='button' onClick={() => this.closeFolderExplorer()}>Cancel</button>
                     <button type='button' className='primary' disabled={!result || this.folderExplorerLoading} onClick={() => this.selectFolderFromExplorer()}>Select Folder</button>
                 </footer>
@@ -1360,32 +1360,32 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
-    protected renderLensSettings(): React.ReactNode {
+    protected renderPoiesisSettings(): React.ReactNode {
         return (
-            <div className='lens-agent-window__settings-page'>
-                <div className='lens-agent-window__page-heading'>
+            <div className='poiesis-agent-window__settings-page'>
+                <div className='poiesis-agent-window__page-heading'>
                     <span className='codicon codicon-settings-gear' aria-hidden='true' />
-                    <div><h1>Lens Settings</h1><p>Lens固有の動作とAgent環境を確認します。</p></div>
+                    <div><h1>Poiesis Settings</h1><p>Poiesis固有の動作とAgent環境を確認します。</p></div>
                 </div>
-                <section className='lens-agent-window__settings-section'>
+                <section className='poiesis-agent-window__settings-section'>
                     <h2>Workspace</h2>
-                    <div className='lens-agent-window__setting-row'>
+                    <div className='poiesis-agent-window__setting-row'>
                         <div><strong>Open workspace</strong><small>サイドバー内のpickerでWorkspaceを選び、その後フォルダー選択を開きます。</small></div>
-                        <span className='lens-agent-window__status-badge'>Lens UI</span>
+                        <span className='poiesis-agent-window__status-badge'>Poiesis UI</span>
                     </div>
                 </section>
-                <section className='lens-agent-window__settings-section'>
+                <section className='poiesis-agent-window__settings-section'>
                     <h2>Agent runtime</h2>
-                    <div className='lens-agent-window__setting-row'>
+                    <div className='poiesis-agent-window__setting-row'>
                         <div><strong>Execution target</strong><small>Agentは現在のWorkspaceを対象に、このコンピューター上で実行されます。</small></div>
-                        <span className='lens-agent-window__status-badge active'>Local</span>
+                        <span className='poiesis-agent-window__status-badge active'>Local</span>
                     </div>
                 </section>
-                <section className='lens-agent-window__settings-section'>
+                <section className='poiesis-agent-window__settings-section'>
                     <h2>Customization</h2>
-                    <div className='lens-agent-window__setting-row'>
+                    <div className='poiesis-agent-window__setting-row'>
                         <div><strong>Skills and Plugins</strong><small>利用中の機能を確認し、アプリ所有のSkillを有効・無効にします。</small></div>
-                        <button type='button' className='lens-agent-window__secondary-action' onClick={() => this.openCustomize()}>
+                        <button type='button' className='poiesis-agent-window__secondary-action' onClick={() => this.openCustomize()}>
                             Open Customize
                         </button>
                     </div>
@@ -1397,32 +1397,32 @@ export class AgentWindowWidget extends ReactWidget {
     protected renderCustomize(): React.ReactNode {
         const resultsEnabled = this.customizationService.isSkillEnabled('results');
         return (
-            <div className='lens-agent-window__customize-page'>
-                <div className='lens-agent-window__page-heading'>
+            <div className='poiesis-agent-window__customize-page'>
+                <div className='poiesis-agent-window__page-heading'>
                     <span className='codicon codicon-tools' aria-hidden='true' />
-                    <div><h1>Customize Lens</h1><p>SkillsとPluginsを一か所で管理します。</p></div>
+                    <div><h1>Customize Poiesis</h1><p>SkillsとPluginsを一か所で管理します。</p></div>
                 </div>
-                <div className='lens-agent-window__customize-tabs' role='tablist' aria-label='Customize categories'>
+                <div className='poiesis-agent-window__customize-tabs' role='tablist' aria-label='Customize categories'>
                     <button type='button' role='tab' aria-selected={this.customizeTab === 'skills'} className={this.customizeTab === 'skills' ? 'active' : ''} onClick={() => this.selectCustomizeTab('skills')}>Skills</button>
                     <button type='button' role='tab' aria-selected={this.customizeTab === 'plugins'} className={this.customizeTab === 'plugins' ? 'active' : ''} onClick={() => this.selectCustomizeTab('plugins')}>Plugins</button>
                 </div>
                 {this.customizeTab === 'skills' ? (
-                    <div className='lens-agent-window__customize-list'>
-                        <article className='lens-agent-window__customize-card'>
-                            <div className='lens-agent-window__customize-icon'><span className='codicon codicon-preview' aria-hidden='true' /></div>
-                            <div><div className='lens-agent-window__customize-title'><strong>Results</strong><span>Built-in</span></div><p>Task完了後に変更内容からResults文書を生成します。</p></div>
-                            <label className='lens-agent-window__switch'>
+                    <div className='poiesis-agent-window__customize-list'>
+                        <article className='poiesis-agent-window__customize-card'>
+                            <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-preview' aria-hidden='true' /></div>
+                            <div><div className='poiesis-agent-window__customize-title'><strong>Results</strong><span>Built-in</span></div><p>Task完了後に変更内容からResults文書を生成します。</p></div>
+                            <label className='poiesis-agent-window__switch'>
                                 <input type='checkbox' checked={resultsEnabled} aria-label='Results skillを有効化' onChange={event => this.customizationService.setSkillEnabled('results', event.currentTarget.checked)} />
                                 <span aria-hidden='true' />
                             </label>
                         </article>
                     </div>
                 ) : (
-                    <div className='lens-agent-window__customize-list'>
-                        <article className='lens-agent-window__customize-card'>
-                            <div className='lens-agent-window__customize-icon'><span className='codicon codicon-package' aria-hidden='true' /></div>
-                            <div><div className='lens-agent-window__customize-title'><strong>Lens plugin bundles</strong><span>App</span></div><p>LensのAgent、Skill、外部サービス連携を追加するアプリ用Pluginです。Code拡張機能とは別に管理されます。</p></div>
-                            <span className='lens-agent-window__status-badge'>No additions</span>
+                    <div className='poiesis-agent-window__customize-list'>
+                        <article className='poiesis-agent-window__customize-card'>
+                            <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-package' aria-hidden='true' /></div>
+                            <div><div className='poiesis-agent-window__customize-title'><strong>Poiesis plugin bundles</strong><span>App</span></div><p>PoiesisのAgent、Skill、外部サービス連携を追加するアプリ用Pluginです。Code拡張機能とは別に管理されます。</p></div>
+                            <span className='poiesis-agent-window__status-badge'>No additions</span>
                         </article>
                     </div>
                 )}
@@ -1443,12 +1443,12 @@ export class AgentWindowWidget extends ReactWidget {
             || choice.path.toLocaleLowerCase().includes(query));
         const branch = session.branch ?? this.gitBranchForWorkspace(session.workspaceUri) ?? 'main';
         return (
-            <div className='lens-agent-window__new-agent-context'>
+            <div className='poiesis-agent-window__new-agent-context'>
                 <button
                     type='button'
-                    className='lens-agent-window__context-pill primary'
+                    className='poiesis-agent-window__context-pill primary'
                     aria-expanded={this.repositoryPickerVisible}
-                    aria-controls='lens-agent-window-repository-picker'
+                    aria-controls='poiesis-agent-window-repository-picker'
                     onClick={() => this.toggleRepositoryPicker()}
                 >
                     <span className='codicon codicon-folder' aria-hidden='true' />
@@ -1457,27 +1457,27 @@ export class AgentWindowWidget extends ReactWidget {
                 </button>
                 <button
                     type='button'
-                    className='lens-agent-window__context-pill'
+                    className='poiesis-agent-window__context-pill'
                     aria-expanded={this.branchPickerVisible}
-                    aria-controls='lens-agent-window-branch-picker'
+                    aria-controls='poiesis-agent-window-branch-picker'
                     onClick={() => this.toggleBranchPicker()}
                 >
                     <span className='codicon codicon-git-branch' aria-hidden='true' />
                     <span>{branch}</span>
                     <span className='codicon codicon-chevron-down' aria-hidden='true' />
                 </button>
-                <span className='lens-agent-window__context-pill static' title='現在利用できる実行先はLocalのみです'>
+                <span className='poiesis-agent-window__context-pill static' title='現在利用できる実行先はLocalのみです'>
                     <span className='codicon codicon-device-desktop' aria-hidden='true' />
                     <span>Run on · This Computer</span>
                 </span>
                 {this.repositoryPickerVisible && (
                     <div
-                        className='lens-agent-window__repository-picker'
-                        id='lens-agent-window-repository-picker'
+                        className='poiesis-agent-window__repository-picker'
+                        id='poiesis-agent-window-repository-picker'
                         role='dialog'
                         aria-label='Repositoryを選択'
                     >
-                        <label className='lens-agent-window__repository-search'>
+                        <label className='poiesis-agent-window__repository-search'>
                             <span className='codicon codicon-search' aria-hidden='true' />
                             <input
                                 ref={input => { this.repositorySearchInput = input ?? undefined; }}
@@ -1492,23 +1492,23 @@ export class AgentWindowWidget extends ReactWidget {
                                 }}
                             />
                         </label>
-                        <div className='lens-agent-window__repository-group-label'>No Repo</div>
-                        <button type='button' className='lens-agent-window__repository-option' disabled title='Local実行にはRepositoryが必要です'>
+                        <div className='poiesis-agent-window__repository-group-label'>No Repo</div>
+                        <button type='button' className='poiesis-agent-window__repository-option' disabled title='Local実行にはRepositoryが必要です'>
                             <span className='codicon codicon-circle-slash' aria-hidden='true' />
                             <span><strong>No Repo</strong><small>Local runtimeでは未対応</small></span>
                         </button>
                         {repositoryChoices.length > 0 && (
                             <>
-                                <div className='lens-agent-window__repository-group-label'>Recents</div>
+                                <div className='poiesis-agent-window__repository-group-label'>Recents</div>
                                 {repositoryChoices.slice(0, 2).map(choice => this.renderRepositoryChoice(session, choice, 'codicon-history'))}
                             </>
                         )}
-                        <div className='lens-agent-window__repository-group-label'>On This PC</div>
+                        <div className='poiesis-agent-window__repository-group-label'>On This PC</div>
                         {filteredChoices.map(choice => this.renderRepositoryChoice(session, choice, 'codicon-device-desktop'))}
                         {!filteredChoices.length && (
-                            <div className='lens-agent-window__repository-empty'>一致するRepositoryはありません</div>
+                            <div className='poiesis-agent-window__repository-empty'>一致するRepositoryはありません</div>
                         )}
-                        <div className='lens-agent-window__repository-footer'>
+                        <div className='poiesis-agent-window__repository-footer'>
                             <button type='button' onClick={() => void this.chooseExistingRepository(session)}>
                                 <span className='codicon codicon-folder-opened' aria-hidden='true' />
                                 Use Existing…
@@ -1522,13 +1522,13 @@ export class AgentWindowWidget extends ReactWidget {
                 )}
                 {this.branchPickerVisible && (
                     <div
-                        className='lens-agent-window__branch-picker'
-                        id='lens-agent-window-branch-picker'
+                        className='poiesis-agent-window__branch-picker'
+                        id='poiesis-agent-window-branch-picker'
                         role='dialog'
                         aria-label='Branchを選択'
                     >
-                        <div className='lens-agent-window__repository-group-label'>Current branch</div>
-                        <button type='button' className='lens-agent-window__repository-option selected' onClick={() => this.closeNewAgentPickers()}>
+                        <div className='poiesis-agent-window__repository-group-label'>Current branch</div>
+                        <button type='button' className='poiesis-agent-window__repository-option selected' onClick={() => this.closeNewAgentPickers()}>
                             <span className='codicon codicon-git-branch' aria-hidden='true' />
                             <span><strong>{branch}</strong><small>Local checkout</small></span>
                             <span className='codicon codicon-check' aria-hidden='true' />
@@ -1549,7 +1549,7 @@ export class AgentWindowWidget extends ReactWidget {
             <button
                 type='button'
                 key={`${iconClass}-${choice.uri}`}
-                className={`lens-agent-window__repository-option${selected ? ' selected' : ''}`}
+                className={`poiesis-agent-window__repository-option${selected ? ' selected' : ''}`}
                 onClick={() => this.selectRepository(session, choice.uri)}
             >
                 <span className={`codicon ${iconClass}`} aria-hidden='true' />
@@ -1568,28 +1568,28 @@ export class AgentWindowWidget extends ReactWidget {
         const notice = selectedTask ? session?.resultsNotices.get(selectedTask.id) : undefined;
 
         return (
-            <section className='lens-results' aria-label='Results 画面'>
-                <div className='lens-results__main'>
-                    <div className='lens-results__canvas' aria-label='Results HTML キャンバス'>
-                        {!selectedTask && <div className='lens-results__empty'>Agent でタスクを完了すると、ここに成果が表示されます。</div>}
+            <section className='poiesis-results' aria-label='Results 画面'>
+                <div className='poiesis-results__main'>
+                    <div className='poiesis-results__canvas' aria-label='Results HTML キャンバス'>
+                        {!selectedTask && <div className='poiesis-results__empty'>Agent でタスクを完了すると、ここに成果が表示されます。</div>}
                         {selectedTask && (!document || document.status === 'generating') && (
-                            <div className='lens-results__empty' role='status'>成果を作成しています…</div>
+                            <div className='poiesis-results__empty' role='status'>成果を作成しています…</div>
                         )}
                         {document?.status === 'failed' && (
-                            <div className='lens-results__empty' role='alert'>成果を作成できませんでした。{document.error}</div>
+                            <div className='poiesis-results__empty' role='alert'>成果を作成できませんでした。{document.error}</div>
                         )}
                         {document?.status === 'ready' && document.html && (
                             <iframe
                                 key={selectedTask?.id}
-                                className='lens-results__document'
+                                className='poiesis-results__document'
                                 title={`${selectedTask?.title}の成果`}
                                 sandbox=''
                                 srcDoc={document.html}
                             />
                         )}
                     </div>
-                    {notice && <div className='lens-results__answer' role='status'>{notice}</div>}
-                    <section className='lens-results__composer' aria-label='Results の入力欄'>
+                    {notice && <div className='poiesis-results__answer' role='status'>{notice}</div>}
+                    <section className='poiesis-results__composer' aria-label='Results の入力欄'>
                         <input
                             value={draft}
                             placeholder='この結果について質問…'
@@ -1612,12 +1612,12 @@ export class AgentWindowWidget extends ReactWidget {
                         </button>
                     </section>
                 </div>
-                <aside className='lens-results__task-switcher' aria-label='同じセッションの実行タスク'>
-                    <div className='lens-results__task-switcher-header'>
+                <aside className='poiesis-results__task-switcher' aria-label='同じセッションの実行タスク'>
+                    <div className='poiesis-results__task-switcher-header'>
                         <strong>タスク</strong>
                         <span>{finishedTasks.length}</span>
                     </div>
-                    <div className='lens-results__task-list' role='tablist'>
+                    <div className='poiesis-results__task-list' role='tablist'>
                         {finishedTasks.map((task, index) => (
                             <button
                                 key={task.id}
@@ -1650,30 +1650,30 @@ export class AgentWindowWidget extends ReactWidget {
         };
         return (
             <section
-                className='lens-agent-window__code'
+                className='poiesis-agent-window__code'
                 aria-label='Code モード'
-                style={{ '--lens-code-sidebar-width': `${this.codeSidebarWidth}px` } as React.CSSProperties}
+                style={{ '--poiesis-code-sidebar-width': `${this.codeSidebarWidth}px` } as React.CSSProperties}
             >
-                <nav className='lens-agent-window__code-activity' aria-label='Code Activity Bar'>
-                    <div className='lens-agent-window__code-activity-main'>
+                <nav className='poiesis-agent-window__code-activity' aria-label='Code Activity Bar'>
+                    <div className='poiesis-agent-window__code-activity-main'>
                         {this.renderCodeActivity('files', 'files', 'Explorer')}
                         {this.renderCodeActivity('search', 'search', 'Search')}
                         {this.renderCodeActivity('git', 'source-control', 'Source Control')}
                         {this.renderCodeActivity('extensions', 'extensions', 'Extensions')}
                     </div>
-                    <div className='lens-agent-window__code-activity-footer'>
+                    <div className='poiesis-agent-window__code-activity-footer'>
                         <button type='button' title='Settings' aria-label='Settings' onClick={() => void this.openCodeSettings()}>
                             <span className='codicon codicon-settings-gear' aria-hidden='true' />
                         </button>
                     </div>
                 </nav>
                 <aside
-                    className={`lens-agent-window__code-sidebar${this.codeSidebarTab === 'files' ? ' explorer' : ''}`}
+                    className={`poiesis-agent-window__code-sidebar${this.codeSidebarTab === 'files' ? ' explorer' : ''}`}
                     aria-label='Code のサイドバー'
                 >
-                    <div className='lens-agent-window__code-sidebar-title'>
+                    <div className='poiesis-agent-window__code-sidebar-title'>
                         <span>{sidebarLabels[this.codeSidebarTab]}</span>
-                        <div className='lens-agent-window__code-sidebar-actions'>
+                        <div className='poiesis-agent-window__code-sidebar-actions'>
                             {this.codeSidebarTab === 'files' && (
                                 <React.Fragment>
                                     {this.renderExplorerAction('new-file', 'New File', FileNavigatorCommands.NEW_FILE_TOOLBAR.id)}
@@ -1700,7 +1700,7 @@ export class AgentWindowWidget extends ReactWidget {
                                 </button>
                             )}
                             {this.codeSidebarTab === 'files' && (
-                                <div className='lens-agent-window__code-explorer-more'>
+                                <div className='poiesis-agent-window__code-explorer-more'>
                                     <button
                                         type='button'
                                         title='More Actions'
@@ -1720,18 +1720,18 @@ export class AgentWindowWidget extends ReactWidget {
                         </div>
                     </div>
                     {this.codeSidebarTab === 'files' && (
-                        <div className='lens-agent-window__code-explorer-root'>
+                        <div className='poiesis-agent-window__code-explorer-root'>
                             <span className='codicon codicon-chevron-down' aria-hidden='true' />
                             <strong>{this.workspaceFolderName()}</strong>
                         </div>
                     )}
                     {this.codeSidebarTab === 'git' ? (
-                        <div className={`lens-agent-window__code-source-control${this.codeGitGraphExpanded ? ' graph-expanded' : ''}`}>
-                            <div className='lens-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
+                        <div className={`poiesis-agent-window__code-source-control${this.codeGitGraphExpanded ? ' graph-expanded' : ''}`}>
+                            <div className='poiesis-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
                             <button
                                 type='button'
-                                className='lens-agent-window__code-git-graph-title'
-                                aria-controls='lens-code-git-graph'
+                                className='poiesis-agent-window__code-git-graph-title'
+                                aria-controls='poiesis-code-git-graph'
                                 aria-expanded={this.codeGitGraphExpanded}
                                 onClick={() => {
                                     this.codeGitGraphExpanded = !this.codeGitGraphExpanded;
@@ -1745,18 +1745,18 @@ export class AgentWindowWidget extends ReactWidget {
                                 <strong>Graph</strong>
                             </button>
                             <div
-                                id='lens-code-git-graph'
-                                className='lens-agent-window__code-git-graph-host'
+                                id='poiesis-code-git-graph'
+                                className='poiesis-agent-window__code-git-graph-host'
                                 aria-hidden={!this.codeGitGraphExpanded}
                                 hidden={!this.codeGitGraphExpanded}
                                 ref={this.setCodeGitGraphHost}
                             />
                         </div>
                     ) : (
-                        <div className='lens-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
+                        <div className='poiesis-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
                     )}
                     <div
-                        className='lens-agent-window__code-sidebar-resize'
+                        className='poiesis-agent-window__code-sidebar-resize'
                         role='separator'
                         aria-label='Explorerの幅を変更'
                         aria-orientation='vertical'
@@ -1774,9 +1774,9 @@ export class AgentWindowWidget extends ReactWidget {
                         }}
                     />
                 </aside>
-                <main className='lens-agent-window__code-editor' aria-label='Editor'>
+                <main className='poiesis-agent-window__code-editor' aria-label='Editor'>
                     <div
-                        className='lens-agent-window__code-editor-tabs'
+                        className='poiesis-agent-window__code-editor-tabs'
                         role='tablist'
                         aria-label='開いているEditor'
                     >
@@ -1788,7 +1788,7 @@ export class AgentWindowWidget extends ReactWidget {
                             return (
                                 <div
                                     key={widget.id}
-                                    className={`lens-agent-window__code-editor-tab${active ? ' active' : ''}${dirty ? ' dirty' : ''}${preview ? ' preview' : ''}`}
+                                    className={`poiesis-agent-window__code-editor-tab${active ? ' active' : ''}${dirty ? ' dirty' : ''}${preview ? ' preview' : ''}`}
                                     data-code-widget-id={widget.id}
                                     data-preview={preview}
                                     onDoubleClick={() => this.pinCodeCenterWidget(widget)}
@@ -1805,40 +1805,40 @@ export class AgentWindowWidget extends ReactWidget {
                                         aria-selected={active}
                                         tabIndex={active ? 0 : -1}
                                         title={widget.title.caption || label}
-                                        className='lens-agent-window__code-editor-tab-label'
+                                        className='poiesis-agent-window__code-editor-tab-label'
                                         onClick={() => this.selectCodeCenterWidget(widget)}
                                         onKeyDown={event => this.handleCodeTabKeyDown(event, widget)}
                                     >
                                         {widget.title.iconClass && <span className={widget.title.iconClass} aria-hidden='true' />}
-                                        <span className='lens-agent-window__code-editor-tab-name'>{label}</span>
+                                        <span className='poiesis-agent-window__code-editor-tab-name'>{label}</span>
                                     </button>
                                     <button
                                         type='button'
-                                        className='lens-agent-window__code-editor-tab-close'
+                                        className='poiesis-agent-window__code-editor-tab-close'
                                         title='Close'
                                         aria-label={`${label}を閉じる`}
                                         onClick={() => void this.closeCodeCenterWidget(widget)}
                                     >
-                                        {dirty && <span className='codicon codicon-circle-filled lens-agent-window__code-editor-tab-dirty' aria-hidden='true' />}
-                                        <span className='codicon codicon-close lens-agent-window__code-editor-tab-close-icon' aria-hidden='true' />
+                                        {dirty && <span className='codicon codicon-circle-filled poiesis-agent-window__code-editor-tab-dirty' aria-hidden='true' />}
+                                        <span className='codicon codicon-close poiesis-agent-window__code-editor-tab-close-icon' aria-hidden='true' />
                                     </button>
                                 </div>
                             );
                         })}
                     </div>
                     <div
-                        className={`lens-agent-window__code-editor-stack${this.codePanelVisible ? '' : ' panel-collapsed'}`}
-                        style={{ '--lens-code-panel-height': `${this.codePanelHeight}px` } as React.CSSProperties}
+                        className={`poiesis-agent-window__code-editor-stack${this.codePanelVisible ? '' : ' panel-collapsed'}`}
+                        style={{ '--poiesis-code-panel-height': `${this.codePanelHeight}px` } as React.CSSProperties}
                     >
-                        <div className='lens-agent-window__code-editor-host' ref={this.setCodeEditorHost}>
+                        <div className='poiesis-agent-window__code-editor-host' ref={this.setCodeEditorHost}>
                             {!this.activeCodeCenterWidget && (
-                                <div className='lens-agent-window__code-empty'>ファイルを開いて編集を開始</div>
+                                <div className='poiesis-agent-window__code-empty'>ファイルを開いて編集を開始</div>
                             )}
                         </div>
                         {this.codePanelVisible && (
-                            <section className='lens-agent-window__code-panel' aria-label='Bottom Panel'>
+                            <section className='poiesis-agent-window__code-panel' aria-label='Bottom Panel'>
                                 <div
-                                    className='lens-agent-window__code-panel-resize'
+                                    className='poiesis-agent-window__code-panel-resize'
                                     role='separator'
                                     aria-label='Resize Terminal Panel'
                                     aria-orientation='horizontal'
@@ -1854,19 +1854,19 @@ export class AgentWindowWidget extends ReactWidget {
                                         }
                                     }}
                                 />
-                                <div className='lens-agent-window__code-panel-tabs'>
+                                <div className='poiesis-agent-window__code-panel-tabs'>
                                     <button
                                         type='button'
-                                        className='lens-agent-window__code-panel-tab active'
+                                        className='poiesis-agent-window__code-panel-tab active'
                                         aria-pressed='true'
                                         onClick={() => this.codeTerminalWidget?.activate()}
                                     >
                                         TERMINAL
                                     </button>
-                                    <span className='lens-agent-window__code-panel-spacer' />
+                                    <span className='poiesis-agent-window__code-panel-spacer' />
                                     {this.codeTerminalWidgets.length > 0 && this.codeTerminalWidget && (
                                         <select
-                                            className='lens-agent-window__code-terminal-select'
+                                            className='poiesis-agent-window__code-terminal-select'
                                             aria-label='Active Terminal'
                                             value={this.codeTerminalWidget.id}
                                             onChange={event => this.selectCodeTerminalById(event.currentTarget.value)}
@@ -1892,17 +1892,17 @@ export class AgentWindowWidget extends ReactWidget {
                                         <span className='codicon codicon-close' aria-hidden='true' />
                                     </button>
                                 </div>
-                                <div className='lens-agent-window__code-terminal-host' ref={this.setCodeTerminalHost} />
+                                <div className='poiesis-agent-window__code-terminal-host' ref={this.setCodeTerminalHost} />
                             </section>
                         )}
                     </div>
                 </main>
-                <footer className='lens-agent-window__code-status' aria-label='Status Bar'>
+                <footer className='poiesis-agent-window__code-status' aria-label='Status Bar'>
                     <span><span className='codicon codicon-source-control' aria-hidden='true' /> {this.currentGitBranch() ?? 'main'}</span>
                     <span><span className='codicon codicon-sync' aria-hidden='true' /></span>
                     <span><span className='codicon codicon-error' aria-hidden='true' /> 0</span>
                     <span><span className='codicon codicon-warning' aria-hidden='true' /> 0</span>
-                    <span className='lens-agent-window__code-status-spacer' />
+                    <span className='poiesis-agent-window__code-status-spacer' />
                     <span>UTF-8</span>
                     <span>LF</span>
                     <span>Spaces: 4</span>
@@ -1931,7 +1931,7 @@ export class AgentWindowWidget extends ReactWidget {
         const label = this.codeCenterWidgetLabel(widget);
         return (
             <div
-                className='lens-agent-window__code-close-overlay'
+                className='poiesis-agent-window__code-close-overlay'
                 onKeyDown={event => {
                     if (event.key === 'Escape' && !this.pendingCodeCenterCloseBusy) {
                         event.preventDefault();
@@ -1940,13 +1940,13 @@ export class AgentWindowWidget extends ReactWidget {
                 }}
             >
                 <section
-                    className='lens-agent-window__code-close-dialog'
+                    className='poiesis-agent-window__code-close-dialog'
                     role='dialog'
                     aria-modal='true'
-                    aria-labelledby='lens-code-close-title'
+                    aria-labelledby='poiesis-code-close-title'
                 >
                     <header>
-                        <h2 id='lens-code-close-title'>Save changes to {label}?</h2>
+                        <h2 id='poiesis-code-close-title'>Save changes to {label}?</h2>
                         <button
                             type='button'
                             title='Cancel'
@@ -2037,10 +2037,10 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected renderExplorerMoreMenu(): React.ReactNode {
         return (
-            <div className='lens-agent-window__code-explorer-menu' role='menu' aria-label='Explorer More Actions'>
+            <div className='poiesis-agent-window__code-explorer-menu' role='menu' aria-label='Explorer More Actions'>
                 {this.renderExplorerMenuItem('Toggle Hidden Files', FileNavigatorCommands.TOGGLE_HIDDEN_FILES.id)}
                 {this.renderExplorerMenuItem('Auto Reveal', FileNavigatorCommands.TOGGLE_AUTO_REVEAL.id)}
-                <div className='lens-agent-window__code-explorer-menu-separator' role='separator' />
+                <div className='poiesis-agent-window__code-explorer-menu-separator' role='separator' />
                 {this.renderExplorerMenuItem('Refresh Explorer', FileNavigatorCommands.REFRESH_NAVIGATOR.id)}
                 {this.renderExplorerMenuItem('Collapse Folders', FileNavigatorCommands.COLLAPSE_ALL.id)}
             </div>
@@ -2616,12 +2616,12 @@ export class AgentWindowWidget extends ReactWidget {
             this.codeSidebarResizeCleanup?.dispose();
             this.codeSidebarResizeCleanup = undefined;
         };
-        document.body.classList.add('lens-code-sidebar-resizing');
+        document.body.classList.add('poiesis-code-sidebar-resizing');
         document.addEventListener('pointermove', onPointerMove);
         document.addEventListener('pointerup', finish, { once: true });
         document.addEventListener('pointercancel', finish, { once: true });
         this.codeSidebarResizeCleanup = Disposable.create(() => {
-            document.body.classList.remove('lens-code-sidebar-resizing');
+            document.body.classList.remove('poiesis-code-sidebar-resizing');
             document.removeEventListener('pointermove', onPointerMove);
             document.removeEventListener('pointerup', finish);
             document.removeEventListener('pointercancel', finish);
@@ -2630,9 +2630,9 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected setCodeSidebarWidth(width: number): void {
         this.codeSidebarWidth = Math.max(MIN_CODE_SIDEBAR_WIDTH, Math.min(MAX_CODE_SIDEBAR_WIDTH, width));
-        const code = this.node.querySelector<HTMLElement>('.lens-agent-window__code');
-        code?.style.setProperty('--lens-code-sidebar-width', `${this.codeSidebarWidth}px`);
-        this.node.querySelector('.lens-agent-window__code-sidebar-resize')
+        const code = this.node.querySelector<HTMLElement>('.poiesis-agent-window__code');
+        code?.style.setProperty('--poiesis-code-sidebar-width', `${this.codeSidebarWidth}px`);
+        this.node.querySelector('.poiesis-agent-window__code-sidebar-resize')
             ?.setAttribute('aria-valuenow', `${this.codeSidebarWidth}`);
     }
 
@@ -2651,12 +2651,12 @@ export class AgentWindowWidget extends ReactWidget {
             this.codePanelResizeCleanup?.dispose();
             this.codePanelResizeCleanup = undefined;
         };
-        document.body.classList.add('lens-code-panel-resizing');
+        document.body.classList.add('poiesis-code-panel-resizing');
         document.addEventListener('pointermove', onPointerMove);
         document.addEventListener('pointerup', finish, { once: true });
         document.addEventListener('pointercancel', finish, { once: true });
         this.codePanelResizeCleanup = Disposable.create(() => {
-            document.body.classList.remove('lens-code-panel-resizing');
+            document.body.classList.remove('poiesis-code-panel-resizing');
             document.removeEventListener('pointermove', onPointerMove);
             document.removeEventListener('pointerup', finish);
             document.removeEventListener('pointercancel', finish);
@@ -2664,11 +2664,11 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected setCodePanelHeight(height: number): void {
-        const stack = this.node.querySelector<HTMLElement>('.lens-agent-window__code-editor-stack');
+        const stack = this.node.querySelector<HTMLElement>('.poiesis-agent-window__code-editor-stack');
         const maximum = Math.max(MIN_CODE_PANEL_HEIGHT, (stack?.clientHeight ?? DEFAULT_CODE_PANEL_HEIGHT + 80) - 80);
         this.codePanelHeight = Math.max(MIN_CODE_PANEL_HEIGHT, Math.min(maximum, height));
-        stack?.style.setProperty('--lens-code-panel-height', `${this.codePanelHeight}px`);
-        this.node.querySelector('.lens-agent-window__code-panel-resize')
+        stack?.style.setProperty('--poiesis-code-panel-height', `${this.codePanelHeight}px`);
+        this.node.querySelector('.poiesis-agent-window__code-panel-resize')
             ?.setAttribute('aria-valuenow', `${this.codePanelHeight}`);
     }
 
@@ -2718,7 +2718,7 @@ export class AgentWindowWidget extends ReactWidget {
             }
             drag.active = true;
             event.preventDefault();
-            document.body?.classList.add('lens-code-file-pointer-drag');
+            document.body?.classList.add('poiesis-code-file-pointer-drag');
             this.setCodeTabDropActive(!!this.codeTabsAtPoint(event.clientX, event.clientY));
         };
         const onPointerUp = (event: PointerEvent): void => {
@@ -2779,7 +2779,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected codeTabsAtPoint(clientX: number, clientY: number): HTMLElement | undefined {
-        const tabs = this.node.querySelector<HTMLElement>('.lens-agent-window__code-editor-tabs');
+        const tabs = this.node.querySelector<HTMLElement>('.poiesis-agent-window__code-editor-tabs');
         if (!tabs) {
             return undefined;
         }
@@ -2796,12 +2796,12 @@ export class AgentWindowWidget extends ReactWidget {
             drag.sourceNode.draggable = true;
         }
         this.codeFilePointerDrag = undefined;
-        document.body?.classList.remove('lens-code-file-pointer-drag');
+        document.body?.classList.remove('poiesis-code-file-pointer-drag');
         this.setCodeTabDropActive(false);
     }
 
     protected setCodeTabDropActive(active: boolean): void {
-        this.node.querySelector('.lens-agent-window__code-editor-tabs')?.classList.toggle('drop-target', active);
+        this.node.querySelector('.poiesis-agent-window__code-editor-tabs')?.classList.toggle('drop-target', active);
     }
 
     protected async openDraggedCodeFile(rawUri: string): Promise<void> {
@@ -2961,11 +2961,11 @@ export class AgentWindowWidget extends ReactWidget {
         if (!widget) {
             return;
         }
-        const tab = Array.from(this.node.querySelectorAll<HTMLElement>('.lens-agent-window__code-editor-tab'))
+        const tab = Array.from(this.node.querySelectorAll<HTMLElement>('.poiesis-agent-window__code-editor-tab'))
             .find(candidate => candidate.dataset.codeWidgetId === widget.id);
         tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         if (focus) {
-            tab?.querySelector<HTMLButtonElement>('.lens-agent-window__code-editor-tab-label')?.focus();
+            tab?.querySelector<HTMLButtonElement>('.poiesis-agent-window__code-editor-tab-label')?.focus();
         }
     }
 
@@ -3209,7 +3209,7 @@ export class AgentWindowWidget extends ReactWidget {
             this.sessionSequence = this.sessions.length;
             return this.sessions.length > 0;
         } catch (error) {
-            console.warn('[Lens] Could not restore Agent Window sessions.', error);
+            console.warn('[Poiesis] Could not restore Agent Window sessions.', error);
             return false;
         }
     }
@@ -3231,7 +3231,7 @@ export class AgentWindowWidget extends ReactWidget {
             };
             await this.storageService.setData(SESSION_STORAGE_KEY, state);
         } catch (error) {
-            console.warn('[Lens] Could not persist Agent Window sessions.', error);
+            console.warn('[Poiesis] Could not persist Agent Window sessions.', error);
         }
     }
 

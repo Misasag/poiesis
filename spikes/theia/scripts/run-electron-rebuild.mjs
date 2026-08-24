@@ -18,8 +18,8 @@ const result = spawnSync(process.execPath, [
     env: {
         ...process.env,
         electron_config_cache: resolve(root, '.electron-cache'),
-        LENS_ELECTRON_CACHE: resolve(root, '.electron-cache'),
-        LENS_ELECTRON_GYP_HOME: resolve(root, '.electron-home'),
+        POIESIS_ELECTRON_CACHE: resolve(root, '.electron-cache'),
+        POIESIS_ELECTRON_GYP_HOME: resolve(root, '.electron-home'),
         NODE_OPTIONS: nodeOptions
     },
     stdio: 'inherit'

@@ -71,10 +71,10 @@ Skillが根拠を示す場合は、Workspace内のファイルと位置を引用
 
 ## IDE Structure
 
-Lensは一つのWindowを所有する。
+Poiesisは一つのWindowを所有する。
 
 ```text
-Lens Window
+Poiesis Window
 ├ Agent / Results
 │  ├ Workspace / Session sidebar
 │  └ Agent conversation or Results canvas
@@ -83,7 +83,7 @@ Lens Window
    └ Editor / Settings
 ```
 
-CodeはTheia ApplicationShell全体をhostせず、必要なFiles／Search／Git／Editor／Terminal WidgetだけをCursor型のLens専用レイアウトへ載せる。
+CodeはTheia ApplicationShell全体をhostせず、必要なFiles／Search／Git／Editor／Terminal WidgetだけをCursor型のPoiesis専用レイアウトへ載せる。
 
 ## Interaction Principles
 

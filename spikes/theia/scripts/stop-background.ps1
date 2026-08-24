@@ -6,7 +6,7 @@ $pidFile = Join-Path $runDirectory 'server.pid'
 $serverUrl = 'http://127.0.0.1:3000/'
 
 if (-not (Test-Path -LiteralPath $pidFile)) {
-    Write-Host 'No Lens background server PID was recorded.'
+    Write-Host 'No Poiesis background server PID was recorded.'
     exit 0
 }
 
@@ -20,9 +20,9 @@ if ($serverProcess) {
 
     & taskkill.exe /PID $serverPid /T /F | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to stop Lens launcher process $serverPid."
+        throw "Failed to stop Poiesis launcher process $serverPid."
     }
 }
 
 Remove-Item -LiteralPath $pidFile -Force
-Write-Host "Lens background server stopped ($serverUrl)."
+Write-Host "Poiesis background server stopped ($serverUrl)."

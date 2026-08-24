@@ -2,18 +2,18 @@ import { StorageService } from '@theia/core/lib/browser';
 import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 
-const CUSTOMIZATION_STORAGE_KEY = 'lens.customization.v1';
+const CUSTOMIZATION_STORAGE_KEY = 'poiesis.customization.v1';
 
-export type LensSkillId = 'results';
+export type PoiesisSkillId = 'results';
 
 interface PersistedCustomizationState {
     version: 1;
-    disabledSkills: LensSkillId[];
+    disabledSkills: PoiesisSkillId[];
 }
 
 @injectable()
 export class CustomizationService {
-    protected readonly disabledSkills = new Set<LensSkillId>();
+    protected readonly disabledSkills = new Set<PoiesisSkillId>();
     protected readonly onDidChangeEmitter = new Emitter<void>();
     readonly onDidChange: Event<void> = this.onDidChangeEmitter.event;
 
@@ -36,11 +36,11 @@ export class CustomizationService {
         this.onDidChangeEmitter.fire();
     }
 
-    isSkillEnabled(skill: LensSkillId): boolean {
+    isSkillEnabled(skill: PoiesisSkillId): boolean {
         return !this.disabledSkills.has(skill);
     }
 
-    setSkillEnabled(skill: LensSkillId, enabled: boolean): void {
+    setSkillEnabled(skill: PoiesisSkillId, enabled: boolean): void {
         if (enabled) {
             this.disabledSkills.delete(skill);
         } else {

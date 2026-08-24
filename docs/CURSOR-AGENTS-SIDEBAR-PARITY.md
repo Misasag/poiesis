@@ -2,7 +2,7 @@
 
 Updated: 2026-08-23
 
-この文書は、Cursor Agents Windowのサイドバー相当機能をLensへ導入する作業範囲を明確にする。AutomationsとLocal以外の実行環境統合（Worktree／Cloud／Remote SSH）は今回の対象外とする。「見た目だけ存在するcontrol」は実装済みに数えない。
+この文書は、Cursor Agents Windowのサイドバー相当機能をPoiesisへ導入する作業範囲を明確にする。AutomationsとLocal以外の実行環境統合（Worktree／Cloud／Remote SSH）は今回の対象外とする。「見た目だけ存在するcontrol」は実装済みに数えない。
 
 参照した現行Cursor仕様:
 
@@ -14,7 +14,7 @@ Updated: 2026-08-23
 
 ## Parity matrix
 
-| Capability | Status | Lens evidence | Required next work |
+| Capability | Status | Poiesis evidence | Required next work |
 |---|---|---|---|
 | New Chat | done | 空Sessionを再利用し、会話済みの場合だけ新規作成してComposerへfocus | shortcutとtarget pickerを統合する |
 | Open／rename／pin | done | Session行と三点メニューで操作可能 | command paletteからの操作を追加する |

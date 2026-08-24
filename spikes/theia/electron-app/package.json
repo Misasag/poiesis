@@ -1,11 +1,11 @@
 {
-  "name": "@lens/theia-electron-app",
-  "productName": "Lens Theia Electron Spike",
+  "name": "@poiesis/theia-electron-app",
+  "productName": "Poiesis",
   "version": "0.0.0",
   "private": true,
   "main": "lib/backend/electron-main.js",
   "dependencies": {
-    "@lens/theia-agent-window": "0.0.0",
+    "@poiesis/theia-agent-window": "0.0.0",
     "@theia/bulk-edit": "1.73.1",
     "@theia/core": "1.73.1",
     "@theia/editor": "1.73.1",
@@ -45,7 +45,7 @@
     "target": "electron",
     "frontend": {
       "config": {
-        "applicationName": "Lens Theia Electron Spike",
+        "applicationName": "Poiesis",
         "reloadOnReconnect": true
       }
     },

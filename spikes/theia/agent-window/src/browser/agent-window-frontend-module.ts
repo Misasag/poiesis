@@ -14,13 +14,13 @@ import { AgentRuntimeServer, agentRuntimeServerPath } from '../common/agent-runt
 import { MockAgentProvider } from './mock-agent-provider';
 import { BundledResultsSkill, ResultsService, ResultsSkill } from './results-skill';
 import { TaskService } from './task-service';
-import { LensFrontendApplication } from './lens-frontend-application';
+import { PoiesisFrontendApplication } from './poiesis-frontend-application';
 import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
 import '../../src/browser/style/index.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
-    rebind(FrontendApplication).to(LensFrontendApplication).inSingletonScope();
+    rebind(FrontendApplication).to(PoiesisFrontendApplication).inSingletonScope();
 
     bind(AgentRuntimeClientImpl).toSelf().inSingletonScope();
     bind(AgentRuntimeServer).toDynamicValue(context => {

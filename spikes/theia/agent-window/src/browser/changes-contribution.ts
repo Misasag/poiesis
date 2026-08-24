@@ -8,8 +8,8 @@ import { isDesignVariant } from './design-variant';
 @injectable()
 export class ChangesContribution extends AbstractViewContribution<ChangesWidget> implements FrontendApplicationContribution {
     static readonly OPEN_COMMAND: Command = {
-        id: 'lens.changes.open',
-        label: 'Lens: Open IDE Changes'
+        id: 'poiesis.changes.open',
+        label: 'Poiesis: Open IDE Changes'
     };
 
     constructor(
@@ -23,13 +23,13 @@ export class ChangesContribution extends AbstractViewContribution<ChangesWidget>
                 area: isDesignVariant('d2-b') ? 'main' : 'bottom',
                 rank: 80
             },
-            toggleCommandId: 'lens.changes.toggle',
+            toggleCommandId: 'poiesis.changes.toggle',
             toggleKeybinding: 'ctrlcmd+shift+alt+c'
         });
     }
 
     onStart(): void {
-        this.statusBar.setElement('lens-changes', {
+        this.statusBar.setElement('poiesis-changes', {
             text: isDesignVariant('d5-b') ? '$(git-compare) IDE Changes' : '$(git-compare) Changes: 1',
             name: 'IDE Changes',
             alignment: StatusBarAlignment.LEFT,

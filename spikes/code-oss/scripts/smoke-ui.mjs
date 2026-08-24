@@ -29,8 +29,8 @@ const child = spawn(hostExecutable, hostArguments({ ...directories, debugPort })
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     env: hostEnvironment({
-        LENS_CODE_OSS_SMOKE: '1',
-        LENS_CODE_OSS_PROOF_DIR: proofDir
+        POIESIS_CODE_OSS_SMOKE: '1',
+        POIESIS_CODE_OSS_PROOF_DIR: proofDir
     })
 });
 
@@ -71,7 +71,7 @@ try {
     await workbench.keyboard.up('Shift');
     await workbench.keyboard.up('Control');
     await new Promise(resolveDelay => setTimeout(resolveDelay, 500));
-    await workbench.keyboard.type('Lens: Changes');
+    await workbench.keyboard.type('Poiesis: Changes');
     await new Promise(resolveDelay => setTimeout(resolveDelay, 750));
     await workbench.keyboard.press('Enter');
 
@@ -123,12 +123,12 @@ try {
                 .map(element => element.textContent ?? '');
             return {
                 title: document.title,
-                repositoryVisible: document.title.toLowerCase().includes('lens'),
+                repositoryVisible: document.title.toLowerCase().includes('poiesis'),
                 editorTabVisible: allText.some(text => text.includes('auth-service.ts')),
                 agentTabVisible: allText.some(text => text.includes('Agent Window')),
                 changesSurfaceVisible: document.body.innerText.includes('IDE Changes') || document.body.innerText.includes('Changes'),
                 diffTabVisible: allText.some(text => text.includes('Change Set: auth-service.ts')),
-                terminalSurfaceVisible: document.body.innerText.includes('Lens Spike Terminal'),
+                terminalSurfaceVisible: document.body.innerText.includes('Poiesis Terminal'),
                 activeLineNumbers: [...document.querySelectorAll('.line-numbers.active-line-number')]
                     .map(element => element.textContent?.trim()).filter(Boolean)
             };
@@ -148,7 +148,7 @@ try {
         || !result.workbench.activeLineNumbers.includes('12')) {
         throw new Error(`New Changes UX verification failed: ${JSON.stringify(result)}`);
     }
-    if (!capabilities.terminalCreated || terminalProof !== 'LENS_TERMINAL_OK') {
+    if (!capabilities.terminalCreated || terminalProof !== 'POIESIS_TERMINAL_OK') {
         throw new Error(`Terminal verification failed: ${JSON.stringify({ capabilities, terminalProof })}`);
     }
     if (!capabilities.gitExtensionPresent || capabilities.gitRepositoryCount < 1

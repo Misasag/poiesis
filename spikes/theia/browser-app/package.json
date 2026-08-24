@@ -1,9 +1,9 @@
 {
-  "name": "@lens/theia-browser-app",
+  "name": "@poiesis/theia-browser-app",
   "version": "0.0.0",
   "private": true,
   "dependencies": {
-    "@lens/theia-agent-window": "0.0.0",
+    "@poiesis/theia-agent-window": "0.0.0",
     "@theia/bulk-edit": "1.73.1",
     "@theia/core": "1.73.1",
     "@theia/editor": "1.73.1",

@@ -14,14 +14,11 @@ mkdirSync(runtimeDir, { recursive: true });
 const repositoryRoot = resolve(root, '..', '..');
 const scmFixtureGitPath = 'docs/UX.md';
 const scmFixturePath = resolve(repositoryRoot, scmFixtureGitPath);
-const scmFixtureStatus = spawnSync('git', ['status', '--porcelain', '--', scmFixtureGitPath], {
-    cwd: repositoryRoot,
-    encoding: 'utf8'
-});
-if (scmFixtureStatus.status !== 0 || scmFixtureStatus.stdout.trim()) {
-    throw new Error(`SCM smoke fixture must be clean before the test: ${scmFixtureStatus.stderr || scmFixtureStatus.stdout}`);
-}
 const scmFixtureOriginal = readFileSync(scmFixturePath, 'utf8');
+const scmFixtureMarker = '<!-- Poiesis SCM smoke change -->';
+if (scmFixtureOriginal.includes(scmFixtureMarker)) {
+    throw new Error('SCM smoke fixture still contains a marker from an interrupted test.');
+}
 const terminalFixturePath = resolve(runtimeDir, 'terminal-smoke.txt');
 removeTerminalFixture();
 
@@ -57,7 +54,7 @@ for (const stream of [startProcess.stdout, startProcess.stderr]) {
 
 let browser;
 try {
-    writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n<!-- Lens SCM smoke change -->\n`, 'utf8');
+    writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n${scmFixtureMarker}\n`, 'utf8');
     await waitForCdp(browserURL, startProcess, 120_000);
     browser = await puppeteer.connect({ browserURL, defaultViewport: null });
     const page = await findWorkbenchPage(browser, uiTimeout);
@@ -72,27 +69,27 @@ try {
     page.setDefaultTimeout(uiTimeout);
     await page.bringToFront();
     await page.evaluate(() => window.focus());
-    await page.waitForSelector('#lens-window-host .lens-agent-window__content', { timeout: uiTimeout });
-    await page.waitForSelector('.lens-agent-window__agent', { timeout: uiTimeout });
-    await page.waitForSelector('.lens-agent-window__rail', { timeout: uiTimeout });
+    await page.waitForSelector('#poiesis-window-host .poiesis-agent-window__content', { timeout: uiTimeout });
+    await page.waitForSelector('.poiesis-agent-window__agent', { timeout: uiTimeout });
+    await page.waitForSelector('.poiesis-agent-window__rail', { timeout: uiTimeout });
 
     const userAgent = await page.evaluate(() => navigator.userAgent);
     const windowTitle = await page.title();
-    const initial = await page.evaluate(readLensState);
+    const initial = await page.evaluate(readPoiesisState);
     assert(userAgent.includes('Electron/'), `Expected Electron user agent, got ${userAgent}`);
     assert(initial.mode === 'agent', `Expected Agent mode, got ${initial.mode}`);
     assert(initial.agentComposerVisible, 'Agent Composer is missing in Electron');
     assert(initial.sessionRailVisible, 'Session rail is missing in Electron');
     assert(!initial.legacyChangesVisible, 'Removed Changes UI is still visible in Electron');
 
-    await clickByText(page, '.lens-agent-window__code-control', 'Code');
-    await page.waitForSelector('.lens-agent-window__code', { timeout: uiTimeout });
+    await clickByText(page, '.poiesis-agent-window__code-control', 'Code');
+    await page.waitForSelector('.poiesis-agent-window__code', { timeout: uiTimeout });
     await page.waitForSelector('#files .theia-FileStatNode', { timeout: uiTimeout });
-    await page.waitForFunction(() => Boolean(document.querySelector('.lens-agent-window__code-terminal-host > *')), {
+    await page.waitForFunction(() => Boolean(document.querySelector('.poiesis-agent-window__code-terminal-host > *')), {
         timeout: uiTimeout
     });
 
-    const code = await page.evaluate(readLensState);
+    const code = await page.evaluate(readPoiesisState);
     assert(code.mode === 'code', `Expected Code mode, got ${code.mode}`);
     assert(code.codeSidebarVisible, 'Code sidebar is missing in Electron');
     assert(code.codeEditorVisible, 'Code editor is missing in Electron');
@@ -103,138 +100,132 @@ try {
     assert(code.codeLuminoTabContainerCount === 0, 'Code reintroduced lm-TabBar-content-container in Electron');
     assert(!code.applicationShellVisible, 'Code mounted the Theia ApplicationShell in Electron');
 
-    await page.waitForSelector('.lens-agent-window__code-terminal-host .xterm-helper-textarea', { timeout: uiTimeout });
-    assert(await page.$('.lens-agent-window__code-terminal-select[aria-label="Active Terminal"]'),
+    await page.waitForSelector('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea', { timeout: uiTimeout });
+    assert(await page.$('.poiesis-agent-window__code-terminal-select[aria-label="Active Terminal"]'),
         'Active Terminal selector is missing in Electron');
-    const firstTerminalId = await page.$eval('.lens-agent-window__code-terminal-host > *', element => element.id);
-    await page.click('.lens-agent-window__code-terminal-host .xterm-screen');
-    await page.keyboard.type(`echo lens-terminal-smoke>"${terminalFixturePath}"`);
+    const firstTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
+    await page.click('.poiesis-agent-window__code-terminal-host .xterm-screen');
+    await page.keyboard.type(`echo poiesis-terminal-smoke>"${terminalFixturePath}"`);
     await page.keyboard.press('Enter');
     for (let attempt = 0; attempt < 100 && !existsSync(terminalFixturePath); attempt++) {
         await new Promise(resolveDelay => setTimeout(resolveDelay, 100));
     }
-    assert(existsSync(terminalFixturePath) && readFileSync(terminalFixturePath, 'utf8').trim() === 'lens-terminal-smoke',
+    assert(existsSync(terminalFixturePath) && readFileSync(terminalFixturePath, 'utf8').trim() === 'poiesis-terminal-smoke',
         'Terminal command did not write its Electron output fixture');
     removeTerminalFixture();
 
-    const terminalPanelHeight = await page.$eval('.lens-agent-window__code-panel', element => Math.round(element.getBoundingClientRect().height));
-    await page.focus('.lens-agent-window__code-panel-resize');
+    const terminalPanelHeight = await page.$eval('.poiesis-agent-window__code-panel', element => Math.round(element.getBoundingClientRect().height));
+    await page.focus('.poiesis-agent-window__code-panel-resize');
     await page.keyboard.press('ArrowUp');
-    await page.waitForFunction(height => Math.round(document.querySelector('.lens-agent-window__code-panel')?.getBoundingClientRect().height ?? 0) === height + 12,
+    await page.waitForFunction(height => Math.round(document.querySelector('.poiesis-agent-window__code-panel')?.getBoundingClientRect().height ?? 0) === height + 12,
         {}, terminalPanelHeight);
-    await page.click('.lens-agent-window__code-panel-tabs button[aria-label="New Terminal"]');
-    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id !== id
-        && document.querySelectorAll('.lens-agent-window__code-terminal-select option').length === 2, {}, firstTerminalId);
-    const secondTerminalId = await page.$eval('.lens-agent-window__code-terminal-host > *', element => element.id);
-    await page.select('.lens-agent-window__code-terminal-select', firstTerminalId);
-    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
-    await page.click('.lens-agent-window__code-panel-tabs button[aria-label="Close Panel"]');
-    await page.waitForSelector('.lens-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
-    assert(!await page.$('.lens-agent-window__code-panel'), 'Close Panel must hide the Electron Terminal panel');
-    await page.click('.lens-agent-window__code-status button[aria-label="Toggle Panel"]');
-    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.click('.poiesis-agent-window__code-panel-tabs button[aria-label="New Terminal"]');
+    await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id !== id
+        && document.querySelectorAll('.poiesis-agent-window__code-terminal-select option').length === 2, {}, firstTerminalId);
+    const secondTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
+    await page.select('.poiesis-agent-window__code-terminal-select', firstTerminalId);
+    await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.click('.poiesis-agent-window__code-panel-tabs button[aria-label="Close Panel"]');
+    await page.waitForSelector('.poiesis-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
+    assert(!await page.$('.poiesis-agent-window__code-panel'), 'Close Panel must hide the Electron Terminal panel');
+    await page.click('.poiesis-agent-window__code-status button[aria-label="Toggle Panel"]');
+    await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
     await page.keyboard.down('Control');
     await page.keyboard.press('Backquote');
     await page.keyboard.up('Control');
-    await page.waitForSelector('.lens-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
+    await page.waitForSelector('.poiesis-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
     await page.keyboard.down('Control');
     await page.keyboard.press('Backquote');
     await page.keyboard.up('Control');
-    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
-    await page.select('.lens-agent-window__code-terminal-select', secondTerminalId);
-    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
-    await page.click('.lens-agent-window__code-panel-tabs button[aria-label="Kill Terminal"]');
-    await page.waitForFunction(id => document.querySelectorAll('.lens-agent-window__code-terminal-select option').length === 1
-        && document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.select('.poiesis-agent-window__code-terminal-select', secondTerminalId);
+    await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
+    await page.click('.poiesis-agent-window__code-panel-tabs button[aria-label="Kill Terminal"]');
+    await page.waitForFunction(id => document.querySelectorAll('.poiesis-agent-window__code-terminal-select option').length === 1
+        && document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
 
-    while (await page.$('.lens-agent-window__code-editor-tab-close')) {
-        const count = await page.$$eval('.lens-agent-window__code-editor-tab', tabs => tabs.length);
-        await page.click('.lens-agent-window__code-editor-tab-close');
-        await page.waitForFunction(previous => document.querySelectorAll('.lens-agent-window__code-editor-tab').length < previous, {}, count);
+    while (await page.$('.poiesis-agent-window__code-editor-tab-close')) {
+        const count = await page.$$eval('.poiesis-agent-window__code-editor-tab', tabs => tabs.length);
+        await page.click('.poiesis-agent-window__code-editor-tab-close');
+        await page.waitForFunction(previous => document.querySelectorAll('.poiesis-agent-window__code-editor-tab').length < previous, {}, count);
     }
 
-    await page.$eval('.lens-agent-window__code-activity button[aria-label="Search"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Search"]', element => element.click());
     await page.waitForSelector('#search-input-field', { timeout: uiTimeout });
     await page.waitForFunction(() => document.activeElement?.id === 'search-input-field');
     for (const label of ['Refresh Search Results', 'Clear Search Results', 'Collapse All Search Results']) {
-        assert(await page.$(`.lens-agent-window__code-sidebar-actions button[aria-label="${label}"]`), `Search action is missing in Electron: ${label}`);
+        assert(await page.$(`.poiesis-agent-window__code-sidebar-actions button[aria-label="${label}"]`), `Search action is missing in Electron: ${label}`);
     }
-    await page.$eval('.lens-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]', element => element.click());
     await page.focus('#search-input-field');
     const codeSearchQuery = ['Source contract', 'validation passed.'].join(' ');
     await page.type('#search-input-field', codeSearchQuery);
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => document.querySelector('#search-in-workspace .search-info')?.textContent?.includes('2 results in 2 files'));
-    await page.$eval('.lens-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('#search-input-field')?.value === ''
         && document.querySelectorAll('#search-in-workspace .theia-TreeNode').length === 0);
 
-    await page.click('.lens-agent-window__code-activity button[aria-label="Source Control"]');
-    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
-    await page.waitForSelector('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
-    await page.waitForSelector('.lens-agent-window__code-git-graph-title[aria-expanded="true"]');
-    await page.waitForSelector('.lens-agent-window__code-git-graph-host #scm-history-graph-widget');
-    await page.waitForSelector('.lens-agent-window__code-git-graph-host .scm-history-graph-row svg');
-    assert(!await page.$('.lens-agent-window__code .lm-Widget.lm-Panel'), 'Source Control Graph restored a Lumino panel in Electron');
-    await page.$eval('.lens-agent-window__code-git-graph-title', element => element.click());
-    await page.waitForSelector('.lens-agent-window__code-git-graph-title[aria-expanded="false"]');
-    await page.waitForSelector('.lens-agent-window__code-git-graph-host[hidden]');
-    await page.$eval('.lens-agent-window__code-git-graph-title', element => element.click());
-    await page.waitForSelector('.lens-agent-window__code-git-graph-host:not([hidden])');
-    await page.waitForSelector('.lens-agent-window__code-git-graph-host .scm-history-graph-row');
-    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await page.click('.poiesis-agent-window__code-activity button[aria-label="Source Control"]');
+    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
+    await page.waitForSelector('.poiesis-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await page.waitForSelector('.poiesis-agent-window__code-git-graph-title[aria-expanded="true"]');
+    await page.waitForSelector('.poiesis-agent-window__code-git-graph-host #scm-history-graph-widget');
+    await page.waitForSelector('.poiesis-agent-window__code-git-graph-host .scm-history-graph-row svg');
+    assert(!await page.$('.poiesis-agent-window__code .lm-Widget.lm-Panel'), 'Source Control Graph restored a Lumino panel in Electron');
+    await page.$eval('.poiesis-agent-window__code-git-graph-title', element => element.click());
+    await page.waitForSelector('.poiesis-agent-window__code-git-graph-title[aria-expanded="false"]');
+    await page.waitForSelector('.poiesis-agent-window__code-git-graph-host[hidden]');
+    await page.$eval('.poiesis-agent-window__code-git-graph-title', element => element.click());
+    await page.waitForSelector('.poiesis-agent-window__code-git-graph-host:not([hidden])');
+    await page.waitForSelector('.poiesis-agent-window__code-git-graph-host .scm-history-graph-row');
+    await page.click('.poiesis-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
     await waitForScmAction(page, 'UX.md', 'Stage Changes');
     await hoverScmResource(page, 'UX.md');
     for (const action of ['Open File', 'Discard Changes', 'Stage Changes']) {
         assert(await scmActionExists(page, 'UX.md', action), `Source Control action is missing in Electron: ${action}`);
     }
     await executeScmAction(page, 'UX.md', 'Stage Changes', 'staged');
-    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await page.click('.poiesis-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
     await waitForScmAction(page, 'UX.md', 'Unstage Changes');
     await executeScmAction(page, 'UX.md', 'Unstage Changes', 'unstaged');
-    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await page.click('.poiesis-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
     await waitForScmAction(page, 'UX.md', 'Stage Changes');
     restoreScmFixture();
 
-    await page.$eval('.lens-agent-window__code-activity button[aria-label="Extensions"]', element => element.click());
-    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Extensions');
-    await page.waitForSelector('.lens-agent-window__code-sidebar-host > *', { timeout: uiTimeout });
+    await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Extensions"]', element => element.click());
+    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Extensions');
+    await page.waitForSelector('.poiesis-agent-window__code-sidebar-host > *', { timeout: uiTimeout });
     await page.waitForFunction(() => document.querySelector('#vsx-extensions-search-bar input')?.value === '@builtin');
     await page.waitForFunction(() => (document.getElementById('vsx-extensions:builtin')?.querySelectorAll('.theia-TreeNode').length ?? 0) > 0);
-    assert(!await page.$('.lens-agent-window__customize-page'), 'Code Extensions opened Lens Customize in Electron');
+    assert(!await page.$('.poiesis-agent-window__customize-page'), 'Code Extensions opened Poiesis Customize in Electron');
     assert(reactUnmountWarnings.length === 0,
         `Code widget transitions synchronously unmounted a React root in Electron: ${reactUnmountWarnings.join('\n')}`);
 
-    await page.$eval('.lens-agent-window__code-activity-footer button[aria-label="Settings"]', element => element.click());
-    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
-    await page.waitForSelector('.lens-agent-window__code-editor-host #settings_widget', { timeout: uiTimeout });
-    assert(await page.$('.lens-agent-window__code'), 'Code Settings left Code mode in Electron');
-    await page.$eval('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close', element => element.click());
-    await page.waitForFunction(() => ![...document.querySelectorAll('.lens-agent-window__code-editor-tab-name')]
+    await page.$eval('.poiesis-agent-window__code-activity-footer button[aria-label="Settings"]', element => element.click());
+    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
+    await page.waitForSelector('.poiesis-agent-window__code-editor-host #settings_widget', { timeout: uiTimeout });
+    assert(await page.$('.poiesis-agent-window__code'), 'Code Settings left Code mode in Electron');
+    await page.$eval('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-close', element => element.click());
+    await page.waitForFunction(() => ![...document.querySelectorAll('.poiesis-agent-window__code-editor-tab-name')]
         .some(element => element.textContent?.trim() === 'Settings'));
 
-    await page.$eval('.lens-agent-window__code-activity button[aria-label="Explorer"]', element => element.click());
-    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Explorer');
+    await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Explorer"]', element => element.click());
+    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Explorer');
     await page.waitForSelector('#files .theia-FileStatNode', { timeout: uiTimeout });
     await clickExplorerFile(page, '.gitignore');
-    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 1
-        && document.querySelector('.lens-agent-window__code-editor-tab.active.preview .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === '.gitignore');
-    await page.waitForSelector('.lens-agent-window__code-editor-host .monaco-editor', { timeout: uiTimeout });
+    await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__code-editor-tab').length === 1
+        && document.querySelector('.poiesis-agent-window__code-editor-tab.active.preview .poiesis-agent-window__code-editor-tab-name')?.textContent?.trim() === '.gitignore');
+    await page.waitForSelector('.poiesis-agent-window__code-editor-host .monaco-editor', { timeout: uiTimeout });
 
-    await page.evaluate(() => {
-        const docs = [...document.querySelectorAll('#files .theia-FileStatNode')]
-            .find(element => element.textContent?.trim() === 'docs');
-        docs?.querySelector('.theia-ExpansionToggle')
-            ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
-    });
-    await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
-        .some(element => element.textContent?.trim() === 'UX.md'));
+    await expandExplorerDirectory(page, 'docs');
+    await revealExplorerFile(page, 'UX.md', 'end');
     await dragExplorerFileToTabs(page, 'UX.md');
-    await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 2
-        && document.querySelector('.lens-agent-window__code-editor-tab.active:not(.preview) .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
+    await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__code-editor-tab').length === 2
+        && document.querySelector('.poiesis-agent-window__code-editor-tab.active:not(.preview) .poiesis-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
 
-    const editorTabs = await page.$$eval('.lens-agent-window__code-editor-tab', tabs => tabs.map(tab => ({
-        name: tab.querySelector('.lens-agent-window__code-editor-tab-name')?.textContent?.trim(),
+    const editorTabs = await page.$$eval('.poiesis-agent-window__code-editor-tab', tabs => tabs.map(tab => ({
+        name: tab.querySelector('.poiesis-agent-window__code-editor-tab-name')?.textContent?.trim(),
         active: tab.classList.contains('active'),
         preview: tab.dataset.preview === 'true'
     })));
@@ -242,22 +233,22 @@ try {
     assert(editorTabs.some(tab => tab.name === 'UX.md' && tab.active && !tab.preview), 'Explorer drag did not create a pinned tab');
 
     const codeSaveFixtureBefore = readFileSync(scmFixturePath, 'utf8');
-    await page.click('.lens-agent-window__code-editor-host .monaco-editor .view-lines');
+    await page.click('.poiesis-agent-window__code-editor-host .monaco-editor .view-lines');
     await page.keyboard.type('x');
-    await page.waitForSelector('.lens-agent-window__code-editor-tab.active.dirty .lens-agent-window__code-editor-tab-dirty');
+    await page.waitForSelector('.poiesis-agent-window__code-editor-tab.active.dirty .poiesis-agent-window__code-editor-tab-dirty');
     await page.keyboard.down('Control');
     await page.keyboard.press('KeyS');
     await page.keyboard.up('Control');
-    await page.waitForFunction(() => !document.querySelector('.lens-agent-window__code-editor-tab.active.dirty'));
+    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code-editor-tab.active.dirty'));
     assert(readFileSync(scmFixturePath, 'utf8') !== codeSaveFixtureBefore, 'Ctrl+S did not write the Electron editor content');
     await page.keyboard.down('Control');
     await page.keyboard.press('KeyZ');
     await page.keyboard.up('Control');
-    await page.waitForSelector('.lens-agent-window__code-editor-tab.active.dirty .lens-agent-window__code-editor-tab-dirty');
+    await page.waitForSelector('.poiesis-agent-window__code-editor-tab.active.dirty .poiesis-agent-window__code-editor-tab-dirty');
     await page.keyboard.down('Control');
     await page.keyboard.press('KeyS');
     await page.keyboard.up('Control');
-    await page.waitForFunction(() => !document.querySelector('.lens-agent-window__code-editor-tab.active.dirty'));
+    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code-editor-tab.active.dirty'));
     assert(readFileSync(scmFixturePath, 'utf8') === codeSaveFixtureBefore, 'Ctrl+S did not restore the Electron editor fixture');
 
     console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify({ userAgent, windowTitle, initial, code, editorTabs }, null, 2)}`);
@@ -320,7 +311,7 @@ async function executeScmAction(page, label, action, expected) {
     while (Date.now() < deadline) {
         if (scmFixtureHasState(expected)) return;
         await waitForScmAction(page, label, action);
-        await clickScmAction(page, label, action);
+        if (!await clickScmAction(page, label, action)) continue;
         for (let attempt = 0; attempt < 10; attempt++) {
             await new Promise(resolve => setTimeout(resolve, 100));
             if (scmFixtureHasState(expected)) return;
@@ -374,52 +365,36 @@ async function scmActionExists(page, label, action) {
 }
 
 async function clickScmAction(page, label, action) {
-    const handle = await page.evaluateHandle((fileLabel, actionTitle) => {
+    return page.evaluate((fileLabel, actionTitle) => {
         const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
             .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
         const target = [...(row?.querySelectorAll('[title]') ?? [])]
             .find(element => element.getAttribute('title') === actionTitle);
-        if (!(target instanceof HTMLElement)) throw new Error(`${actionTitle} was not found for ${fileLabel}`);
-        return target;
+        if (!(target instanceof HTMLElement)) return false;
+        target.click();
+        return true;
     }, label, action);
-    const element = handle.asElement();
-    if (!element) throw new Error(`${action} on ${label} is not an element`);
-    try {
-        await element.hover();
-        await new Promise(resolve => setTimeout(resolve, 150));
-        const stable = await element.evaluate(target => target.isConnected);
-        if (!stable) throw new Error(`${action} on ${label} changed before it could be clicked`);
-        await element.click({ delay: 50 });
-        await element.evaluate(target => target.dispatchEvent(new MouseEvent('click', {
-            bubbles: true,
-            cancelable: true,
-            button: 0,
-            view: window
-        })));
-    } finally {
-        await handle.dispose();
-    }
 }
 
 function assert(condition, message) {
     if (!condition) throw new Error(message);
 }
 
-function readLensState() {
-    const content = document.querySelector('.lens-agent-window__content');
+function readPoiesisState() {
+    const content = document.querySelector('.poiesis-agent-window__content');
     return {
         mode: content?.getAttribute('data-mode'),
-        sessionRailVisible: Boolean(document.querySelector('.lens-agent-window__rail')),
-        agentComposerVisible: Boolean(document.querySelector('.lens-agent-window__composer textarea')),
-        codeSidebarVisible: Boolean(document.querySelector('.lens-agent-window__code-sidebar-host')),
-        codeEditorVisible: Boolean(document.querySelector('.lens-agent-window__code-editor-host')),
-        codeActivityVisible: Boolean(document.querySelector('.lens-agent-window__code-activity')),
-        codeTerminalVisible: Boolean(document.querySelector('.lens-agent-window__code-terminal-host > *')),
-        codeStatusVisible: Boolean(document.querySelector('.lens-agent-window__code-status')),
-        codeLuminoPanelCount: document.querySelectorAll('.lens-agent-window__code .lm-Widget.lm-Panel').length,
-        codeLuminoTabContainerCount: document.querySelectorAll('.lens-agent-window__code .lm-TabBar-content-container').length,
-        applicationShellVisible: Boolean(document.querySelector('.lens-agent-window__code #theia-app-shell')),
-        legacyChangesVisible: Boolean(document.querySelector('.lens-changes, #status-bar-lens-changes'))
+        sessionRailVisible: Boolean(document.querySelector('.poiesis-agent-window__rail')),
+        agentComposerVisible: Boolean(document.querySelector('.poiesis-agent-window__composer textarea')),
+        codeSidebarVisible: Boolean(document.querySelector('.poiesis-agent-window__code-sidebar-host')),
+        codeEditorVisible: Boolean(document.querySelector('.poiesis-agent-window__code-editor-host')),
+        codeActivityVisible: Boolean(document.querySelector('.poiesis-agent-window__code-activity')),
+        codeTerminalVisible: Boolean(document.querySelector('.poiesis-agent-window__code-terminal-host > *')),
+        codeStatusVisible: Boolean(document.querySelector('.poiesis-agent-window__code-status')),
+        codeLuminoPanelCount: document.querySelectorAll('.poiesis-agent-window__code .lm-Widget.lm-Panel').length,
+        codeLuminoTabContainerCount: document.querySelectorAll('.poiesis-agent-window__code .lm-TabBar-content-container').length,
+        applicationShellVisible: Boolean(document.querySelector('.poiesis-agent-window__code #theia-app-shell')),
+        legacyChangesVisible: Boolean(document.querySelector('.poiesis-changes, #status-bar-poiesis-changes'))
     };
 }
 
@@ -435,10 +410,49 @@ async function clickByText(page, selector, text) {
     }, { selector, text });
 }
 
+async function expandExplorerDirectory(page, label) {
+    await page.evaluate(() => {
+        const files = document.getElementById('files');
+        if (!files) return;
+        for (const element of [files, ...files.querySelectorAll('*')]) {
+            if (element instanceof HTMLElement && element.scrollHeight > element.clientHeight) {
+                element.scrollTo({ top: 0 });
+            }
+        }
+    });
+    await page.waitForFunction(directoryLabel => [...document.querySelectorAll('#files .theia-FileStatNode')]
+        .some(element => element.getAttribute('title')?.endsWith(directoryLabel)), {}, label);
+    await page.evaluate(directoryLabel => {
+        const directory = [...document.querySelectorAll('#files .theia-FileStatNode')]
+            .find(element => element.getAttribute('title')?.endsWith(directoryLabel));
+        directory?.querySelector('.theia-ExpansionToggle.theia-mod-collapsed')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    }, label);
+}
+
+async function revealExplorerFile(page, label, align = 'start') {
+    const deadline = Date.now() + uiTimeout;
+    while (Date.now() < deadline) {
+        if (await page.evaluate(fileLabel => [...document.querySelectorAll('#files .theia-FileStatNode')]
+            .some(element => element.getAttribute('title')?.endsWith(fileLabel)), label)) return;
+        await page.evaluate(edge => {
+            const files = document.getElementById('files');
+            if (!files) return;
+            for (const element of [files, ...files.querySelectorAll('*')]) {
+                if (element instanceof HTMLElement && element.scrollHeight > element.clientHeight) {
+                    element.scrollTo({ top: edge === 'end' ? element.scrollHeight : 0 });
+                }
+            }
+        }, align);
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error(`${label} was not revealed in Explorer`);
+}
+
 async function clickExplorerFile(page, label) {
     await page.evaluate(fileLabel => {
         const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
-            .find(element => element.textContent?.trim() === fileLabel);
+            .find(element => element.getAttribute('title')?.endsWith(fileLabel));
         if (!(file instanceof HTMLElement)) throw new Error(`${fileLabel} was not found in Explorer`);
         file.scrollIntoView({ block: 'center' });
         file.click();
@@ -448,8 +462,8 @@ async function clickExplorerFile(page, label) {
 async function dragExplorerFileToTabs(page, label) {
     const points = await page.evaluate(fileLabel => {
         const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
-            .find(element => element.textContent?.trim() === fileLabel);
-        const tabs = document.querySelector('.lens-agent-window__code-editor-tabs');
+            .find(element => element.getAttribute('title')?.endsWith(fileLabel));
+        const tabs = document.querySelector('.poiesis-agent-window__code-editor-tabs');
         if (!(file instanceof HTMLElement) || !(tabs instanceof HTMLElement)) {
             throw new Error(`Could not drag ${fileLabel} to the editor tabs`);
         }
@@ -465,7 +479,7 @@ async function dragExplorerFileToTabs(page, label) {
     await page.mouse.down();
     await page.mouse.move(points.source.x + 12, points.source.y, { steps: 4 });
     await page.mouse.move(points.target.x, points.target.y, { steps: 16 });
-    assert(await page.$eval('.lens-agent-window__code-editor-tabs', tabs => tabs.classList.contains('drop-target')),
+    assert(await page.$eval('.poiesis-agent-window__code-editor-tabs', tabs => tabs.classList.contains('drop-target')),
         `${label} drag did not enter the tab drop target in Electron`);
     await page.mouse.up();
 }
@@ -495,14 +509,14 @@ async function findWorkbenchPage(browser, timeout) {
                 return {
                     url: page.url(),
                     title: await page.title(),
-                    hasLensHost: Boolean(await page.$('#lens-window-host')),
-                    hasLensWindow: Boolean(await page.$('.lens-agent-window'))
+                    hasPoiesisHost: Boolean(await page.$('#poiesis-window-host')),
+                    hasPoiesisWindow: Boolean(await page.$('.poiesis-agent-window'))
                 };
             } catch {
                 return { url: page.url(), unavailable: true };
             }
         }));
-        const workbenchIndex = observations.findIndex(observation => observation.hasLensHost || observation.hasLensWindow);
+        const workbenchIndex = observations.findIndex(observation => observation.hasPoiesisHost || observation.hasPoiesisWindow);
         if (workbenchIndex >= 0) return pages[workbenchIndex];
         await delay(500);
     }

@@ -1,8 +1,8 @@
 {
-  "name": "lens-theia-spike",
+  "name": "poiesis-theia-spike",
   "version": "0.0.0",
   "private": true,
-  "description": "A focused Eclipse Theia technical spike for the Lens core UX.",
+  "description": "A focused Eclipse Theia technical spike for the Poiesis core UX.",
   "engines": {
     "node": ">=20 <25",
     "npm": ">=10"
@@ -13,19 +13,19 @@
     "electron-app"
   ],
   "scripts": {
-    "build": "npm run compile --workspace=@lens/theia-agent-window && npm run build --workspace=@lens/theia-browser-app",
-    "build:electron": "npm run compile --workspace=@lens/theia-agent-window && npm run build --workspace=@lens/theia-electron-app",
-    "clean": "npm run clean --workspace=@lens/theia-agent-window && npm run clean --workspace=@lens/theia-browser-app && npm run clean --workspace=@lens/theia-electron-app",
+    "build": "npm run compile --workspace=@poiesis/theia-agent-window && npm run build --workspace=@poiesis/theia-browser-app",
+    "build:electron": "npm run compile --workspace=@poiesis/theia-agent-window && npm run build --workspace=@poiesis/theia-electron-app",
+    "clean": "npm run clean --workspace=@poiesis/theia-agent-window && npm run clean --workspace=@poiesis/theia-browser-app && npm run clean --workspace=@poiesis/theia-electron-app",
     "download:plugins": "theia download:plugins",
-    "rebuild": "npm run rebuild --workspace=@lens/theia-browser-app",
-    "rebuild:electron": "npm run rebuild --workspace=@lens/theia-electron-app",
+    "rebuild": "npm run rebuild --workspace=@poiesis/theia-browser-app",
+    "rebuild:electron": "npm run rebuild --workspace=@poiesis/theia-electron-app",
     "shots:design": "node scripts/capture-design-shots.mjs",
     "smoke:electron": "node scripts/smoke-electron.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
-    "start": "npm run start --workspace=@lens/theia-browser-app",
+    "start": "npm run start --workspace=@poiesis/theia-browser-app",
     "start:background": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-background.ps1",
     "stop:background": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-background.ps1",
-    "start:electron": "npm run start --workspace=@lens/theia-electron-app --",
+    "start:electron": "npm run start --workspace=@poiesis/theia-electron-app --",
     "validate:source": "node scripts/validate-source.mjs"
   },
   "devDependencies": {

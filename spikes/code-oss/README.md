@@ -18,14 +18,14 @@ Visual Studio Build Tools は不要です。
 PowerShell でこのディレクトリへ移動して実行します。
 
 ```powershell
-cd C:\Users\owner\github\lens\spikes\code-oss
+cd C:\Users\owner\github\poiesis\spikes\code-oss
 npm install
 npm run validate:source
 npm run build
 npm run package
 ```
 
-`npm run package` はビルド済み拡張を `artifacts/lens-code-oss-spike.vsix` に作成します。`artifacts/` は生成物のため Git 管理対象外です。
+`npm run package` はビルド済み拡張を `artifacts/poiesis-code-oss-spike.vsix` に作成します。`artifacts/` は生成物のため Git 管理対象外です。
 
 ## VSCodium host の取得
 
@@ -43,18 +43,18 @@ GitHub の最新 VSCodium Windows x64 ZIP を取得して `.runtime/vscodium/` �
 npm start
 ```
 
-`lens` Repository を新しい VSCodium Extension Development Host で開きます。起動後、拡張が次を自動的に行います。
+`poiesis` Repository を新しい VSCodium Extension Development Host で開きます。起動後、拡張が次を自動的に行います。
 
 1. `spikes/code-oss/sample-src/auth-service.ts` を左側の Editor group に開く。
 2. Agent Window を右側の Webview Panel に開く。
 
-Changesは起動時に開きません。Activity Barの`IDE Changes`またはCommand Paletteの`Lens: Changes を開く`からユーザーが明示的に開きます。
+Changesは起動時に開きません。Activity Barの`IDE Changes`またはCommand Paletteの`Poiesis: Changes を開く`からユーザーが明示的に開きます。
 
 終了するには VSCodium ウィンドウを閉じます。`npm start` はウィンドウが閉じるまで待機します。
 
 ## 手動確認
 
-1. Window title に `lens` が表示され、Explorer で Repository が開いていることを確認する。
+1. Window title に `poiesis` が表示され、Explorer で Repository が開いていることを確認する。
 2. `auth-service.ts` の Editor と `Agent Window` が横並びであることを確認する。
 3. Agent Windowに「質問」だけがあり、Change SetやSemantic Diffがないことを確認する。
 4. 「質問」でモック質問欄が展開することを確認する。
@@ -64,7 +64,7 @@ Changesは起動時に開きません。Activity Barの`IDE Changes`またはCom
 8. 「根拠コードを開く」で`auth-service.ts`の12行目が選択されることを確認する。
 9. Terminal、Source Control、TypeScript hover / completion が既存UIから利用できることを確認する。
 
-Command Palette の `Lens: Agent Window を開く` で Agent Window を再表示できます。
+Command Palette の `Poiesis: Agent Window を開く` で Agent Window を再表示できます。
 
 ## ヘッドレス UI スモークテスト
 
@@ -76,12 +76,12 @@ npm run smoke:ui
 
 このスクリプトは専用 profile で VSCodium を起動し、Chrome DevTools Protocol 経由で次を検証します。
 
-- `lens` Repository、コード Editor、Agent Window の表示。
+- `poiesis` Repository、コード Editor、Agent Window の表示。
 - Agent Windowが「質問」だけを持つことと、質問欄の展開。
 - Changesの初期非表示、Command PaletteからのWebview View表示。
 - 同一Change SetのCode Diff / Semantic Diff切り替えと`vscode.diff`の起動。
 - Evidence から `auth-service.ts` 12 行目へのジャンプ。
-- 統合 Terminal で `LENS_TERMINAL_OK` をファイルへ出力する実コマンド。
+- 統合 Terminal で `POIESIS_TERMINAL_OK` をファイルへ出力する実コマンド。
 - built-in Git extension の起動、Repository と working tree changes の取得。
 - built-in TypeScript language-features extension の起動と hover provider の応答。
 

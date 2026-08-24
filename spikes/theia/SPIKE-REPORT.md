@@ -17,7 +17,7 @@ Agent Windowは右側の独立`ReactWidget`としてChat / Task result /「質�
 | 1 | Repositoryを開ける | **達成** | `browser-app/package.json`のstart commandが`spikes/theia/`をWorkspaceとして開く。HTTP 200とWorkspace内ファイルのEditor表示を再確認した。使用API: `WorkspaceService.tryGetRoots()`、`WorkspaceService.workspace`。 |
 | 2 | Editorを表示する | **達成** | `sample-src/auth-service.ts`と既存Diff Editorを表示し、Evidence操作後に`auth-service.ts` tabとMonacoのactive line `12`をCDPで確認した。使用API: `EditorManager.open()`。 |
 | 3 |独自Agent Windowを表示する | **達成** | `agent-window-widget.tsx`を右areaへ起動時表示。初期actionは`質問`の1件だけで、Agent Window sourceとDOMにChange Set / Semantic Diff表示がないことを検証した。使用API: `ReactWidget`、`AbstractViewContribution`、`FrontendApplicationContribution`。 |
-| 4 | 独自Changes領域をユーザー操作で開ける | **達成** | `changes-widget.tsx`をAgent Windowとは別の底部`ReactWidget`として登録。起動直後はDOMに存在せず、Command Paletteの`Lens: Open IDE Changes`を実行後に表示された。使用API: `AbstractViewContribution.openView()`、`CommandRegistry`、ApplicationShell bottom area。 |
+| 4 | 独自Changes領域をユーザー操作で開ける | **達成** | `changes-widget.tsx`をAgent Windowとは別の底部`ReactWidget`として登録。起動直後はDOMに存在せず、Command Paletteの`Poiesis: Open IDE Changes`を実行後に表示された。使用API: `AbstractViewContribution.openView()`、`CommandRegistry`、ApplicationShell bottom area。 |
 | 5 | 同じChange SetをCode Diff / Semantic Diffで確認する | **達成** | Changes内のtabで`task-auth-redis-001`の2表現を切り替えた。Code Diffは`DiffUris.encode()`と`EditorManager.open()`で既存Monaco Diff Editorを開き、CDPでdiff editor DOMと`Change Set: auth-service.ts` tabを確認した。Changes内にEditorは再実装していない。 |
 | 6 | Semantic DiffからEvidenceへジャンプする | **達成** | ChangesのSemantic Diffから`sample-src/auth-service.ts`を開き、status、Editor tab、Monaco active line `12`を確認した。使用API: `EditorManager.open(uri, { selection })`。 |
 | 7 | Terminal / Git / LSPの既存機能を確認する | **一部達成** | 前回確認を引き継ぐ。Terminal / SCM / Git / TypeScript built-in pluginsを構成・起動し、Terminal tabとSource Control surfaceを確認済み。Terminal command実行、Git stage操作、LSP hover / diagnosticsはTheia側では未実施のため一部達成のままとする。 |
@@ -45,7 +45,7 @@ Agent Windowは右側の独立`ReactWidget`としてChat / Task result /「質�
 - `agent-window/src/browser/changes-contribution.ts`
   - bottom areaへ登録。
   - `FrontendApplicationContribution`には登録しないため自動表示しない。
-  - View menuのtoggleに加え、`Lens: Open IDE Changes` commandを提供。
+  - View menuのtoggleに加え、`Poiesis: Open IDE Changes` commandを提供。
 - `sample-src/auth-service.before.ts` / `auth-service.ts`
   - 同じダミーChange Setのbefore / after。
 
@@ -102,7 +102,7 @@ Code DiffをChanges Widget内へ埋め込まず、`DiffUris`で既存Monaco Diff
 - Native esbuildは管理対象sandboxでWorkspaceを読めなかったため、前回追加したwebpack build pathを継続利用した。
 - `@vscode/windows-ca-certs`はSpectre libraries不足でrebuildできないため、optional moduleをwebpack aliasで無効化した。
 - npm / node-gyp / Theia configの書き込み先はspike配下へ固定した。
-- Changesの自動生成toggle command名はCommand Palette automationで安定しなかった。製品としても明示的な入口になる`Lens: Open IDE Changes` commandを追加して解決した。
+- Changesの自動生成toggle command名はCommand Palette automationで安定しなかった。製品としても明示的な入口になる`Poiesis: Open IDE Changes` commandを追加して解決した。
 - Evidence操作後はbottom Widgetがfocusを持つ場合があり、Monacoのactive-line classとEditor tabの両方をスモーク証跡として確認した。
 
 npm auditの52件は前回から未解消であり、採用時はdependency更新とproduction dependencyの監査が必要。
@@ -128,7 +128,7 @@ TheiaはbrowserとElectron targetを持ち、今回のfrontend Widgetは概ね�
 ## 再現手順
 
 ```powershell
-cd C:\Users\owner\github\lens\spikes\theia
+cd C:\Users\owner\github\poiesis\spikes\theia
 $env:PUPPETEER_SKIP_DOWNLOAD = 'true'
 npm install
 npm run download:plugins

@@ -15,7 +15,7 @@ await mkdir(runtimeDir, { recursive: true });
 const releaseResponse = await fetch('https://api.github.com/repos/VSCodium/vscodium/releases/latest', {
     headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'lens-code-oss-spike'
+        'User-Agent': 'poiesis-code-oss-spike'
     }
 });
 if (!releaseResponse.ok) {
@@ -31,7 +31,7 @@ if (!asset) {
 const archive = resolve(runtimeDir, asset.name);
 console.log(`Downloading ${asset.name} (${Math.round(asset.size / 1024 / 1024)} MiB)...`);
 const assetResponse = await fetch(asset.browser_download_url, {
-    headers: { 'User-Agent': 'lens-code-oss-spike' },
+    headers: { 'User-Agent': 'poiesis-code-oss-spike' },
     redirect: 'follow'
 });
 if (!assetResponse.ok || !assetResponse.body) {

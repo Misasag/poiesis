@@ -63,7 +63,7 @@ export class CliAgentProvider implements AgentProvider {
                 return session;
             }
         } catch (error) {
-            console.warn('[Lens] Codex detection failed; using MockAgentProvider.', error);
+            console.warn('[Poiesis] Codex detection failed; using MockAgentProvider.', error);
         }
         return this.mockProvider.createSession(input);
     }
@@ -214,7 +214,7 @@ export class CliAgentProvider implements AgentProvider {
     }
 
     protected implementerPrompt(request: string): string {
-        return `You are the Lens implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}`;
+        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}`;
     }
 
     protected errorMessage(error: unknown): string {

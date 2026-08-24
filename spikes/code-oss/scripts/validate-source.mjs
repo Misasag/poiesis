@@ -9,7 +9,7 @@ const requiredSourceTokens = [
     'createWebviewPanel',
     'registerWebviewViewProvider',
     "vscode.commands.executeCommand(\n            'vscode.diff'",
-    'lens.changesView',
+    'poiesis.changesView',
     'task-auth-redis-001',
     'Code Diff',
     'Semantic Diff',
@@ -35,13 +35,13 @@ for (const forbidden of [removedAgentAction, 'Semantic Diff', 'Change Set', 'ope
 if (!manifest.activationEvents.includes('onStartupFinished')) {
     throw new Error('The extension must activate after workbench startup.');
 }
-if (!manifest.activationEvents.includes('onView:lens.changesView')) {
+if (!manifest.activationEvents.includes('onView:poiesis.changesView')) {
     throw new Error('The Changes Webview View activation event is missing.');
 }
-if (!manifest.contributes.viewsContainers?.activitybar?.some(container => container.id === 'lensChanges')) {
+if (!manifest.contributes.viewsContainers?.activitybar?.some(container => container.id === 'poiesisChanges')) {
     throw new Error('The Changes Activity Bar container is missing.');
 }
-if (!manifest.contributes.views?.lensChanges?.some(view => view.id === 'lens.changesView' && view.type === 'webview')) {
+if (!manifest.contributes.views?.poiesisChanges?.some(view => view.id === 'poiesis.changesView' && view.type === 'webview')) {
     throw new Error('The Changes Webview View contribution is missing.');
 }
 if (sample.split(/\r?\n/).length < 12 || !baseline.includes('Database')) {

@@ -15,7 +15,7 @@ export class DesignShotContribution implements FrontendApplicationContribution {
 
     onStart(): void {
         this.themeService.onDidColorThemeChange(event => {
-            document.documentElement.dataset.lensDesignTheme = event.newTheme.id;
+            document.documentElement.dataset.poiesisDesignTheme = event.newTheme.id;
             if (!this.applyingTheme && event.newTheme.id !== 'dark') {
                 queueMicrotask(() => this.applyDarkTheme());
             }
@@ -32,7 +32,7 @@ export class DesignShotContribution implements FrontendApplicationContribution {
                 this.themeService.setCurrentTheme('light', false);
             }
             this.themeService.setCurrentTheme('dark', false);
-            document.documentElement.dataset.lensDesignTheme = this.themeService.getCurrentTheme().id;
+            document.documentElement.dataset.poiesisDesignTheme = this.themeService.getCurrentTheme().id;
         } finally {
             this.applyingTheme = false;
         }

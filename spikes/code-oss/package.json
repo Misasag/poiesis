@@ -1,10 +1,10 @@
 {
-  "name": "lens-code-oss-spike",
-  "displayName": "Lens Agent Window Spike",
+  "name": "poiesis-code-oss-spike",
+  "displayName": "Poiesis",
   "description": "Code-OSS/VSCodium technical spike for an Agent-first IDE workflow.",
   "version": "0.0.0",
   "private": true,
-  "publisher": "lens-spike",
+  "publisher": "poiesis-spike",
   "license": "MIT",
   "engines": {
     "vscode": "^1.95.0"
@@ -14,36 +14,36 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onCommand:lens.openAgentWindow",
-    "onCommand:lens.openChanges",
-    "onView:lens.changesView"
+    "onCommand:poiesis.openAgentWindow",
+    "onCommand:poiesis.openChanges",
+    "onView:poiesis.changesView"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "lens.openAgentWindow",
-        "title": "Lens: Agent Window を開く"
+        "command": "poiesis.openAgentWindow",
+        "title": "Poiesis: Agent Window を開く"
       },
       {
-        "command": "lens.openChanges",
-        "title": "Lens: Changes を開く"
+        "command": "poiesis.openChanges",
+        "title": "Poiesis: Changes を開く"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "lensChanges",
+          "id": "poiesisChanges",
           "title": "IDE Changes",
           "icon": "media/changes.svg"
         }
       ]
     },
     "views": {
-      "lensChanges": [
+      "poiesisChanges": [
         {
           "type": "webview",
-          "id": "lens.changesView",
+          "id": "poiesis.changesView",
           "name": "Changes"
         }
       ]
@@ -52,7 +52,7 @@
   "scripts": {
     "build": "tsc -p .",
     "prepackage": "node scripts/prepare-package.mjs",
-    "package": "npm run build && vsce package --no-dependencies --out artifacts/lens-code-oss-spike.vsix",
+    "package": "npm run build && vsce package --no-dependencies --out artifacts/poiesis-code-oss-spike.vsix",
     "download:host": "node scripts/download-vscodium.mjs",
     "start": "node scripts/start-host.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",

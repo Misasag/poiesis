@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lens UI Spec — Cursor-style Agent Window</title>
+  <title>Poiesis UI Spec — Cursor-style Agent Window</title>
   <style>
     :root {
       color-scheme: light;
@@ -1839,7 +1839,7 @@
 <body>
   <header class="page-header">
     <div>
-      <h1>Lens UI Spec — Cursor-style Agent Window</h1>
+      <h1>Poiesis UI Spec — Cursor-style Agent Window</h1>
       <p>Local Agentを中心とした完成仕様・操作可能な画面見本</p>
     </div>
     <nav id="screen-tabs" class="screen-tabs" aria-label="画面状態"></nav>
@@ -1928,7 +1928,7 @@
 
       <section class="document-section">
         <h3>調査根拠</h3>
-        <p>Cursor 3.11の公式Changelogにある再設計後のproject／repo pickerを基準にする。現行構造はNo Repo、On This Computer、Cloudのgroup、独立したRun on、branch picker、picker上部の検索である。Lensはこの情報構造を保ちつつ、未実装のCloud／Remote Machines／Worktreeを表示しない。</p>
+        <p>Cursor 3.11の公式Changelogにある再設計後のproject／repo pickerを基準にする。現行構造はNo Repo、On This Computer、Cloudのgroup、独立したRun on、branch picker、picker上部の検索である。Poiesisはこの情報構造を保ちつつ、未実装のCloud／Remote Machines／Worktreeを表示しない。</p>
         <ul>
           <li><a href="https://cursor.com/changelog/side-chat">Cursor 3.11 — Redesigned project and repo pickers</a></li>
           <li><a href="https://forum.cursor.com/t/enable-git-commands-in-the-agents-window/164571/7">Cursor 3.13.10 UI確認 — No Repo／On This PC／Use Existing／New Folder</a></li>
@@ -2030,7 +2030,7 @@
             <tr><td><span class="badge decided">決定</span></td><td>Agent／ResultsをSession内で切り替える</td><td>同じSessionの独立タブとし、会話を共有しない</td></tr>
             <tr><td><span class="badge decided">決定</span></td><td>Codeは同じWindowのモード切替</td><td>Codeを押すと左サイドバーの内容と中央表示を切り替える。Code中はAgent／Resultsタブを出さず、もう一度Codeを押したときだけ直前の表示へ戻す</td></tr>
             <tr><td><span class="badge decided">決定</span></td><td>左サイドバーの席は一つ</td><td>Agent／ResultsのSession一覧とCodeのFiles／Source Controlを同時に表示しない</td></tr>
-            <tr><td><span class="badge decided">決定</span></td><td>設定は共通の左下の歯車から開く</td><td>中央にTheia / ワークスペース設定を開き、Sessionは変えない。Code中はEditorへ設定タブを追加し、第一完成点ではLens専用設定画面を作らない</td></tr>
+            <tr><td><span class="badge decided">決定</span></td><td>設定は共通の左下の歯車から開く</td><td>中央にTheia / ワークスペース設定を開き、Sessionは変えない。Code中はEditorへ設定タブを追加し、第一完成点ではPoiesis専用設定画面を作らない</td></tr>
             <tr><td><span class="badge decided">決定</span></td><td>Files／GitはCodeの補助ペイン</td><td>Codeへ切り替えた左サイドバー内でFilesとSource Controlを切り替え、コードとDiffは中央Editorへ表示する</td></tr>
             <tr><td><span class="badge decided">決定</span></td><td>FilesにCompact Composerを置かない</td><td>ファイル閲覧・編集に集中し、追加依頼は選択状態を保持してAgentへ戻って行う</td></tr>
             <tr><td><span class="badge decided">決定</span></td><td>1 SessionにN実行Taskを紐づける</td><td>Taskの開始・終了・キャンセル、Baseline、Change Setはアプリが独立して保存する</td></tr>
@@ -2083,7 +2083,7 @@
       { id: "16", x: 10.5, y: 76.0, title: "Archived", summary: "終了した会話を通常一覧から退避する。", action: "展開／復元／完全削除", result: "Archived内だけで復元と確認付き永久削除を提供する。", state: "archiveでは会話・Task・Resultsを保持し、永久削除でまとめて破棄する。" },
       { id: "17", x: 18.0, y: 36.0, title: "Session menu", summary: "行に紐づく整理操作を開く。", action: "三点ボタン／キーボード", result: "通常はpin、rename、archive。Archivedではrestore、永久削除へ切り替える。", state: "実行中Sessionではarchiveをdisabledにする。" }
     ];
-    const SETTINGS_ITEM = { id: "13", x: 10.5, y: 94.0, collapsedX: 6.0, title: "設定", summary: "Session一覧とCodeで共通の左サイドバー下部の歯車。", action: "歯車をクリック", result: "中央にTheia / ワークスペース設定を開く。Code中はEditorに設定タブを追加する。", state: "選択SessionとEditorの既存tabを保持する。第一完成点ではLens専用設定画面を作らない。" };
+    const SETTINGS_ITEM = { id: "13", x: 10.5, y: 94.0, collapsedX: 6.0, title: "設定", summary: "Session一覧とCodeで共通の左サイドバー下部の歯車。", action: "歯車をクリック", result: "中央にTheia / ワークスペース設定を開く。Code中はEditorに設定タブを追加する。", state: "選択SessionとEditorの既存tabを保持する。第一完成点ではPoiesis専用設定画面を作らない。" };
 
     const SCREENS = [
       {
@@ -2197,14 +2197,14 @@
     let mockSidebarWidth = 258;
     let selectedSidebarSessionId = "auth";
     let newAgentActive = false;
-    let newAgentRepositoryId = "lens";
+    let newAgentRepositoryId = "poiesis";
     let newAgentBranch = "main";
     let repositoryPickerOpen = false;
     let branchPickerOpen = false;
     let repositorySearchQuery = "";
 
     const LOCAL_REPOSITORIES = [
-      { id: "lens", name: "lens", path: "C:\\Users\\owner\\github\\lens", branch: "main", recent: true },
+      { id: "poiesis", name: "poiesis", path: "C:\\Users\\owner\\github\\poiesis", branch: "main", recent: true },
       { id: "shared-services", name: "shared-services", path: "C:\\Users\\owner\\github\\shared-services", branch: "main", recent: true },
       { id: "design-system", name: "design-system", path: "C:\\Users\\owner\\github\\design-system", branch: "develop", recent: false }
     ];
@@ -2369,7 +2369,7 @@
           </div>
           <div class="agent-mock__sessions">
             <div class="agent-mock__workspace-group">
-              <button class="agent-mock__workspace-title" type="button" data-workspace-toggle aria-expanded="${workspaceSessionsOpen}">${icon("folder")}<span>lens</span><span class="agent-mock__workspace-scope">Local · main</span><span class="chevron">${icon(workspaceSessionsOpen ? "chevron-down" : "chevron-right")}</span></button>
+              <button class="agent-mock__workspace-title" type="button" data-workspace-toggle aria-expanded="${workspaceSessionsOpen}">${icon("folder")}<span>poiesis</span><span class="agent-mock__workspace-scope">Local · main</span><span class="chevron">${icon(workspaceSessionsOpen ? "chevron-down" : "chevron-right")}</span></button>
               ${workspaceSessionsOpen ? `
                 ${pinned.length ? `<div class="agent-mock__section-label">Pinned</div>${pinned.map(renderSidebarSession).join("")}` : ""}
                 ${recent.length ? `<div class="agent-mock__section-label">Recent</div>${recent.map(renderSidebarSession).join("")}` : ""}
@@ -2392,7 +2392,7 @@
       const repository = selectedNewAgentRepository();
       const contextLabel = newAgentActive
         ? (newAgentRepositoryId === "none" ? "No Repo / This Computer" : `${repository?.name ?? "Select repository"} / ${newAgentBranch}`)
-        : "lens / main";
+        : "poiesis / main";
       return `
         <header class="agent-mock__header">
           <div class="agent-mock__context">
@@ -2513,7 +2513,7 @@
           <button class="agent-mock__code-search" type="button">${icon("search")}<span>Search code</span><small>Ctrl+Shift+F</small></button>
           <div class="agent-mock__code-pane-body">
             ${filesActive ? `
-              <div class="agent-mock__pane-heading"><span>lens</span><span>${icon("more")}</span></div>
+              <div class="agent-mock__pane-heading"><span>poiesis</span><span>${icon("more")}</span></div>
               <div class="agent-mock__tree">
                 <div class="agent-mock__tree-row">${icon("chevron-down")}${icon("folder")}<span>src</span></div>
                 <div class="agent-mock__tree-row depth-1">${icon("chevron-down")}${icon("folder")}<span>auth</span></div>

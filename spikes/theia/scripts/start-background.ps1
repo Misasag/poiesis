@@ -16,7 +16,7 @@ function Test-ServerReady {
 }
 
 if (Test-ServerReady) {
-    Write-Host "Lens is already running at $serverUrl"
+    Write-Host "Poiesis is already running at $serverUrl"
     exit 0
 }
 
@@ -38,7 +38,7 @@ $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
 
 $serverProcess = [System.Diagnostics.Process]::Start($startInfo)
 if (-not $serverProcess) {
-    throw 'Failed to start the Lens server process.'
+    throw 'Failed to start the Poiesis server process.'
 }
 
 [System.IO.File]::WriteAllText($pidFile, [string]$serverProcess.Id)
@@ -46,7 +46,7 @@ if (-not $serverProcess) {
 for ($attempt = 0; $attempt -lt 45; $attempt++) {
     Start-Sleep -Seconds 1
     if (Test-ServerReady) {
-        Write-Host "Lens started at $serverUrl (launcher PID $($serverProcess.Id))."
+        Write-Host "Poiesis started at $serverUrl (launcher PID $($serverProcess.Id))."
         Write-Host "Log: $logFile"
         exit 0
     }
@@ -62,4 +62,4 @@ $recentLog = if (Test-Path -LiteralPath $logFile) {
     'No server log was created.'
 }
 
-throw "Lens did not become ready at $serverUrl`n$recentLog"
+throw "Poiesis did not become ready at $serverUrl`n$recentLog"

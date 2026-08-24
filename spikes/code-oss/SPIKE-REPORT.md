@@ -14,7 +14,7 @@ Agent Windowは従来どおりEditor groupのWebview Panelだが、Chat / Task r
 - Agent Window: `vscode.window.createWebviewPanel()`、`ViewColumn.Two`。
 - Changes container: `contributes.viewsContainers.activitybar`。
 - Changes view: `type: webview`と`registerWebviewViewProvider()`。
-- User entry: Activity Barの`IDE Changes`と`Lens: Changes を開く` command。
+- User entry: Activity Barの`IDE Changes`と`Poiesis: Changes を開く` command。
 - Code Diff: built-in command `vscode.diff`。
 - Evidence: `workspace.openTextDocument()`と`window.showTextDocument()`。
 
@@ -24,13 +24,13 @@ Code-OSS本体のsource forkは今回もbuildしていない。Windows C++ Build
 
 | # | 項目 | 判定 | 根拠 |
 |---:|---|---|---|
-| 1 | Repositoryを開ける | **達成** | `scripts/host-utils.mjs`が`lens` Repository rootをfolder argumentとして渡す。CDP titleは`[Extension Development Host] auth-service.ts - lens - VSCodium`、built-in GitもRepository 1件を認識した。 |
+| 1 | Repositoryを開ける | **達成** | `scripts/host-utils.mjs`が`poiesis` Repository rootをfolder argumentとして渡す。CDP titleは`[Extension Development Host] auth-service.ts - poiesis - VSCodium`、built-in GitもRepository 1件を認識した。 |
 | 2 | Editorを表示する | **達成** | `openSampleEditor()`とEvidence操作で`auth-service.ts`を`ViewColumn.One`に表示。CDPでEditor tabとactive line `12`を確認した。使用API: `workspace.openTextDocument()`、`window.showTextDocument()`。 |
 | 3 | 独自Agent Windowを表示する | **達成** | `createWebviewPanel()`で`ViewColumn.Two`へ表示。CDPの初期buttonは`質問`1件だけで、Agent Webview DOMにChange Set / Semantic Diffがないことを検証した。 |
-| 4 | 独自Changes領域をユーザー操作で開ける | **達成** | Activity Barに`IDE Changes` containerが存在することをCDPで確認。起動直後はChanges Webview targetがなく、Command Paletteから`Lens: Changes を開く`を実行後に`lens.changesView`が表示された。使用API: `viewsContainers`、`views`、`registerWebviewViewProvider()`。 |
+| 4 | 独自Changes領域をユーザー操作で開ける | **達成** | Activity Barに`IDE Changes` containerが存在することをCDPで確認。起動直後はChanges Webview targetがなく、Command Paletteから`Poiesis: Changes を開く`を実行後に`poiesis.changesView`が表示された。使用API: `viewsContainers`、`views`、`registerWebviewViewProvider()`。 |
 | 5 | 同じChange SetをCode Diff / Semantic Diffで確認する | **達成** | Changes Webview Viewで`task-auth-redis-001`の2表現を切り替えた。Code Diffは`vscode.diff`へbefore / after URIを渡し、CDPでnative diff editor DOMと`Change Set: auth-service.ts` tabを確認した。Changes内にEditorは再実装していない。 |
 | 6 | Semantic DiffからEvidenceへジャンプする | **達成** | Semantic Diffのbuttonからextension hostへmessageを送り、`auth-service.ts`の12行目を選択。Changes status、Editor tab、active line `12`をCDPで確認した。使用API: `Webview.onDidReceiveMessage()`、`Position`、`Range`、`showTextDocument()`。 |
-| 7 | Terminal / Git / LSPの既存機能を確認する | **達成** | 新スモークでも再確認。Terminalで`LENS_TERMINAL_OK`を生成。built-in Gitはactive、Repository 1件、working tree changes 38件。TypeScript language-featuresはactive、hover result 1件。stage / unstage、completion / diagnosticsは未実施。 |
+| 7 | Terminal / Git / LSPの既存機能を確認する | **達成** | 新スモークでも再確認。Terminalで`POIESIS_TERMINAL_OK`を生成。built-in Gitはactive、Repository 1件、working tree changes 38件。TypeScript language-featuresはactive、hover result 1件。stage / unstage、completion / diagnosticsは未実施。 |
 
 ## 実装ファイルとAPI
 
@@ -44,9 +44,9 @@ Code-OSS本体のsource forkは今回もbuildしていない。Windows C++ Build
 ### Changes
 
 - `package.json`
-  - `viewsContainers.activitybar`に`lensChanges`。
-  - `views.lensChanges`にwebview typeの`lens.changesView`。
-  - `lens.openChanges` command。
+  - `viewsContainers.activitybar`に`poiesisChanges`。
+  - `views.poiesisChanges`にwebview typeの`poiesis.changesView`。
+  - `poiesis.openChanges` command。
 - `src/extension.ts`の`ChangesViewProvider`。
   - `registerWebviewViewProvider()`。
   - Code / Semantic tabと同一Change Set ID。
@@ -79,7 +79,7 @@ nativeDiffEditorVisible: true
 semanticDiffVisible: true
 changesStatus: 根拠コードの 12 行目を Editor で開きました。
 activeLineNumbers: 12
-Terminal: LENS_TERMINAL_OK
+Terminal: POIESIS_TERMINAL_OK
 Git: active, repositories=1, workingTreeChanges=38
 TypeScript: active, hoverResults=1
 ```
@@ -108,7 +108,7 @@ Code DiffはWebview ViewへEditorを埋め込まず、`vscode.diff`で標準Diff
 
 ### Terminal
 
-`createTerminal()` / `sendText()`でWindows cmdを実行し、proof fileへ`LENS_TERMINAL_OK`を書き込んだ。表示とcommand送信は公開APIで再利用できる。構造化output取得は別のprocess境界が必要。
+`createTerminal()` / `sendText()`でWindows cmdを実行し、proof fileへ`POIESIS_TERMINAL_OK`を書き込んだ。表示とcommand送信は公開APIで再利用できる。構造化output取得は別のprocess境界が必要。
 
 ### Git
 
@@ -154,7 +154,7 @@ npm auditのhigh 3件はdevelopment packaging toolchainを含む。採用時はr
 ## 再現手順
 
 ```powershell
-cd C:\Users\owner\github\lens\spikes\code-oss
+cd C:\Users\owner\github\poiesis\spikes\code-oss
 npm install
 npm run validate:source
 npm run build

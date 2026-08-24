@@ -1,10 +1,10 @@
-# Lens Architecture
+# Poiesis Architecture
 
 ## Status and source of truth
 
 Decided architecture for First Completion (2026-08-23).
 
-完成条件は [`FIRST-COMPLETION.md`](FIRST-COMPLETION.md)、画面契約は [`ui/agent-window-spec.html`](ui/agent-window-spec.html) を正本とする。旧「Agent Window／Changes／Editor」三領域モデルは採用せず、現在はLensが所有する一つのWindow内のAgent／Results／Codeモデルを採用する。
+完成条件は [`FIRST-COMPLETION.md`](FIRST-COMPLETION.md)、画面契約は [`ui/agent-window-spec.html`](ui/agent-window-spec.html) を正本とする。旧「Agent Window／Changes／Editor」三領域モデルは採用せず、現在はPoiesisが所有する一つのWindow内のAgent／Results／Codeモデルを採用する。
 
 ## Goals
 
@@ -18,7 +18,7 @@ Decided architecture for First Completion (2026-08-23).
 ## High-level structure
 
 ```text
-Lens Window
+Poiesis Window
 ├─ Session UI
 │  ├─ Agent
 │  └─ Results
@@ -35,7 +35,7 @@ Application services
 └─ AgentRuntimeServer
 ```
 
-Lensは外枠を所有する。Theia `ApplicationShell`はdocumentへattachせず、Codeが必要とするFiles、Search、Git、Editor、Terminal WidgetだけをLens専用slotへattachする。
+Poiesisは外枠を所有する。Theia `ApplicationShell`はdocumentへattachせず、Codeが必要とするFiles、Search、Git、Editor、Terminal WidgetだけをPoiesis専用slotへattachする。
 
 ## Core concepts
 
@@ -77,7 +77,7 @@ UIが依存するAgent境界。Session作成、message送信、cancel、stream e
 
 backend processでCLI起動、cancel、Workspace snapshot、Change Set取得を行う。CLIは開いているWorkspaceをworking directoryとして起動し、固定sample directoryへ置き換えない。
 
-CLI固有のmodelやreasoning effortはLensから固定せず、ユーザーのCLI設定を尊重する。Lensが指定するのは、非対話実行、Workspace、sandboxなど実行境界に必要な項目だけとする。
+CLI固有のmodelやreasoning effortはPoiesisから固定せず、ユーザーのCLI設定を尊重する。Poiesisが指定するのは、非対話実行、Workspace、sandboxなど実行境界に必要な項目だけとする。
 
 ### TaskService
 
@@ -91,7 +91,7 @@ Resultsの質問スレッドはTaskと表示中のResult documentをscopeに持�
 
 ### Code integration
 
-CodeはTheia Files、SCM、Editor、Settings Widgetを再利用する。Lens固有EditorやGit UIを再実装しない。Widgetのattach／detach時は、選択、tab、scroll位置を可能な限り保持する。
+CodeはTheia Files、SCM、Editor、Settings Widgetを再利用する。Poiesis固有EditorやGit UIを再実装しない。Widgetのattach／detach時は、選択、tab、scroll位置を可能な限り保持する。
 
 ## Event flow
 
@@ -113,7 +113,7 @@ Task終了、Results生成完了、streaming更新は、現在のtabやfocusを�
 
 - Agent CLIのworking directoryはユーザーが開いたWorkspaceとする。
 - unattended実行ではworkspace-write相当のsandboxを使用する。
-- Lensからsandbox無効化やunrestricted filesystem accessを要求しない。
+- Poiesisからsandbox無効化やunrestricted filesystem accessを要求しない。
 - Results HTMLはsandboxed iframeで表示する。
 - HTMLからCodeを開く場合は、定義済みmessage schema、Workspace内path検証、line範囲検証を通す。
 - CLI path検出は実行と分け、検出時に未知のbinaryを起動しない。

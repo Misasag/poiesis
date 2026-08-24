@@ -22,7 +22,7 @@ const DESIGN_VARIANTS = new Set<DesignVariant>([
 export function getDesignVariant(): DesignVariant | undefined {
     const value = new URLSearchParams(window.location.search).get('variant');
     if (value && DESIGN_VARIANTS.has(value as DesignVariant)) {
-        document.documentElement.dataset.lensDesignVariant = value;
+        document.documentElement.dataset.poiesisDesignVariant = value;
         return value as DesignVariant;
     }
     return undefined;

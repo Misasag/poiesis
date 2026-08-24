@@ -30,7 +30,7 @@ export class CliDetector {
             detections
         };
         this.lastReport = report;
-        console.info('[Lens] Agent CLI detection:', detections.map(item =>
+        console.info('[Poiesis] Agent CLI detection:', detections.map(item =>
             `${item.name} ${item.status}${item.path ? ` (${item.path})` : ''}`
         ).join(', '));
         return report;

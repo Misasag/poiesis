@@ -2,11 +2,11 @@
 
 ## Purpose
 
-この文書は、2026年8月に確定したLensの第一完成点を定義する完成契約である。個人開発が無期限に続くことを防ぎ、ここに書かれた条件を満たしたら、改善余地が残っていても一度「完成」とする。
+この文書は、2026年8月に確定したPoiesisの第一完成点を定義する完成契約である。個人開発が無期限に続くことを防ぎ、ここに書かれた条件を満たしたら、改善余地が残っていても一度「完成」とする。
 
 ## First Completion Goal
 
-実RepositoryをLensで開き、Agentと会話し、発見したAgent CLIを実装者として動かす。CLIが見つからなければchat-only mockで会話を成立させる。実行Taskの開始・終了・キャンセル、Baseline、実Workspace差分によるChange Setはアプリが所有する。
+実RepositoryをPoiesisで開き、Agentと会話し、発見したAgent CLIを実装者として動かす。CLIが見つからなければchat-only mockで会話を成立させる。実行Taskの開始・終了・キャンセル、Baseline、実Workspace差分によるChange Setはアプリが所有する。
 
 Taskが終了またはキャンセルされたら、アプリがResults skillを開始し、Resultsの一つのキャンバスに完成したHTML文書を表示する。ユーザーはその確定済みのデザインを見ながらResults Composerで質問でき、その会話はAgentと混ぜない。ヘッダの`Code`はモード切替であり、左サイドバーをFiles／Gitへ、中央をEditorへ切り替える。設定は左サイドバーの歯車からTheia settingsを開く。
 
@@ -19,7 +19,7 @@ Taskが終了またはキャンセルされたら、アプリがResults skillを
 - [ ] 既存RepositoryをWorkspaceとして開ける
 - [ ] Workspace内のファイルをEditorで閲覧・編集できる
 - [ ] `Code`モードの左サイドバーでGitを開き、実際の差分を確認できる
-- [ ] Theiaに既存のTerminal機能がある場合はそれを利用でき、Lens固有の新しいTerminal productを作らない
+- [ ] Theiaに既存のTerminal機能がある場合はそれを利用でき、Poiesis固有の新しいTerminal productを作らない
 
 ### Agent
 
@@ -43,7 +43,7 @@ Taskが終了またはキャンセルされたら、アプリがResults skillを
 - [ ] Session一覧とComposer下書きは再読み込み後も復元できる
 - [ ] 左サイドバーは196〜420pxでpointer／keyboard resizeでき、double clickで既定幅へ戻せる
 
-Code does not host ApplicationShell; Lens hosts Files/Search/Git/Editor/Terminal widgets in its own Cursor-style chrome.
+Code does not host ApplicationShell; Poiesis hosts Files/Search/Git/Editor/Terminal widgets in its own Cursor-style chrome.
 
 - [ ] plugin install screenとAgent wiring screenを追加しない
 

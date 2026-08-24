@@ -325,7 +325,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         current: WorkspaceSnapshot,
         files: string[]
     ): Promise<string> {
-        const temporaryRoot = await mkdtemp(join(tmpdir(), 'lens-task-diff-'));
+        const temporaryRoot = await mkdtemp(join(tmpdir(), 'poiesis-task-diff-'));
         const beforeRoot = join(temporaryRoot, 'before');
         const afterRoot = join(temporaryRoot, 'after');
         try {

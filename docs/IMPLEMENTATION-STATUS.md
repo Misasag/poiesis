@@ -8,7 +8,7 @@ Updated: 2026-08-23
 
 | Area | Status | Current evidence | Remaining work |
 |---|---|---|---|
-| Lens-owned window | done | 1280×720の現行UI smokeでAgent／Results／Code切替、状態保持、旧Changes非表示を確認 | 現行E2Eを継続する |
+| Poiesis-owned window | done | 1280×720の現行UI smokeでAgent／Results／Code切替、状態保持、旧Changes非表示を確認 | 現行E2Eを継続する |
 | Workspace open | partial | Folder dialogとTheia Workspaceを利用 | 実RepositoryでCompletion Trialを行う |
 | Agent chat | partial | Codex実行adapterとmock fallbackがある | 実Repositoryで安全な実行を検証する |
 | Runtime selection | partial | Codex／Claudeを検出する | 実行adapterはCodexのみ。provider registryが必要 |
@@ -30,7 +30,7 @@ Updated: 2026-08-23
 
 - 旧Changes中心のUX／ArchitectureをAgent／Results／Code仕様へ統合した。
 - Codexのworking directoryから固定`sample-src`を除き、開いているWorkspaceを使用するようにした。
-- Lensによるmodel／reasoning effort固定を除き、Codex設定を尊重するようにした。
+- Poiesisによるmodel／reasoning effort固定を除き、Codex設定を尊重するようにした。
 - CLIの非zero exitと起動失敗をTask failureとして分離した。
 - 共通Settings導線をTheia Settings Widgetへ接続した。
 - 動作しないComposer context操作をUIから除いた。

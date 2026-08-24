@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 
-const AGENT_PANEL_TYPE = 'lens.agentWindow';
-const CHANGES_VIEW_ID = 'lens.changesView';
-const CHANGES_CONTAINER_COMMAND = 'workbench.view.extension.lensChanges';
+const AGENT_PANEL_TYPE = 'poiesis.agentWindow';
+const CHANGES_VIEW_ID = 'poiesis.changesView';
+const CHANGES_CONTAINER_COMMAND = 'workbench.view.extension.poiesisChanges';
 const CHANGE_SET_ID = 'task-auth-redis-001';
 const SAMPLE_FILE = 'sample-src/auth-service.ts';
 const BASELINE_FILE = 'sample-src/auth-service.before.ts';
@@ -40,8 +40,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.registerWebviewViewProvider(CHANGES_VIEW_ID, changesProvider, {
             webviewOptions: { retainContextWhenHidden: true }
         }),
-        vscode.commands.registerCommand('lens.openAgentWindow', () => openAgentWindow(context)),
-        vscode.commands.registerCommand('lens.openChanges', async () => {
+        vscode.commands.registerCommand('poiesis.openAgentWindow', () => openAgentWindow(context)),
+        vscode.commands.registerCommand('poiesis.openChanges', async () => {
             await vscode.commands.executeCommand(CHANGES_CONTAINER_COMMAND);
             await vscode.commands.executeCommand(`${CHANGES_VIEW_ID}.focus`);
         }),
@@ -51,7 +51,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await openSampleEditor();
     await openAgentWindow(context);
 
-    if (process.env.LENS_CODE_OSS_SMOKE === '1') {
+    if (process.env.POIESIS_CODE_OSS_SMOKE === '1') {
         void verifyExistingCapabilities(context);
     }
 }
@@ -148,20 +148,20 @@ function resolveWorkspaceFile(relativePath: string): vscode.Uri | undefined {
 }
 
 async function verifyExistingCapabilities(context: vscode.ExtensionContext): Promise<void> {
-    const proofDirectory = process.env.LENS_CODE_OSS_PROOF_DIR;
+    const proofDirectory = process.env.POIESIS_CODE_OSS_PROOF_DIR;
     if (!proofDirectory) {
         return;
     }
 
     const terminalProof = path.join(proofDirectory, 'terminal-proof.txt');
     const terminal = vscode.window.createTerminal({
-        name: 'Lens Spike Terminal',
+        name: 'Poiesis Terminal',
         shellPath: process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe',
         shellArgs: ['/d']
     });
     context.subscriptions.push(terminal);
     terminal.show(true);
-    terminal.sendText(`> "${terminalProof}" echo LENS_TERMINAL_OK`, true);
+    terminal.sendText(`> "${terminalProof}" echo POIESIS_TERMINAL_OK`, true);
 
     await delay(3500);
     const gitExtension = vscode.extensions.getExtension('vscode.git');
@@ -188,7 +188,7 @@ async function verifyExistingCapabilities(context: vscode.ExtensionContext): Pro
         : undefined;
 
     const result = {
-        terminalCreated: Boolean(vscode.window.terminals.find(item => item.name === 'Lens Spike Terminal')),
+        terminalCreated: Boolean(vscode.window.terminals.find(item => item.name === 'Poiesis Terminal')),
         gitExtensionPresent: Boolean(gitExtension),
         gitExtensionActive: Boolean(gitExtension?.isActive),
         gitRepositoryCount: gitRepositoryCount ?? null,
@@ -221,7 +221,7 @@ function renderAgentWindow(): string {
 </head>
 <body>
 <main data-responsibility="chat-task-result-question">
-    <div class="eyebrow">LENS · AGENT-FIRST SPIKE</div>
+    <div class="eyebrow">POIESIS · AGENT-FIRST SPIKE</div>
     <h1>Agent Window</h1>
     <section class="message" aria-label="Mock agent message">
         <h2>AI</h2>

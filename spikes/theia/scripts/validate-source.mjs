@@ -13,7 +13,7 @@ const extensionPackage = JSON.parse(await read('agent-window/package.json'));
 const agentWidget = await read('agent-window/src/browser/agent-window-widget.tsx');
 const agentStyles = await read('agent-window/src/browser/style/index.css');
 const moduleSource = await read('agent-window/src/browser/agent-window-frontend-module.ts');
-const lensFrontendApplication = await read('agent-window/src/browser/lens-frontend-application.ts');
+const poiesisFrontendApplication = await read('agent-window/src/browser/poiesis-frontend-application.ts');
 const designShotContribution = await read('agent-window/src/browser/design-shot-contribution.ts');
 const backendModule = await read('agent-window/src/node/agent-window-backend-module.ts');
 const agentContribution = await read('agent-window/src/browser/agent-window-contribution.ts');
@@ -32,16 +32,16 @@ const firstCompletion = await read('../../docs/FIRST-COMPLETION.md');
 
 assert.equal(rootPackage.devDependencies['@theia/cli'], '1.73.1');
 assert.equal(appPackage.theia.target, 'browser');
-assert.ok(appPackage.scripts.start.includes('theia start ../../..'), 'Browser app must open the Lens repository root');
+assert.ok(appPackage.scripts.start.includes('theia start ../../..'), 'Browser app must open the Poiesis repository root');
 assert.ok(rootPackage.workspaces.includes('electron-app'));
 assert.equal(electronPackage.theia.target, 'electron');
 assert.equal(electronPackage.dependencies['@theia/electron'], '1.73.1');
 assert.equal(electronPackage.devDependencies.electron, '39.8.7');
 for (const marker of [
-    "'#lens-window-host .lens-agent-window__content'",
-    "'.lens-agent-window__code'",
-    "'.lens-agent-window__code-terminal-host > *'",
-    'lens-terminal-smoke',
+    "'#poiesis-window-host .poiesis-agent-window__content'",
+    "'.poiesis-agent-window__code'",
+    "'.poiesis-agent-window__code-terminal-host > *'",
+    'poiesis-terminal-smoke',
     'Active Terminal',
     'Kill Terminal',
     'Refresh Source Control',
@@ -51,10 +51,10 @@ for (const marker of [
     'dragExplorerFileToTabs',
     'ELECTRON_SMOKE_RESULT='
 ]) {
-    assert.ok(electronSmoke.includes(marker), `Electron smoke test is missing current Lens UI check ${marker}`);
+    assert.ok(electronSmoke.includes(marker), `Electron smoke test is missing current Poiesis UI check ${marker}`);
 }
 for (const obsolete of [
-    "clickSelector(page, '#status-bar-lens-changes'",
+    "clickSelector(page, '#status-bar-poiesis-changes'",
     'Code Diff representation',
     'Semantic Diff representation',
     "activateEditorTab(page, 'auth-service.ts'"
@@ -119,7 +119,7 @@ for (const marker of [
     'await this.taskService.end(run.taskId)',
     'await this.runtimeServer.cancelCodex',
     'await this.taskService.cancel(run.taskId)',
-    'You are the Lens implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.'
+    'You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.'
 ]) {
     assert.ok(cliProvider.includes(marker), `CLI AgentProvider is missing ${marker}`);
 }
@@ -205,9 +205,9 @@ for (const marker of [
 ]) {
     assert.ok(runtimeServer.includes(marker), `Codex runtime is missing ${marker}`);
 }
-assert.ok(!runtimeServer.includes("'--model'"), 'Lens must respect the model selected by Codex configuration');
+assert.ok(!runtimeServer.includes("'--model'"), 'Poiesis must respect the model selected by Codex configuration');
 assert.ok(!runtimeServer.includes('resolveSampleWorkspace'), 'Codex must run in the open Workspace');
-assert.ok(!runtimeServer.includes('C:\\Users\\owner\\github\\lens'), 'Codex runtime must not hard-code the repository root');
+assert.ok(!runtimeServer.includes('C:\\Users\\owner\\github\\poiesis'), 'Codex runtime must not hard-code the repository root');
 
 for (const marker of [
     'class BundledResultsSkill',
@@ -233,7 +233,7 @@ for (const forbidden of [
     '<pre',
     '${this.escape(diff)}',
     'task.request',
-    'lens-results__task-switcher',
+    'poiesis-results__task-switcher',
     'Results composer'
 ]) {
     assert.ok(!resultsSkill.includes(forbidden), `Results document must not contain ${forbidden}`);
@@ -275,14 +275,14 @@ for (const marker of [
     'protected async createSession(): Promise<void>',
     "activeTab: 'agent'",
     'session.activeTab = tab',
-    'lens-agent-window__code-control',
+    'poiesis-agent-window__code-control',
     'aria-pressed={this.codeMode}',
     '{!this.codeMode && session?.hasUserMessage && (',
     "aria-label='Agent と Results の切り替え'",
-    "<span className='lens-agent-window__rail-action-label'>New Chat</span>",
+    "<span className='poiesis-agent-window__rail-action-label'>New Chat</span>",
     "aria-label='Results 画面'",
-    'lens-results__main',
-    'lens-results__task-switcher',
+    'poiesis-results__main',
+    'poiesis-results__task-switcher',
     "aria-label='Results HTML キャンバス'",
     "srcDoc={document.html}",
     "aria-label='Agent の入力欄'",
@@ -298,7 +298,7 @@ for (const marker of [
     'const dirty = Saveable.isDirty(widget)',
     'protected renderCodeCenterCloseDialog(): React.ReactNode',
     'protected async resolveCodeCenterClose(save: boolean): Promise<void>',
-    "className='lens-agent-window__code-close-dialog'",
+    "className='poiesis-agent-window__code-close-dialog'",
     "role='tab'",
     'protected handleCodeTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, widget: Widget): void',
     'this.codeCenterWidgets[index + 1] ?? this.codeCenterWidgets[index - 1]',
@@ -309,15 +309,15 @@ for (const marker of [
     'protected renderExplorerMoreMenu(): React.ReactNode',
     "FileNavigatorCommands.TOGGLE_HIDDEN_FILES.id",
     "FileNavigatorCommands.TOGGLE_AUTO_REVEAL.id",
-    "className='lens-agent-window__code-sidebar-host'",
-    "className='lens-agent-window__code-editor-host'",
-    "className='lens-agent-window__code-activity'",
-    "className='lens-agent-window__code-terminal-host'",
-    "className='lens-agent-window__code-terminal-select'",
+    "className='poiesis-agent-window__code-sidebar-host'",
+    "className='poiesis-agent-window__code-editor-host'",
+    "className='poiesis-agent-window__code-activity'",
+    "className='poiesis-agent-window__code-terminal-host'",
+    "className='poiesis-agent-window__code-terminal-select'",
     "aria-label='Kill Terminal'",
     "aria-label='Close Panel'",
     "aria-label='Toggle Panel'",
-    "className='lens-agent-window__code-status'",
+    "className='poiesis-agent-window__code-status'",
     "this.renderCodeActivity('files', 'files', 'Explorer')",
     "this.renderCodeActivity('search', 'search', 'Search')",
     "this.renderSearchAction('refresh', 'Refresh Search Results', SearchInWorkspaceCommands.REFRESH_RESULTS.id)",
@@ -329,8 +329,8 @@ for (const marker of [
     'protected installCodeSidebarTreeInteractions(host: HTMLDivElement): Disposable',
     'node.setPointerCapture(event.pointerId)',
     'window.getSelection()?.removeAllRanges()',
-    "className='lens-agent-window__code-git-graph-title'",
-    "className='lens-agent-window__code-git-graph-host'",
+    "className='poiesis-agent-window__code-git-graph-title'",
+    "className='poiesis-agent-window__code-git-graph-host'",
     'this.attachCodeWidget(this.codeGitGraphWidget, this.codeGitGraphHost)',
     "this.renderCodeActivity('extensions', 'extensions', 'Extensions')",
     'onClick={() => void this.openCodeSettings()}',
@@ -378,22 +378,22 @@ for (const marker of [
     'protected openCustomize(): void',
     "this.appPage = 'customize'",
     'protected renderAppPage(): React.ReactNode',
-    'protected renderLensSettings(): React.ReactNode',
+    'protected renderPoiesisSettings(): React.ReactNode',
     'protected renderCustomize(): React.ReactNode',
-    '<strong>Lens plugin bundles</strong>',
+    '<strong>Poiesis plugin bundles</strong>',
     "aria-label='Results skillを有効化'",
     'this.customizationService.setSkillEnabled',
     'onCompositionEnd={event => this.setAgentDraft(event.currentTarget.value)}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
-assert.ok(!agentWidget.includes('Saveable.confirmSaveBeforeClose'), 'Editor close must use the Lens-owned confirmation dialog');
-assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.openCustomize()}"), 'Code Extensions must not open Lens Customize');
-assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Lens Settings');
-assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Lens Customize must not manage Code extensions');
+assert.ok(!agentWidget.includes('Saveable.confirmSaveBeforeClose'), 'Editor close must use the Poiesis-owned confirmation dialog');
+assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.openCustomize()}"), 'Code Extensions must not open Poiesis Customize');
+assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Poiesis Settings');
+assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Poiesis Customize must not manage Code extensions');
 for (const dummyChrome of [
-    '<small>lens / main</small>',
-    '<strong>lens</strong>',
+    '<small>poiesis / main</small>',
+    '<strong>poiesis</strong>',
     '認証を Redis 方式へ変更',
     "<span className='codicon codicon-settings-gear' title='設定'"
 ]) {
@@ -407,8 +407,8 @@ const railSource = agentWidget.match(
     /protected renderRail\(\): React\.ReactNode \{[\s\S]*?\n    protected readonly setSessionSearchInput/
 )?.[0];
 assert.ok(railSource, 'Agent rail render source is missing');
-const newChatPosition = railSource.indexOf("<span className='lens-agent-window__rail-action-label'>New Chat</span>");
-const searchPosition = railSource.indexOf("<span className='lens-agent-window__rail-action-label'>Search</span>");
+const newChatPosition = railSource.indexOf("<span className='poiesis-agent-window__rail-action-label'>New Chat</span>");
+const searchPosition = railSource.indexOf("<span className='poiesis-agent-window__rail-action-label'>Search</span>");
 assert.ok(newChatPosition !== -1, 'Agent rail must contain New Chat');
 assert.ok(searchPosition > newChatPosition, 'Conversation Search must sit directly under New Chat');
 for (const marker of [
@@ -421,11 +421,11 @@ for (const marker of [
     'session.title.toLocaleLowerCase().includes(query)',
     'protected workspaceExpanded = true',
     'protected toggleWorkspace(): void',
-    "<div className='lens-agent-window__rail-heading'>",
+    "<div className='poiesis-agent-window__rail-heading'>",
     '<span>Workspaces</span>',
-    "className='lens-agent-window__workspace-group'",
-    "className='lens-agent-window__session-title'",
-    'lens-agent-window__session-meta',
+    "className='poiesis-agent-window__workspace-group'",
+    "className='poiesis-agent-window__session-title'",
+    'poiesis-agent-window__session-meta',
     'protected sessionMeta(session: WindowAgentSession): string',
     'protected togglePinnedSession(sessionId: string): void',
     'protected beginSessionRename(sessionId: string): void',
@@ -443,7 +443,7 @@ for (const marker of [
     'this.fileDialogService.showOpenDialog',
     'this.workspaceService.open(folder, { preserveWindow: true })',
     "runTarget: 'local'",
-    "className='lens-agent-window__new-agent-context'",
+    "className='poiesis-agent-window__new-agent-context'",
     "aria-label='Repositoryを選択'",
     "aria-label='Repositoryを検索'",
     '<span>Run on · This Computer</span>',
@@ -462,9 +462,9 @@ for (const marker of [
 assert.ok(!railSource.includes('<small>現在</small>'), 'Selected sessions must use quiet age metadata, not a current badge');
 assert.ok(
     (agentWidget.match(/onClick=\{\(\) => this\.openSettings\(\)\}/g)?.length ?? 0) >= 2,
-    'Settings controls must open the Lens-owned settings page'
+    'Settings controls must open the Poiesis-owned settings page'
 );
-assert.ok(!agentWidget.includes('lens-agent-window__composer-tools'), 'Deferred composer tools must not be shown');
+assert.ok(!agentWidget.includes('poiesis-agent-window__composer-tools'), 'Deferred composer tools must not be shown');
 assert.ok(!agentWidget.includes('protected activeTab:'), 'Agent / Results selection must belong to each session');
 assert.ok(!agentWidget.includes('Widget.ResizeMessage.UnknownSize'), 'Code widgets must receive measured pixel resize messages');
 assert.equal(
@@ -486,7 +486,7 @@ for (const forbidden of [
     'attachCodeShell',
     'detachCodeShell',
     'codeShell',
-    'lens-agent-window__theia-host'
+    'poiesis-agent-window__theia-host'
 ]) {
     assert.ok(!agentWidget.includes(forbidden), `Code mode must not host ${forbidden}`);
 }
@@ -515,98 +515,98 @@ for (const forbidden of ['AgentRuntimeServer', 'CliDetectionReport', 'detectClis
     assert.ok(!agentWidget.includes(forbidden), `Agent widget must not expose CLI diagnostics: ${forbidden}`);
 }
 for (const marker of [
-    '#lens-window-host',
+    '#poiesis-window-host',
     '.theia-preload.theia-hidden',
     'pointer-events: none',
-    '--lens-chrome-bg: #181918',
-    '--lens-chrome-panel: #1d1e1c',
-    'grid-template-columns: var(--lens-rail-width, 252px) minmax(0, 1fr)',
-    ".lens-agent-window__content[data-mode='code']",
-    ".lens-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true']",
-    ".lens-agent-window__rail[data-collapsed='true']",
-    '.lens-agent-window__session-search',
-    '.lens-agent-window__workspace-group',
-    '.lens-agent-window__workspace-picker',
-    '.lens-agent-window__session-meta',
-    '.lens-agent-window__session-menu',
-    '.lens-agent-window__session-rename',
-    '.lens-agent-window__archived-toggle',
-    '.lens-agent-window__rail-resize-handle',
-    '.lens-agent-window__viewport',
-    '.lens-agent-window__code',
-    '.lens-agent-window__code-activity',
-    '.lens-agent-window__code-sidebar-title',
-    '.lens-agent-window__code-sidebar-host',
-    '.lens-agent-window__code-git-graph-title',
-    '.lens-agent-window__code-git-graph-host',
-    '.lens-agent-window__code-source-control #scm-action-button-widget',
+    '--poiesis-chrome-bg: #181918',
+    '--poiesis-chrome-panel: #1d1e1c',
+    'grid-template-columns: var(--poiesis-rail-width, 252px) minmax(0, 1fr)',
+    ".poiesis-agent-window__content[data-mode='code']",
+    ".poiesis-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true']",
+    ".poiesis-agent-window__rail[data-collapsed='true']",
+    '.poiesis-agent-window__session-search',
+    '.poiesis-agent-window__workspace-group',
+    '.poiesis-agent-window__workspace-picker',
+    '.poiesis-agent-window__session-meta',
+    '.poiesis-agent-window__session-menu',
+    '.poiesis-agent-window__session-rename',
+    '.poiesis-agent-window__archived-toggle',
+    '.poiesis-agent-window__rail-resize-handle',
+    '.poiesis-agent-window__viewport',
+    '.poiesis-agent-window__code',
+    '.poiesis-agent-window__code-activity',
+    '.poiesis-agent-window__code-sidebar-title',
+    '.poiesis-agent-window__code-sidebar-host',
+    '.poiesis-agent-window__code-git-graph-title',
+    '.poiesis-agent-window__code-git-graph-host',
+    '.poiesis-agent-window__code-source-control #scm-action-button-widget',
     'user-select: none',
-    '.lens-agent-window__code-editor-host',
-    '.lens-agent-window__code-close-dialog',
-    '.lens-agent-window__code-editor-tab.dirty',
-    '.lens-agent-window__code-editor-tab-name',
-    '.lens-agent-window__code-editor-tabs.drop-target',
+    '.poiesis-agent-window__code-editor-host',
+    '.poiesis-agent-window__code-close-dialog',
+    '.poiesis-agent-window__code-editor-tab.dirty',
+    '.poiesis-agent-window__code-editor-tab-name',
+    '.poiesis-agent-window__code-editor-tabs.drop-target',
     'font-style: italic',
     'font-weight: 600',
     'flex: 0 0 auto',
     'max-width: 220px',
-    '.lens-agent-window__code-terminal-host',
-    '.lens-agent-window__code-panel',
-    '.lens-agent-window__code-panel-resize',
-    '.lens-agent-window__code-terminal-select',
-    '.lens-code-panel-resizing',
-    '.lens-agent-window__code-status',
-    '.lens-agent-window__app-page',
-    '.lens-agent-window__app-nav',
-    '.lens-agent-window__customize-card',
-    '.lens-agent-window__switch',
-    '.lens-agent-window__composer',
-    '.lens-agent-window__new-agent-empty',
-    '.lens-agent-window__new-agent-context',
-    '.lens-agent-window__repository-picker',
-    '.lens-agent-window__context-pill',
+    '.poiesis-agent-window__code-terminal-host',
+    '.poiesis-agent-window__code-panel',
+    '.poiesis-agent-window__code-panel-resize',
+    '.poiesis-agent-window__code-terminal-select',
+    '.poiesis-code-panel-resizing',
+    '.poiesis-agent-window__code-status',
+    '.poiesis-agent-window__app-page',
+    '.poiesis-agent-window__app-nav',
+    '.poiesis-agent-window__customize-card',
+    '.poiesis-agent-window__switch',
+    '.poiesis-agent-window__composer',
+    '.poiesis-agent-window__new-agent-empty',
+    '.poiesis-agent-window__new-agent-context',
+    '.poiesis-agent-window__repository-picker',
+    '.poiesis-agent-window__context-pill',
     'align-self: end',
-    '.lens-results__main',
+    '.poiesis-results__main',
     'grid-template-rows: minmax(0, 1fr) auto auto',
-    '.lens-results__task-switcher',
-    'border-left: 1px solid var(--lens-chrome-line)'
+    '.poiesis-results__task-switcher',
+    'border-left: 1px solid var(--poiesis-chrome-line)'
 ]) {
     assert.ok(agentStyles.includes(marker), `Agent chrome styles are missing ${marker}`);
 }
 assert.match(
     agentStyles,
-    /\.lens-agent-window__rail-action\s*\{[^}]*font-size:\s*11px;/,
+    /\.poiesis-agent-window__rail-action\s*\{[^}]*font-size:\s*11px;/,
     'New Chat and Search text must match the sidebar spec'
 );
 assert.match(
     agentStyles,
-    /\.lens-agent-window__rail-heading\s*\{[^}]*font-size:\s*10px;/,
+    /\.poiesis-agent-window__rail-heading\s*\{[^}]*font-size:\s*10px;/,
     'Workspaces text must match the sidebar spec'
 );
-assert.ok(!agentStyles.includes('.lens-agent-window__composer-tools'), 'Deferred composer tool styles must not remain');
+assert.ok(!agentStyles.includes('.poiesis-agent-window__composer-tools'), 'Deferred composer tool styles must not remain');
 assert.match(
     agentStyles,
-    /\.lens-agent-window__send \.codicon,[\s\S]*?color:\s*#222320;/,
+    /\.poiesis-agent-window__send \.codicon,[\s\S]*?color:\s*#222320;/,
     'Send icons must contrast their light button background'
 );
 assert.match(
     agentStyles,
-    /\.lens-agent-window__viewport\s*\{[^}]*height:\s*100%;/,
+    /\.poiesis-agent-window__viewport\s*\{[^}]*height:\s*100%;/,
     'Code viewport must have a definite height'
 );
 assert.match(
     agentStyles,
-    /\.lens-agent-window__code\s*\{[^}]*height:\s*100%;/,
+    /\.poiesis-agent-window__code\s*\{[^}]*height:\s*100%;/,
     'Code layout must have a definite height'
 );
 assert.match(
     agentStyles,
-    /\.lens-agent-window__code-sidebar-host,\s*\.lens-agent-window__code-git-graph-host,\s*\.lens-agent-window__code-editor-host,\s*\.lens-agent-window__code-terminal-host\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/,
+    /\.poiesis-agent-window__code-sidebar-host,\s*\.poiesis-agent-window__code-git-graph-host,\s*\.poiesis-agent-window__code-editor-host,\s*\.poiesis-agent-window__code-terminal-host\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/,
     'Code widget hosts must fill their minmax rows without collapsing'
 );
 assert.match(
     agentStyles,
-    /\.lens-agent-window__code-editor\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);/,
+    /\.poiesis-agent-window__code-editor\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);/,
     'Editor host must occupy the remaining row below its tabs'
 );
 
@@ -632,11 +632,11 @@ for (const marker of [
     'for (const editor of this.editorManager.all)',
     'this.agentWindowWidget.registerCodeWidget(factoryId, widget)',
     'this.agentWindowWidget.registerCodeWidget(factoryId, editor, true)',
-    "host.id = 'lens-window-host'",
+    "host.id = 'poiesis-window-host'",
     'document.body.appendChild(host)',
     'Widget.attach(this.agentWindowWidget, host)'
 ]) {
-    assert.ok(agentContribution.includes(marker), `Lens-owned Agent host is missing ${marker}`);
+    assert.ok(agentContribution.includes(marker), `Poiesis-owned Agent host is missing ${marker}`);
 }
 for (const forbidden of [
     'AbstractViewContribution',
@@ -650,29 +650,29 @@ for (const forbidden of [
 assert.ok(!agentContribution.includes('ApplicationShell'), 'Agent Window contribution must never receive ApplicationShell');
 assert.ok(!agentContribution.includes('app.shell'), 'Agent Window must never receive or attach ApplicationShell');
 for (const marker of [
-    'class LensFrontendApplication extends FrontendApplication',
+    'class PoiesisFrontendApplication extends FrontendApplication',
     'protected override attachShell(_host: HTMLElement): void'
 ]) {
-    assert.ok(lensFrontendApplication.includes(marker), `Lens frontend shell policy is missing ${marker}`);
+    assert.ok(poiesisFrontendApplication.includes(marker), `Poiesis frontend shell policy is missing ${marker}`);
 }
-assert.ok(!lensFrontendApplication.includes('super.attachShell'), 'Lens must not delegate ApplicationShell attachment');
-assert.ok(!lensFrontendApplication.includes('Widget.attach'), 'Lens frontend must not attach ApplicationShell directly');
-assert.ok(moduleSource.includes('rebind(FrontendApplication).to(LensFrontendApplication).inSingletonScope()'));
+assert.ok(!poiesisFrontendApplication.includes('super.attachShell'), 'Poiesis must not delegate ApplicationShell attachment');
+assert.ok(!poiesisFrontendApplication.includes('Widget.attach'), 'Poiesis frontend must not attach ApplicationShell directly');
+assert.ok(moduleSource.includes('rebind(FrontendApplication).to(PoiesisFrontendApplication).inSingletonScope()'));
 for (const marker of [
     "import { ThemeService } from '@theia/core/lib/browser/theming'",
     'this.themeService.onDidColorThemeChange',
     'void this.preferenceService.ready.then',
     "this.themeService.setCurrentTheme('dark', false)"
 ]) {
-    assert.ok(designShotContribution.includes(marker), `Lens startup theme lock is missing ${marker}`);
+    assert.ok(designShotContribution.includes(marker), `Poiesis startup theme lock is missing ${marker}`);
 }
 assert.ok(
     !designShotContribution.includes('getDesignVariant'),
-    'Lens startup theme lock must also run outside design-shot variants'
+    'Poiesis startup theme lock must also run outside design-shot variants'
 );
 assert.ok(moduleSource.includes('bind(FrontendApplicationContribution).toService(DesignShotContribution)'));
 assert.ok(!agentWidget.includes('this.title.label'), 'Agent / Results must not define a Theia tab title');
-assert.ok(!agentWidget.includes('this.title.closable'), 'Lens outer content must not opt into closable Theia tab chrome');
+assert.ok(!agentWidget.includes('this.title.closable'), 'Poiesis outer content must not opt into closable Theia tab chrome');
 assert.ok(!agentStyles.includes('theia-tabBar-tab-row'), 'Agent / Results must not hide Theia tab rows with CSS');
 assert.ok(!agentStyles.includes('.theia-tabBar'), 'Agent / Results styles must not target Theia tab bars');
 assert.ok(!agentStyles.includes('.lm-TabBar'), 'Agent / Results styles must not target Lumino tab bars');
@@ -683,7 +683,7 @@ for (const forbidden of ['theia-ApplicationShell', 'theia-tabBar-tab-row', '.the
     assert.ok(!agentStyles.includes(forbidden), `Code chrome must not CSS-hide ${forbidden}`);
 }
 assert.ok(
-    firstCompletion.includes('Code does not host ApplicationShell; Lens hosts Files/Search/Git/Editor/Terminal widgets in its own Cursor-style chrome.'),
+    firstCompletion.includes('Code does not host ApplicationShell; Poiesis hosts Files/Search/Git/Editor/Terminal widgets in its own Cursor-style chrome.'),
     'FIRST-COMPLETION must state the Code widget-hosting boundary'
 );
 for (const marker of ['AgentProvider', 'Codex CLI', 'TaskService', 'ResultsSkill', 'Agent / Results / Code']) {

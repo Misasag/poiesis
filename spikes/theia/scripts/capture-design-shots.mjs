@@ -69,15 +69,15 @@ try {
         url.searchParams.set('variant', shot.variant);
         await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: uiTimeout });
         await page.waitForSelector('#theia-app-shell.theia-ApplicationShell', { timeout: uiTimeout });
-        await page.waitForSelector('.lens-agent-window__actions button', { timeout: uiTimeout });
-        await page.waitForSelector('#status-bar-lens-changes', { timeout: uiTimeout });
+        await page.waitForSelector('.poiesis-agent-window__actions button', { timeout: uiTimeout });
+        await page.waitForSelector('#status-bar-poiesis-changes', { timeout: uiTimeout });
         await page.waitForFunction(
-            variant => document.documentElement.dataset.lensDesignVariant === variant,
+            variant => document.documentElement.dataset.poiesisDesignVariant === variant,
             { timeout: uiTimeout },
             shot.variant
         );
         await page.waitForFunction(
-            () => document.documentElement.dataset.lensDesignTheme === 'dark'
+            () => document.documentElement.dataset.poiesisDesignTheme === 'dark'
                 && document.body.classList.contains('theia-dark')
                 && !document.body.classList.contains('theia-light'),
             { timeout: uiTimeout }
@@ -104,13 +104,13 @@ try {
         ` });
 
         if (shot.openChanges) {
-            await page.$eval('#status-bar-lens-changes', element => {
+            await page.$eval('#status-bar-poiesis-changes', element => {
                 if (!(element instanceof HTMLElement)) {
                     throw new Error('Changes status entry is not an HTML element');
                 }
                 element.click();
             });
-            await page.waitForSelector('.lens-changes__content', { timeout: uiTimeout });
+            await page.waitForSelector('.poiesis-changes__content', { timeout: uiTimeout });
         }
 
         if (shot.waitForToast) {
@@ -150,7 +150,7 @@ try {
         let dimensions;
         let semanticDensity;
         if (shot.closeup) {
-            const widget = await page.$('.lens-changes');
+            const widget = await page.$('.poiesis-changes');
             const bounds = await widget?.boundingBox();
             if (!bounds) {
                 throw new Error('Semantic Changes widget bounds were not available');
@@ -169,7 +169,7 @@ try {
             }
             await page.screenshot({ path, type: 'png', clip, captureBeyondViewport: false });
             dimensions = { width: clip.width, height: clip.height };
-            semanticDensity = await page.$eval('.lens-changes__content', element => ({
+            semanticDensity = await page.$eval('.poiesis-changes__content', element => ({
                 clientHeight: element.clientHeight,
                 scrollHeight: element.scrollHeight,
                 visibleRatio: Number((element.clientHeight / element.scrollHeight).toFixed(2))
@@ -184,7 +184,7 @@ try {
             variant: shot.variant,
             dimensions,
             semanticDensity,
-            theme: await page.evaluate(() => document.documentElement.dataset.lensDesignTheme)
+            theme: await page.evaluate(() => document.documentElement.dataset.poiesisDesignTheme)
         });
         await page.close();
     }
@@ -199,19 +199,19 @@ async function assertVariant(page, variant) {
         current,
         agentInMain: [...document.querySelectorAll('.lm-TabBar.theia-app-main .lm-TabBar-tabLabel')]
             .some(label => label.textContent?.trim() === 'Agent Window'),
-        agentVisible: Boolean(document.querySelector('.lens-agent-window')),
+        agentVisible: Boolean(document.querySelector('.poiesis-agent-window')),
         changesInMain: [...document.querySelectorAll('.lm-TabBar.theia-app-main .lm-TabBar-tabLabel')]
             .some(label => label.textContent?.trim() === 'IDE Changes'),
-        changesVisible: Boolean(document.querySelector('.lens-changes')),
+        changesVisible: Boolean(document.querySelector('.poiesis-changes')),
         codeVisible: Boolean(document.querySelector('[aria-label="Code Diff representation"]')),
         semanticVisible: Boolean(document.querySelector('[aria-label="Semantic Diff representation"]')),
-        tabLabels: [...document.querySelectorAll('.lens-changes__tabs button')].map(button => button.textContent?.trim()),
-        fileCountVisible: Boolean(document.querySelector('.lens-agent-window__file-count')),
-        unresolvedVisible: Boolean(document.querySelector('.lens-agent-window__unresolved')),
-        statusText: document.querySelector('#status-bar-lens-changes')?.textContent?.trim(),
+        tabLabels: [...document.querySelectorAll('.poiesis-changes__tabs button')].map(button => button.textContent?.trim()),
+        fileCountVisible: Boolean(document.querySelector('.poiesis-agent-window__file-count')),
+        unresolvedVisible: Boolean(document.querySelector('.poiesis-agent-window__unresolved')),
+        statusText: document.querySelector('#status-bar-poiesis-changes')?.textContent?.trim(),
         toastVisible: Boolean(document.querySelector('.theia-notification-toasts.open .theia-notification-list-item')),
-        contextQuestionVisible: Boolean(document.querySelector('.lens-agent-window__question--context')),
-        inlineQuestionVisible: Boolean(document.querySelector('.lens-agent-window__question--inline'))
+        contextQuestionVisible: Boolean(document.querySelector('.poiesis-agent-window__question--context')),
+        inlineQuestionVisible: Boolean(document.querySelector('.poiesis-agent-window__question--inline'))
     }), variant);
 
     const failures = [];
