@@ -101,6 +101,22 @@ try {
         await page.waitForFunction(previous => document.querySelectorAll('.lens-agent-window__code-editor-tab').length < previous, {}, count);
     }
 
+    await page.$eval('.lens-agent-window__code-activity button[aria-label="Search"]', element => element.click());
+    await page.waitForSelector('#search-input-field', { timeout: uiTimeout });
+    await page.waitForFunction(() => document.activeElement?.id === 'search-input-field');
+    for (const label of ['Refresh Search Results', 'Clear Search Results', 'Collapse All Search Results']) {
+        assert(await page.$(`.lens-agent-window__code-sidebar-actions button[aria-label="${label}"]`), `Search action is missing in Electron: ${label}`);
+    }
+    await page.$eval('.lens-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]', element => element.click());
+    await page.focus('#search-input-field');
+    const codeSearchQuery = ['Source contract', 'validation passed.'].join(' ');
+    await page.type('#search-input-field', codeSearchQuery);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('#search-in-workspace .search-info')?.textContent?.includes('2 results in 2 files'));
+    await page.$eval('.lens-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]', element => element.click());
+    await page.waitForFunction(() => document.querySelector('#search-input-field')?.value === ''
+        && document.querySelectorAll('#search-in-workspace .theia-TreeNode').length === 0);
+
     await page.click('.lens-agent-window__code-activity button[aria-label="Source Control"]');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
     await page.waitForSelector('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');

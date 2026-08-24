@@ -15,6 +15,7 @@ import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-contribution';
+import { SearchInWorkspaceCommands } from '@theia/search-in-workspace/lib/browser/search-in-workspace-frontend-contribution';
 import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
 import { AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
 import { FolderBrowserResult } from '../common/agent-runtime-protocol';
@@ -1668,6 +1669,13 @@ export class AgentWindowWidget extends ReactWidget {
                                     {this.renderExplorerAction('collapse-all', 'Collapse Folders', FileNavigatorCommands.COLLAPSE_ALL.id)}
                                 </React.Fragment>
                             )}
+                            {this.codeSidebarTab === 'search' && (
+                                <React.Fragment>
+                                    {this.renderSearchAction('refresh', 'Refresh Search Results', SearchInWorkspaceCommands.REFRESH_RESULTS.id)}
+                                    {this.renderSearchAction('clear-all', 'Clear Search Results', SearchInWorkspaceCommands.CLEAR_ALL.id)}
+                                    {this.renderSearchAction('collapse-all', 'Collapse All Search Results', SearchInWorkspaceCommands.COLLAPSE_ALL.id)}
+                                </React.Fragment>
+                            )}
                             {this.codeSidebarTab === 'git' && (
                                 <button
                                     type='button'
@@ -1932,6 +1940,19 @@ export class AgentWindowWidget extends ReactWidget {
                 title={label}
                 aria-label={label}
                 onClick={() => void this.commandService.executeCommand(command, this.codeFilesWidget)}
+            >
+                <span className={`codicon codicon-${icon}`} aria-hidden='true' />
+            </button>
+        );
+    }
+
+    protected renderSearchAction(icon: string, label: string, command: string): React.ReactNode {
+        return (
+            <button
+                type='button'
+                title={label}
+                aria-label={label}
+                onClick={() => void this.commandService.executeCommand(command, this.codeSearchWidget)}
             >
                 <span className={`codicon codicon-${icon}`} aria-hidden='true' />
             </button>

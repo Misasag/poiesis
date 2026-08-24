@@ -78,6 +78,7 @@ assert.equal(
     'lib/node/agent-window-backend-module'
 );
 assert.equal(extensionPackage.dependencies['@theia/scm'], '1.73.1');
+assert.equal(extensionPackage.dependencies['@theia/search-in-workspace'], '1.73.1');
 for (const dependency of [
     '@theia/editor',
     '@theia/filesystem',
@@ -310,6 +311,9 @@ for (const marker of [
     "className='lens-agent-window__code-status'",
     "this.renderCodeActivity('files', 'files', 'Explorer')",
     "this.renderCodeActivity('search', 'search', 'Search')",
+    "this.renderSearchAction('refresh', 'Refresh Search Results', SearchInWorkspaceCommands.REFRESH_RESULTS.id)",
+    "this.renderSearchAction('clear-all', 'Clear Search Results', SearchInWorkspaceCommands.CLEAR_ALL.id)",
+    "this.renderSearchAction('collapse-all', 'Collapse All Search Results', SearchInWorkspaceCommands.COLLAPSE_ALL.id)",
     "this.renderCodeActivity('git', 'source-control', 'Source Control')",
     "aria-label='Refresh Source Control'",
     "this.commandService.executeCommand('git.refresh')",

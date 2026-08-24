@@ -279,6 +279,40 @@ try {
 
     await page.click('.lens-agent-window__code-activity button[aria-label="Search"]');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Search');
+    await page.waitForSelector('#search-input-field');
+    await page.waitForFunction(() => document.activeElement?.id === 'search-input-field');
+    for (const label of ['Refresh Search Results', 'Clear Search Results', 'Collapse All Search Results']) {
+        assert(await page.$(`.lens-agent-window__code-sidebar-actions button[aria-label="${label}"]`), `Search action is missing: ${label}`);
+    }
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]');
+    await page.focus('#search-input-field');
+    const codeSearchQuery = ['Source contract', 'validation passed.'].join(' ');
+    await page.type('#search-input-field', codeSearchQuery);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('#search-in-workspace .search-info')?.textContent?.includes('2 results in 2 files'));
+    await page.waitForFunction(() => document.querySelectorAll('#search-in-workspace .theia-TreeNode:not(.theia-CompositeTreeNode)').length === 2);
+    await page.click('#search-in-workspace .replace-toggle[title="Toggle Replace"]');
+    await page.waitForSelector('#search-in-workspace .replace-field:not(.hidden) #replace-input-field');
+    await page.click('#search-in-workspace [title="Toggle Search Details"]');
+    await page.waitForSelector('#search-in-workspace .glob-field-container:not(.hidden) #include-glob-field');
+    await page.waitForSelector('#search-in-workspace .glob-field-container:not(.hidden) #exclude-glob-field');
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Search Results"]');
+    await page.waitForFunction(() => document.querySelectorAll('#search-in-workspace .theia-TreeNode:not(.theia-CompositeTreeNode)').length === 2);
+    await page.evaluate(() => {
+        const result = [...document.querySelectorAll('#search-in-workspace .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(node => node.textContent?.includes("console.log('Source contract " + "validation passed.');"));
+        if (!(result instanceof HTMLElement)) throw new Error('Search result row is missing');
+        result.click();
+    });
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'validate-source.mjs');
+    await page.click('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close');
+    await page.waitForFunction(() => ![...document.querySelectorAll('.lens-agent-window__code-editor-tab-name')]
+        .some(element => element.textContent?.trim() === 'validate-source.mjs'));
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Collapse All Search Results"]');
+    await page.waitForFunction(() => document.querySelectorAll('#search-in-workspace .theia-TreeNode:not(.theia-CompositeTreeNode)').length === 0);
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]');
+    await page.waitForFunction(() => document.querySelector('#search-input-field')?.value === ''
+        && document.querySelectorAll('#search-in-workspace .theia-TreeNode').length === 0);
     await page.click('.lens-agent-window__code-activity button[aria-label="Source Control"]');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
     await page.waitForSelector('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
