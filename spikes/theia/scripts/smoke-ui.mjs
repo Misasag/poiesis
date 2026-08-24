@@ -249,7 +249,8 @@ try {
     const terminalCommand = process.platform === 'win32'
         ? `echo poiesis-terminal-smoke>"${terminalFixturePath}"`
         : `printf poiesis-terminal-smoke > '${terminalFixturePath.replaceAll("'", "'\\''")}'`;
-    await page.click('.poiesis-agent-window__code-terminal-host .xterm-screen');
+    await page.focus('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea');
+    await page.waitForFunction(() => document.activeElement?.classList.contains('xterm-helper-textarea'));
     await page.keyboard.type(terminalCommand);
     await page.keyboard.press('Enter');
     for (let attempt = 0; attempt < 100 && !existsSync(terminalFixturePath); attempt++) {

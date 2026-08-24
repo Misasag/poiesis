@@ -338,7 +338,7 @@ for (const marker of [
     'protected scheduleCodeWidgetAttachments(): void',
     'protected readonly codeTerminalWidgets: TerminalWidget[] = []',
     'protected async newCodeTerminal(): Promise<TerminalWidget>',
-    'void terminal.start()',
+    'await terminal.start()',
     'protected installCodeTerminalShortcut(): void',
     'protected startCodePanelResize(event: React.PointerEvent<HTMLDivElement>): void',
     'protected async ensureCodeExtensionsWidget(): Promise<void>',

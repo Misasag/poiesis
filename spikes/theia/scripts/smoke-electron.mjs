@@ -104,7 +104,8 @@ try {
     assert(await page.$('.poiesis-agent-window__code-terminal-select[aria-label="Active Terminal"]'),
         'Active Terminal selector is missing in Electron');
     const firstTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
-    await page.click('.poiesis-agent-window__code-terminal-host .xterm-screen');
+    await page.focus('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea');
+    await page.waitForFunction(() => document.activeElement?.classList.contains('xterm-helper-textarea'));
     await page.keyboard.type(`echo poiesis-terminal-smoke>"${terminalFixturePath}"`);
     await page.keyboard.press('Enter');
     for (let attempt = 0; attempt < 100 && !existsSync(terminalFixturePath); attempt++) {
