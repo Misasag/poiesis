@@ -14,6 +14,7 @@ import { ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-prov
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
+import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
 import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-contribution';
 import { SearchInWorkspaceCommands } from '@theia/search-in-workspace/lib/browser/search-in-workspace-frontend-contribution';
 import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
@@ -37,6 +38,8 @@ const MAX_RAIL_WIDTH = 420;
 const DEFAULT_CODE_SIDEBAR_WIDTH = 260;
 const MIN_CODE_SIDEBAR_WIDTH = 180;
 const MAX_CODE_SIDEBAR_WIDTH = 520;
+const DEFAULT_CODE_PANEL_HEIGHT = 190;
+const MIN_CODE_PANEL_HEIGHT = 96;
 
 interface ChatMessage {
     id: string;
@@ -96,7 +99,10 @@ export class AgentWindowWidget extends ReactWidget {
     protected codeGitGraphExpanded = true;
     protected codeExtensionsWidget?: Widget;
     protected codeExtensionsInitialized = false;
-    protected codeTerminalWidget?: Widget;
+    protected codeTerminalWidget?: TerminalWidget;
+    protected readonly codeTerminalWidgets: TerminalWidget[] = [];
+    protected readonly codeTerminalWidgetListeners = new Map<TerminalWidget, Disposable>();
+    protected codeTerminalCreation?: Promise<TerminalWidget>;
     protected readonly codeCenterWidgets: Widget[] = [];
     protected readonly codeCenterWidgetListeners = new Map<Widget, Disposable>();
     protected readonly pendingDuplicateCodeWidgets = new WeakSet<Widget>();
@@ -113,8 +119,12 @@ export class AgentWindowWidget extends ReactWidget {
     protected codeGitGraphResizeObserver?: ResizeObserver;
     protected codeEditorResizeObserver?: ResizeObserver;
     protected codeTerminalResizeObserver?: ResizeObserver;
+    protected codeWidgetAttachmentFrame?: number;
     protected codeSidebarWidth = DEFAULT_CODE_SIDEBAR_WIDTH;
     protected codeSidebarResizeCleanup?: Disposable;
+    protected codePanelVisible = true;
+    protected codePanelHeight = DEFAULT_CODE_PANEL_HEIGHT;
+    protected codePanelResizeCleanup?: Disposable;
     protected codeSidebarTreeInteractionCleanup?: Disposable;
     protected codeFilePointerDrag?: {
         pointerId: number;
@@ -215,6 +225,7 @@ export class AgentWindowWidget extends ReactWidget {
         document.addEventListener('pointerdown', closeSessionMenu);
         this.toDispose.push(Disposable.create(() => document.removeEventListener('pointerdown', closeSessionMenu)));
         this.installCodeEditorSaveShortcut();
+        this.installCodeTerminalShortcut();
         this.installCodeTabDropTarget();
 
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
@@ -1815,22 +1826,75 @@ export class AgentWindowWidget extends ReactWidget {
                             );
                         })}
                     </div>
-                    <div className='lens-agent-window__code-editor-stack'>
+                    <div
+                        className={`lens-agent-window__code-editor-stack${this.codePanelVisible ? '' : ' panel-collapsed'}`}
+                        style={{ '--lens-code-panel-height': `${this.codePanelHeight}px` } as React.CSSProperties}
+                    >
                         <div className='lens-agent-window__code-editor-host' ref={this.setCodeEditorHost}>
                             {!this.activeCodeCenterWidget && (
                                 <div className='lens-agent-window__code-empty'>ファイルを開いて編集を開始</div>
                             )}
                         </div>
-                        <section className='lens-agent-window__code-panel' aria-label='Bottom Panel'>
-                            <div className='lens-agent-window__code-panel-tabs'>
-                                <span className='lens-agent-window__code-panel-tab active'>TERMINAL</span>
-                                <span className='lens-agent-window__code-panel-spacer' />
-                                <button type='button' title='New Terminal' aria-label='New Terminal' onClick={() => void this.createCodeTerminal()}>
-                                    <span className='codicon codicon-add' aria-hidden='true' />
-                                </button>
-                            </div>
-                            <div className='lens-agent-window__code-terminal-host' ref={this.setCodeTerminalHost} />
-                        </section>
+                        {this.codePanelVisible && (
+                            <section className='lens-agent-window__code-panel' aria-label='Bottom Panel'>
+                                <div
+                                    className='lens-agent-window__code-panel-resize'
+                                    role='separator'
+                                    aria-label='Resize Terminal Panel'
+                                    aria-orientation='horizontal'
+                                    aria-valuemin={MIN_CODE_PANEL_HEIGHT}
+                                    aria-valuenow={this.codePanelHeight}
+                                    tabIndex={0}
+                                    onPointerDown={event => this.startCodePanelResize(event)}
+                                    onDoubleClick={() => this.setCodePanelHeight(DEFAULT_CODE_PANEL_HEIGHT)}
+                                    onKeyDown={event => {
+                                        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                                            event.preventDefault();
+                                            this.setCodePanelHeight(this.codePanelHeight + (event.key === 'ArrowUp' ? 12 : -12));
+                                        }
+                                    }}
+                                />
+                                <div className='lens-agent-window__code-panel-tabs'>
+                                    <button
+                                        type='button'
+                                        className='lens-agent-window__code-panel-tab active'
+                                        aria-pressed='true'
+                                        onClick={() => this.codeTerminalWidget?.activate()}
+                                    >
+                                        TERMINAL
+                                    </button>
+                                    <span className='lens-agent-window__code-panel-spacer' />
+                                    {this.codeTerminalWidgets.length > 0 && this.codeTerminalWidget && (
+                                        <select
+                                            className='lens-agent-window__code-terminal-select'
+                                            aria-label='Active Terminal'
+                                            value={this.codeTerminalWidget.id}
+                                            onChange={event => this.selectCodeTerminalById(event.currentTarget.value)}
+                                        >
+                                            {this.codeTerminalWidgets.map(terminal => (
+                                                <option key={terminal.id} value={terminal.id}>{this.codeTerminalLabel(terminal)}</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                    <button type='button' title='New Terminal' aria-label='New Terminal' onClick={() => void this.createCodeTerminal()}>
+                                        <span className='codicon codicon-add' aria-hidden='true' />
+                                    </button>
+                                    <button
+                                        type='button'
+                                        title='Kill Terminal'
+                                        aria-label='Kill Terminal'
+                                        disabled={!this.codeTerminalWidget}
+                                        onClick={() => this.closeCodeTerminal()}
+                                    >
+                                        <span className='codicon codicon-trash' aria-hidden='true' />
+                                    </button>
+                                    <button type='button' title='Close Panel' aria-label='Close Panel' onClick={() => this.toggleCodePanel(false)}>
+                                        <span className='codicon codicon-close' aria-hidden='true' />
+                                    </button>
+                                </div>
+                                <div className='lens-agent-window__code-terminal-host' ref={this.setCodeTerminalHost} />
+                            </section>
+                        )}
                     </div>
                 </main>
                 <footer className='lens-agent-window__code-status' aria-label='Status Bar'>
@@ -1843,6 +1907,16 @@ export class AgentWindowWidget extends ReactWidget {
                     <span>LF</span>
                     <span>Spaces: 4</span>
                     <span><span className='codicon codicon-bell' aria-hidden='true' /></span>
+                    <button
+                        type='button'
+                        className={this.codePanelVisible ? 'active' : ''}
+                        title='Toggle Panel'
+                        aria-label='Toggle Panel'
+                        aria-expanded={this.codePanelVisible}
+                        onClick={() => this.toggleCodePanel()}
+                    >
+                        <span className='codicon codicon-layout-panel' aria-hidden='true' />
+                    </button>
                 </footer>
                 {this.renderCodeCenterCloseDialog()}
             </section>
@@ -2060,7 +2134,7 @@ export class AgentWindowWidget extends ReactWidget {
         }
         if (changed && this.codeMode) {
             this.update();
-            this.syncCodeWidgetAttachments();
+            this.scheduleCodeWidgetAttachments();
         }
     }
 
@@ -2089,7 +2163,6 @@ export class AgentWindowWidget extends ReactWidget {
         if (!host) {
             this.codeSidebarResizeObserver?.disconnect();
             this.codeSidebarResizeObserver = undefined;
-            this.detachCodeWidget(this.activeCodeSidebarWidget());
             this.codeSidebarHost = undefined;
             return;
         }
@@ -2100,7 +2173,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (this.codeSidebarTab === 'git') {
             this.codeSidebarTreeInteractionCleanup = this.installCodeSidebarTreeInteractions(host);
         }
-        this.syncCodeWidgetAttachments();
+        this.scheduleCodeWidgetAttachments();
     };
 
     protected installCodeSidebarTreeInteractions(host: HTMLDivElement): Disposable {
@@ -2241,7 +2314,6 @@ export class AgentWindowWidget extends ReactWidget {
         if (!host) {
             this.codeEditorResizeObserver?.disconnect();
             this.codeEditorResizeObserver = undefined;
-            this.detachCodeWidget(this.activeCodeCenterWidget);
             this.codeEditorHost = undefined;
             return;
         }
@@ -2249,14 +2321,13 @@ export class AgentWindowWidget extends ReactWidget {
         this.codeEditorResizeObserver = new ResizeObserver(() =>
             this.resizeCodeWidget(this.activeCodeCenterWidget, host));
         this.codeEditorResizeObserver.observe(host);
-        this.syncCodeWidgetAttachments();
+        this.scheduleCodeWidgetAttachments();
     };
 
     protected readonly setCodeGitGraphHost = (host: HTMLDivElement | null): void => {
         if (!host) {
             this.codeGitGraphResizeObserver?.disconnect();
             this.codeGitGraphResizeObserver = undefined;
-            this.detachCodeWidget(this.codeGitGraphWidget);
             this.codeGitGraphHost = undefined;
             return;
         }
@@ -2264,14 +2335,13 @@ export class AgentWindowWidget extends ReactWidget {
         this.codeGitGraphResizeObserver = new ResizeObserver(() =>
             this.resizeCodeWidget(this.codeGitGraphWidget, host));
         this.codeGitGraphResizeObserver.observe(host);
-        this.syncCodeWidgetAttachments();
+        this.scheduleCodeWidgetAttachments();
     };
 
     protected readonly setCodeTerminalHost = (host: HTMLDivElement | null): void => {
         if (!host) {
             this.codeTerminalResizeObserver?.disconnect();
             this.codeTerminalResizeObserver = undefined;
-            this.detachCodeWidget(this.codeTerminalWidget);
             this.codeTerminalHost = undefined;
             return;
         }
@@ -2279,7 +2349,7 @@ export class AgentWindowWidget extends ReactWidget {
         this.codeTerminalResizeObserver = new ResizeObserver(() =>
             this.resizeCodeWidget(this.codeTerminalWidget, host));
         this.codeTerminalResizeObserver.observe(host);
-        void this.ensureCodeTerminal();
+        this.scheduleCodeWidgetAttachments();
     };
 
     protected activeCodeSidebarWidget(): Widget | undefined {
@@ -2295,6 +2365,22 @@ export class AgentWindowWidget extends ReactWidget {
         return this.codeExtensionsWidget;
     }
 
+    protected scheduleCodeWidgetAttachments(): void {
+        if (this.codeWidgetAttachmentFrame !== undefined) {
+            return;
+        }
+        this.codeWidgetAttachmentFrame = requestAnimationFrame(() => {
+            this.codeWidgetAttachmentFrame = undefined;
+            if (this.isDisposed) {
+                return;
+            }
+            this.syncCodeWidgetAttachments();
+            if (this.codeMode && this.codePanelVisible && this.codeTerminalHost) {
+                void this.ensureCodeTerminal();
+            }
+        });
+    }
+
     protected syncCodeWidgetAttachments(): void {
         if (!this.codeMode) {
             this.detachCodeWidgets();
@@ -2307,23 +2393,126 @@ export class AgentWindowWidget extends ReactWidget {
             this.detachCodeWidget(this.codeGitGraphWidget);
         }
         this.attachCodeWidget(this.activeCodeCenterWidget, this.codeEditorHost);
-        this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
+        if (this.codePanelVisible) {
+            this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
+        } else {
+            this.detachCodeWidget(this.codeTerminalWidget);
+        }
     }
 
     protected async ensureCodeTerminal(): Promise<void> {
         if (!this.codeTerminalWidget) {
-            this.codeTerminalWidget = this.terminalService.all[0] ?? await this.terminalService.newTerminal({});
+            if (!this.codeTerminalCreation) {
+                this.codeTerminalCreation = this.newCodeTerminal()
+                    .then(terminal => {
+                        this.registerCodeTerminal(terminal);
+                        return terminal;
+                    })
+                    .finally(() => {
+                        this.codeTerminalCreation = undefined;
+                    });
+            }
+            await this.codeTerminalCreation;
         }
-        if (this.codeMode) {
+        if (this.codeMode && this.codePanelVisible) {
             this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
         }
     }
 
     protected async createCodeTerminal(): Promise<void> {
-        this.detachCodeWidget(this.codeTerminalWidget);
-        this.codeTerminalWidget = await this.terminalService.newTerminal({});
-        this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
+        const terminal = await this.newCodeTerminal();
+        this.registerCodeTerminal(terminal);
+        this.codePanelVisible = true;
+        this.selectCodeTerminal(terminal);
         this.update();
+    }
+
+    protected async newCodeTerminal(): Promise<TerminalWidget> {
+        const cwd = this.workspaceService.tryGetRoots()[0]?.resource.toString();
+        const terminal = await this.terminalService.newTerminal({ cwd, destroyTermOnClose: true });
+        void terminal.start();
+        return terminal;
+    }
+
+    protected registerCodeTerminal(terminal: TerminalWidget): void {
+        if (this.codeTerminalWidgets.includes(terminal)) {
+            return;
+        }
+        this.codeTerminalWidgets.push(terminal);
+        this.codeTerminalWidget ??= terminal;
+        const onDisposed = (): void => this.removeCodeTerminal(terminal);
+        const onTitleChanged = (): void => this.update();
+        const closedListener = terminal.onTerminalDidClose(() => this.removeCodeTerminal(terminal));
+        terminal.disposed.connect(onDisposed);
+        terminal.title.changed.connect(onTitleChanged);
+        const listeners = Disposable.create(() => {
+            closedListener.dispose();
+            terminal.disposed.disconnect(onDisposed);
+            terminal.title.changed.disconnect(onTitleChanged);
+        });
+        this.codeTerminalWidgetListeners.set(terminal, listeners);
+        this.toDispose.push(listeners);
+        this.update();
+    }
+
+    protected removeCodeTerminal(terminal: TerminalWidget): void {
+        const index = this.codeTerminalWidgets.indexOf(terminal);
+        if (index === -1) {
+            return;
+        }
+        const next = this.codeTerminalWidgets[index + 1] ?? this.codeTerminalWidgets[index - 1];
+        if (this.codeTerminalWidget === terminal) {
+            this.detachCodeWidget(terminal);
+            this.codeTerminalWidget = next;
+        }
+        this.codeTerminalWidgets.splice(index, 1);
+        this.codeTerminalWidgetListeners.get(terminal)?.dispose();
+        this.codeTerminalWidgetListeners.delete(terminal);
+        if (!this.codeTerminalWidget) {
+            this.codePanelVisible = false;
+        }
+        this.update();
+        this.syncCodeWidgetAttachments();
+    }
+
+    protected selectCodeTerminalById(id: string): void {
+        const terminal = this.codeTerminalWidgets.find(candidate => candidate.id === id);
+        if (terminal) {
+            this.selectCodeTerminal(terminal);
+        }
+    }
+
+    protected selectCodeTerminal(terminal: TerminalWidget): void {
+        if (this.codeTerminalWidget !== terminal) {
+            this.detachCodeWidget(this.codeTerminalWidget);
+            this.codeTerminalWidget = terminal;
+        }
+        this.codePanelVisible = true;
+        this.update();
+        this.attachCodeWidget(terminal, this.codeTerminalHost);
+    }
+
+    protected closeCodeTerminal(): void {
+        this.codeTerminalWidget?.close();
+    }
+
+    protected codeTerminalLabel(terminal: TerminalWidget): string {
+        const index = this.codeTerminalWidgets.indexOf(terminal);
+        return `${index + 1}: ${terminal.title.label || 'Terminal'}`;
+    }
+
+    protected toggleCodePanel(visible = !this.codePanelVisible): void {
+        if (visible === this.codePanelVisible) {
+            return;
+        }
+        if (!visible) {
+            this.detachCodeWidget(this.codeTerminalWidget);
+        }
+        this.codePanelVisible = visible;
+        this.update();
+        if (visible) {
+            requestAnimationFrame(() => void this.ensureCodeTerminal());
+        }
     }
 
     protected attachCodeWidget(widget: Widget | undefined, host: HTMLDivElement | undefined): void {
@@ -2396,7 +2585,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (tab === 'extensions') {
             void this.ensureCodeExtensionsWidget();
         } else {
-            this.syncCodeWidgetAttachments();
+            this.scheduleCodeWidgetAttachments();
         }
     }
 
@@ -2411,7 +2600,7 @@ export class AgentWindowWidget extends ReactWidget {
             }
         }
         if (this.codeMode && this.codeSidebarTab === 'extensions') {
-            this.attachCodeWidget(this.codeExtensionsWidget, this.codeSidebarHost);
+            this.scheduleCodeWidgetAttachments();
         }
     }
 
@@ -2445,6 +2634,42 @@ export class AgentWindowWidget extends ReactWidget {
         code?.style.setProperty('--lens-code-sidebar-width', `${this.codeSidebarWidth}px`);
         this.node.querySelector('.lens-agent-window__code-sidebar-resize')
             ?.setAttribute('aria-valuenow', `${this.codeSidebarWidth}`);
+    }
+
+    protected startCodePanelResize(event: React.PointerEvent<HTMLDivElement>): void {
+        if (event.button !== 0) {
+            return;
+        }
+        event.preventDefault();
+        this.codePanelResizeCleanup?.dispose();
+        const startY = event.clientY;
+        const startHeight = this.codePanelHeight;
+        const onPointerMove = (moveEvent: PointerEvent): void => {
+            this.setCodePanelHeight(startHeight + startY - moveEvent.clientY);
+        };
+        const finish = (): void => {
+            this.codePanelResizeCleanup?.dispose();
+            this.codePanelResizeCleanup = undefined;
+        };
+        document.body.classList.add('lens-code-panel-resizing');
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup', finish, { once: true });
+        document.addEventListener('pointercancel', finish, { once: true });
+        this.codePanelResizeCleanup = Disposable.create(() => {
+            document.body.classList.remove('lens-code-panel-resizing');
+            document.removeEventListener('pointermove', onPointerMove);
+            document.removeEventListener('pointerup', finish);
+            document.removeEventListener('pointercancel', finish);
+        });
+    }
+
+    protected setCodePanelHeight(height: number): void {
+        const stack = this.node.querySelector<HTMLElement>('.lens-agent-window__code-editor-stack');
+        const maximum = Math.max(MIN_CODE_PANEL_HEIGHT, (stack?.clientHeight ?? DEFAULT_CODE_PANEL_HEIGHT + 80) - 80);
+        this.codePanelHeight = Math.max(MIN_CODE_PANEL_HEIGHT, Math.min(maximum, height));
+        stack?.style.setProperty('--lens-code-panel-height', `${this.codePanelHeight}px`);
+        this.node.querySelector('.lens-agent-window__code-panel-resize')
+            ?.setAttribute('aria-valuenow', `${this.codePanelHeight}`);
     }
 
     protected selectCodeCenterWidget(widget: Widget, focusTab = false): void {
@@ -2620,6 +2845,23 @@ export class AgentWindowWidget extends ReactWidget {
         this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
     }
 
+    protected installCodeTerminalShortcut(): void {
+        const onKeyDown = (event: KeyboardEvent): void => {
+            const togglePressed = (event.ctrlKey || event.metaKey)
+                && !event.altKey
+                && !event.shiftKey
+                && (event.key === '`' || event.code === 'Backquote');
+            if (!this.codeMode || !togglePressed) {
+                return;
+            }
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            this.toggleCodePanel();
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
+    }
+
     protected closeCodeCenterWidget(widget: Widget): void {
         if (widget.id === AgentWindowWidget.SETTINGS_WIDGET_FACTORY_ID) {
             this.detachCodeWidget(widget);
@@ -2764,6 +3006,12 @@ export class AgentWindowWidget extends ReactWidget {
         this.railResizeCleanup = undefined;
         this.codeSidebarResizeCleanup?.dispose();
         this.codeSidebarResizeCleanup = undefined;
+        this.codePanelResizeCleanup?.dispose();
+        this.codePanelResizeCleanup = undefined;
+        if (this.codeWidgetAttachmentFrame !== undefined) {
+            cancelAnimationFrame(this.codeWidgetAttachmentFrame);
+            this.codeWidgetAttachmentFrame = undefined;
+        }
         this.codeSidebarResizeObserver?.disconnect();
         this.codeEditorResizeObserver?.disconnect();
         this.codeTerminalResizeObserver?.disconnect();

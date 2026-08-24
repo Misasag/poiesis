@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -26,6 +26,8 @@ if (scmFixtureStatus.status !== 0 || scmFixtureStatus.stdout.trim()) {
     throw new Error(`SCM smoke fixture must be clean before the test: ${scmFixtureStatus.stderr || scmFixtureStatus.stdout}`);
 }
 const scmFixtureOriginal = readFileSync(scmFixturePath, 'utf8');
+const terminalFixturePath = resolve(process.cwd(), '.lens-terminal-smoke.txt');
+removeTerminalFixture();
 
 const browser = await puppeteer.launch({
     executablePath,
@@ -43,6 +45,12 @@ const browser = await puppeteer.launch({
 try {
     writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n<!-- Lens SCM smoke change -->\n`, 'utf8');
     const page = await browser.newPage();
+    const reactUnmountWarnings = [];
+    page.on('console', message => {
+        if (message.text().includes('Attempted to synchronously unmount a root')) {
+            reactUnmountWarnings.push(message.text());
+        }
+    });
     page.setDefaultTimeout(uiTimeout);
     await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout: uiTimeout });
     await page.waitForSelector('#lens-window-host .lens-agent-window__content', { timeout: uiTimeout });
@@ -225,6 +233,7 @@ try {
 
     await click(page, '.lens-agent-window__code-control', 'Code');
     await page.waitForSelector('.lens-agent-window__code');
+    await page.waitForFunction(() => Boolean(document.querySelector('.lens-agent-window__code-terminal-host > *')));
     const code = await page.evaluate(readState);
     assert(code.mode === 'code', `Expected Code mode, got ${code.mode}`);
     assert(!code.sessionRailVisible, 'Session rail must be hidden in Code mode');
@@ -238,6 +247,49 @@ try {
     assert(code.codeLuminoTabContainerCount === 0, 'Code must not contain lm-TabBar-content-container wrappers');
     assert(!code.applicationShellVisible, 'Code must not mount the Theia ApplicationShell');
     assert(code.sessionTabCount === 0, 'Agent / Results tabs must be hidden in Code mode');
+    await page.waitForSelector('.lens-agent-window__code-terminal-host .xterm-helper-textarea');
+    const firstTerminalId = await page.$eval('.lens-agent-window__code-terminal-host > *', element => element.id);
+    const terminalCommand = process.platform === 'win32'
+        ? `echo lens-terminal-smoke>"${terminalFixturePath}"`
+        : `printf lens-terminal-smoke > '${terminalFixturePath.replaceAll("'", "'\\''")}'`;
+    await page.click('.lens-agent-window__code-terminal-host .xterm-screen');
+    await page.keyboard.type(terminalCommand);
+    await page.keyboard.press('Enter');
+    for (let attempt = 0; attempt < 100 && !existsSync(terminalFixturePath); attempt++) {
+        await new Promise(resolveDelay => setTimeout(resolveDelay, 100));
+    }
+    assert(existsSync(terminalFixturePath) && readFileSync(terminalFixturePath, 'utf8').trim() === 'lens-terminal-smoke',
+        'Terminal command did not write its output fixture');
+    removeTerminalFixture();
+    const terminalPanelHeight = await page.$eval('.lens-agent-window__code-panel', element => Math.round(element.getBoundingClientRect().height));
+    await page.focus('.lens-agent-window__code-panel-resize');
+    await page.keyboard.press('ArrowUp');
+    await page.waitForFunction(height => Math.round(document.querySelector('.lens-agent-window__code-panel')?.getBoundingClientRect().height ?? 0) === height + 12,
+        {}, terminalPanelHeight);
+    await page.click('.lens-agent-window__code-panel-tabs button[aria-label="New Terminal"]');
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id !== id
+        && document.querySelectorAll('.lens-agent-window__code-terminal-select option').length === 2, {}, firstTerminalId);
+    const secondTerminalId = await page.$eval('.lens-agent-window__code-terminal-host > *', element => element.id);
+    await page.select('.lens-agent-window__code-terminal-select', firstTerminalId);
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.click('.lens-agent-window__code-panel-tabs button[aria-label="Close Panel"]');
+    await page.waitForSelector('.lens-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
+    assert(!await page.$('.lens-agent-window__code-panel'), 'Close Panel must hide the Terminal panel');
+    await page.click('.lens-agent-window__code-status button[aria-label="Toggle Panel"]');
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.keyboard.down('Control');
+    await page.keyboard.press('Backquote');
+    await page.keyboard.up('Control');
+    await page.waitForSelector('.lens-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('Backquote');
+    await page.keyboard.up('Control');
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.select('.lens-agent-window__code-terminal-select', secondTerminalId);
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
+    await page.click('.lens-agent-window__code-panel-tabs button[aria-label="Kill Terminal"]');
+    await page.waitForFunction(id => document.querySelectorAll('.lens-agent-window__code-terminal-select option').length === 1
+        && document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
     while (await page.$('.lens-agent-window__code-editor-tab-close')) {
         const tabCount = await page.$$eval('.lens-agent-window__code-editor-tab', tabs => tabs.length);
         await page.click('.lens-agent-window__code-editor-tab-close');
@@ -378,6 +430,8 @@ try {
     await page.waitForFunction(() => document.querySelector('#vsx-extensions-search-bar input')?.value === '@builtin');
     await page.waitForFunction(() => (document.getElementById('vsx-extensions:builtin')?.querySelectorAll('.theia-TreeNode').length ?? 0) > 0);
     assert(!await page.$('.lens-agent-window__customize-page'), 'Code Extensions must stay in Code mode');
+    assert(reactUnmountWarnings.length === 0,
+        `Code widget transitions synchronously unmounted a React root: ${reactUnmountWarnings.join('\n')}`);
     await page.click('.lens-agent-window__code-activity-footer button[aria-label="Settings"]');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
     await page.waitForSelector('.lens-agent-window__code-editor-host #settings_widget');
@@ -450,7 +504,7 @@ try {
     await page.evaluate(() => {
         const docs = [...document.querySelectorAll('#files .theia-FileStatNode')]
             .find(element => element.textContent?.trim() === 'docs');
-        docs?.querySelector('.theia-ExpansionToggle')
+        docs?.querySelector('.theia-ExpansionToggle.theia-mod-collapsed')
             ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
     });
     await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
@@ -611,12 +665,19 @@ try {
     }, null, 2));
 } finally {
     restoreScmFixture();
+    removeTerminalFixture();
     await browser.close();
 }
 
 function restoreScmFixture() {
     spawnSync('git', ['reset', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
     writeFileSync(scmFixturePath, scmFixtureOriginal, 'utf8');
+}
+
+function removeTerminalFixture() {
+    if (existsSync(terminalFixturePath)) {
+        unlinkSync(terminalFixturePath);
+    }
 }
 
 async function waitForScmAction(page, label, action) {

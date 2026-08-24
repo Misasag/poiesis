@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -22,6 +22,8 @@ if (scmFixtureStatus.status !== 0 || scmFixtureStatus.stdout.trim()) {
     throw new Error(`SCM smoke fixture must be clean before the test: ${scmFixtureStatus.stderr || scmFixtureStatus.stdout}`);
 }
 const scmFixtureOriginal = readFileSync(scmFixturePath, 'utf8');
+const terminalFixturePath = resolve(runtimeDir, 'terminal-smoke.txt');
+removeTerminalFixture();
 
 const electronExecutable = resolve(root, 'node_modules/electron/dist/electron.exe');
 const startProcess = spawn(electronExecutable, [
@@ -59,6 +61,12 @@ try {
     await waitForCdp(browserURL, startProcess, 120_000);
     browser = await puppeteer.connect({ browserURL, defaultViewport: null });
     const page = await findWorkbenchPage(browser, uiTimeout);
+    const reactUnmountWarnings = [];
+    page.on('console', message => {
+        if (message.text().includes('Attempted to synchronously unmount a root')) {
+            reactUnmountWarnings.push(message.text());
+        }
+    });
     await page.bringToFront();
     await page.evaluate(() => window.focus());
     page.setDefaultTimeout(uiTimeout);
@@ -94,6 +102,50 @@ try {
     assert(code.codeLuminoPanelCount === 0, 'Code reintroduced lm-Widget lm-Panel wrappers in Electron');
     assert(code.codeLuminoTabContainerCount === 0, 'Code reintroduced lm-TabBar-content-container in Electron');
     assert(!code.applicationShellVisible, 'Code mounted the Theia ApplicationShell in Electron');
+
+    await page.waitForSelector('.lens-agent-window__code-terminal-host .xterm-helper-textarea', { timeout: uiTimeout });
+    assert(await page.$('.lens-agent-window__code-terminal-select[aria-label="Active Terminal"]'),
+        'Active Terminal selector is missing in Electron');
+    const firstTerminalId = await page.$eval('.lens-agent-window__code-terminal-host > *', element => element.id);
+    await page.click('.lens-agent-window__code-terminal-host .xterm-screen');
+    await page.keyboard.type(`echo lens-terminal-smoke>"${terminalFixturePath}"`);
+    await page.keyboard.press('Enter');
+    for (let attempt = 0; attempt < 100 && !existsSync(terminalFixturePath); attempt++) {
+        await new Promise(resolveDelay => setTimeout(resolveDelay, 100));
+    }
+    assert(existsSync(terminalFixturePath) && readFileSync(terminalFixturePath, 'utf8').trim() === 'lens-terminal-smoke',
+        'Terminal command did not write its Electron output fixture');
+    removeTerminalFixture();
+
+    const terminalPanelHeight = await page.$eval('.lens-agent-window__code-panel', element => Math.round(element.getBoundingClientRect().height));
+    await page.focus('.lens-agent-window__code-panel-resize');
+    await page.keyboard.press('ArrowUp');
+    await page.waitForFunction(height => Math.round(document.querySelector('.lens-agent-window__code-panel')?.getBoundingClientRect().height ?? 0) === height + 12,
+        {}, terminalPanelHeight);
+    await page.click('.lens-agent-window__code-panel-tabs button[aria-label="New Terminal"]');
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id !== id
+        && document.querySelectorAll('.lens-agent-window__code-terminal-select option').length === 2, {}, firstTerminalId);
+    const secondTerminalId = await page.$eval('.lens-agent-window__code-terminal-host > *', element => element.id);
+    await page.select('.lens-agent-window__code-terminal-select', firstTerminalId);
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.click('.lens-agent-window__code-panel-tabs button[aria-label="Close Panel"]');
+    await page.waitForSelector('.lens-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
+    assert(!await page.$('.lens-agent-window__code-panel'), 'Close Panel must hide the Electron Terminal panel');
+    await page.click('.lens-agent-window__code-status button[aria-label="Toggle Panel"]');
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.keyboard.down('Control');
+    await page.keyboard.press('Backquote');
+    await page.keyboard.up('Control');
+    await page.waitForSelector('.lens-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('Backquote');
+    await page.keyboard.up('Control');
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
+    await page.select('.lens-agent-window__code-terminal-select', secondTerminalId);
+    await page.waitForFunction(id => document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
+    await page.click('.lens-agent-window__code-panel-tabs button[aria-label="Kill Terminal"]');
+    await page.waitForFunction(id => document.querySelectorAll('.lens-agent-window__code-terminal-select option').length === 1
+        && document.querySelector('.lens-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
 
     while (await page.$('.lens-agent-window__code-editor-tab-close')) {
         const count = await page.$$eval('.lens-agent-window__code-editor-tab', tabs => tabs.length);
@@ -150,6 +202,8 @@ try {
     await page.waitForFunction(() => document.querySelector('#vsx-extensions-search-bar input')?.value === '@builtin');
     await page.waitForFunction(() => (document.getElementById('vsx-extensions:builtin')?.querySelectorAll('.theia-TreeNode').length ?? 0) > 0);
     assert(!await page.$('.lens-agent-window__customize-page'), 'Code Extensions opened Lens Customize in Electron');
+    assert(reactUnmountWarnings.length === 0,
+        `Code widget transitions synchronously unmounted a React root in Electron: ${reactUnmountWarnings.join('\n')}`);
 
     await page.$eval('.lens-agent-window__code-activity-footer button[aria-label="Settings"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
@@ -212,6 +266,7 @@ try {
     throw error;
 } finally {
     restoreScmFixture();
+    removeTerminalFixture();
     if (browser) {
         await browser.close().catch(error => console.warn(`CDP Browser.close failed: ${error}`));
     }
@@ -222,6 +277,12 @@ try {
 function restoreScmFixture() {
     spawnSync('git', ['reset', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
     writeFileSync(scmFixturePath, scmFixtureOriginal, 'utf8');
+}
+
+function removeTerminalFixture() {
+    if (existsSync(terminalFixturePath)) {
+        unlinkSync(terminalFixturePath);
+    }
 }
 
 async function waitForScmAction(page, label, action) {
