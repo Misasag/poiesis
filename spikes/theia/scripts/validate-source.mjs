@@ -41,6 +41,10 @@ for (const marker of [
     "'#lens-window-host .lens-agent-window__content'",
     "'.lens-agent-window__code'",
     "'.lens-agent-window__code-terminal-host > *'",
+    'Refresh Source Control',
+    'scm-history-graph-row',
+    "'Stage Changes'",
+    "'Unstage Changes'",
     'dragExplorerFileToTabs',
     'ELECTRON_SMOKE_RESULT='
 ]) {
@@ -239,6 +243,7 @@ for (const marker of [
     "static readonly FILES_WIDGET_FACTORY_ID = 'files'",
     "static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace'",
     "static readonly GIT_WIDGET_FACTORY_ID = 'scm-view'",
+    "static readonly GIT_GRAPH_WIDGET_FACTORY_ID = 'scm-history-graph-widget'",
     "static readonly EXTENSIONS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container'",
     "static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener'",
     "static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget'",
@@ -306,6 +311,14 @@ for (const marker of [
     "this.renderCodeActivity('files', 'files', 'Explorer')",
     "this.renderCodeActivity('search', 'search', 'Search')",
     "this.renderCodeActivity('git', 'source-control', 'Source Control')",
+    "aria-label='Refresh Source Control'",
+    "this.commandService.executeCommand('git.refresh')",
+    'protected installCodeSidebarTreeInteractions(host: HTMLDivElement): Disposable',
+    'node.setPointerCapture(event.pointerId)',
+    'window.getSelection()?.removeAllRanges()',
+    "className='lens-agent-window__code-git-graph-title'",
+    "className='lens-agent-window__code-git-graph-host'",
+    'this.attachCodeWidget(this.codeGitGraphWidget, this.codeGitGraphHost)',
     "this.renderCodeActivity('extensions', 'extensions', 'Extensions')",
     'onClick={() => void this.openCodeSettings()}',
     'protected async ensureCodeTerminal(): Promise<void>',
@@ -505,6 +518,10 @@ for (const marker of [
     '.lens-agent-window__code-activity',
     '.lens-agent-window__code-sidebar-title',
     '.lens-agent-window__code-sidebar-host',
+    '.lens-agent-window__code-git-graph-title',
+    '.lens-agent-window__code-git-graph-host',
+    '.lens-agent-window__code-source-control #scm-action-button-widget',
+    'user-select: none',
     '.lens-agent-window__code-editor-host',
     '.lens-agent-window__code-close-dialog',
     '.lens-agent-window__code-editor-tab.dirty',
@@ -562,7 +579,7 @@ assert.match(
 );
 assert.match(
     agentStyles,
-    /\.lens-agent-window__code-sidebar-host,\s*\.lens-agent-window__code-editor-host,\s*\.lens-agent-window__code-terminal-host\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/,
+    /\.lens-agent-window__code-sidebar-host,\s*\.lens-agent-window__code-git-graph-host,\s*\.lens-agent-window__code-editor-host,\s*\.lens-agent-window__code-terminal-host\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/,
     'Code widget hosts must fill their minmax rows without collapsing'
 );
 assert.match(
@@ -589,6 +606,7 @@ for (const marker of [
     'this.widgetManager.getOrCreateWidget(AgentWindowWidget.FILES_WIDGET_FACTORY_ID)',
     'this.widgetManager.getOrCreateWidget(AgentWindowWidget.SEARCH_WIDGET_FACTORY_ID)',
     'this.widgetManager.getOrCreateWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID)',
+    'this.widgetManager.getOrCreateWidget(AgentWindowWidget.GIT_GRAPH_WIDGET_FACTORY_ID)',
     'for (const editor of this.editorManager.all)',
     'this.agentWindowWidget.registerCodeWidget(factoryId, widget)',
     'this.agentWindowWidget.registerCodeWidget(factoryId, editor, true)',

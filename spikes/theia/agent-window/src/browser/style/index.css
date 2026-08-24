@@ -2254,6 +2254,61 @@
     grid-template-rows: 35px 22px minmax(0, 1fr);
 }
 
+.lens-agent-window__code-source-control {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) 24px;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.lens-agent-window__code-source-control.graph-expanded {
+    grid-template-rows: minmax(112px, 1fr) 24px minmax(180px, 1.2fr);
+}
+
+.lens-agent-window__code-git-graph-title {
+    align-items: center;
+    background: #181818;
+    border: 0;
+    border-bottom: 1px solid #242424;
+    border-top: 1px solid #2b2b2b;
+    color: #cccccc;
+    cursor: pointer;
+    display: flex;
+    font-size: 10px;
+    gap: 3px;
+    letter-spacing: .02em;
+    padding: 0 8px;
+    text-align: left;
+    text-transform: uppercase;
+    width: 100%;
+}
+
+.lens-agent-window__code-git-graph-title:hover,
+.lens-agent-window__code-git-graph-title:focus-visible {
+    background: #252526;
+    color: #ffffff;
+    outline: none;
+}
+
+.lens-agent-window__code-git-graph-title .codicon {
+    font-size: 13px;
+}
+
+.lens-agent-window__code-git-graph-title strong {
+    font-weight: 600;
+}
+
+.lens-agent-window__code-git-graph-host {
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.lens-agent-window__code-git-graph-host[hidden] {
+    display: none;
+}
+
 .lens-agent-window__code-activity {
     align-items: stretch;
     background: #181818;
@@ -2428,6 +2483,16 @@
 .lens-agent-window__code-sidebar-host .theia-TreeNode.theia-mod-selected {
     background: #37373d;
     color: #ffffff;
+}
+
+.lens-agent-window__code-source-control .theia-CompositeTreeNode.theia-ExpandableTreeNode {
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.lens-agent-window__code-source-control #scm-action-button-widget {
+    min-height: 40px;
 }
 
 .lens-agent-window__code-sidebar-tabs,
@@ -2706,6 +2771,7 @@ body.lens-code-file-pointer-drag * {
 }
 
 .lens-agent-window__code-sidebar-host,
+.lens-agent-window__code-git-graph-host,
 .lens-agent-window__code-editor-host,
 .lens-agent-window__code-terminal-host {
     height: 100%;
@@ -2716,6 +2782,7 @@ body.lens-code-file-pointer-drag * {
 }
 
 .lens-agent-window__code-sidebar-host > *,
+.lens-agent-window__code-git-graph-host > *,
 .lens-agent-window__code-editor-host > *,
 .lens-agent-window__code-terminal-host > * {
     height: 100%;

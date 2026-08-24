@@ -80,6 +80,7 @@ export class AgentWindowWidget extends ReactWidget {
     static readonly FILES_WIDGET_FACTORY_ID = 'files';
     static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace';
     static readonly GIT_WIDGET_FACTORY_ID = 'scm-view';
+    static readonly GIT_GRAPH_WIDGET_FACTORY_ID = 'scm-history-graph-widget';
     static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener';
     static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget';
     static readonly EXTENSIONS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container';
@@ -90,6 +91,8 @@ export class AgentWindowWidget extends ReactWidget {
     protected codeFilesWidget?: Widget;
     protected codeSearchWidget?: Widget;
     protected codeGitWidget?: Widget;
+    protected codeGitGraphWidget?: Widget;
+    protected codeGitGraphExpanded = true;
     protected codeExtensionsWidget?: Widget;
     protected codeExtensionsInitialized = false;
     protected codeTerminalWidget?: Widget;
@@ -102,13 +105,16 @@ export class AgentWindowWidget extends ReactWidget {
     protected pendingCodeCenterClose?: Widget;
     protected pendingCodeCenterCloseBusy = false;
     protected codeSidebarHost?: HTMLDivElement;
+    protected codeGitGraphHost?: HTMLDivElement;
     protected codeEditorHost?: HTMLDivElement;
     protected codeTerminalHost?: HTMLDivElement;
     protected codeSidebarResizeObserver?: ResizeObserver;
+    protected codeGitGraphResizeObserver?: ResizeObserver;
     protected codeEditorResizeObserver?: ResizeObserver;
     protected codeTerminalResizeObserver?: ResizeObserver;
     protected codeSidebarWidth = DEFAULT_CODE_SIDEBAR_WIDTH;
     protected codeSidebarResizeCleanup?: Disposable;
+    protected codeSidebarTreeInteractionCleanup?: Disposable;
     protected codeFilePointerDrag?: {
         pointerId: number;
         uri: string;
@@ -1662,6 +1668,16 @@ export class AgentWindowWidget extends ReactWidget {
                                     {this.renderExplorerAction('collapse-all', 'Collapse Folders', FileNavigatorCommands.COLLAPSE_ALL.id)}
                                 </React.Fragment>
                             )}
+                            {this.codeSidebarTab === 'git' && (
+                                <button
+                                    type='button'
+                                    title='Refresh Source Control'
+                                    aria-label='Refresh Source Control'
+                                    onClick={() => void this.commandService.executeCommand('git.refresh')}
+                                >
+                                    <span className='codicon codicon-refresh' aria-hidden='true' />
+                                </button>
+                            )}
                             {this.codeSidebarTab === 'files' && (
                                 <div className='lens-agent-window__code-explorer-more'>
                                     <button
@@ -1688,7 +1704,36 @@ export class AgentWindowWidget extends ReactWidget {
                             <strong>{this.workspaceFolderName()}</strong>
                         </div>
                     )}
-                    <div className='lens-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
+                    {this.codeSidebarTab === 'git' ? (
+                        <div className={`lens-agent-window__code-source-control${this.codeGitGraphExpanded ? ' graph-expanded' : ''}`}>
+                            <div className='lens-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
+                            <button
+                                type='button'
+                                className='lens-agent-window__code-git-graph-title'
+                                aria-controls='lens-code-git-graph'
+                                aria-expanded={this.codeGitGraphExpanded}
+                                onClick={() => {
+                                    this.codeGitGraphExpanded = !this.codeGitGraphExpanded;
+                                    this.update();
+                                }}
+                            >
+                                <span
+                                    className={`codicon codicon-chevron-${this.codeGitGraphExpanded ? 'down' : 'right'}`}
+                                    aria-hidden='true'
+                                />
+                                <strong>Graph</strong>
+                            </button>
+                            <div
+                                id='lens-code-git-graph'
+                                className='lens-agent-window__code-git-graph-host'
+                                aria-hidden={!this.codeGitGraphExpanded}
+                                hidden={!this.codeGitGraphExpanded}
+                                ref={this.setCodeGitGraphHost}
+                            />
+                        </div>
+                    ) : (
+                        <div className='lens-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
+                    )}
                     <div
                         className='lens-agent-window__code-sidebar-resize'
                         role='separator'
@@ -1932,6 +1977,9 @@ export class AgentWindowWidget extends ReactWidget {
         } else if (factoryId === AgentWindowWidget.GIT_WIDGET_FACTORY_ID) {
             changed = this.codeGitWidget !== widget;
             this.codeGitWidget = widget;
+        } else if (factoryId === AgentWindowWidget.GIT_GRAPH_WIDGET_FACTORY_ID) {
+            changed = this.codeGitGraphWidget !== widget;
+            this.codeGitGraphWidget = widget;
         } else if (factoryId === AgentWindowWidget.EXTENSIONS_WIDGET_FACTORY_ID) {
             changed = this.codeExtensionsWidget !== widget;
             this.codeExtensionsWidget = widget;
@@ -2013,6 +2061,8 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected readonly setCodeSidebarHost = (host: HTMLDivElement | null): void => {
+        this.codeSidebarTreeInteractionCleanup?.dispose();
+        this.codeSidebarTreeInteractionCleanup = undefined;
         if (!host) {
             this.codeSidebarResizeObserver?.disconnect();
             this.codeSidebarResizeObserver = undefined;
@@ -2024,8 +2074,145 @@ export class AgentWindowWidget extends ReactWidget {
         this.codeSidebarResizeObserver = new ResizeObserver(() =>
             this.resizeCodeWidget(this.activeCodeSidebarWidget(), host));
         this.codeSidebarResizeObserver.observe(host);
+        if (this.codeSidebarTab === 'git') {
+            this.codeSidebarTreeInteractionCleanup = this.installCodeSidebarTreeInteractions(host);
+        }
         this.syncCodeWidgetAttachments();
     };
+
+    protected installCodeSidebarTreeInteractions(host: HTMLDivElement): Disposable {
+        let gesture: {
+            pointerId: number;
+            node: HTMLElement;
+            nodeId: string;
+            targetCollapsed: boolean;
+        } | undefined;
+        let suppressClickNodeId: string | undefined;
+        let suppressClickTimer: number | undefined;
+        let pendingToggleNodeId: string | undefined;
+        let pendingToggleCollapsed: boolean | undefined;
+        let toggleGeneration = 0;
+        let pendingToggleTimers: number[] = [];
+
+        const expandableNode = (target: EventTarget | null): HTMLElement | undefined => {
+            if (!(target instanceof Element)) {
+                return undefined;
+            }
+            return target.closest<HTMLElement>('.theia-CompositeTreeNode.theia-ExpandableTreeNode') ?? undefined;
+        };
+        const expansionToggle = (node: HTMLElement): HTMLElement | undefined =>
+            node.querySelector<HTMLElement>('.theia-ExpansionToggle[data-node-id]') ?? undefined;
+        const expansionToggleByNodeId = (nodeId: string): HTMLElement | undefined =>
+            Array.from(host.querySelectorAll<HTMLElement>('.theia-ExpansionToggle[data-node-id]'))
+                .find(toggle => toggle.dataset.nodeId === nodeId);
+        const isProtectedControl = (target: EventTarget | null): boolean => target instanceof Element
+            && !!target.closest('.theia-ExpansionToggle, .theia-scm-inline-actions-container, button, input, textarea, select, a');
+        const clearGesture = (): void => {
+            gesture = undefined;
+        };
+        const clearSuppressedClick = (): void => {
+            suppressClickNodeId = undefined;
+            if (suppressClickTimer !== undefined) {
+                window.clearTimeout(suppressClickTimer);
+                suppressClickTimer = undefined;
+            }
+        };
+        const clearPendingToggle = (): void => {
+            toggleGeneration++;
+            for (const timer of pendingToggleTimers) {
+                window.clearTimeout(timer);
+            }
+            pendingToggleTimers = [];
+            pendingToggleNodeId = undefined;
+            pendingToggleCollapsed = undefined;
+        };
+        const onPointerDown = (event: PointerEvent): void => {
+            if (event.button === 0 && event.isPrimary && event.pointerType === 'mouse') {
+                clearSuppressedClick();
+            }
+            if (event.button !== 0 || !event.isPrimary || event.pointerType !== 'mouse' || isProtectedControl(event.target)) {
+                clearGesture();
+                return;
+            }
+            const node = expandableNode(event.target);
+            const toggle = node && expansionToggle(node);
+            const nodeId = toggle?.dataset.nodeId;
+            if (!node || !nodeId) {
+                clearGesture();
+                return;
+            }
+            const currentCollapsed = pendingToggleNodeId === nodeId
+                ? pendingToggleCollapsed
+                : toggle.classList.contains('theia-mod-collapsed');
+            clearPendingToggle();
+            window.getSelection()?.removeAllRanges();
+            event.preventDefault();
+            gesture = {
+                pointerId: event.pointerId,
+                node,
+                nodeId,
+                targetCollapsed: !currentCollapsed
+            };
+            try {
+                node.setPointerCapture(event.pointerId);
+            } catch {
+                // The node can be redrawn while Git finishes registering its actions.
+            }
+        };
+        const onPointerUp = (event: PointerEvent): void => {
+            const active = gesture;
+            clearGesture();
+            if (!active || event.pointerId !== active.pointerId || expandableNode(event.target) !== active.node) {
+                return;
+            }
+            event.preventDefault();
+            clearSuppressedClick();
+            suppressClickNodeId = active.nodeId;
+            suppressClickTimer = window.setTimeout(clearSuppressedClick, 250);
+            pendingToggleNodeId = active.nodeId;
+            pendingToggleCollapsed = active.targetCollapsed;
+            const generation = ++toggleGeneration;
+            const applyToggle = (): void => {
+                if (generation !== toggleGeneration) {
+                    return;
+                }
+                const toggle = expansionToggleByNodeId(active.nodeId);
+                if (toggle && toggle.classList.contains('theia-mod-collapsed') !== active.targetCollapsed) {
+                    toggle.click();
+                }
+            };
+            pendingToggleTimers = [50, 200, 500].map((delay, index, delays) => window.setTimeout(() => {
+                applyToggle();
+                if (index === delays.length - 1 && generation === toggleGeneration) {
+                    pendingToggleTimers = [];
+                    pendingToggleNodeId = undefined;
+                    pendingToggleCollapsed = undefined;
+                }
+            }, delay));
+        };
+        const onClick = (event: MouseEvent): void => {
+            if (!suppressClickNodeId || (event.target instanceof Element && event.target.closest('.theia-ExpansionToggle'))) {
+                return;
+            }
+            clearSuppressedClick();
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        };
+
+        host.addEventListener('pointerdown', onPointerDown, true);
+        host.addEventListener('pointerup', onPointerUp, true);
+        host.addEventListener('pointercancel', clearGesture, true);
+        host.addEventListener('click', onClick, true);
+        return Disposable.create(() => {
+            clearGesture();
+            clearSuppressedClick();
+            clearPendingToggle();
+            host.removeEventListener('pointerdown', onPointerDown, true);
+            host.removeEventListener('pointerup', onPointerUp, true);
+            host.removeEventListener('pointercancel', clearGesture, true);
+            host.removeEventListener('click', onClick, true);
+        });
+    }
 
     protected readonly setCodeEditorHost = (host: HTMLDivElement | null): void => {
         if (!host) {
@@ -2039,6 +2226,21 @@ export class AgentWindowWidget extends ReactWidget {
         this.codeEditorResizeObserver = new ResizeObserver(() =>
             this.resizeCodeWidget(this.activeCodeCenterWidget, host));
         this.codeEditorResizeObserver.observe(host);
+        this.syncCodeWidgetAttachments();
+    };
+
+    protected readonly setCodeGitGraphHost = (host: HTMLDivElement | null): void => {
+        if (!host) {
+            this.codeGitGraphResizeObserver?.disconnect();
+            this.codeGitGraphResizeObserver = undefined;
+            this.detachCodeWidget(this.codeGitGraphWidget);
+            this.codeGitGraphHost = undefined;
+            return;
+        }
+        this.codeGitGraphHost = host;
+        this.codeGitGraphResizeObserver = new ResizeObserver(() =>
+            this.resizeCodeWidget(this.codeGitGraphWidget, host));
+        this.codeGitGraphResizeObserver.observe(host);
         this.syncCodeWidgetAttachments();
     };
 
@@ -2076,6 +2278,11 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         this.attachCodeWidget(this.activeCodeSidebarWidget(), this.codeSidebarHost);
+        if (this.codeSidebarTab === 'git') {
+            this.attachCodeWidget(this.codeGitGraphWidget, this.codeGitGraphHost);
+        } else {
+            this.detachCodeWidget(this.codeGitGraphWidget);
+        }
         this.attachCodeWidget(this.activeCodeCenterWidget, this.codeEditorHost);
         this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
     }
@@ -2142,19 +2349,24 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected detachCodeWidget(widget: Widget | undefined): void {
         const parent = widget?.node.parentElement;
-        if (widget?.isAttached && (parent === this.codeSidebarHost || parent === this.codeEditorHost || parent === this.codeTerminalHost)) {
+        if (widget?.isAttached && (parent === this.codeSidebarHost
+            || parent === this.codeGitGraphHost
+            || parent === this.codeEditorHost
+            || parent === this.codeTerminalHost)) {
             Widget.detach(widget);
         }
     }
 
     protected detachCodeWidgets(): void {
         this.detachCodeWidget(this.activeCodeSidebarWidget());
+        this.detachCodeWidget(this.codeGitGraphWidget);
         this.detachCodeWidget(this.activeCodeCenterWidget);
         this.detachCodeWidget(this.codeTerminalWidget);
     }
 
     protected selectCodeSidebarTab(tab: CodeSidebarTab): void {
         this.detachCodeWidget(this.activeCodeSidebarWidget());
+        this.detachCodeWidget(this.codeGitGraphWidget);
         this.explorerMoreVisible = false;
         this.codeSidebarTab = tab;
         this.update();

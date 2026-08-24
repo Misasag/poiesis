@@ -28,14 +28,16 @@ export class AgentWindowContribution implements FrontendApplicationContribution 
     }
 
     async onDidInitializeLayout(): Promise<void> {
-        const [files, search, git] = await Promise.all([
+        const [files, search, git, gitGraph] = await Promise.all([
             this.widgetManager.getOrCreateWidget(AgentWindowWidget.FILES_WIDGET_FACTORY_ID),
             this.widgetManager.getOrCreateWidget(AgentWindowWidget.SEARCH_WIDGET_FACTORY_ID),
-            this.widgetManager.getOrCreateWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID)
+            this.widgetManager.getOrCreateWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID),
+            this.widgetManager.getOrCreateWidget(AgentWindowWidget.GIT_GRAPH_WIDGET_FACTORY_ID)
         ]);
         this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.FILES_WIDGET_FACTORY_ID, files);
         this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.SEARCH_WIDGET_FACTORY_ID, search);
         this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.GIT_WIDGET_FACTORY_ID, git);
+        this.agentWindowWidget.registerCodeWidget(AgentWindowWidget.GIT_GRAPH_WIDGET_FACTORY_ID, gitGraph);
         for (const editor of this.editorManager.all) {
             const factoryId = this.widgetManager.getDescription(editor)?.factoryId
                 ?? AgentWindowWidget.EDITOR_WIDGET_FACTORY_ID;

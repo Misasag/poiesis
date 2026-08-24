@@ -1,4 +1,6 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
 
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
@@ -12,6 +14,18 @@ const executablePath = browserCandidates.find(candidate => existsSync(candidate)
 if (!executablePath) {
     throw new Error('Chrome or Edge was not found. Set CHROME_PATH to run this smoke test.');
 }
+
+const repositoryRoot = resolve(process.cwd(), '..', '..');
+const scmFixtureGitPath = 'docs/UX.md';
+const scmFixturePath = resolve(repositoryRoot, scmFixtureGitPath);
+const scmFixtureStatus = spawnSync('git', ['status', '--porcelain', '--', scmFixtureGitPath], {
+    cwd: repositoryRoot,
+    encoding: 'utf8'
+});
+if (scmFixtureStatus.status !== 0 || scmFixtureStatus.stdout.trim()) {
+    throw new Error(`SCM smoke fixture must be clean before the test: ${scmFixtureStatus.stderr || scmFixtureStatus.stdout}`);
+}
+const scmFixtureOriginal = readFileSync(scmFixturePath, 'utf8');
 
 const browser = await puppeteer.launch({
     executablePath,
@@ -27,6 +41,7 @@ const browser = await puppeteer.launch({
 });
 
 try {
+    writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n<!-- Lens SCM smoke change -->\n`, 'utf8');
     const page = await browser.newPage();
     page.setDefaultTimeout(uiTimeout);
     await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout: uiTimeout });
@@ -266,6 +281,63 @@ try {
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Search');
     await page.click('.lens-agent-window__code-activity button[aria-label="Source Control"]');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
+    await page.waitForSelector('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await page.waitForSelector('[data-node-id="workingTree"]');
+    const scmLayoutDoesNotOverlap = await page.evaluate(() => {
+        const action = document.getElementById('scm-action-button-widget');
+        const changes = document.querySelector('[data-node-id="workingTree"]')?.closest('.theia-TreeNode');
+        if (!(action instanceof HTMLElement) || !(changes instanceof HTMLElement)) return false;
+        return action.getBoundingClientRect().bottom <= changes.getBoundingClientRect().top;
+    });
+    assert(scmLayoutDoesNotOverlap, 'Source Control action buttons overlap the Changes accordion');
+    await page.evaluate(() => {
+        const toggle = document.querySelector('[data-node-id="workingTree"]');
+        if (toggle?.classList.contains('theia-mod-collapsed')) {
+            toggle.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+        }
+    });
+    await page.waitForFunction(() => !document.querySelector('[data-node-id="workingTree"]')?.classList.contains('theia-mod-collapsed'));
+    const scmGroupPoint = await page.evaluate(() => {
+        const label = document.querySelector('[data-node-id="workingTree"]')?.nextElementSibling;
+        if (!(label instanceof HTMLElement)) throw new Error('Changes accordion label is missing');
+        const bounds = label.getBoundingClientRect();
+        return { x: bounds.left + 8, y: bounds.top + bounds.height / 2 };
+    });
+    await page.mouse.move(scmGroupPoint.x, scmGroupPoint.y);
+    await page.mouse.down();
+    await page.mouse.move(scmGroupPoint.x + 4, scmGroupPoint.y, { steps: 3 });
+    await page.mouse.up();
+    await page.waitForFunction(() => document.querySelector('[data-node-id="workingTree"]')?.classList.contains('theia-mod-collapsed'));
+    assert(await page.evaluate(() => !window.getSelection()?.toString()), 'Changes accordion text was selected');
+    await page.click('[data-node-id="workingTree"] + .noWrapInfo');
+    await page.waitForFunction(() => !document.querySelector('[data-node-id="workingTree"]')?.classList.contains('theia-mod-collapsed'));
+    await page.waitForSelector('.lens-agent-window__code-git-graph-title[aria-expanded="true"]');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host #scm-history-graph-widget');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host .scm-history-graph-row svg');
+    assert(!await page.$('.lens-agent-window__code .lm-Widget.lm-Panel'), 'Source Control Graph must not restore a Lumino panel');
+    await page.click('.lens-agent-window__code-git-graph-title');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-title[aria-expanded="false"]');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host[hidden]');
+    await page.click('.lens-agent-window__code-git-graph-title');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host:not([hidden])');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host .scm-history-graph-row');
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await waitForScmAction(page, 'UX.md', 'Stage Changes');
+    await hoverScmResource(page, 'UX.md');
+    for (const action of ['Open File', 'Discard Changes', 'Stage Changes']) {
+        assert(await scmActionExists(page, 'UX.md', action), `Source Control action is missing: ${action}`);
+    }
+    await executeScmAction(page, 'UX.md', 'Stage Changes', 'staged');
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await waitForScmAction(page, 'UX.md', 'Unstage Changes');
+    await executeScmAction(page, 'UX.md', 'Unstage Changes', 'unstaged');
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await waitForScmAction(page, 'UX.md', 'Stage Changes');
+    await openScmResourceDiff(page, 'UX.md');
+    await page.click('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close');
+    await page.waitForFunction(() => ![...document.querySelectorAll('.lens-agent-window__code-editor-tab-name')]
+        .some(element => element.textContent?.trim().startsWith('UX.md')));
+    restoreScmFixture();
     await page.click('.lens-agent-window__code-activity button[aria-label="Extensions"]');
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Extensions');
     await page.waitForSelector('.lens-agent-window__code-sidebar-host > *');
@@ -365,6 +437,15 @@ try {
         && document.querySelector('.lens-agent-window__code-editor-tab.active.preview .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'PRODUCT.md'
         && ![...document.querySelectorAll('.lens-agent-window__code-editor-tab-name')].some(tab => tab.textContent?.trim() === 'UX.md'));
 
+    await page.evaluate(() => {
+        const docs = [...document.querySelectorAll('#files .theia-FileStatNode')]
+            .find(element => element.textContent?.trim() === 'docs');
+        docs?.scrollIntoView({ block: 'center' });
+        const toggle = docs?.querySelector('.theia-ExpansionToggle.theia-mod-collapsed');
+        toggle?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    });
+    await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
+        .some(element => element.textContent?.trim() === 'UX.md'));
     await dragExplorerFileToTabs('UX.md');
     await page.waitForFunction(() => document.querySelectorAll('.lens-agent-window__code-editor-tab').length === 3
         && document.querySelector('.lens-agent-window__code-editor-tab.active:not(.preview) .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
@@ -475,7 +556,165 @@ try {
         customize
     }, null, 2));
 } finally {
+    restoreScmFixture();
     await browser.close();
+}
+
+function restoreScmFixture() {
+    spawnSync('git', ['reset', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    writeFileSync(scmFixturePath, scmFixtureOriginal, 'utf8');
+}
+
+async function waitForScmAction(page, label, action) {
+    const deadline = Date.now() + uiTimeout;
+    while (Date.now() < deadline) {
+        try {
+            await page.evaluate(fileLabel => {
+                const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+                    .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+                row?.querySelector('.scmItem')?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            }, label);
+            const point = await scmResourcePoint(page, label);
+            await page.mouse.move(0, 0);
+            await page.mouse.move(point.x, point.y);
+            if (await scmActionExists(page, label, action)) return;
+        } catch {
+            // The resource row can be replaced while Git refreshes or changes groups.
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    const snapshot = await page.$$eval('#scm-resource-widget .theia-TreeNode', rows => rows.map(row => ({
+        text: row.textContent?.trim(),
+        composite: row.classList.contains('theia-CompositeTreeNode'),
+        actions: [...row.querySelectorAll('[title]')].map(element => element.getAttribute('title'))
+    })));
+    const gitStatus = spawnSync('git', ['status', '--porcelain', '--', scmFixtureGitPath], {
+        cwd: repositoryRoot,
+        encoding: 'utf8'
+    }).stdout.trim();
+    throw new Error(`Timed out waiting for ${action} on ${label}; git=${JSON.stringify(gitStatus)}; scm=${JSON.stringify(snapshot)}`);
+}
+
+async function executeScmAction(page, label, action, expected) {
+    const deadline = Date.now() + uiTimeout;
+    while (Date.now() < deadline) {
+        if (scmFixtureHasState(expected)) return;
+        await waitForScmAction(page, label, action);
+        await clickScmAction(page, label, action);
+        for (let attempt = 0; attempt < 10; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (scmFixtureHasState(expected)) return;
+        }
+    }
+    const porcelain = spawnSync('git', ['status', '--porcelain=v1', '--', scmFixtureGitPath], {
+        cwd: repositoryRoot,
+        encoding: 'utf8'
+    }).stdout.replace(/\r?\n$/, '');
+    const cached = spawnSync('git', ['diff', '--cached', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    const workingTree = spawnSync('git', ['diff', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    throw new Error(`Timed out waiting for UX.md to become ${expected}; status=${JSON.stringify(porcelain)}; cached=${cached.status}; working=${workingTree.status}`);
+}
+
+function scmFixtureHasState(expected) {
+    const cached = spawnSync('git', ['diff', '--cached', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    const workingTree = spawnSync('git', ['diff', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    return expected === 'staged'
+        ? cached.status === 1 && workingTree.status === 0
+        : cached.status === 0 && workingTree.status === 1;
+}
+
+async function hoverScmResource(page, label) {
+    const point = await scmResourcePoint(page, label);
+    await page.evaluate(fileLabel => {
+        const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+        row?.querySelector('.scmItem')?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    }, label);
+    await page.mouse.move(point.x, point.y);
+    await waitForScmAction(page, label, 'Stage Changes');
+}
+
+async function clickScmResource(page, label) {
+    const handle = await page.evaluateHandle(fileLabel => {
+        const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+        const item = row?.querySelector('.scmItem');
+        if (!(item instanceof HTMLElement)) throw new Error(`${fileLabel} was not found in Source Control`);
+        return item;
+    }, label);
+    const element = handle.asElement();
+    if (!element) throw new Error(`${label} is not an SCM resource element`);
+    try {
+        await element.evaluate(target => target.click());
+    } finally {
+        await handle.dispose();
+    }
+}
+
+async function openScmResourceDiff(page, label) {
+    const deadline = Date.now() + uiTimeout;
+    while (Date.now() < deadline) {
+        if (await scmDiffIsVisible(page, label)) return;
+        await clickScmResource(page, label);
+        for (let attempt = 0; attempt < 10; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (await scmDiffIsVisible(page, label)) return;
+        }
+    }
+    throw new Error(`Timed out opening the Source Control diff for ${label}`);
+}
+
+async function scmDiffIsVisible(page, label) {
+    return page.evaluate(fileLabel => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')
+        ?.textContent?.trim().startsWith(fileLabel)
+        && Boolean(document.querySelector('.lens-agent-window__code-editor-host .monaco-diff-editor')), label);
+}
+
+async function scmResourcePoint(page, label) {
+    return page.evaluate(fileLabel => {
+        const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+        if (!(row instanceof HTMLElement)) throw new Error(`${fileLabel} was not found in Source Control`);
+        row.scrollIntoView({ block: 'center' });
+        const bounds = row.getBoundingClientRect();
+        return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+    }, label);
+}
+
+async function scmActionExists(page, label, action) {
+    return page.evaluate((fileLabel, actionTitle) => {
+        const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+        return [...(row?.querySelectorAll('[title]') ?? [])].some(element => element.getAttribute('title') === actionTitle);
+    }, label, action);
+}
+
+async function clickScmAction(page, label, action) {
+    const handle = await page.evaluateHandle((fileLabel, actionTitle) => {
+        const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+        const target = [...(row?.querySelectorAll('[title]') ?? [])]
+            .find(element => element.getAttribute('title') === actionTitle);
+        if (!(target instanceof HTMLElement)) throw new Error(`${actionTitle} was not found for ${fileLabel}`);
+        return target;
+    }, label, action);
+    const element = handle.asElement();
+    if (!element) throw new Error(`${action} on ${label} is not an element`);
+    try {
+        await element.hover();
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const stable = await element.evaluate(target => target.isConnected);
+        if (!stable) throw new Error(`${action} on ${label} changed before it could be clicked`);
+        await element.click({ delay: 50 });
+        await element.evaluate(target => target.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            view: window
+        })));
+    } finally {
+        await handle.dispose();
+    }
 }
 
 function assert(condition, message) {

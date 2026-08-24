@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -10,6 +10,18 @@ const debugPort = Number(process.env.THEIA_ELECTRON_DEBUG_PORT ?? 9334);
 const browserURL = `http://127.0.0.1:${debugPort}`;
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
 mkdirSync(runtimeDir, { recursive: true });
+
+const repositoryRoot = resolve(root, '..', '..');
+const scmFixtureGitPath = 'docs/UX.md';
+const scmFixturePath = resolve(repositoryRoot, scmFixtureGitPath);
+const scmFixtureStatus = spawnSync('git', ['status', '--porcelain', '--', scmFixtureGitPath], {
+    cwd: repositoryRoot,
+    encoding: 'utf8'
+});
+if (scmFixtureStatus.status !== 0 || scmFixtureStatus.stdout.trim()) {
+    throw new Error(`SCM smoke fixture must be clean before the test: ${scmFixtureStatus.stderr || scmFixtureStatus.stdout}`);
+}
+const scmFixtureOriginal = readFileSync(scmFixturePath, 'utf8');
 
 const electronExecutable = resolve(root, 'node_modules/electron/dist/electron.exe');
 const startProcess = spawn(electronExecutable, [
@@ -43,9 +55,12 @@ for (const stream of [startProcess.stdout, startProcess.stderr]) {
 
 let browser;
 try {
+    writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n<!-- Lens SCM smoke change -->\n`, 'utf8');
     await waitForCdp(browserURL, startProcess, 120_000);
     browser = await puppeteer.connect({ browserURL, defaultViewport: null });
     const page = await findWorkbenchPage(browser, uiTimeout);
+    await page.bringToFront();
+    await page.evaluate(() => window.focus());
     page.setDefaultTimeout(uiTimeout);
     await page.bringToFront();
     await page.evaluate(() => window.focus());
@@ -86,22 +101,49 @@ try {
         await page.waitForFunction(previous => document.querySelectorAll('.lens-agent-window__code-editor-tab').length < previous, {}, count);
     }
 
-    await page.click('.lens-agent-window__code-activity button[aria-label="Extensions"]');
+    await page.click('.lens-agent-window__code-activity button[aria-label="Source Control"]');
+    await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
+    await page.waitForSelector('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-title[aria-expanded="true"]');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host #scm-history-graph-widget');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host .scm-history-graph-row svg');
+    assert(!await page.$('.lens-agent-window__code .lm-Widget.lm-Panel'), 'Source Control Graph restored a Lumino panel in Electron');
+    await page.$eval('.lens-agent-window__code-git-graph-title', element => element.click());
+    await page.waitForSelector('.lens-agent-window__code-git-graph-title[aria-expanded="false"]');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host[hidden]');
+    await page.$eval('.lens-agent-window__code-git-graph-title', element => element.click());
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host:not([hidden])');
+    await page.waitForSelector('.lens-agent-window__code-git-graph-host .scm-history-graph-row');
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await waitForScmAction(page, 'UX.md', 'Stage Changes');
+    await hoverScmResource(page, 'UX.md');
+    for (const action of ['Open File', 'Discard Changes', 'Stage Changes']) {
+        assert(await scmActionExists(page, 'UX.md', action), `Source Control action is missing in Electron: ${action}`);
+    }
+    await executeScmAction(page, 'UX.md', 'Stage Changes', 'staged');
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await waitForScmAction(page, 'UX.md', 'Unstage Changes');
+    await executeScmAction(page, 'UX.md', 'Unstage Changes', 'unstaged');
+    await page.click('.lens-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await waitForScmAction(page, 'UX.md', 'Stage Changes');
+    restoreScmFixture();
+
+    await page.$eval('.lens-agent-window__code-activity button[aria-label="Extensions"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Extensions');
     await page.waitForSelector('.lens-agent-window__code-sidebar-host > *', { timeout: uiTimeout });
     await page.waitForFunction(() => document.querySelector('#vsx-extensions-search-bar input')?.value === '@builtin');
     await page.waitForFunction(() => (document.getElementById('vsx-extensions:builtin')?.querySelectorAll('.theia-TreeNode').length ?? 0) > 0);
     assert(!await page.$('.lens-agent-window__customize-page'), 'Code Extensions opened Lens Customize in Electron');
 
-    await page.click('.lens-agent-window__code-activity-footer button[aria-label="Settings"]');
+    await page.$eval('.lens-agent-window__code-activity-footer button[aria-label="Settings"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
     await page.waitForSelector('.lens-agent-window__code-editor-host #settings_widget', { timeout: uiTimeout });
     assert(await page.$('.lens-agent-window__code'), 'Code Settings left Code mode in Electron');
-    await page.click('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close');
+    await page.$eval('.lens-agent-window__code-editor-tab.active .lens-agent-window__code-editor-tab-close', element => element.click());
     await page.waitForFunction(() => ![...document.querySelectorAll('.lens-agent-window__code-editor-tab-name')]
         .some(element => element.textContent?.trim() === 'Settings'));
 
-    await page.click('.lens-agent-window__code-activity button[aria-label="Explorer"]');
+    await page.$eval('.lens-agent-window__code-activity button[aria-label="Explorer"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('.lens-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Explorer');
     await page.waitForSelector('#files .theia-FileStatNode', { timeout: uiTimeout });
     await clickExplorerFile(page, '.gitignore');
@@ -134,11 +176,133 @@ try {
     console.error(`Electron start log (tail):\n${startLog}`);
     throw error;
 } finally {
+    restoreScmFixture();
     if (browser) {
         await browser.close().catch(error => console.warn(`CDP Browser.close failed: ${error}`));
     }
     stopProcessTree(startProcess.pid);
     await waitForCdpToStop(browserURL, 30_000).catch(error => console.warn(error.message));
+}
+
+function restoreScmFixture() {
+    spawnSync('git', ['reset', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    writeFileSync(scmFixturePath, scmFixtureOriginal, 'utf8');
+}
+
+async function waitForScmAction(page, label, action) {
+    const deadline = Date.now() + uiTimeout;
+    while (Date.now() < deadline) {
+        try {
+            await page.evaluate(fileLabel => {
+                const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+                    .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+                row?.querySelector('.scmItem')?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            }, label);
+            const point = await scmResourcePoint(page, label);
+            await page.mouse.move(0, 0);
+            await page.mouse.move(point.x, point.y);
+            if (await scmActionExists(page, label, action)) return;
+        } catch {
+            // The resource row can be replaced while Git refreshes or changes groups.
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    const snapshot = await page.$$eval('#scm-resource-widget .theia-TreeNode', rows => rows.map(row => ({
+        text: row.textContent?.trim(),
+        composite: row.classList.contains('theia-CompositeTreeNode'),
+        actions: [...row.querySelectorAll('[title]')].map(element => element.getAttribute('title'))
+    })));
+    const gitStatus = spawnSync('git', ['status', '--porcelain', '--', scmFixtureGitPath], {
+        cwd: repositoryRoot,
+        encoding: 'utf8'
+    }).stdout.trim();
+    throw new Error(`Timed out waiting for ${action} on ${label}; git=${JSON.stringify(gitStatus)}; scm=${JSON.stringify(snapshot)}`);
+}
+
+async function executeScmAction(page, label, action, expected) {
+    const deadline = Date.now() + uiTimeout;
+    while (Date.now() < deadline) {
+        if (scmFixtureHasState(expected)) return;
+        await waitForScmAction(page, label, action);
+        await clickScmAction(page, label, action);
+        for (let attempt = 0; attempt < 10; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (scmFixtureHasState(expected)) return;
+        }
+    }
+    const porcelain = spawnSync('git', ['status', '--porcelain=v1', '--', scmFixtureGitPath], {
+        cwd: repositoryRoot,
+        encoding: 'utf8'
+    }).stdout.replace(/\r?\n$/, '');
+    const cached = spawnSync('git', ['diff', '--cached', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    const workingTree = spawnSync('git', ['diff', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    throw new Error(`Timed out waiting for UX.md to become ${expected}; status=${JSON.stringify(porcelain)}; cached=${cached.status}; working=${workingTree.status}`);
+}
+
+function scmFixtureHasState(expected) {
+    const cached = spawnSync('git', ['diff', '--cached', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    const workingTree = spawnSync('git', ['diff', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    return expected === 'staged'
+        ? cached.status === 1 && workingTree.status === 0
+        : cached.status === 0 && workingTree.status === 1;
+}
+
+async function hoverScmResource(page, label) {
+    const point = await scmResourcePoint(page, label);
+    await page.evaluate(fileLabel => {
+        const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+        row?.querySelector('.scmItem')?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    }, label);
+    await page.mouse.move(point.x, point.y);
+    await waitForScmAction(page, label, 'Stage Changes');
+}
+
+async function scmResourcePoint(page, label) {
+    return page.evaluate(fileLabel => {
+        const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+        if (!(row instanceof HTMLElement)) throw new Error(`${fileLabel} was not found in Source Control`);
+        row.scrollIntoView({ block: 'center' });
+        const bounds = row.getBoundingClientRect();
+        return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+    }, label);
+}
+
+async function scmActionExists(page, label, action) {
+    return page.evaluate((fileLabel, actionTitle) => {
+        const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+        return [...(row?.querySelectorAll('[title]') ?? [])].some(element => element.getAttribute('title') === actionTitle);
+    }, label, action);
+}
+
+async function clickScmAction(page, label, action) {
+    const handle = await page.evaluateHandle((fileLabel, actionTitle) => {
+        const row = [...document.querySelectorAll('#scm-resource-widget .theia-TreeNode:not(.theia-CompositeTreeNode)')]
+            .find(element => element.querySelector('.name')?.textContent?.trim() === fileLabel);
+        const target = [...(row?.querySelectorAll('[title]') ?? [])]
+            .find(element => element.getAttribute('title') === actionTitle);
+        if (!(target instanceof HTMLElement)) throw new Error(`${actionTitle} was not found for ${fileLabel}`);
+        return target;
+    }, label, action);
+    const element = handle.asElement();
+    if (!element) throw new Error(`${action} on ${label} is not an element`);
+    try {
+        await element.hover();
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const stable = await element.evaluate(target => target.isConnected);
+        if (!stable) throw new Error(`${action} on ${label} changed before it could be clicked`);
+        await element.click({ delay: 50 });
+        await element.evaluate(target => target.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            view: window
+        })));
+    } finally {
+        await handle.dispose();
+    }
 }
 
 function assert(condition, message) {
@@ -176,15 +340,13 @@ async function clickByText(page, selector, text) {
 }
 
 async function clickExplorerFile(page, label) {
-    const point = await page.evaluate(fileLabel => {
+    await page.evaluate(fileLabel => {
         const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
             .find(element => element.textContent?.trim() === fileLabel);
         if (!(file instanceof HTMLElement)) throw new Error(`${fileLabel} was not found in Explorer`);
         file.scrollIntoView({ block: 'center' });
-        const bounds = file.getBoundingClientRect();
-        return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+        file.click();
     }, label);
-    await page.mouse.click(point.x, point.y);
 }
 
 async function dragExplorerFileToTabs(page, label) {
