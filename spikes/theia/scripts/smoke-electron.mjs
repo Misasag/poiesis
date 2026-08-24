@@ -187,6 +187,25 @@ try {
     assert(editorTabs.some(tab => tab.name === '.gitignore' && tab.preview), 'Explorer click did not retain its preview tab');
     assert(editorTabs.some(tab => tab.name === 'UX.md' && tab.active && !tab.preview), 'Explorer drag did not create a pinned tab');
 
+    const codeSaveFixtureBefore = readFileSync(scmFixturePath, 'utf8');
+    await page.click('.lens-agent-window__code-editor-host .monaco-editor .view-lines');
+    await page.keyboard.type('x');
+    await page.waitForSelector('.lens-agent-window__code-editor-tab.active.dirty .lens-agent-window__code-editor-tab-dirty');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyS');
+    await page.keyboard.up('Control');
+    await page.waitForFunction(() => !document.querySelector('.lens-agent-window__code-editor-tab.active.dirty'));
+    assert(readFileSync(scmFixturePath, 'utf8') !== codeSaveFixtureBefore, 'Ctrl+S did not write the Electron editor content');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyZ');
+    await page.keyboard.up('Control');
+    await page.waitForSelector('.lens-agent-window__code-editor-tab.active.dirty .lens-agent-window__code-editor-tab-dirty');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyS');
+    await page.keyboard.up('Control');
+    await page.waitForFunction(() => !document.querySelector('.lens-agent-window__code-editor-tab.active.dirty'));
+    assert(readFileSync(scmFixturePath, 'utf8') === codeSaveFixtureBefore, 'Ctrl+S did not restore the Electron editor fixture');
+
     console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify({ userAgent, windowTitle, initial, code, editorTabs }, null, 2)}`);
 } catch (error) {
     console.error(`Electron start log (tail):\n${startLog}`);

@@ -1,6 +1,6 @@
 import * as React from '@theia/core/shared/react';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { Saveable, StorageService, WidgetManager } from '@theia/core/lib/browser';
+import { FormatType, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser';
 import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { CommandService, Disposable } from '@theia/core/lib/common';
@@ -172,6 +172,7 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(WidgetManager) protected readonly widgetManager: WidgetManager,
         @inject(EditorManager) protected readonly editorManager: EditorManager,
         @inject(CommandService) protected readonly commandService: CommandService,
+        @inject(SaveableService) protected readonly saveableService: SaveableService,
         @inject(IconThemeService) protected readonly iconThemeService: IconThemeService,
         @inject(VSXExtensionsSearchModel) protected readonly extensionsSearchModel: VSXExtensionsSearchModel,
         @inject(StorageService) protected readonly storageService: StorageService,
@@ -213,6 +214,7 @@ export class AgentWindowWidget extends ReactWidget {
         };
         document.addEventListener('pointerdown', closeSessionMenu);
         this.toDispose.push(Disposable.create(() => document.removeEventListener('pointerdown', closeSessionMenu)));
+        this.installCodeEditorSaveShortcut();
         this.installCodeTabDropTarget();
 
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
@@ -2595,6 +2597,27 @@ export class AgentWindowWidget extends ReactWidget {
         } finally {
             this.pendingPinnedEditorUris.delete(uriKey);
         }
+    }
+
+    protected installCodeEditorSaveShortcut(): void {
+        const onKeyDown = (event: KeyboardEvent): void => {
+            const savePressed = (event.ctrlKey || event.metaKey)
+                && !event.altKey
+                && !event.shiftKey
+                && (event.key.toLocaleLowerCase() === 's' || event.code === 'KeyS');
+            const widget = this.codeMode ? this.activeCodeCenterWidget : undefined;
+            if (!savePressed || !widget || !Saveable.get(widget)) {
+                return;
+            }
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            void this.saveableService.save(widget, {
+                formatType: FormatType.ON,
+                saveReason: SaveReason.Manual
+            });
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
     }
 
     protected closeCodeCenterWidget(widget: Widget): void {

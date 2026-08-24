@@ -510,6 +510,26 @@ try {
     assert(await page.$('.lens-agent-window__code-editor-tab .git-icon.file-icon'), 'The Git editor tab icon is missing');
     assert(await page.$('.lens-agent-window__code-editor-tab .markdown-icon.file-icon'), 'The Markdown editor tab icon is missing');
 
+    await click(page, '.lens-agent-window__code-editor-tab-label', 'UX.md');
+    const codeSaveFixtureBefore = readFileSync(scmFixturePath, 'utf8');
+    await page.click('.lens-agent-window__code-editor-host .monaco-editor .view-lines');
+    await page.keyboard.type('x');
+    await page.waitForSelector('.lens-agent-window__code-editor-tab.active.dirty .lens-agent-window__code-editor-tab-dirty');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyS');
+    await page.keyboard.up('Control');
+    await page.waitForFunction(() => !document.querySelector('.lens-agent-window__code-editor-tab.active.dirty'));
+    assert(readFileSync(scmFixturePath, 'utf8') !== codeSaveFixtureBefore, 'Ctrl+S cleared dirty state without writing the editor content');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyZ');
+    await page.keyboard.up('Control');
+    await page.waitForSelector('.lens-agent-window__code-editor-tab.active.dirty .lens-agent-window__code-editor-tab-dirty');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyS');
+    await page.keyboard.up('Control');
+    await page.waitForFunction(() => !document.querySelector('.lens-agent-window__code-editor-tab.active.dirty'));
+    assert(readFileSync(scmFixturePath, 'utf8') === codeSaveFixtureBefore, 'Ctrl+S did not persist the restored editor content');
+
     await click(page, '.lens-agent-window__code-editor-tab-label', 'PRODUCT.md');
     await page.click('.lens-agent-window__code-editor-host .monaco-editor .view-lines');
     await page.keyboard.type('x');
