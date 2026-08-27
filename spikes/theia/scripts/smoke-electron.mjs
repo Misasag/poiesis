@@ -31,9 +31,6 @@ const startProcess = spawn(electronExecutable, [
     `--electronUserData=${userDataDir}`,
     `--remote-debugging-port=${debugPort}`,
     '--disable-gpu',
-    '--disable-background-timer-throttling',
-    '--disable-renderer-backgrounding',
-    '--disable-backgrounding-occluded-windows',
     '--disable-dev-shm-usage',
     '--no-sandbox'
 ], {
@@ -123,7 +120,7 @@ try {
     await page.keyboard.press('ArrowUp');
     await page.waitForFunction(height => Math.round(document.querySelector('.poiesis-agent-window__code-panel')?.getBoundingClientRect().height ?? 0) === height + 12,
         {}, terminalPanelHeight);
-    await page.click('.poiesis-agent-window__code-panel-tabs button[aria-label="New Terminal"]');
+    await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="New Terminal"]', element => element.click());
     try {
         await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__code-terminal-select option').length === 2);
     } catch (error) {
