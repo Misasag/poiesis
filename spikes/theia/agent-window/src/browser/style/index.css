@@ -3505,13 +3505,13 @@ body.poiesis-code-file-pointer-drag * {
     font-size: 9px;
 }
 
-.poiesis-agent-window__context-pill {
+.poiesis-agent-window__content .poiesis-agent-window__context-pill {
     font-size: 8px;
 }
 
 .poiesis-agent-window__repository-search input,
-.poiesis-agent-window__repository-option,
-.poiesis-agent-window__repository-option strong {
+.poiesis-agent-window__content .poiesis-agent-window__repository-option,
+.poiesis-agent-window__content .poiesis-agent-window__repository-option strong {
     font-size: 9px;
 }
 
