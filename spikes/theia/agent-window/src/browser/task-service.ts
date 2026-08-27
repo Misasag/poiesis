@@ -22,6 +22,11 @@ export interface TaskChangeSet {
     error?: string;
 }
 
+export interface TaskFailure {
+    summary: string;
+    details?: string;
+}
+
 export interface ExecutionTask {
     id: string;
     sessionId: string;
@@ -32,6 +37,7 @@ export interface ExecutionTask {
     endedAt?: string;
     baseline: TaskBaseline;
     changeSet?: TaskChangeSet;
+    failure?: TaskFailure;
 }
 
 export interface TaskEvent {
@@ -81,8 +87,8 @@ export class TaskService {
         return this.finish(taskId, 'cancelled', 'cancelled');
     }
 
-    async fail(taskId: string): Promise<ExecutionTask | undefined> {
-        return this.finish(taskId, 'failed', 'failed');
+    async fail(taskId: string, failure?: TaskFailure): Promise<ExecutionTask | undefined> {
+        return this.finish(taskId, 'failed', 'failed', failure);
     }
 
     async whenBaselineCaptured(taskId: string): Promise<void> {
@@ -111,7 +117,8 @@ export class TaskService {
     protected async finish(
         taskId: string,
         status: Exclude<ExecutionTaskStatus, 'running'>,
-        eventType: Extract<TaskEvent['type'], 'ended' | 'failed' | 'cancelled'>
+        eventType: Extract<TaskEvent['type'], 'ended' | 'failed' | 'cancelled'>,
+        failure?: TaskFailure
     ): Promise<ExecutionTask | undefined> {
         const current = this.tasks.get(taskId);
         if (!current || current.status !== 'running') {
@@ -126,7 +133,8 @@ export class TaskService {
             changeSet: {
                 ...capture,
                 capturedAt: new Date().toISOString()
-            }
+            },
+            failure
         };
         this.tasks.set(task.id, task);
         this.onDidChangeEmitter.fire({ type: eventType, task });

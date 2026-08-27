@@ -10,8 +10,14 @@ export interface ResultsSkillInput {
     changeSet: TaskChangeSet;
 }
 
+export interface ResultsQuestionInput extends ResultsSkillInput {
+    question: string;
+    document: string;
+}
+
 export interface ResultsSkill {
     generate(input: ResultsSkillInput): Promise<string>;
+    answer(input: ResultsQuestionInput): Promise<string>;
 }
 
 export interface TaskResultDocument {
@@ -95,6 +101,13 @@ export class BundledResultsSkill implements ResultsSkill {
   </main>
 </body>
 </html>`;
+    }
+
+    async answer({ changeSet, question }: ResultsQuestionInput): Promise<string> {
+        const files = changeSet.files.length > 0
+            ? changeSet.files.map(file => `「${file}」`).join('、')
+            : '変更ファイルなし';
+        return `「${question}」について、この成果の Change Set は ${files} です。回答はこの Results の成果だけを参照しています。`;
     }
 
     protected describe(task: ExecutionTask, changeSet: TaskChangeSet, diff: string): ResultPage {
@@ -218,6 +231,27 @@ export class ResultsService {
         return this.documents.get(taskId);
     }
 
+    async retry(taskId: string): Promise<void> {
+        const task = this.taskService.get(taskId);
+        if (task?.status === 'completed' && task.changeSet) {
+            await this.generate(task);
+        }
+    }
+
+    async answer(taskId: string, question: string): Promise<string> {
+        const task = this.taskService.get(taskId);
+        const document = this.documents.get(taskId);
+        if (!task?.changeSet || document?.status !== 'ready' || !document.html) {
+            throw new Error('Results document is not ready.');
+        }
+        return this.resultsSkill.answer({
+            task,
+            changeSet: task.changeSet,
+            question,
+            document: document.html
+        });
+    }
+
     remove(taskIds: Iterable<string>): void {
         for (const taskId of taskIds) {
             this.documents.delete(taskId);
@@ -225,7 +259,7 @@ export class ResultsService {
     }
 
     protected async generate(task: ExecutionTask): Promise<void> {
-        if (!task.changeSet || !this.customizationService.isSkillEnabled('results')) {
+        if (task.status !== 'completed' || !task.changeSet || !this.customizationService.isSkillEnabled('results')) {
             return;
         }
         this.set({ taskId: task.id, status: 'generating' });

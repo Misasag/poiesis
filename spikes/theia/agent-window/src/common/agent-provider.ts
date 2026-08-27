@@ -22,7 +22,7 @@ export type AgentEvent =
     | { type: 'message-delta'; sessionId: string; taskId: string; delta: string }
     | { type: 'message-completed'; sessionId: string; taskId: string }
     | { type: 'task-completed'; sessionId: string; taskId: string }
-    | { type: 'task-failed'; sessionId: string; taskId: string }
+    | { type: 'task-failed'; sessionId: string; taskId: string; summary: string; details?: string }
     | { type: 'task-cancelled'; sessionId: string; taskId: string };
 
 /** Exchangeable boundary used by Agent UI. */

@@ -24,7 +24,9 @@ interface CodexRun {
     sessionId: string;
     taskId: string;
     executionId: string;
-    hasOutput: boolean;
+    stdoutBuffer: string;
+    diagnostics: string;
+    finalMessage?: string;
     state: 'starting' | 'running' | 'completing' | 'cancelling';
 }
 
@@ -82,7 +84,8 @@ export class CliAgentProvider implements AgentProvider {
             sessionId,
             taskId: task.id,
             executionId: task.id,
-            hasOutput: false,
+            stdoutBuffer: '',
+            diagnostics: '',
             state: 'starting'
         };
         this.runs.set(sessionId, run);
@@ -101,7 +104,7 @@ export class CliAgentProvider implements AgentProvider {
                 prompt: this.implementerPrompt(message.content)
             });
         } catch (error) {
-            await this.failRun(run, `Codex could not start: ${this.errorMessage(error)}`);
+            await this.failRun(run, 'Codex を開始できませんでした。', this.errorMessage(error));
         }
     }
 
@@ -136,13 +139,11 @@ export class CliAgentProvider implements AgentProvider {
             return;
         }
         if (event.type === 'output') {
-            run.hasOutput = true;
-            this.eventEmitter.fire({
-                type: 'message-delta',
-                sessionId: run.sessionId,
-                taskId: run.taskId,
-                delta: event.delta
-            });
+            if (event.stream === 'stdout') {
+                this.consumeStdout(run, event.delta);
+            } else {
+                this.appendDiagnostic(run, event.delta);
+            }
             return;
         }
         void this.completeRun(run, event);
@@ -156,18 +157,14 @@ export class CliAgentProvider implements AgentProvider {
             return;
         }
         run.state = 'completing';
-
-        const exitDescription = event.signal
-            ? `Codex exited after signal ${event.signal}.`
-            : event.code === 0
-                ? 'Codex completed.'
-                : `Codex exited with code ${event.code ?? 'unknown'}.`;
-        if (!run.hasOutput || event.code !== 0 || event.signal) {
+        this.flushStdout(run);
+        const successful = event.code === 0 && !event.signal;
+        if (successful) {
             this.eventEmitter.fire({
                 type: 'message-delta',
                 sessionId: run.sessionId,
                 taskId: run.taskId,
-                delta: `${run.hasOutput ? '\n' : ''}${exitDescription}`
+                delta: run.finalMessage?.trim() || 'タスクを完了しました。'
             });
         }
         this.eventEmitter.fire({
@@ -175,42 +172,94 @@ export class CliAgentProvider implements AgentProvider {
             sessionId: run.sessionId,
             taskId: run.taskId
         });
-        const successful = event.code === 0 && !event.signal;
         this.runs.delete(run.sessionId);
         if (successful) {
             await this.taskService.end(run.taskId);
+            this.eventEmitter.fire({
+                type: 'task-completed',
+                sessionId: run.sessionId,
+                taskId: run.taskId
+            });
         } else {
-            await this.taskService.fail(run.taskId);
+            const summary = event.signal
+                ? 'Codex の実行が中断されました。'
+                : `Codex の実行に失敗しました（終了コード ${event.code ?? '不明'}）。`;
+            const details = run.diagnostics.trim() || undefined;
+            await this.taskService.fail(run.taskId, { summary, details });
+            this.eventEmitter.fire({
+                type: 'task-failed',
+                sessionId: run.sessionId,
+                taskId: run.taskId,
+                summary,
+                details
+            });
         }
-        this.eventEmitter.fire({
-            type: successful ? 'task-completed' : 'task-failed',
-            sessionId: run.sessionId,
-            taskId: run.taskId
-        });
     }
 
-    protected async failRun(run: CodexRun, message: string): Promise<void> {
+    protected async failRun(run: CodexRun, summary: string, details?: string): Promise<void> {
         if (this.runs.get(run.sessionId) !== run) {
             return;
         }
-        this.eventEmitter.fire({
-            type: 'message-delta',
-            sessionId: run.sessionId,
-            taskId: run.taskId,
-            delta: message
-        });
         this.eventEmitter.fire({
             type: 'message-completed',
             sessionId: run.sessionId,
             taskId: run.taskId
         });
         this.runs.delete(run.sessionId);
-        await this.taskService.fail(run.taskId);
+        await this.taskService.fail(run.taskId, { summary, details });
         this.eventEmitter.fire({
             type: 'task-failed',
             sessionId: run.sessionId,
-            taskId: run.taskId
+            taskId: run.taskId,
+            summary,
+            details
         });
+    }
+
+    protected consumeStdout(run: CodexRun, delta: string): void {
+        run.stdoutBuffer += delta;
+        const lines = run.stdoutBuffer.split(/\r?\n/);
+        run.stdoutBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+            this.consumeJsonLine(run, line);
+        }
+    }
+
+    protected flushStdout(run: CodexRun): void {
+        if (run.stdoutBuffer.trim()) {
+            this.consumeJsonLine(run, run.stdoutBuffer);
+        }
+        run.stdoutBuffer = '';
+    }
+
+    protected consumeJsonLine(run: CodexRun, line: string): void {
+        if (!line.trim()) {
+            return;
+        }
+        try {
+            const event = JSON.parse(line) as {
+                type?: string;
+                message?: string;
+                error?: { message?: string } | string;
+                item?: { type?: string; text?: string; message?: string };
+            };
+            if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) {
+                run.finalMessage = event.item.text;
+            }
+            if (event.type === 'error' || event.type === 'turn.failed' || event.item?.type === 'error') {
+                const detail = event.message
+                    ?? event.item?.message
+                    ?? (typeof event.error === 'string' ? event.error : event.error?.message)
+                    ?? line;
+                this.appendDiagnostic(run, detail);
+            }
+        } catch {
+            this.appendDiagnostic(run, line);
+        }
+    }
+
+    protected appendDiagnostic(run: CodexRun, detail: string): void {
+        run.diagnostics = `${run.diagnostics}${run.diagnostics ? '\n' : ''}${detail}`.slice(-20_000);
     }
 
     protected implementerPrompt(request: string): string {

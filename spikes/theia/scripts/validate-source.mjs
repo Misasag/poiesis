@@ -142,7 +142,7 @@ for (const forbidden of ['FileService', 'WorkspaceService', 'readFile', 'writeFi
 for (const marker of [
     "start(sessionId: string, request: string)",
     "async end(taskId: string)",
-    "async fail(taskId: string)",
+    "async fail(taskId: string, failure?: TaskFailure)",
     "async cancel(taskId: string)",
     "kind: 'workspace-snapshot'",
     'baselineCaptures',

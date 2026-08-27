@@ -167,6 +167,8 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
         const args = [
             'exec',
+            '--json',
+            '--color', 'never',
             '--sandbox', 'workspace-write',
             '-C', resolvedWorkspace,
             '--', prompt

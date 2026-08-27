@@ -790,6 +790,51 @@
     white-space: pre-wrap;
 }
 
+.poiesis-agent-window__message-error {
+    background: #2b2221;
+    border: 1px solid #67413d;
+    border-radius: 8px;
+    display: grid;
+    gap: 9px;
+    padding: 11px 12px;
+}
+
+.poiesis-agent-window__message-error strong {
+    color: #f0d0cb;
+    font-size: 12px;
+}
+
+.poiesis-agent-window__message-error details {
+    color: #b9a4a0;
+    font-size: 10px;
+}
+
+.poiesis-agent-window__message-error summary {
+    cursor: pointer;
+}
+
+.poiesis-agent-window__message-error pre {
+    background: #1d1918;
+    border-radius: 5px;
+    max-height: 180px;
+    overflow: auto;
+    padding: 8px;
+    white-space: pre-wrap;
+}
+
+.poiesis-agent-window__message-error button,
+.poiesis-results__state button,
+.poiesis-results__answer button {
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 5px;
+    color: inherit;
+    cursor: pointer;
+    font-size: 10px;
+    justify-self: start;
+    padding: 4px 8px;
+}
+
 .poiesis-agent-window__task-state {
     align-items: center;
     background: var(--theia-editor-background);
@@ -862,6 +907,31 @@
     margin: auto;
     padding: 18px;
     text-align: center;
+}
+
+.poiesis-results__state {
+    align-self: center;
+    color: var(--poiesis-chrome-muted);
+    display: grid;
+    gap: 9px;
+    margin: auto;
+    max-width: 42ch;
+    padding: 24px;
+}
+
+.poiesis-results__state strong {
+    color: var(--poiesis-chrome-text);
+    font-size: 14px;
+}
+
+.poiesis-results__state p {
+    font-size: 11px;
+    line-height: 1.55;
+    margin: 0;
+}
+
+.poiesis-results__state.error {
+    color: #d8aaa4;
 }
 
 .poiesis-results__document {
@@ -2128,6 +2198,21 @@
     line-height: 1.45;
     margin: 2px 16px 0;
     padding: 4px 9px;
+}
+
+.poiesis-results__answer strong,
+.poiesis-results__answer p {
+    display: block;
+    margin: 0;
+}
+
+.poiesis-results__answer p {
+    margin-top: 3px;
+}
+
+.poiesis-results__answer.failed {
+    border-left-color: #b8645b;
+    color: #e1b4ae;
 }
 
 .poiesis-results__composer {

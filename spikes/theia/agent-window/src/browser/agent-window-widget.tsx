@@ -46,6 +46,15 @@ interface ChatMessage {
     role: 'user' | 'agent';
     content: string;
     complete: boolean;
+    taskId?: string;
+    error?: boolean;
+    errorDetails?: string;
+}
+
+interface ResultsNotice {
+    question: string;
+    status: 'sending' | 'answered' | 'failed';
+    text: string;
 }
 
 interface WindowAgentSession {
@@ -65,7 +74,7 @@ interface WindowAgentSession {
     messages: ChatMessage[];
     selectedResultsTaskId?: string;
     readonly resultsDrafts: Map<string, string>;
-    readonly resultsNotices: Map<string, string>;
+    readonly resultsNotices: Map<string, ResultsNotice>;
 }
 
 interface PersistedAgentWindowState {
@@ -1167,7 +1176,20 @@ export class AgentWindowWidget extends ReactWidget {
                                     ? 'poiesis-agent-window__user-message'
                                     : 'poiesis-agent-window__message'}
                             >
-                                <p>{message.content || '…'}</p>
+                                {message.error ? (
+                                    <div className='poiesis-agent-window__message-error' role='alert'>
+                                        <strong>{message.content}</strong>
+                                        {message.errorDetails && (
+                                            <details>
+                                                <summary>詳細</summary>
+                                                <pre>{message.errorDetails}</pre>
+                                            </details>
+                                        )}
+                                        {message.taskId && (
+                                            <button type='button' onClick={() => void this.retryTask(message.taskId!)}>再試行</button>
+                                        )}
+                                    </div>
+                                ) : <p>{message.content || '…'}</p>}
                                 {!message.complete && <small className='poiesis-agent-window__message-state'>作業中…</small>}
                             </section>
                         ))}
@@ -1572,13 +1594,40 @@ export class AgentWindowWidget extends ReactWidget {
                 <div className='poiesis-results__main'>
                     <div className='poiesis-results__canvas' aria-label='Results HTML キャンバス'>
                         {!selectedTask && <div className='poiesis-results__empty'>Agent でタスクを完了すると、ここに成果が表示されます。</div>}
-                        {selectedTask && (!document || document.status === 'generating') && (
+                        {selectedTask?.status === 'failed' && (
+                            <div className='poiesis-results__state error' role='alert'>
+                                <strong>タスクに失敗しました</strong>
+                                <p>{selectedTask.failure?.summary ?? 'Codex がタスクを完了できませんでした。'}</p>
+                                <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
+                            </div>
+                        )}
+                        {selectedTask?.status === 'cancelled' && (
+                            <div className='poiesis-results__state cancelled' role='status'>
+                                <strong>タスクはキャンセルされました</strong>
+                                <p>成果は確定していません。必要なら同じ依頼を再試行できます。</p>
+                                <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
+                            </div>
+                        )}
+                        {selectedTask?.status === 'completed' && selectedTask.changeSet?.error && (
+                            <div className='poiesis-results__state error' role='alert'>
+                                <strong>変更内容を取得できませんでした</strong>
+                                <p>Repository の状態を確認して、タスクを再試行してください。</p>
+                                <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
+                            </div>
+                        )}
+                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error
+                            && (!document || document.status === 'generating') && (
                             <div className='poiesis-results__empty' role='status'>成果を作成しています…</div>
                         )}
-                        {document?.status === 'failed' && (
-                            <div className='poiesis-results__empty' role='alert'>成果を作成できませんでした。{document.error}</div>
+                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error && document?.status === 'failed' && (
+                            <div className='poiesis-results__state error' role='alert'>
+                                <strong>成果を作成できませんでした</strong>
+                                <p>Results skill の処理に失敗しました。</p>
+                                <button type='button' onClick={() => void this.retryResults(selectedTask.id)}>再試行</button>
+                            </div>
                         )}
-                        {document?.status === 'ready' && document.html && (
+                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error
+                            && document?.status === 'ready' && document.html && (
                             <iframe
                                 key={selectedTask?.id}
                                 className='poiesis-results__document'
@@ -1588,7 +1637,18 @@ export class AgentWindowWidget extends ReactWidget {
                             />
                         )}
                     </div>
-                    {notice && <div className='poiesis-results__answer' role='status'>{notice}</div>}
+                    {notice && (
+                        <div
+                            className={`poiesis-results__answer ${notice.status}`}
+                            role={notice.status === 'failed' ? 'alert' : 'status'}
+                        >
+                            <strong>{notice.status === 'sending' ? '回答を作成しています…' : notice.question}</strong>
+                            {notice.status !== 'sending' && <p>{notice.text}</p>}
+                            {notice.status === 'failed' && (
+                                <button type='button' onClick={() => void this.submitResultsQuestion(selectedTask!.id, notice.question)}>再試行</button>
+                            )}
+                        </div>
+                    )}
                     <section className='poiesis-results__composer' aria-label='Results の入力欄'>
                         <input
                             value={draft}
@@ -3115,7 +3175,7 @@ export class AgentWindowWidget extends ReactWidget {
             agentDraft: '',
             messages: [],
             resultsDrafts: new Map<string, string>(),
-            resultsNotices: new Map<string, string>()
+            resultsNotices: new Map<string, ResultsNotice>()
         };
         this.sessions.push(session);
         this.selectedSessionId = session.id;
@@ -3200,7 +3260,7 @@ export class AgentWindowWidget extends ReactWidget {
                         ? candidate.selectedResultsTaskId
                         : undefined,
                     resultsDrafts: new Map(Array.isArray(candidate.resultsDrafts) ? candidate.resultsDrafts : []),
-                    resultsNotices: new Map<string, string>()
+                    resultsNotices: new Map<string, ResultsNotice>()
                 };
                 return [restored];
             }));
@@ -3311,7 +3371,7 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         if (event.type === 'task-started') {
-            session.messages.push({ id: `agent-${event.taskId}`, role: 'agent', content: '', complete: false });
+            session.messages.push({ id: `agent-${event.taskId}`, role: 'agent', content: '', complete: false, taskId: event.taskId });
         } else if (event.type === 'message-delta') {
             this.updateAgentMessage(session, event.taskId, message => ({ ...message, content: message.content + event.delta }));
         } else if (event.type === 'message-completed') {
@@ -3325,8 +3385,10 @@ export class AgentWindowWidget extends ReactWidget {
         } else if (event.type === 'task-failed') {
             this.updateAgentMessage(session, event.taskId, message => ({
                 ...message,
-                content: `${message.content} 実行に失敗しました。`.trim(),
-                complete: true
+                content: event.summary,
+                complete: true,
+                error: true,
+                errorDetails: event.details
             }));
         }
         session.updatedAt = Date.now();
@@ -3427,15 +3489,48 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
     }
 
-    protected async submitResultsQuestion(taskId: string): Promise<void> {
+    protected async submitResultsQuestion(taskId: string, retryQuestion?: string): Promise<void> {
         const session = this.selectedSession();
-        const question = session?.resultsDrafts.get(taskId)?.trim();
+        const question = retryQuestion?.trim() || session?.resultsDrafts.get(taskId)?.trim();
         if (!session || !question) {
             return;
         }
         session.resultsDrafts.set(taskId, '');
-        session.resultsNotices.set(taskId, 'この質問は Results 内だけに保存され、Agent の会話やタスクには送信されません。');
+        session.resultsNotices.set(taskId, { question, status: 'sending', text: '' });
         this.persistWindowState();
         this.update();
+        try {
+            const answer = await this.resultsService.answer(taskId, question);
+            session.resultsNotices.set(taskId, { question, status: 'answered', text: answer });
+        } catch {
+            session.resultsNotices.set(taskId, {
+                question,
+                status: 'failed',
+                text: '回答を作成できませんでした。もう一度お試しください。'
+            });
+        }
+        this.update();
+    }
+
+    protected async retryResults(taskId: string): Promise<void> {
+        await this.resultsService.retry(taskId);
+    }
+
+    protected async retryTask(taskId: string): Promise<void> {
+        const task = this.taskService.get(taskId);
+        const session = task ? this.findSessionByAgentId(task.sessionId) : undefined;
+        if (!task || !session || this.runningTask(session)) {
+            return;
+        }
+        this.detachCodeWidgets();
+        this.codeMode = false;
+        this.appPage = undefined;
+        this.selectedSessionId = session.id;
+        session.activeTab = 'agent';
+        session.selectedResultsTaskId = undefined;
+        session.agentDraft = task.request;
+        this.persistWindowState();
+        this.update();
+        await this.sendAgentMessage();
     }
 }
