@@ -3756,6 +3756,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected async initializeSessions(): Promise<void> {
+        await this.workspaceService.roots;
         const restored = await this.restoreWindowState();
         const currentWorkspaceKey = this.workspaceGroupKey(this.workspaceRoot()?.resource.toString());
         this.expandedWorkspaceGroups.add(currentWorkspaceKey);
