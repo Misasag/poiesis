@@ -51,11 +51,17 @@ export class BundledResultsSkill implements ResultsSkill {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${this.escape(task.title)} · 設計ノート</title>
   <style>
-    :root { font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #1b1c1a; color: #262721; }
+    :root { font: 14px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif; background: #f1efe8; color: #262721; }
     * { box-sizing: border-box; }
     html, body { min-height: 100%; }
-    body { display: grid; margin: 0; padding: clamp(10px, 3vw, 26px); place-items: start center; background: #1b1c1a; }
-    .paper { width: min(100%, 760px); min-height: min(430px, calc(100vh - 52px)); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 20px; padding: clamp(24px, 5vw, 48px); border-radius: 8px; background: #f1efe8; box-shadow: 0 10px 32px rgba(0, 0, 0, .24); }
+    html { background: #f1efe8; }
+    body { margin: 0; min-height: 100vh; background: #f1efe8; }
+    .paper { width: 100%; min-height: 100vh; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 20px; padding: clamp(20px, 4vw, 40px); background: #f1efe8; }
+    .paper > * { width: min(100%, 72ch); margin-inline: auto; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9a9183; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #766d61; background-clip: padding-box; }
     .kicker { color: #686b62; font-size: 11px; font-weight: 750; letter-spacing: .13em; }
     .heading { display: grid; gap: 8px; }
     h1 { margin: 0; color: #1f211c; font-size: clamp(22px, 4vw, 34px); line-height: 1.2; letter-spacing: -.02em; }
@@ -73,7 +79,7 @@ export class BundledResultsSkill implements ResultsSkill {
     .citation { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; color: #4d607e; font-size: 12px; font-style: normal; text-decoration: underline; text-underline-offset: 3px; }
     .citation code { max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     @media (max-width: 560px) {
-      .paper { min-height: calc(100vh - 20px); gap: 16px; padding: 24px 20px; }
+      .paper { gap: 16px; padding: 24px 20px; }
       .diagram { grid-template-columns: 1fr; gap: 22px; }
       .node + .node::before { top: auto; right: auto; bottom: calc(100% + 1px); left: 50%; transform: translateX(-50%) rotate(90deg); }
       footer { align-items: flex-start; flex-direction: column; gap: 10px; }

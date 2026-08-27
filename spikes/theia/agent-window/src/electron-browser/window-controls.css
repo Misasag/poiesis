@@ -4,7 +4,7 @@
 }
 
 .poiesis-agent-window__header.poiesis-agent-window__code-header {
-    min-height: 46px;
+    min-height: 54px;
 }
 
 .poiesis-agent-window__header button,
@@ -49,11 +49,11 @@
 .poiesis-window-controls__button:focus-visible {
     background: #30312e;
     color: #ffffff;
-    outline: none;
 }
 
 .poiesis-window-controls__button:focus-visible {
-    box-shadow: inset 0 0 0 1px #777a73;
+    outline: 2px solid #c28b60;
+    outline-offset: -2px;
 }
 
 .poiesis-window-controls__button:active {

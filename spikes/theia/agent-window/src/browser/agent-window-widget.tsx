@@ -101,6 +101,13 @@ interface PersistedPoiesisSettings {
     allowExternalResultsResources: boolean;
 }
 
+interface PickerAnchor {
+    left: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
+}
+
 @injectable()
 export class AgentWindowWidget extends ReactWidget {
     static readonly ID = 'poiesis-agent-window';
@@ -181,10 +188,12 @@ export class AgentWindowWidget extends ReactWidget {
     protected agentComposerInput?: HTMLTextAreaElement;
     protected agentSendButton?: HTMLButtonElement;
     protected workspacePickerVisible = false;
+    protected workspacePickerAnchor?: PickerAnchor;
     protected workspaceSearchQuery = '';
     protected workspaceSearchInput?: HTMLInputElement;
     protected recentWorkspaceUris: string[] = [];
     protected repositoryPickerVisible = false;
+    protected repositoryPickerAnchor?: PickerAnchor;
     protected repositorySearchQuery = '';
     protected repositorySearchInput?: HTMLInputElement;
     protected folderExplorerVisible = false;
@@ -233,14 +242,16 @@ export class AgentWindowWidget extends ReactWidget {
                 this.update();
             }
             if (this.repositoryPickerVisible
-                && !(event.target as Element | null)?.closest('.poiesis-agent-window__new-agent-context')) {
+                && !(event.target as Element | null)?.closest('.poiesis-agent-window__repository-picker, .poiesis-agent-window__context-pill.primary')) {
                 this.repositoryPickerVisible = false;
+                this.repositoryPickerAnchor = undefined;
                 this.repositorySearchQuery = '';
                 this.update();
             }
             if (this.workspacePickerVisible
-                && !(event.target as Element | null)?.closest('.poiesis-agent-window__rail-heading')) {
+                && !(event.target as Element | null)?.closest('.poiesis-agent-window__workspace-picker, .poiesis-agent-window__repository-open')) {
                 this.workspacePickerVisible = false;
+                this.workspacePickerAnchor = undefined;
                 this.workspaceSearchQuery = '';
                 this.update();
             }
@@ -252,15 +263,27 @@ export class AgentWindowWidget extends ReactWidget {
         };
         document.addEventListener('pointerdown', closeSessionMenu);
         this.toDispose.push(Disposable.create(() => document.removeEventListener('pointerdown', closeSessionMenu)));
-        const closeSettingsOnEscape = (event: KeyboardEvent): void => {
-            if (event.key === 'Escape' && this.settingsModalVisible) {
+        const closeOverlaysOnEscape = (event: KeyboardEvent): void => {
+            if (event.key !== 'Escape') {
+                return;
+            }
+            if (this.settingsModalVisible) {
                 event.preventDefault();
                 event.stopPropagation();
                 this.closeSettings();
+            } else if (this.workspacePickerVisible || this.repositoryPickerVisible) {
+                event.preventDefault();
+                this.workspacePickerVisible = false;
+                this.workspacePickerAnchor = undefined;
+                this.repositoryPickerVisible = false;
+                this.repositoryPickerAnchor = undefined;
+                this.workspaceSearchQuery = '';
+                this.repositorySearchQuery = '';
+                this.update();
             }
         };
-        document.addEventListener('keydown', closeSettingsOnEscape, true);
-        this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', closeSettingsOnEscape, true)));
+        document.addEventListener('keydown', closeOverlaysOnEscape, true);
+        this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', closeOverlaysOnEscape, true)));
         this.installCodeEditorSaveShortcut();
         this.installCodeTerminalShortcut();
         this.installCodeTabDropTarget();
@@ -351,6 +374,8 @@ export class AgentWindowWidget extends ReactWidget {
                                 </>}
                     </div>
                 </main>
+                {this.workspacePickerVisible && this.workspacePickerAnchor && this.renderWorkspacePicker()}
+                {this.repositoryPickerVisible && this.repositoryPickerAnchor && session && this.renderRepositoryPicker(session)}
                 {this.folderExplorerVisible && this.renderFolderExplorer()}
                 {this.settingsModalVisible && this.renderSettingsModal()}
             </div>
@@ -438,11 +463,10 @@ export class AgentWindowWidget extends ReactWidget {
                         aria-label='フォルダーを開いてリポジトリを選択または追加'
                         aria-expanded={this.workspacePickerVisible}
                         aria-controls='poiesis-agent-window-workspace-picker'
-                        onClick={() => this.toggleWorkspacePicker()}
+                        onClick={event => this.toggleWorkspacePicker(event.currentTarget)}
                     >
                         <span className='codicon codicon-add' aria-hidden='true' />
                     </button>
-                    {this.workspacePickerVisible && this.renderWorkspacePicker()}
                 </div>
                 <div className='poiesis-agent-window__sessions'>
                     <div className='poiesis-agent-window__workspace-group'>
@@ -856,9 +880,14 @@ export class AgentWindowWidget extends ReactWidget {
         }));
     }
 
-    protected toggleWorkspacePicker(): void {
+    protected toggleWorkspacePicker(anchor: HTMLElement): void {
         this.workspacePickerVisible = !this.workspacePickerVisible;
+        this.repositoryPickerVisible = false;
+        this.repositoryPickerAnchor = undefined;
         this.workspaceSearchQuery = '';
+        this.workspacePickerAnchor = this.workspacePickerVisible
+            ? this.pickerAnchor(anchor, 'right')
+            : undefined;
         this.update();
         if (this.workspacePickerVisible) {
             requestAnimationFrame(() => this.workspaceSearchInput?.focus());
@@ -914,19 +943,21 @@ export class AgentWindowWidget extends ReactWidget {
                 id='poiesis-agent-window-workspace-picker'
                 role='dialog'
                 aria-label='Workspaceを開く'
+                style={this.workspacePickerAnchor}
             >
-                <div className='poiesis-agent-window__workspace-picker-title'>Open workspace</div>
+                <div className='poiesis-agent-window__workspace-picker-title'>Workspaceを開く</div>
                 <label className='poiesis-agent-window__workspace-picker-search'>
                     <span className='codicon codicon-search' aria-hidden='true' />
                     <input
                         ref={input => { this.workspaceSearchInput = input ?? undefined; }}
                         value={this.workspaceSearchQuery}
-                        placeholder='Search workspaces'
+                        placeholder='Workspaceを検索'
                         aria-label='Workspaceを検索'
                         onChange={event => this.setWorkspaceSearchQuery(event.currentTarget.value)}
                         onKeyDown={event => {
                             if (event.key === 'Escape') {
                                 this.workspacePickerVisible = false;
+                                this.workspacePickerAnchor = undefined;
                                 this.workspaceSearchQuery = '';
                                 this.update();
                             }
@@ -935,7 +966,7 @@ export class AgentWindowWidget extends ReactWidget {
                 </label>
                 {currentChoices.length > 0 && (
                     <>
-                        <div className='poiesis-agent-window__workspace-picker-label'>Current</div>
+                        <div className='poiesis-agent-window__workspace-picker-label'>On This PC</div>
                         {currentChoices.map(choice => (
                             <button
                                 type='button'
@@ -977,7 +1008,7 @@ export class AgentWindowWidget extends ReactWidget {
                     onClick={() => void this.openRepository()}
                 >
                     <span className='codicon codicon-folder-opened' aria-hidden='true' />
-                    <span><strong>Open Folder…</strong><small>Choose a folder on this computer</small></span>
+                    <span><strong>Open Folder…</strong><small>このPCからフォルダーを選択</small></span>
                 </button>
             </div>
         );
@@ -985,6 +1016,7 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected openKnownWorkspace(workspaceUri: string): void {
         this.workspacePickerVisible = false;
+        this.workspacePickerAnchor = undefined;
         this.workspaceSearchQuery = '';
         this.workspaceService.open(new URI(workspaceUri), { preserveWindow: true });
     }
@@ -997,9 +1029,14 @@ export class AgentWindowWidget extends ReactWidget {
         return known?.name ?? new URI(workspaceUri).path.base ?? 'Repository';
     }
 
-    protected toggleRepositoryPicker(): void {
+    protected toggleRepositoryPicker(anchor: HTMLElement): void {
         this.repositoryPickerVisible = !this.repositoryPickerVisible;
+        this.workspacePickerVisible = false;
+        this.workspacePickerAnchor = undefined;
         this.repositorySearchQuery = '';
+        this.repositoryPickerAnchor = this.repositoryPickerVisible
+            ? this.pickerAnchor(anchor, 'above')
+            : undefined;
         this.update();
         if (this.repositoryPickerVisible) {
             requestAnimationFrame(() => this.repositorySearchInput?.focus());
@@ -1008,8 +1045,31 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected closeNewAgentPickers(): void {
         this.repositoryPickerVisible = false;
+        this.repositoryPickerAnchor = undefined;
         this.repositorySearchQuery = '';
         this.update();
+    }
+
+    protected pickerAnchor(anchor: HTMLElement, placement: 'right' | 'above'): PickerAnchor {
+        const rect = anchor.getBoundingClientRect();
+        const edge = 8;
+        const width = Math.min(360, window.innerWidth - edge * 2);
+        const left = placement === 'right'
+            ? Math.min(Math.max(edge, rect.right + 8), window.innerWidth - width - edge)
+            : Math.min(Math.max(edge, rect.left), window.innerWidth - width - edge);
+        if (placement === 'above') {
+            return {
+                left,
+                bottom: Math.max(edge, window.innerHeight - rect.top + 7),
+                maxHeight: Math.max(180, Math.min(500, rect.top - edge * 2))
+            };
+        }
+        const top = Math.min(Math.max(edge, rect.top), Math.max(edge, window.innerHeight - 240));
+        return {
+            left,
+            top,
+            maxHeight: Math.max(180, window.innerHeight - top - edge)
+        };
     }
 
     protected setRepositorySearchQuery(value: string): void {
@@ -1103,6 +1163,7 @@ export class AgentWindowWidget extends ReactWidget {
             session.updatedAt = Date.now();
         }
         this.repositoryPickerVisible = false;
+        this.repositoryPickerAnchor = undefined;
         this.repositorySearchQuery = '';
         this.closeFolderExplorer();
         this.persistWindowState();
@@ -1111,6 +1172,7 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async openRepository(): Promise<void> {
         this.workspacePickerVisible = false;
+        this.workspacePickerAnchor = undefined;
         this.workspaceSearchQuery = '';
         await this.openFolderExplorer();
     }
@@ -1577,11 +1639,6 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderNewAgentContext(session: WindowAgentSession): React.ReactNode {
-        const repositoryChoices = this.repositoryChoices();
-        const query = this.repositorySearchQuery.trim().toLocaleLowerCase();
-        const filteredChoices = repositoryChoices.filter(choice => !query
-            || choice.name.toLocaleLowerCase().includes(query)
-            || choice.path.toLocaleLowerCase().includes(query));
         const branch = session.branch ?? this.gitBranchForWorkspace(session.workspaceUri) ?? 'main';
         return (
             <div className='poiesis-agent-window__new-agent-context'>
@@ -1590,7 +1647,7 @@ export class AgentWindowWidget extends ReactWidget {
                     className='poiesis-agent-window__context-pill primary'
                     aria-expanded={this.repositoryPickerVisible}
                     aria-controls='poiesis-agent-window-repository-picker'
-                    onClick={() => this.toggleRepositoryPicker()}
+                    onClick={event => this.toggleRepositoryPicker(event.currentTarget)}
                 >
                     <span className='codicon codicon-folder' aria-hidden='true' />
                     <span>{this.repositoryLabel(session.workspaceUri)}</span>
@@ -1604,51 +1661,55 @@ export class AgentWindowWidget extends ReactWidget {
                     <span className='codicon codicon-device-desktop' aria-hidden='true' />
                     <span>Run on · This Computer</span>
                 </span>
-                {this.repositoryPickerVisible && (
-                    <div
-                        className='poiesis-agent-window__repository-picker'
-                        id='poiesis-agent-window-repository-picker'
-                        role='dialog'
-                        aria-label='Repositoryを選択'
-                    >
-                        <label className='poiesis-agent-window__repository-search'>
-                            <span className='codicon codicon-search' aria-hidden='true' />
-                            <input
-                                ref={input => { this.repositorySearchInput = input ?? undefined; }}
-                                value={this.repositorySearchQuery}
-                                placeholder='Search projects and repositories'
-                                aria-label='Repositoryを検索'
-                                onChange={event => this.setRepositorySearchQuery(event.currentTarget.value)}
-                                onKeyDown={event => {
-                                    if (event.key === 'Escape') {
-                                        this.closeNewAgentPickers();
-                                    }
-                                }}
-                            />
-                        </label>
-                        {repositoryChoices.length > 0 && (
-                            <>
-                                <div className='poiesis-agent-window__repository-group-label'>Recents</div>
-                                {repositoryChoices.slice(0, 2).map(choice => this.renderRepositoryChoice(session, choice, 'codicon-history'))}
-                            </>
-                        )}
-                        <div className='poiesis-agent-window__repository-group-label'>On This PC</div>
-                        {filteredChoices.map(choice => this.renderRepositoryChoice(session, choice, 'codicon-device-desktop'))}
-                        {!filteredChoices.length && (
-                            <div className='poiesis-agent-window__repository-empty'>一致するRepositoryはありません</div>
-                        )}
-                        <div className='poiesis-agent-window__repository-footer'>
-                            <button type='button' onClick={() => void this.openFolderExplorer(session)}>
-                                <span className='codicon codicon-folder-opened' aria-hidden='true' />
-                                Use Existing…
-                            </button>
-                            <button type='button' onClick={() => void this.openFolderExplorer(session, true)}>
-                                <span className='codicon codicon-new-folder' aria-hidden='true' />
-                                New Folder
-                            </button>
-                        </div>
-                    </div>
+            </div>
+        );
+    }
+
+    protected renderRepositoryPicker(session: WindowAgentSession): React.ReactNode {
+        const repositoryChoices = this.repositoryChoices();
+        const query = this.repositorySearchQuery.trim().toLocaleLowerCase();
+        const filteredChoices = repositoryChoices.filter(choice => !query
+            || choice.name.toLocaleLowerCase().includes(query)
+            || choice.path.toLocaleLowerCase().includes(query));
+        return (
+            <div
+                className='poiesis-agent-window__repository-picker'
+                id='poiesis-agent-window-repository-picker'
+                role='dialog'
+                aria-label='Repositoryを選択'
+                style={this.repositoryPickerAnchor}
+            >
+                <label className='poiesis-agent-window__repository-search'>
+                    <span className='codicon codicon-search' aria-hidden='true' />
+                    <input
+                        ref={input => { this.repositorySearchInput = input ?? undefined; }}
+                        value={this.repositorySearchQuery}
+                        placeholder='Repositoryを検索'
+                        aria-label='Repositoryを検索'
+                        onChange={event => this.setRepositorySearchQuery(event.currentTarget.value)}
+                    />
+                </label>
+                {repositoryChoices.length > 0 && (
+                    <>
+                        <div className='poiesis-agent-window__repository-group-label'>Recent</div>
+                        {repositoryChoices.slice(0, 2).map(choice => this.renderRepositoryChoice(session, choice, 'codicon-history'))}
+                    </>
                 )}
+                <div className='poiesis-agent-window__repository-group-label'>On This PC</div>
+                {filteredChoices.map(choice => this.renderRepositoryChoice(session, choice, 'codicon-device-desktop'))}
+                {!filteredChoices.length && (
+                    <div className='poiesis-agent-window__repository-empty'>一致するRepositoryはありません</div>
+                )}
+                <div className='poiesis-agent-window__repository-footer'>
+                    <button type='button' onClick={() => void this.openFolderExplorer(session)}>
+                        <span className='codicon codicon-folder-opened' aria-hidden='true' />
+                        Use Existing…
+                    </button>
+                    <button type='button' onClick={() => void this.openFolderExplorer(session, true)}>
+                        <span className='codicon codicon-new-folder' aria-hidden='true' />
+                        New Folder
+                    </button>
+                </div>
             </div>
         );
     }
@@ -3681,6 +3742,7 @@ export class AgentWindowWidget extends ReactWidget {
         this.sessionSearchVisible = false;
         this.sessionSearchQuery = '';
         this.repositoryPickerVisible = false;
+        this.repositoryPickerAnchor = undefined;
         this.repositorySearchQuery = '';
         const current = this.selectedSession();
         if (current && !current.archived && !current.hasUserMessage) {

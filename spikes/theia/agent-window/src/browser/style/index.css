@@ -249,11 +249,6 @@
     width: 100%;
 }
 
-.poiesis-agent-window {
-    min-width: 360px;
-}
-
-.poiesis-agent-window__content,
 .poiesis-changes__content {
     box-sizing: border-box;
     color: var(--theia-foreground);
@@ -262,43 +257,12 @@
     padding: 14px;
 }
 
-.poiesis-agent-window__content {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.poiesis-agent-window__header,
-.poiesis-agent-window__result-heading,
-.poiesis-agent-window__verification,
-.poiesis-agent-window__file-count,
 .poiesis-changes__semantic-heading {
     align-items: center;
     display: flex;
     justify-content: space-between;
 }
 
-.poiesis-agent-window__header {
-    border-bottom: 1px solid var(--theia-panel-border);
-    padding: 2px 2px 12px;
-}
-
-.poiesis-agent-window__header strong {
-    display: block;
-    font-size: 15px;
-    margin-top: 3px;
-}
-
-.poiesis-agent-window__ready,
-.poiesis-agent-window__complete {
-    color: var(--theia-testing-iconPassed);
-    font-size: 12px;
-}
-
-.poiesis-agent-window__message,
-.poiesis-agent-window__user-message,
-.poiesis-agent-window__question,
-.poiesis-agent-window__composer,
 .poiesis-changes__representation {
     background: var(--theia-editor-background);
     border: 1px solid var(--theia-panel-border);
@@ -306,7 +270,6 @@
     padding: 14px;
 }
 
-.poiesis-agent-window__speaker,
 .poiesis-changes__eyebrow {
     color: var(--theia-descriptionForeground);
     font-size: 11px;
@@ -314,104 +277,11 @@
     letter-spacing: 0.08em;
 }
 
-.poiesis-agent-window__message p,
-.poiesis-agent-window__user-message p {
-    font-size: 14px;
-    font-weight: 600;
-    margin: 10px 0;
-}
-
-.poiesis-agent-window__user-message {
-    background: var(--theia-sideBar-background);
-    margin-left: 28px;
-}
-
-.poiesis-agent-window__message ul {
-    line-height: 1.6;
-    margin: 0 0 14px;
-    padding-left: 20px;
-}
-
-.poiesis-agent-window__actions,
-.poiesis-agent-window__question-row,
 .poiesis-changes__tabs {
     display: flex;
     gap: 8px;
 }
 
-.poiesis-agent-window__verification,
-.poiesis-agent-window__file-count,
-.poiesis-agent-window__unresolved {
-    border-top: 1px solid var(--theia-panel-border);
-    color: var(--theia-descriptionForeground);
-    font-size: 12px;
-    gap: 6px;
-    justify-content: flex-start;
-    padding: 9px 0 0;
-}
-
-.poiesis-agent-window__unresolved {
-    border-top: 0;
-    padding-top: 5px;
-}
-
-.poiesis-agent-window__actions {
-    margin-top: 12px;
-}
-
-.poiesis-agent-window__question label {
-    display: block;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.poiesis-agent-window__question--context {
-    align-items: center;
-    background: color-mix(in srgb, var(--theia-button-background) 18%, var(--theia-editor-background));
-    border-color: var(--theia-focusBorder);
-    display: flex;
-    font-size: 12px;
-    justify-content: space-between;
-    padding: 7px 10px;
-}
-
-.poiesis-agent-window__question--context button {
-    background: transparent;
-    border: 0;
-    color: var(--theia-foreground);
-    cursor: pointer;
-}
-
-.poiesis-agent-window__question--inline {
-    border-color: var(--theia-focusBorder);
-    margin-top: -12px;
-}
-
-.poiesis-agent-window__composer {
-    display: grid;
-    gap: 8px;
-    grid-template-columns: 1fr auto;
-    margin-top: auto;
-    padding: 10px;
-}
-
-.poiesis-agent-window__composer textarea {
-    min-height: 58px;
-    resize: none;
-}
-
-.poiesis-agent-window__send {
-    align-self: end;
-    height: 30px;
-    min-width: 34px;
-}
-
-.poiesis-agent-window__question input {
-    flex: 1;
-    min-width: 0;
-}
-
-.poiesis-agent-window__question small,
 .poiesis-changes__evidence small {
     color: var(--theia-descriptionForeground);
     display: block;
@@ -673,12 +543,6 @@
     padding: 12px;
 }
 
-[data-poiesis-design-variant='d1-b'] .poiesis-agent-window__content {
-    margin: 0 auto;
-    max-width: 900px;
-    padding: 24px;
-}
-
 [data-poiesis-design-variant='d2-b'] .poiesis-changes__content {
     margin: 0 auto;
     max-width: 1100px;
@@ -687,107 +551,6 @@
 
 [data-poiesis-design-variant='semantic-card-closeup'] .poiesis-changes {
     min-height: 280px;
-}
-
-/* August 2026 first-slice Agent / Results frame. */
-.poiesis-agent-window__content {
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-}
-
-.poiesis-agent-window__header {
-    display: grid;
-    gap: 8px 12px;
-    grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.poiesis-agent-window__identity small {
-    color: var(--theia-descriptionForeground);
-    display: block;
-    font-size: 10px;
-    margin-top: 2px;
-}
-
-.poiesis-agent-window__runtime-report {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    grid-column: 1 / -1;
-}
-
-.poiesis-agent-window__runtime-report span {
-    background: var(--theia-badge-background);
-    border-radius: 10px;
-    color: var(--theia-badge-foreground);
-    font-size: 10px;
-    padding: 2px 7px;
-}
-
-.poiesis-agent-window__runtime-report .found {
-    color: var(--theia-testing-iconPassed);
-}
-
-.poiesis-agent-window__runtime-report .missing {
-    color: var(--theia-descriptionForeground);
-}
-
-.poiesis-agent-window__running {
-    color: var(--theia-editorWarning-foreground);
-    font-size: 12px;
-}
-
-.poiesis-agent-window__tabs {
-    border-top: 1px solid var(--theia-panel-border);
-    display: flex;
-    gap: 4px;
-    grid-column: 1 / -1;
-    padding-top: 8px;
-}
-
-.poiesis-agent-window__tabs button {
-    background: transparent;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    color: var(--theia-descriptionForeground);
-    cursor: pointer;
-    padding: 5px 10px;
-}
-
-.poiesis-agent-window__tabs button.active {
-    border-bottom-color: var(--theia-focusBorder);
-    color: var(--theia-foreground);
-    font-weight: 700;
-}
-
-.poiesis-agent-window__agent,
-.poiesis-results {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 10px;
-    min-height: 0;
-}
-
-.poiesis-agent-window__messages {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 10px;
-    min-height: 120px;
-    overflow: auto;
-}
-
-.poiesis-agent-window__message,
-.poiesis-agent-window__user-message {
-    flex: none;
-}
-
-.poiesis-agent-window__message p,
-.poiesis-agent-window__user-message p {
-    font-weight: 400;
-    line-height: 1.55;
-    white-space: pre-wrap;
 }
 
 .poiesis-agent-window__message-error {
@@ -835,80 +598,6 @@
     padding: 4px 8px;
 }
 
-.poiesis-agent-window__task-state {
-    align-items: center;
-    background: var(--theia-editor-background);
-    border: 1px solid var(--theia-panel-border);
-    border-radius: 5px;
-    display: flex;
-    font-size: 12px;
-    gap: 8px;
-    justify-content: space-between;
-    padding: 7px 9px;
-}
-
-.poiesis-agent-window__composer {
-    flex: none;
-    margin-top: 0;
-}
-
-.poiesis-results__task-switcher {
-    display: flex;
-    flex: none;
-    gap: 6px;
-    max-width: 100%;
-    overflow: auto;
-}
-
-.poiesis-results__task-switcher button {
-    background: var(--theia-sideBar-background);
-    border: 1px solid var(--theia-panel-border);
-    border-radius: 5px;
-    color: var(--theia-foreground);
-    cursor: pointer;
-    display: grid;
-    flex: 0 0 170px;
-    gap: 3px;
-    padding: 7px 9px;
-    text-align: left;
-}
-
-.poiesis-results__task-switcher button.active {
-    border-color: var(--theia-focusBorder);
-}
-
-.poiesis-results__task-switcher button span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.poiesis-results__task-switcher button small,
-.poiesis-results__task-switcher p,
-.poiesis-results__composer small {
-    color: var(--theia-descriptionForeground);
-    font-size: 10px;
-    margin: 0;
-}
-
-.poiesis-results__canvas {
-    background: var(--theia-editor-background);
-    border: 1px solid var(--theia-panel-border);
-    border-radius: 6px;
-    display: flex;
-    flex: 1;
-    min-height: 220px;
-    overflow: hidden;
-}
-
-.poiesis-results__empty {
-    align-self: center;
-    color: var(--theia-descriptionForeground);
-    margin: auto;
-    padding: 18px;
-    text-align: center;
-}
-
 .poiesis-results__state {
     align-self: center;
     color: var(--poiesis-chrome-muted);
@@ -934,26 +623,6 @@
     color: #d8aaa4;
 }
 
-.poiesis-results__document {
-    background: #181a1f;
-    border: 0;
-    flex: 1;
-    height: 100%;
-    min-height: 220px;
-    width: 100%;
-}
-
-.poiesis-results__composer {
-    display: grid;
-    flex: none;
-    gap: 7px;
-    grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.poiesis-results__composer small {
-    grid-column: 1 / -1;
-}
-
 /* Agent Window chrome follows docs/ui/agent-window-spec.html. */
 .poiesis-agent-window {
     min-height: 320px;
@@ -972,6 +641,7 @@
     --poiesis-chrome-muted: #858780;
     --poiesis-results-accent: #536182;
     background: var(--poiesis-chrome-bg);
+    box-sizing: border-box;
     color: var(--poiesis-chrome-text);
     display: grid;
     gap: 0;
@@ -1688,7 +1358,7 @@
     gap: 16px;
     justify-content: space-between;
     min-height: 54px;
-    padding: 8px 16px;
+    padding: 9px 16px;
 }
 
 .poiesis-agent-window__context {
@@ -1742,8 +1412,8 @@
 .poiesis-agent-window__code-header {
     gap: 12px;
     justify-content: flex-start;
-    min-height: 38px;
-    padding: 5px 10px;
+    min-height: 54px;
+    padding: 9px 16px;
 }
 
 .poiesis-agent-window__code-header .poiesis-agent-window__code-control {
@@ -1849,10 +1519,10 @@
     border-radius: 10px;
     display: inline-flex;
     font-size: 16px;
-    height: 36px;
+    height: 34px;
     justify-content: center;
     margin-bottom: 4px;
-    width: 36px;
+    width: 34px;
 }
 
 .poiesis-agent-window__new-agent-empty strong {
@@ -3779,6 +3449,9 @@ body.poiesis-code-file-pointer-drag * {
     --poiesis-shadow-composer: 0 10px 30px rgb(0 0 0 / 16%);
     --poiesis-shadow-results: 0 8px 24px rgb(0 0 0 / 18%);
     font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+    font-size: 12px;
+    line-height: 1.48;
+    letter-spacing: 0;
 }
 
 .poiesis-agent-window__tabs {
@@ -3792,6 +3465,34 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-agent-window__messages {
     padding-inline: clamp(28px, 7vw, 78px);
+}
+
+.poiesis-agent-window__new-agent-empty small {
+    font-size: 9px;
+}
+
+.poiesis-agent-window__context-pill {
+    font-size: 8px;
+}
+
+.poiesis-agent-window__repository-search input,
+.poiesis-agent-window__repository-option,
+.poiesis-agent-window__repository-option strong {
+    font-size: 9px;
+}
+
+.poiesis-results__answer {
+    font-size: 9px;
+}
+
+.poiesis-results__composer input {
+    font-size: 10px;
+}
+
+.poiesis-agent-window__session-section-label {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: .08em;
 }
 
 .poiesis-agent-window__message p,
@@ -3869,6 +3570,61 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-agent-window__repository-picker {
     max-height: min(500px, 62vh);
     width: min(360px, 78vw);
+}
+
+.poiesis-agent-window__workspace-picker,
+.poiesis-agent-window__repository-picker {
+    bottom: auto;
+    left: auto;
+    margin: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    position: fixed;
+    right: auto;
+    top: auto;
+    width: min(360px, calc(100vw - 16px));
+    z-index: 250;
+}
+
+.poiesis-agent-window__content,
+.poiesis-agent-window__sessions,
+.poiesis-agent-window__messages,
+.poiesis-agent-window__code,
+.poiesis-agent-window__code-sidebar-host,
+.poiesis-agent-window__code-editor-host,
+.poiesis-agent-window__code-panel-body,
+.poiesis-settings-modal__body,
+.poiesis-results__task-switcher,
+.poiesis-results__task-list,
+.poiesis-agent-window__workspace-picker,
+.poiesis-agent-window__repository-picker {
+    scrollbar-color: #5c5f58 transparent;
+    scrollbar-width: thin;
+}
+
+.poiesis-agent-window__content ::-webkit-scrollbar,
+.poiesis-settings-modal ::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+.poiesis-agent-window__content ::-webkit-scrollbar-track,
+.poiesis-settings-modal ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.poiesis-agent-window__content ::-webkit-scrollbar-thumb,
+.poiesis-settings-modal ::-webkit-scrollbar-thumb {
+    background: #5c5f58;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 999px;
+}
+
+.poiesis-agent-window__content ::-webkit-scrollbar-thumb:hover,
+.poiesis-settings-modal ::-webkit-scrollbar-thumb:hover {
+    background: #777a72;
+    background-clip: padding-box;
 }
 
 .poiesis-agent-window__content button:not(:disabled),
