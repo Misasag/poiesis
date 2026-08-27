@@ -2430,7 +2430,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected async newCodeTerminal(): Promise<TerminalWidget> {
         const cwd = this.workspaceService.tryGetRoots()[0]?.resource.toString();
         const terminal = await this.terminalService.newTerminal({ cwd, destroyTermOnClose: true });
-        await terminal.start();
+        void terminal.start();
         return terminal;
     }
 
