@@ -31,6 +31,7 @@ const resultsQuestionServer = await read('agent-window/src/node/results-question
 const globalStorageService = await read('agent-window/src/browser/global-storage-service.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
+const skillBundleContract = await read('agent-window/src/common/skill-bundle.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
 const electronFrontendModule = await read('agent-window/src/electron-browser/agent-window-electron-frontend-module.ts');
@@ -38,6 +39,7 @@ const electronWindowControls = await read('agent-window/src/electron-browser/win
 const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
 const readme = await read('README.md');
 const firstCompletion = await read('../../docs/FIRST-COMPLETION.md');
+const skillsContract = await read('../../docs/SKILLS-CONTRACT.md');
 
 assert.equal(rootPackage.devDependencies['@theia/cli'], '1.73.1');
 assert.equal(appPackage.theia.target, 'browser');
@@ -155,6 +157,9 @@ for (const marker of [
     "this.providerRegistry.resolve('results', scope.providerId)",
     "resource.scheme !== 'file'",
     "'--sandbox', 'read-only'",
+    "'--permission-mode', 'plan'",
+    "'--tools='",
+    "provider.id === 'claude'",
     'this.runs.has(scope.taskId)'
 ]) {
     assert.ok(resultsQuestionServer.includes(marker), `Results question server is missing ${marker}`);
@@ -191,12 +196,14 @@ assert.ok(poiesisWorkspaceTrustService.includes('return Promise.resolve(true)'))
 
 for (const marker of [
     'const providerId = input.providerId',
-    "providerId === 'codex'",
-    "providerName: 'Codex'",
+    'providerName: detection.name',
     'return this.mockProvider.createSession(input)',
     'await this.taskService.whenBaselineCaptured(task.id)',
     'await this.runtimeServer.runCodex',
     'providerId: session.providerId',
+    "run.providerId === 'claude'",
+    "claudeEvent.type === 'assistant'",
+    "claudeEvent.type === 'result'",
     'type: \'message-delta\'',
     'type: \'message-completed\'',
     'await this.taskService.end(run.taskId)',
@@ -210,13 +217,15 @@ assert.ok(runtimeClient.includes('notifyCodexEvent'));
 assert.ok(runtimeClient.includes('onCodexEvent'));
 
 for (const marker of [
-    'taskService.start',
-    'taskService.end',
-    'taskService.cancel',
+    'モック応答です。',
+    'Workspaceの読み取り・編集・実行は行っていません。',
     "type: 'message-delta'",
-    'setTimeout(() => void streamNext()'
+    "type: 'message-completed'"
 ]) {
     assert.ok(mockProvider.includes(marker), `MockAgentProvider is missing ${marker}`);
+}
+for (const forbidden of ['TaskService', 'taskService.start', 'taskService.end', 'captureGitSnapshot']) {
+    assert.ok(!mockProvider.includes(forbidden), `MockAgentProvider must not create a Task through ${forbidden}`);
 }
 for (const forbidden of ['FileService', 'WorkspaceService', 'readFile', 'writeFile', 'execFile']) {
     assert.ok(!mockProvider.includes(forbidden), `MockAgentProvider must not use ${forbidden}`);
@@ -240,6 +249,13 @@ assert.ok(runtimeServer.includes("'git'"));
 assert.ok(runtimeServer.includes("'ls-files', '--cached', '--others', '--exclude-standard'"));
 assert.ok(runtimeServer.includes("'diff', '--no-index', '--binary', '--no-color'"));
 assert.ok(!taskService.includes("kind: 'placeholder'"), 'TaskService must capture a real baseline');
+for (const marker of [
+    'restore(tasks: readonly ExecutionTask[])',
+    "failure: { summary: 'アプリ終了により中断されました' }",
+    'remove(taskIds: Iterable<string>)'
+]) {
+    assert.ok(taskService.includes(marker), `Task persistence is missing ${marker}`);
+}
 
 for (const marker of [
     "KnownCliId = 'codex' | 'claude'",
@@ -262,6 +278,7 @@ for (const marker of [
     'process.env.USERPROFILE',
     "id: 'codex'",
     "id: 'claude'",
+    "process.env.POIESIS_DISABLE_CLI_DETECTION === '1'",
     'lastReport',
     "status: 'found'",
     "status: 'missing'"
@@ -274,8 +291,8 @@ assert.ok(backendModule.includes('CliDetector'));
 assert.ok(backendModule.includes('CliProviderRegistry'));
 assert.ok(backendModule.includes('server.setClient(client)'));
 for (const marker of [
-    "agent: ['codex']",
-    "results: ['codex']",
+    "agent: ['codex', 'claude']",
+    "results: ['codex', 'claude']",
     'this.cliDetector.recordedReport',
     'class CliProviderRegistry'
 ]) {
@@ -295,6 +312,10 @@ for (const marker of [
     "'taskkill'",
     'const resolvedWorkspace = await this.resolveWorkspace(workspacePath)',
     "this.providerRegistry.resolve('agent', providerId)",
+    "provider.id === 'claude'",
+    "'--permission-mode', 'acceptEdits'",
+    "'--output-format', 'stream-json'",
+    "'--safe-mode'",
     'const snapshot = await this.captureWorkspace(resolvedWorkspace)'
 ]) {
     assert.ok(runtimeServer.includes(marker), `Codex runtime is missing ${marker}`);
@@ -335,6 +356,36 @@ for (const forbidden of [
     assert.ok(!resultsSkill.includes(forbidden), `Results document must not contain ${forbidden}`);
 }
 assert.ok(!resultsSkill.includes('task.baseline.note'), 'Results must not render the old placeholder baseline');
+for (const marker of [
+    "id: 'builtin.results'",
+    "kind: 'results' as const",
+    "entry: 'builtin:results'",
+    'extends ResultsSkillBundle',
+    'restore(documents: readonly TaskResultDocument[]'
+]) {
+    assert.ok(resultsSkill.includes(marker), `Bundled Results bundle is missing ${marker}`);
+}
+for (const marker of [
+    "SkillBundleKind = 'agent' | 'results'",
+    'interface SkillBundleManifest',
+    'interface SkillBundleLifecycle',
+    'install(manifest: SkillBundleManifest)',
+    'remove(id: string)',
+    'enable(id: string)',
+    'disable(id: string)'
+]) {
+    assert.ok(skillBundleContract.includes(marker), `Skill bundle TypeScript contract is missing ${marker}`);
+}
+for (const marker of [
+    '# Poiesis Skills bundle contract',
+    'Agent skill',
+    'Results skill',
+    'multi-agent orchestration',
+    'runtime config schema',
+    '`builtin.results`'
+]) {
+    assert.ok(skillsContract.includes(marker), `Skills contract document is missing ${marker}`);
+}
 
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
@@ -487,7 +538,9 @@ for (const marker of [
     "this.renderCliRoleSelector('agent', 'Agent の AI', this.agentCli)",
     "this.renderCliRoleSelector('results', 'Results の AI', this.resultsCli)",
     'providerId: this.agentCli',
-    "<small className='future-note'>実行対応は今後</small>",
+    "detection?.status === 'found'",
+    'Agent Skillsは作業方法と将来の委譲を定義し',
+    '<strong>Bundled Results</strong>',
     "aria-label='Results skillを有効化'",
     'this.customizationService.setSkillEnabled',
     'onCompositionEnd={event => this.setAgentDraft(event.currentTarget.value)}'
@@ -511,6 +564,19 @@ for (const dummyChrome of [
 }
 assert.ok(agentWidget.includes('@inject(GlobalStorageService)'), 'Window sessions must use the global storage boundary');
 assert.ok(agentWidget.includes('this.globalStorageService.setData'), 'Window sessions must persist across workspaces');
+for (const marker of [
+    'MAX_PERSISTED_TASKS_PER_SESSION = 10',
+    'MAX_PERSISTED_RESULTS_HTML_CHARS = 300_000',
+    'taskIds: string[]',
+    'tasks?: ExecutionTask[]',
+    'resultsDocuments?: TaskResultDocument[]',
+    'this.taskService.restore',
+    'this.resultsService.restore',
+    'protected persistedTasks(session: WindowAgentSession)',
+    "failure: { summary: 'アプリ終了により中断されました' }"
+]) {
+    assert.ok(agentWidget.includes(marker), `Session artifact persistence is missing ${marker}`);
+}
 assert.ok(!agentWidget.includes('window.localStorage'), 'The Agent widget must not write browser storage directly');
 assert.ok(!agentWidget.includes('sessionStorage'), 'Window sessions must survive a browser session');
 for (const marker of [
@@ -702,14 +768,19 @@ for (const marker of [
 }
 assert.match(
     agentStyles,
-    /\.poiesis-agent-window__rail-action\s*\{[^}]*font-size:\s*11px;/,
+    /\.poiesis-agent-window__rail-action\s*\{[^}]*font-size:\s*12px;/,
     'New Chat and Search text must match the sidebar spec'
 );
 assert.match(
     agentStyles,
-    /\.poiesis-agent-window__rail-heading\s*\{[^}]*font-size:\s*10px;/,
+    /\.poiesis-agent-window__rail-heading\s*\{[^}]*font-size:\s*12px;/,
     'Workspaces text must match the sidebar spec'
 );
+assert.match(agentStyles, /\.poiesis-agent-window__content\s*\{[\s\S]*?font-size:\s*13px;[\s\S]*?zoom:\s*var\(--poiesis-ui-font-scale, 1\);/,
+    'Poiesis chrome must use the raised default scale');
+assert.match(agentStyles, /\.poiesis-agent-window__message,[\s\S]*?font-size:\s*14px;/,
+    'Agent conversation text must be at least 14px');
+assert.ok(!/font-size:\s*(?:8|9|10|11)px;/.test(agentStyles), 'Poiesis chrome text must not fall below the 12px CSS floor');
 assert.ok(!agentStyles.includes('.poiesis-agent-window__composer-tools'), 'Deferred composer tool styles must not remain');
 assert.match(
     agentStyles,
