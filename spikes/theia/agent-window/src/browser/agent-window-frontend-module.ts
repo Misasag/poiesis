@@ -12,7 +12,7 @@ import { DesignShotContribution } from './design-shot-contribution';
 import { AgentProvider } from '../common/agent-provider';
 import { AgentRuntimeServer, agentRuntimeServerPath } from '../common/agent-runtime-protocol';
 import { MockAgentProvider } from './mock-agent-provider';
-import { BundledResultsSkill, ResultsService, ResultsSkill } from './results-skill';
+import { AiResultsSkill, BundledResultsSkill, ResultsService, ResultsSkill } from './results-skill';
 import { TaskService } from './task-service';
 import { PoiesisFrontendApplication } from './poiesis-frontend-application';
 import { CustomizationService } from './customization-service';
@@ -22,6 +22,8 @@ import { ResultsQuestionService } from './results-question-service';
 import { WorkspaceTrustService } from '@theia/workspace/lib/browser/workspace-trust-service';
 import { PoiesisWorkspaceTrustService } from './poiesis-workspace-trust-service';
 import { BrowserGlobalStorageService, GlobalStorageService } from './global-storage-service';
+import { ResultsGenerationServer, resultsGenerationServerPath } from '../common/results-generation-protocol';
+import { ResultsGenerationContext } from './results-generation-context';
 import '../../src/browser/style/index.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
@@ -37,13 +39,17 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     }).inSingletonScope();
     bind(ResultsQuestionServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
         .createProxy<ResultsQuestionServer>(resultsQuestionServerPath)).inSingletonScope();
+    bind(ResultsGenerationServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
+        .createProxy<ResultsGenerationServer>(resultsGenerationServerPath)).inSingletonScope();
+    bind(ResultsGenerationContext).toSelf().inSingletonScope();
     bind(ResultsQuestionService).toSelf().inSingletonScope();
     bind(TaskService).toSelf().inSingletonScope();
     bind(MockAgentProvider).toSelf().inSingletonScope();
     bind(CliAgentProvider).toSelf().inSingletonScope();
     bind(AgentProvider).toService(CliAgentProvider);
     bind(BundledResultsSkill).toSelf().inSingletonScope();
-    bind(ResultsSkill).toService(BundledResultsSkill);
+    bind(AiResultsSkill).toSelf().inSingletonScope();
+    bind(ResultsSkill).toService(AiResultsSkill);
     bind(ResultsService).toSelf().inSingletonScope();
     bind(CustomizationService).toSelf().inSingletonScope();
     bind(FolderExplorerService).toSelf().inSingletonScope();

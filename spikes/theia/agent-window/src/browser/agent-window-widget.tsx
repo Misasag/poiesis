@@ -32,6 +32,7 @@ import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
 import { ResultsQuestionService } from './results-question-service';
 import { GlobalStorageService } from './global-storage-service';
+import { ResultsGenerationContext } from './results-generation-context';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
@@ -254,7 +255,8 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(CustomizationService) protected readonly customizationService: CustomizationService,
         @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService,
         @inject(AgentRuntimeServer) protected readonly agentRuntimeServer: AgentRuntimeServer,
-        @inject(ResultsQuestionService) protected readonly resultsQuestionService: ResultsQuestionService
+        @inject(ResultsQuestionService) protected readonly resultsQuestionService: ResultsQuestionService,
+        @inject(ResultsGenerationContext) protected readonly resultsGenerationContext: ResultsGenerationContext
     ) {
         super();
     }
@@ -1636,6 +1638,7 @@ export class AgentWindowWidget extends ReactWidget {
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-results'>
                             <h2 id='poiesis-settings-results'>Results — 外部リソース</h2>
+                            <p className='poiesis-settings-modal__section-copy'>成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。</p>
                             <div className='poiesis-settings-modal__row'>
                                 <div><strong>成果文書の外部リソース読み込みを許可</strong><small>OFFではResults HTMLからのネットワーク画像や外部スタイルをブロックします。</small></div>
                                 <label className='poiesis-agent-window__switch'>
@@ -1685,7 +1688,7 @@ export class AgentWindowWidget extends ReactWidget {
                             <div className='poiesis-agent-window__customize-list'>
                         <article className='poiesis-agent-window__customize-card'>
                             <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-preview' aria-hidden='true' /></div>
-                            <div><div className='poiesis-agent-window__customize-title'><strong>Bundled Results</strong><span>Results bundle</span></div><p>Task完了後、確定したChange Setから一つの完成HTML文書を生成します。</p></div>
+                            <div><div className='poiesis-agent-window__customize-title'><strong>AI Results</strong><span>Results chain</span></div><p>Results AIが完成HTMLを生成し、実行できない場合は組み込みテンプレートへ切り替えます。</p></div>
                             <label className='poiesis-agent-window__switch'>
                                 <input type='checkbox' checked={resultsEnabled} aria-label='Results skillを有効化' onChange={event => this.customizationService.setSkillEnabled('results', event.currentTarget.checked)} />
                                 <span aria-hidden='true' />
@@ -3368,6 +3371,7 @@ export class AgentWindowWidget extends ReactWidget {
             this.agentCli = cli;
         } else {
             this.resultsCli = cli;
+            this.resultsGenerationContext.providerId = cli;
         }
         this.persistPoiesisSettings();
         this.update();
@@ -3414,6 +3418,7 @@ export class AgentWindowWidget extends ReactWidget {
         } catch (error) {
             console.warn('[Poiesis] Could not restore settings.', error);
         }
+        this.resultsGenerationContext.providerId = this.resultsCli;
         this.update();
     }
 

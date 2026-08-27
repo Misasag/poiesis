@@ -1,8 +1,11 @@
 import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
+import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { ExecutionTask, TaskChangeSet, TaskService } from './task-service';
 import { CustomizationService } from './customization-service';
 import { ResultsSkillBundle } from '../common/skill-bundle';
+import { ResultsGenerationServer } from '../common/results-generation-protocol';
+import { ResultsGenerationContext } from './results-generation-context';
 
 export const ResultsSkill = Symbol('ResultsSkill');
 
@@ -13,6 +16,7 @@ export interface ResultsSkillInput {
 
 export interface ResultsSkill extends ResultsSkillBundle {
     generate(input: ResultsSkillInput): Promise<string>;
+    cancel?(taskId: string): Promise<void>;
 }
 
 export interface TaskResultDocument {
@@ -207,12 +211,103 @@ ${content}
     }
 }
 
+const AI_RESULTS_HTML_MAX_CHARS = 280_000;
+
+class ResultsGenerationCancelledError extends Error { }
+
+/** Default Results bundle: asks the selected Results AI, then falls back to the built-in template. */
+@injectable()
+export class AiResultsSkill implements ResultsSkill {
+    readonly manifest = {
+        id: 'builtin.ai-results',
+        name: 'AI Results',
+        version: '1.0.0',
+        kind: 'results' as const,
+        entry: 'builtin:ai-results'
+    };
+
+    constructor(
+        @inject(ResultsGenerationServer) protected readonly generationServer: ResultsGenerationServer,
+        @inject(BundledResultsSkill) protected readonly fallbackSkill: BundledResultsSkill,
+        @inject(ResultsGenerationContext) protected readonly context: ResultsGenerationContext,
+        @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService
+    ) { }
+
+    async generate(input: ResultsSkillInput): Promise<string> {
+        const workspace = this.workspaceService.tryGetRoots()[0]
+            ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
+        if (!workspace) {
+            console.warn('[Poiesis] AI Results generation skipped because no local Workspace is open; using bundled template.');
+            return this.fallbackSkill.generate(input);
+        }
+
+        try {
+            const result = await this.generationServer.generate({
+                taskId: input.task.id,
+                providerId: this.context.providerId,
+                workspaceUri: workspace.resource.toString(),
+                taskMetadata: {
+                    status: 'completed',
+                    title: input.task.title,
+                    request: input.task.request,
+                    startedAt: input.task.startedAt,
+                    endedAt: input.task.endedAt
+                },
+                changeSetSummary: JSON.stringify({
+                    source: input.changeSet.source,
+                    files: input.changeSet.files,
+                    capturedAt: input.changeSet.capturedAt,
+                    error: input.changeSet.error
+                }, undefined, 2),
+                diff: input.changeSet.diff
+            });
+            if (result.status === 'cancelled') {
+                throw new ResultsGenerationCancelledError(result.error.message);
+            }
+            if (result.status === 'failed') {
+                throw new Error(`${result.error.code}: ${result.error.message}${result.error.stderr ? `\n${result.error.stderr}` : ''}`);
+            }
+            return this.normalizeAndValidate(result.html);
+        } catch (error) {
+            if (error instanceof ResultsGenerationCancelledError) {
+                throw error;
+            }
+            console.warn('[Poiesis] AI Results generation failed; using bundled template.', error);
+            return this.fallbackSkill.generate(input);
+        }
+    }
+
+    cancel(taskId: string): Promise<void> {
+        return this.generationServer.cancel(taskId);
+    }
+
+    protected normalizeAndValidate(output: string): string {
+        let html = output.trim();
+        const fenced = html.match(/```(?:html)?\s*([\s\S]*?)```/i);
+        if (fenced) {
+            html = fenced[1].trim();
+        }
+        if (html.length > AI_RESULTS_HTML_MAX_CHARS) {
+            throw new Error(`AI Results HTML exceeded ${AI_RESULTS_HTML_MAX_CHARS} characters.`);
+        }
+        if (!/^(?:<!doctype\s+html[^>]*>\s*)?<html(?:\s|>)/i.test(html)) {
+            throw new Error('AI Results did not return one complete HTML document.');
+        }
+        if (/<script\b|<link\b|\son\w+\s*=|(?:src|href)\s*=\s*["']\s*(?:https?:)?\/\/|url\(\s*["']?\s*(?:https?:)?\/\//i.test(html)) {
+            throw new Error('AI Results HTML contained scripts or external resources.');
+        }
+        return html;
+    }
+}
+
 /** App-owned trigger: skills run only after a Task ends or is cancelled. */
 @injectable()
 export class ResultsService {
     protected readonly documents = new Map<string, TaskResultDocument>();
     protected readonly onDidChangeEmitter = new Emitter<TaskResultDocument>();
     readonly onDidChange: Event<TaskResultDocument> = this.onDidChangeEmitter.event;
+    protected readonly generationTokens = new Map<string, number>();
+    protected generationSequence = 0;
 
     constructor(
         @inject(TaskService) protected readonly taskService: TaskService,
@@ -258,7 +353,11 @@ export class ResultsService {
     }
 
     remove(taskIds: Iterable<string>): void {
-        for (const taskId of taskIds) {
+        for (const taskId of [...taskIds]) {
+            this.generationTokens.delete(taskId);
+            void this.resultsSkill.cancel?.(taskId).catch(error =>
+                console.warn('[Poiesis] Could not cancel Results generation.', error)
+            );
             this.documents.delete(taskId);
         }
     }
@@ -267,19 +366,31 @@ export class ResultsService {
         if (task.status !== 'completed' || !task.changeSet || !this.customizationService.isSkillEnabled('results')) {
             return;
         }
+        const generationToken = ++this.generationSequence;
+        this.generationTokens.set(task.id, generationToken);
         this.set({ taskId: task.id, status: 'generating' });
         try {
             const html = await this.resultsSkill.generate({ task, changeSet: task.changeSet });
-            if (!/^<!doctype html>/i.test(html.trim()) || !/<html[\s>]/i.test(html)) {
+            if (this.generationTokens.get(task.id) !== generationToken) {
+                return;
+            }
+            if (!/^(?:<!doctype\s+html[^>]*>\s*)?<html[\s>]/i.test(html.trim())) {
                 throw new Error('Results skill did not return one complete HTML document.');
             }
             this.set({ taskId: task.id, status: 'ready', html });
         } catch (error) {
+            if (this.generationTokens.get(task.id) !== generationToken) {
+                return;
+            }
             this.set({
                 taskId: task.id,
                 status: 'failed',
                 error: error instanceof Error ? error.message : String(error)
             });
+        } finally {
+            if (this.generationTokens.get(task.id) === generationToken) {
+                this.generationTokens.delete(task.id);
+            }
         }
     }
 

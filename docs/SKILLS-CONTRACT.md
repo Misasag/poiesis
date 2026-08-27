@@ -51,7 +51,7 @@ Agent skillは成果の正本を自己申告しない。Task、Baseline、Change
 
 Results skillは終了済みTaskと確定済みChange Setを入力に、一つの完成HTML文書を生成する。Agent会話の途中では起動せず、不完全なHTML断片をcanvasへstreamしない。Results内の質問応答は文書生成とは別のResults AI境界であり、Skill HTMLを変更しない。
 
-## First conforming bundle
+## Conforming bundles
 
 `builtin.results`は最初の適合bundleである。
 
@@ -65,7 +65,19 @@ Results skillは終了済みTaskと確定済みChange Setを入力に、一つ�
 }
 ```
 
-現在の設定画面は、このbundled Resultsをenable／disableする既存操作だけを表示する。install／remove UIや架空のAgent skill一覧は追加しない。
+`builtin.ai-results`は2番目の適合bundleである。選択されたResults roleのAIへ、終了済みTask metadataと確定済みChange Setをread-only境界で渡し、一つの完成HTML文書を生成する。AIを実行できない場合、または生成結果が契約を満たさない場合は`builtin.results`へfallbackする。
+
+```ts
+{
+  id: 'builtin.ai-results',
+  name: 'AI Results',
+  version: '1.0.0',
+  kind: 'results',
+  entry: 'builtin:ai-results'
+}
+```
+
+現在の設定画面は、このResults生成chainをenable／disableする既存操作だけを表示する。install／remove UIや架空のAgent skill一覧は追加しない。
 
 ## Boundary rules
 

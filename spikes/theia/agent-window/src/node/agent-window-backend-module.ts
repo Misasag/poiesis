@@ -10,6 +10,8 @@ import { CliDetector } from './cli-detector';
 import { CliProviderRegistry } from './cli-provider-registry';
 import { ResultsQuestionServer, resultsQuestionServerPath } from '../common/results-question-protocol';
 import { ResultsQuestionServerImpl } from './results-question-server';
+import { ResultsGenerationServer, resultsGenerationServerPath } from '../common/results-generation-protocol';
+import { ResultsGenerationServerImpl } from './results-generation-server';
 
 export default new ContainerModule(bind => {
     bind(CliDetector).toSelf().inSingletonScope();
@@ -18,6 +20,12 @@ export default new ContainerModule(bind => {
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler(resultsQuestionServerPath, () =>
             context.container.get<ResultsQuestionServer>(ResultsQuestionServer)
+        )
+    ).inSingletonScope();
+    bind(ResultsGenerationServer).to(ResultsGenerationServerImpl).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(context =>
+        new RpcConnectionHandler(resultsGenerationServerPath, () =>
+            context.container.get<ResultsGenerationServer>(ResultsGenerationServer)
         )
     ).inSingletonScope();
     bind(AgentRuntimeServer).to(AgentRuntimeServerImpl).inSingletonScope();
