@@ -191,7 +191,6 @@ assert.ok(backendModule.includes('server.setClient(client)'));
 for (const marker of [
     "'exec'",
     "'--sandbox', 'workspace-write'",
-    "'--approve-for-me'",
     "'-C', resolvedWorkspace",
     'prompt',
     "cwd, windowsHide: true",

@@ -168,7 +168,6 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         const args = [
             'exec',
             '--sandbox', 'workspace-write',
-            '--approve-for-me',
             '-C', resolvedWorkspace,
             '--', prompt
         ];
