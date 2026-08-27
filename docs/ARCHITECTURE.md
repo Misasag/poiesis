@@ -120,7 +120,7 @@ Task終了、Results生成完了、streaming更新は、現在のtabやfocusを�
 
 ## Persistence
 
-Session一覧、Agent会話、Composer下書き、タイトル、pin／archive状態、サイドバー幅はTheia `StorageService`境界から再読み込み後に復元する。Widgetは`window.localStorage`へ直接依存しない。実行中processは復元せず、Task metadataとResult documentの永続化は別のApplication serviceへ分離する。
+Session一覧、Agent会話、Composer下書き、タイトル、pin／archive状態、サイドバー幅、終了済みTask metadata、Result documentはglobal storage境界から再読み込み後に復元する。Widgetは`window.localStorage`へ直接依存しない。実行中processは復元せず、保存時に中断された失敗Taskへ確定する。保存量はSessionごとのTask件数とResult HTMLサイズで制限する。
 
 ## Architectural rules
 

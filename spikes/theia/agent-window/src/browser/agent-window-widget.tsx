@@ -25,7 +25,7 @@ import {
     FolderBrowserResult,
     KnownCliId
 } from '../common/agent-runtime-protocol';
-import { ResultsService } from './results-skill';
+import { ResultsService, TaskResultDocument } from './results-skill';
 import { ExecutionTask, TaskService } from './task-service';
 import { getDesignVariant } from './design-variant';
 import { CustomizationService } from './customization-service';
@@ -49,6 +49,8 @@ const MIN_CODE_SIDEBAR_WIDTH = 180;
 const MAX_CODE_SIDEBAR_WIDTH = 520;
 const DEFAULT_CODE_PANEL_HEIGHT = 190;
 const MIN_CODE_PANEL_HEIGHT = 96;
+const MAX_PERSISTED_TASKS_PER_SESSION = 10;
+const MAX_PERSISTED_RESULTS_HTML_CHARS = 300_000;
 
 interface ChatMessage {
     id: string;
@@ -83,6 +85,7 @@ interface WindowAgentSession {
     activeTab: AgentWindowTab;
     agentDraft: string;
     messages: ChatMessage[];
+    taskIds: string[];
     selectedResultsTaskId?: string;
     readonly resultsDrafts: Map<string, string>;
     readonly resultsNotices: Map<string, ResultsNotice>;
@@ -93,8 +96,10 @@ interface PersistedAgentWindowState {
     selectedSessionId?: string;
     railWidth: number;
     railCollapsed: boolean;
-    sessions: Array<Omit<WindowAgentSession, 'agentSession' | 'resultsDrafts' | 'resultsNotices'> & {
+    sessions: Array<Omit<WindowAgentSession, 'agentSession' | 'taskIds' | 'resultsDrafts' | 'resultsNotices'> & {
         resultsDrafts: Array<[string, string]>;
+        tasks?: ExecutionTask[];
+        resultsDocuments?: TaskResultDocument[];
     }>;
 }
 
@@ -316,6 +321,9 @@ export class AgentWindowWidget extends ReactWidget {
         this.toDispose.push(this.taskService.onDidChangeTask(event => {
             const session = this.findSessionByAgentId(event.task.sessionId);
             if (session) {
+                if (!session.taskIds.includes(event.task.id)) {
+                    session.taskIds.push(event.task.id);
+                }
                 session.unreadTaskCompletion = event.type === 'ended' && session.id !== this.selectedSessionId;
                 session.lastTaskStatus = event.type === 'started'
                     ? undefined
@@ -328,7 +336,10 @@ export class AgentWindowWidget extends ReactWidget {
             this.persistWindowState();
             this.update();
         }));
-        this.toDispose.push(this.resultsService.onDidChange(() => this.update()));
+        this.toDispose.push(this.resultsService.onDidChange(() => {
+            this.persistWindowState();
+            this.update();
+        }));
         this.toDispose.push(this.customizationService.onDidChange(() => this.update()));
         this.toDispose.push(this.workspaceService.onWorkspaceChanged(() => {
             void this.refreshRecentWorkspaces();
@@ -856,10 +867,8 @@ export class AgentWindowWidget extends ReactWidget {
                 await this.resultsQuestionService.cancel(taskId);
             }
         }
-        if (session.agentSession) {
-            const taskIds = this.taskService.removeSession(session.agentSession.id);
-            this.resultsService.remove(taskIds);
-        }
+        this.taskService.remove(session.taskIds);
+        this.resultsService.remove(session.taskIds);
         const index = this.sessions.indexOf(session);
         if (index !== -1) {
             this.sessions.splice(index, 1);
@@ -3441,9 +3450,9 @@ export class AgentWindowWidget extends ReactWidget {
                 } catch {
                     // The local process may already have ended; data removal still continues.
                 }
-                const taskIds = this.taskService.removeSession(session.agentSession.id);
-                this.resultsService.remove(taskIds);
             }
+            this.taskService.remove(session.taskIds);
+            this.resultsService.remove(session.taskIds);
         }
         this.sessions.splice(0, this.sessions.length);
         this.selectedSessionId = undefined;
@@ -3571,6 +3580,7 @@ export class AgentWindowWidget extends ReactWidget {
             activeTab: 'agent',
             agentDraft: '',
             messages: [],
+            taskIds: [],
             resultsDrafts: new Map<string, string>(),
             resultsNotices: new Map<string, ResultsNotice>()
         };
@@ -3634,6 +3644,31 @@ export class AgentWindowWidget extends ReactWidget {
                     return [];
                 }
                 const createdAt = Number(candidate.createdAt) || Date.now();
+                const restoredTasks = this.taskService.restore(Array.isArray(candidate.tasks) ? candidate.tasks : []);
+                const taskIds = restoredTasks.map(task => task.id);
+                this.resultsService.restore(
+                    Array.isArray(candidate.resultsDocuments) ? candidate.resultsDocuments : [],
+                    new Set(taskIds)
+                );
+                const taskById = new Map(restoredTasks.map(task => [task.id, task]));
+                const restoredMessages = (Array.isArray(candidate.messages) ? candidate.messages.filter(message =>
+                    message && typeof message.id === 'string'
+                    && (message.role === 'user' || message.role === 'agent')
+                    && typeof message.content === 'string'
+                ).map(message => ({ ...message, complete: Boolean(message.complete) })) : []).map(message => {
+                    const task = message.taskId ? taskById.get(message.taskId) : undefined;
+                    if (message.complete || task?.status !== 'failed') {
+                        return message;
+                    }
+                    return {
+                        ...message,
+                        content: task.failure?.summary ?? 'タスクの実行に失敗しました。',
+                        complete: true,
+                        error: true,
+                        errorDetails: task.failure?.details
+                    };
+                });
+                const latestTask = restoredTasks[restoredTasks.length - 1];
                 const restored: WindowAgentSession = {
                     id: candidate.id,
                     createdAt,
@@ -3645,7 +3680,11 @@ export class AgentWindowWidget extends ReactWidget {
                     runTarget: 'local',
                     title: candidate.title || NEW_SESSION_TITLE,
                     hasUserMessage: Boolean(candidate.hasUserMessage),
-                    lastTaskStatus: candidate.lastTaskStatus === 'completed'
+                    lastTaskStatus: latestTask?.status === 'completed'
+                        || latestTask?.status === 'failed'
+                        || latestTask?.status === 'cancelled'
+                        ? latestTask.status
+                        : candidate.lastTaskStatus === 'completed'
                         || candidate.lastTaskStatus === 'failed'
                         || candidate.lastTaskStatus === 'cancelled'
                         ? candidate.lastTaskStatus
@@ -3655,11 +3694,8 @@ export class AgentWindowWidget extends ReactWidget {
                     archived: Boolean(candidate.archived),
                     activeTab: candidate.activeTab === 'results' ? 'results' : 'agent',
                     agentDraft: typeof candidate.agentDraft === 'string' ? candidate.agentDraft : '',
-                    messages: Array.isArray(candidate.messages) ? candidate.messages.filter(message =>
-                        message && typeof message.id === 'string'
-                        && (message.role === 'user' || message.role === 'agent')
-                        && typeof message.content === 'string'
-                    ).map(message => ({ ...message, complete: Boolean(message.complete) })) : [],
+                    messages: restoredMessages,
+                    taskIds,
                     selectedResultsTaskId: typeof candidate.selectedResultsTaskId === 'string'
                         ? candidate.selectedResultsTaskId
                         : undefined,
@@ -3737,10 +3773,24 @@ export class AgentWindowWidget extends ReactWidget {
                 railWidth: this.railWidth,
                 railCollapsed: this.railCollapsed,
                 sessions: this.sessions.map(session => {
-                    const { agentSession: _agentSession, resultsDrafts, resultsNotices: _resultsNotices, ...persisted } = session;
+                    const tasks = this.persistedTasks(session);
+                    const taskIds = new Set(tasks.map(task => task.id));
+                    const resultsDocuments = this.resultsService.list(taskIds).map(document => ({
+                        ...document,
+                        html: document.html?.slice(0, MAX_PERSISTED_RESULTS_HTML_CHARS)
+                    }));
+                    const {
+                        agentSession: _agentSession,
+                        taskIds: _taskIds,
+                        resultsDrafts,
+                        resultsNotices: _resultsNotices,
+                        ...persisted
+                    } = session;
                     return {
                         ...persisted,
-                        resultsDrafts: [...resultsDrafts.entries()]
+                        resultsDrafts: [...resultsDrafts.entries()],
+                        tasks,
+                        resultsDocuments
                     };
                 })
             };
@@ -3753,6 +3803,20 @@ export class AgentWindowWidget extends ReactWidget {
     protected titleForSession(message: string): string {
         const compact = message.replace(/\s+/g, ' ').trim();
         return compact.length > 46 ? `${compact.slice(0, 43)}…` : compact;
+    }
+
+    protected persistedTasks(session: WindowAgentSession): ExecutionTask[] {
+        return session.taskIds
+            .map(taskId => this.taskService.get(taskId))
+            .filter((task): task is ExecutionTask => Boolean(task))
+            .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
+            .slice(-MAX_PERSISTED_TASKS_PER_SESSION)
+            .map(task => task.status === 'running' ? {
+                ...task,
+                status: 'failed',
+                endedAt: new Date().toISOString(),
+                failure: { summary: 'アプリ終了により中断されました' }
+            } : task);
     }
 
     protected async initializeSessions(): Promise<void> {
@@ -3864,17 +3928,16 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected runningTask(session = this.selectedSession()): ExecutionTask | undefined {
-        const agentSessionId = session?.agentSession?.id;
-        return agentSessionId
-            ? this.taskService.list(agentSessionId).find(task => task.status === 'running')
-            : undefined;
+        return session?.taskIds
+            .map(taskId => this.taskService.get(taskId))
+            .find(task => task?.status === 'running');
     }
 
     protected finishedTasks(session = this.selectedSession()): ExecutionTask[] {
-        const agentSessionId = session?.agentSession?.id;
-        return agentSessionId
-            ? this.taskService.list(agentSessionId).filter(task => task.status !== 'running')
-            : [];
+        return session?.taskIds
+            .map(taskId => this.taskService.get(taskId))
+            .filter((task): task is ExecutionTask => task !== undefined && task.status !== 'running')
+            ?? [];
     }
 
     protected taskFinishedTime(task: ExecutionTask): string {
@@ -4022,7 +4085,7 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async retryTask(taskId: string): Promise<void> {
         const task = this.taskService.get(taskId);
-        const session = task ? this.findSessionByAgentId(task.sessionId) : undefined;
+        const session = task ? this.sessions.find(candidate => candidate.taskIds.includes(task.id)) : undefined;
         if (!task || !session || this.runningTask(session)) {
             return;
         }

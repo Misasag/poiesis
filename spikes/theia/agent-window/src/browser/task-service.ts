@@ -105,12 +105,42 @@ export class TaskService {
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
     }
 
-    removeSession(sessionId: string): string[] {
-        const taskIds = this.list(sessionId).map(task => task.id);
+    restore(tasks: readonly ExecutionTask[]): ExecutionTask[] {
+        const restored: ExecutionTask[] = [];
+        for (const candidate of tasks) {
+            if (!candidate
+                || typeof candidate.id !== 'string'
+                || typeof candidate.sessionId !== 'string'
+                || typeof candidate.title !== 'string'
+                || typeof candidate.request !== 'string'
+                || typeof candidate.startedAt !== 'string'
+                || !['running', 'completed', 'failed', 'cancelled'].includes(candidate.status)) {
+                continue;
+            }
+            const task: ExecutionTask = candidate.status === 'running'
+                ? {
+                    ...candidate,
+                    status: 'failed',
+                    endedAt: new Date().toISOString(),
+                    failure: { summary: 'アプリ終了により中断されました' }
+                }
+                : candidate;
+            this.tasks.set(task.id, task);
+            restored.push(task);
+        }
+        return restored.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+    }
+
+    remove(taskIds: Iterable<string>): void {
         for (const taskId of taskIds) {
             this.tasks.delete(taskId);
             this.baselineCaptures.delete(taskId);
         }
+    }
+
+    removeSession(sessionId: string): string[] {
+        const taskIds = this.list(sessionId).map(task => task.id);
+        this.remove(taskIds);
         return taskIds;
     }
 

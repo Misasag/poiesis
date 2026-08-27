@@ -224,6 +224,23 @@ export class ResultsService {
         return this.documents.get(taskId);
     }
 
+    list(taskIds?: Iterable<string>): TaskResultDocument[] {
+        const selected = taskIds ? new Set(taskIds) : undefined;
+        return [...this.documents.values()].filter(document => !selected || selected.has(document.taskId));
+    }
+
+    restore(documents: readonly TaskResultDocument[], taskIds: ReadonlySet<string>): void {
+        for (const document of documents) {
+            if (!document
+                || typeof document.taskId !== 'string'
+                || !taskIds.has(document.taskId)
+                || !['ready', 'failed'].includes(document.status)) {
+                continue;
+            }
+            this.documents.set(document.taskId, document);
+        }
+    }
+
     async retry(taskId: string): Promise<void> {
         const task = this.taskService.get(taskId);
         if (task?.status === 'completed' && task.changeSet) {
