@@ -46,7 +46,11 @@
     "frontend": {
       "config": {
         "applicationName": "Poiesis",
-        "reloadOnReconnect": true
+        "reloadOnReconnect": true,
+        "preferences": {
+          "security.workspace.trust.enabled": false,
+          "extensions.ignoreRecommendations": true
+        }
       }
     },
     "backend": {

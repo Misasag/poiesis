@@ -14,6 +14,7 @@ const agentWidget = await read('agent-window/src/browser/agent-window-widget.tsx
 const agentStyles = await read('agent-window/src/browser/style/index.css');
 const moduleSource = await read('agent-window/src/browser/agent-window-frontend-module.ts');
 const poiesisFrontendApplication = await read('agent-window/src/browser/poiesis-frontend-application.ts');
+const poiesisWorkspaceTrustService = await read('agent-window/src/browser/poiesis-workspace-trust-service.ts');
 const designShotContribution = await read('agent-window/src/browser/design-shot-contribution.ts');
 const backendModule = await read('agent-window/src/node/agent-window-backend-module.ts');
 const agentContribution = await read('agent-window/src/browser/agent-window-contribution.ts');
@@ -37,6 +38,10 @@ assert.ok(rootPackage.workspaces.includes('electron-app'));
 assert.equal(electronPackage.theia.target, 'electron');
 assert.equal(electronPackage.dependencies['@theia/electron'], '1.73.1');
 assert.equal(electronPackage.devDependencies.electron, '39.8.7');
+assert.equal(appPackage.theia.frontend.config.preferences['security.workspace.trust.enabled'], false);
+assert.equal(electronPackage.theia.frontend.config.preferences['security.workspace.trust.enabled'], false);
+assert.equal(appPackage.theia.frontend.config.preferences['extensions.ignoreRecommendations'], true);
+assert.equal(electronPackage.theia.frontend.config.preferences['extensions.ignoreRecommendations'], true);
 for (const marker of [
     "'#poiesis-window-host .poiesis-agent-window__content'",
     "'.poiesis-agent-window__code'",
@@ -107,6 +112,9 @@ assert.ok(agentWidget.includes("import { AgentEvent, AgentProvider, AgentSession
 assert.ok(!agentWidget.includes("from './mock-agent-provider'"), 'Agent UI must depend on AgentProvider, not its implementation');
 assert.ok(moduleSource.includes('bind(AgentProvider).toService(CliAgentProvider)'));
 assert.ok(moduleSource.includes('.createProxy<AgentRuntimeServer>(agentRuntimeServerPath, client)'));
+assert.ok(moduleSource.includes('rebind(WorkspaceTrustService).toService(PoiesisWorkspaceTrustService)'));
+assert.ok(poiesisWorkspaceTrustService.includes('extends WorkspaceTrustService'));
+assert.ok(poiesisWorkspaceTrustService.includes('return Promise.resolve(true)'));
 
 for (const marker of [
     "item.id === 'codex'",

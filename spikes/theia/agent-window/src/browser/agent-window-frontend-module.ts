@@ -19,10 +19,14 @@ import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
 import { ResultsQuestionServer, resultsQuestionServerPath } from '../common/results-question-protocol';
 import { ResultsQuestionService } from './results-question-service';
+import { WorkspaceTrustService } from '@theia/workspace/lib/browser/workspace-trust-service';
+import { PoiesisWorkspaceTrustService } from './poiesis-workspace-trust-service';
 import '../../src/browser/style/index.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     rebind(FrontendApplication).to(PoiesisFrontendApplication).inSingletonScope();
+    bind(PoiesisWorkspaceTrustService).toSelf().inSingletonScope();
+    rebind(WorkspaceTrustService).toService(PoiesisWorkspaceTrustService);
 
     bind(AgentRuntimeClientImpl).toSelf().inSingletonScope();
     bind(AgentRuntimeServer).toDynamicValue(context => {

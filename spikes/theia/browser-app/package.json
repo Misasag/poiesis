@@ -38,6 +38,15 @@
     "start": "set \"THEIA_CONFIG_DIR=%CD%\\..\\.theia-config\" && theia start ../../.. --plugins=local-dir:../plugins --hostname 127.0.0.1 --port 3000"
   },
   "theia": {
-    "target": "browser"
+    "target": "browser",
+    "frontend": {
+      "config": {
+        "applicationName": "Poiesis",
+        "preferences": {
+          "security.workspace.trust.enabled": false,
+          "extensions.ignoreRecommendations": true
+        }
+      }
+    }
   }
 }
