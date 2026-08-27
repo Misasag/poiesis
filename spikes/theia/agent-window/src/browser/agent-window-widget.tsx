@@ -2161,6 +2161,7 @@ export class AgentWindowWidget extends ReactWidget {
         this.codeSidebarTreeInteractionCleanup?.dispose();
         this.codeSidebarTreeInteractionCleanup = undefined;
         if (!host) {
+            this.detachCodeWidget(this.activeCodeSidebarWidget());
             this.codeSidebarResizeObserver?.disconnect();
             this.codeSidebarResizeObserver = undefined;
             this.codeSidebarHost = undefined;

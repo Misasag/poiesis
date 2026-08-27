@@ -121,9 +121,26 @@ try {
     await page.waitForFunction(height => Math.round(document.querySelector('.poiesis-agent-window__code-panel')?.getBoundingClientRect().height ?? 0) === height + 12,
         {}, terminalPanelHeight);
     await page.click('.poiesis-agent-window__code-panel-tabs button[aria-label="New Terminal"]');
-    await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id !== id
-        && document.querySelectorAll('.poiesis-agent-window__code-terminal-select option').length === 2, {}, firstTerminalId);
-    const secondTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
+    try {
+        await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__code-terminal-select option').length === 2);
+    } catch (error) {
+        const terminalState = await page.evaluate(() => ({
+            activeHostIds: [...document.querySelectorAll('.poiesis-agent-window__code-terminal-host > *')]
+                .map(element => element.id),
+            selectedId: document.querySelector('.poiesis-agent-window__code-terminal-select')?.value,
+            options: [...document.querySelectorAll('.poiesis-agent-window__code-terminal-select option')]
+                .map(option => ({ value: option.value, label: option.textContent?.trim() }))
+        }));
+        throw new Error(`New Terminal was not registered in Electron: ${JSON.stringify(terminalState)}`, { cause: error });
+    }
+    const secondTerminalId = await page.$$eval('.poiesis-agent-window__code-terminal-select option',
+        (options, id) => options.map(option => option.value).find(value => value !== id), firstTerminalId);
+    assert(secondTerminalId, 'New Terminal did not expose a distinct Electron terminal option');
+    const activeTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
+    if (activeTerminalId !== secondTerminalId) {
+        await page.select('.poiesis-agent-window__code-terminal-select', secondTerminalId);
+    }
+    await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
     await page.select('.poiesis-agent-window__code-terminal-select', firstTerminalId);
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
     await page.click('.poiesis-agent-window__code-panel-tabs button[aria-label="Close Panel"]');
