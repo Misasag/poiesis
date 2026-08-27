@@ -28,6 +28,9 @@ const resultsSkill = await read('agent-window/src/browser/results-skill.ts');
 const resultsQuestionProtocol = await read('agent-window/src/common/results-question-protocol.ts');
 const resultsQuestionService = await read('agent-window/src/browser/results-question-service.ts');
 const resultsQuestionServer = await read('agent-window/src/node/results-question-server.ts');
+const resultsGenerationProtocol = await read('agent-window/src/common/results-generation-protocol.ts');
+const resultsGenerationContext = await read('agent-window/src/browser/results-generation-context.ts');
+const resultsGenerationServer = await read('agent-window/src/node/results-generation-server.ts');
 const globalStorageService = await read('agent-window/src/browser/global-storage-service.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
@@ -165,6 +168,36 @@ for (const marker of [
     assert.ok(resultsQuestionServer.includes(marker), `Results question server is missing ${marker}`);
 }
 assert.ok(!resultsQuestionServer.includes('getMostRecentlyUsedWorkspace'), 'Results questions must not use an unrelated recent workspace');
+for (const marker of [
+    "resultsGenerationServerPath = '/services/poiesis/results-generation'",
+    'providerId: KnownCliId',
+    'workspaceUri: string',
+    'changeSetSummary: string',
+    'diff: string',
+    'generate(request: ResultsGenerationRequest)',
+    'cancel(taskId: string)'
+]) {
+    assert.ok(resultsGenerationProtocol.includes(marker), `Results generation protocol is missing ${marker}`);
+}
+for (const marker of [
+    "this.providerRegistry.resolve('results', request.providerId)",
+    "'--sandbox', 'read-only'",
+    "'--permission-mode', 'plan'",
+    "'--tools='",
+    'GENERATED_RESULTS_HTML_MAX_CHARS = 280_000',
+    'RESULTS_GENERATION_TIMEOUT_MS = 120_000',
+    "process.env.POIESIS_RESULTS_GENERATION_FORCE_FAILURE === '1'",
+    'HTML文書を1つだけ',
+    'インラインSVGまたはCSS図',
+    'script、イベントハンドラ、外部URL',
+    'void this.killProcess(run.process)'
+]) {
+    assert.ok(resultsGenerationServer.includes(marker), `Results generation server is missing ${marker}`);
+}
+assert.ok(resultsGenerationContext.includes("providerId: KnownCliId = 'codex'"));
+assert.ok(moduleSource.includes('.createProxy<ResultsGenerationServer>(resultsGenerationServerPath)'));
+assert.ok(moduleSource.includes('bind(ResultsSkill).toService(AiResultsSkill)'));
+assert.ok(backendModule.includes('bind(ResultsGenerationServer).to(ResultsGenerationServerImpl).inSingletonScope()'));
 for (const dependency of [
     '@theia/editor',
     '@theia/filesystem',
@@ -326,6 +359,7 @@ assert.ok(!runtimeServer.includes('C:\\Users\\owner\\github\\poiesis'), 'Codex r
 
 for (const marker of [
     'class BundledResultsSkill',
+    'class AiResultsSkill',
     '<!doctype html>',
     '<html lang="ja">',
     'background: #f1efe8',
@@ -340,7 +374,15 @@ for (const marker of [
     "event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled'",
     "status: 'generating'",
     "status: 'ready'",
-    'one complete HTML document'
+    'one complete HTML document',
+    "id: 'builtin.ai-results'",
+    "entry: 'builtin:ai-results'",
+    'this.generationServer.generate({',
+    'this.fallbackSkill.generate(input)',
+    'normalizeAndValidate',
+    'AI_RESULTS_HTML_MAX_CHARS = 280_000',
+    'this.resultsSkill.cancel?.(taskId)',
+    'this.generationTokens.get(task.id) !== generationToken'
 ]) {
     assert.ok(resultsSkill.includes(marker), `Bundled Results skill is missing ${marker}`);
 }
@@ -349,7 +391,7 @@ for (const forbidden of [
     '<h2>Request</h2>',
     '<pre',
     '${this.escape(diff)}',
-    'task.request',
+    'this.escape(task.request)',
     'poiesis-results__task-switcher',
     'Results composer'
 ]) {
@@ -386,6 +428,7 @@ for (const marker of [
 ]) {
     assert.ok(skillsContract.includes(marker), `Skills contract document is missing ${marker}`);
 }
+assert.ok(skillsContract.includes('`builtin.ai-results`'), 'Skills contract must describe the AI Results bundle');
 
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
@@ -537,10 +580,13 @@ for (const marker of [
     '<strong>Poiesis plugin bundles</strong>',
     "this.renderCliRoleSelector('agent', 'Agent の AI', this.agentCli)",
     "this.renderCliRoleSelector('results', 'Results の AI', this.resultsCli)",
+    '成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。',
+    'this.resultsGenerationContext.providerId = cli',
+    'this.resultsGenerationContext.providerId = this.resultsCli',
     'providerId: this.agentCli',
     "detection?.status === 'found'",
     'Agent Skillsは作業方法と将来の委譲を定義し',
-    '<strong>Bundled Results</strong>',
+    '<strong>AI Results</strong>',
     "aria-label='Results skillを有効化'",
     'this.customizationService.setSkillEnabled',
     'onCompositionEnd={event => this.setAgentDraft(event.currentTarget.value)}'
