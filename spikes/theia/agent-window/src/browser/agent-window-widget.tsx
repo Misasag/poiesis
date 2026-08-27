@@ -20,6 +20,7 @@ import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib
 import { AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
 import {
     AgentRuntimeServer,
+    AiRole,
     CliDetectionReport,
     FolderBrowserResult,
     KnownCliId
@@ -95,10 +96,18 @@ interface PersistedAgentWindowState {
 }
 
 interface PersistedPoiesisSettings {
-    version: 1;
+    version: 2;
     uiFontScale: UiFontScale;
-    preferredCli: KnownCliId;
+    agentCli: KnownCliId;
+    resultsCli: KnownCliId;
     allowExternalResultsResources: boolean;
+}
+
+interface LegacyPoiesisSettings {
+    version: 1;
+    uiFontScale?: UiFontScale;
+    preferredCli?: KnownCliId;
+    allowExternalResultsResources?: boolean;
 }
 
 interface PickerAnchor {
@@ -121,7 +130,8 @@ export class AgentWindowWidget extends ReactWidget {
     protected codeMode = false;
     protected settingsModalVisible = false;
     protected uiFontScale: UiFontScale = 'standard';
-    protected preferredCli: KnownCliId = 'codex';
+    protected agentCli: KnownCliId = 'codex';
+    protected resultsCli: KnownCliId = 'codex';
     protected allowExternalResultsResources = false;
     protected cliDetectionReport?: CliDetectionReport;
     protected cliDetectionLoading = false;
@@ -1485,7 +1495,6 @@ export class AgentWindowWidget extends ReactWidget {
         const archivedSessions = this.sessions
             .filter(session => session.archived && session.hasUserMessage)
             .sort((left, right) => right.updatedAt - left.updatedAt);
-        const cliIds: KnownCliId[] = ['codex', 'claude'];
         return (
             <div
                 className='poiesis-settings-modal__backdrop'
@@ -1528,36 +1537,11 @@ export class AgentWindowWidget extends ReactWidget {
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-cli'>
                             <div className='poiesis-settings-modal__section-heading'>
-                                <h2 id='poiesis-settings-cli'>Agent実行 — CLI</h2>
+                                <h2 id='poiesis-settings-cli'>AI — CLI</h2>
                                 <button type='button' className='poiesis-settings-modal__text-button' disabled={this.cliDetectionLoading} onClick={() => void this.refreshCliDetection()}>再検出</button>
                             </div>
-                            <div className='poiesis-settings-modal__cli-list'>
-                                {cliIds.map(id => {
-                                    const detection = this.cliDetectionReport?.detections.find(item => item.id === id);
-                                    const executable = id === 'codex';
-                                    const status = this.cliDetectionLoading && !detection
-                                        ? '検出中…'
-                                        : detection?.status === 'found' ? '検出済み' : '未検出';
-                                    return (
-                                        <label key={id} className={`poiesis-settings-modal__cli-row${executable ? '' : ' future'}`}>
-                                            <input
-                                                type='radio'
-                                                name='poiesis-preferred-cli'
-                                                value={id}
-                                                checked={this.preferredCli === id}
-                                                disabled={!executable}
-                                                onChange={() => this.setPreferredCli(id)}
-                                            />
-                                            <span className='poiesis-settings-modal__cli-copy'>
-                                                <strong>{id === 'codex' ? 'Codex' : 'Claude'}</strong>
-                                                <small title={detection?.path}>{detection?.path ?? `${id} CLI`}</small>
-                                                {!executable && <small className='future-note'>実行対応は今後</small>}
-                                            </span>
-                                            <span className={`poiesis-settings-modal__cli-status ${detection?.status ?? 'missing'}`}>{status}</span>
-                                        </label>
-                                    );
-                                })}
-                            </div>
+                            {this.renderCliRoleSelector('agent', 'Agent の AI', this.agentCli)}
+                            {this.renderCliRoleSelector('results', 'Results の AI', this.resultsCli)}
                         </section>
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-results'>
@@ -1634,6 +1618,42 @@ export class AgentWindowWidget extends ReactWidget {
                         <button type='button' onClick={() => void this.openTheiaSettings()}>エディタとTerminalの設定は Theia Settings で</button>
                     </footer>
                 </section>
+            </div>
+        );
+    }
+
+    protected renderCliRoleSelector(role: AiRole, label: string, selected: KnownCliId): React.ReactNode {
+        const cliIds: KnownCliId[] = ['codex', 'claude'];
+        return (
+            <div className='poiesis-settings-modal__cli-role'>
+                <h3>{label}</h3>
+                <div className='poiesis-settings-modal__cli-list' role='radiogroup' aria-label={label}>
+                    {cliIds.map(id => {
+                        const detection = this.cliDetectionReport?.detections.find(item => item.id === id);
+                        const executable = id === 'codex';
+                        const status = this.cliDetectionLoading && !detection
+                            ? '検出中…'
+                            : detection?.status === 'found' ? '検出済み' : '未検出';
+                        return (
+                            <label key={`${role}-${id}`} className={`poiesis-settings-modal__cli-row${executable ? '' : ' future'}`}>
+                                <input
+                                    type='radio'
+                                    name={`poiesis-${role}-cli`}
+                                    value={id}
+                                    checked={selected === id}
+                                    disabled={!executable}
+                                    onChange={() => this.setRoleCli(role, id)}
+                                />
+                                <span className='poiesis-settings-modal__cli-copy'>
+                                    <strong>{id === 'codex' ? 'Codex' : 'Claude'}</strong>
+                                    <small title={detection?.path}>{detection?.path ?? `${id} CLI`}</small>
+                                    {!executable && <small className='future-note'>実行対応は今後</small>}
+                                </span>
+                                <span className={`poiesis-settings-modal__cli-status ${detection?.status ?? 'missing'}`}>{status}</span>
+                            </label>
+                        );
+                    })}
+                </div>
             </div>
         );
     }
@@ -3253,11 +3273,15 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
     }
 
-    protected setPreferredCli(cli: KnownCliId): void {
+    protected setRoleCli(role: AiRole, cli: KnownCliId): void {
         if (cli !== 'codex') {
             return;
         }
-        this.preferredCli = cli;
+        if (role === 'agent') {
+            this.agentCli = cli;
+        } else {
+            this.resultsCli = cli;
+        }
         this.persistPoiesisSettings();
         this.update();
     }
@@ -3284,12 +3308,14 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async restorePoiesisSettings(): Promise<void> {
         try {
-            const state = await this.storageService.getData<Partial<PersistedPoiesisSettings>>(SETTINGS_STORAGE_KEY);
-            if (state?.version === 1) {
+            const state = await this.storageService.getData<Partial<PersistedPoiesisSettings> | LegacyPoiesisSettings>(SETTINGS_STORAGE_KEY);
+            if (state?.version === 1 || state?.version === 2) {
                 this.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
                     ? state.uiFontScale
                     : 'standard';
-                this.preferredCli = state.preferredCli === 'codex' ? state.preferredCli : 'codex';
+                const legacyCli = state.version === 1 && state.preferredCli === 'codex' ? state.preferredCli : 'codex';
+                this.agentCli = state.version === 2 && state.agentCli === 'codex' ? state.agentCli : legacyCli;
+                this.resultsCli = state.version === 2 && state.resultsCli === 'codex' ? state.resultsCli : legacyCli;
                 this.allowExternalResultsResources = state.allowExternalResultsResources === true;
             }
         } catch (error) {
@@ -3300,9 +3326,10 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected persistPoiesisSettings(): void {
         void this.storageService.setData<PersistedPoiesisSettings>(SETTINGS_STORAGE_KEY, {
-            version: 1,
+            version: 2,
             uiFontScale: this.uiFontScale,
-            preferredCli: this.preferredCli,
+            agentCli: this.agentCli,
+            resultsCli: this.resultsCli,
             allowExternalResultsResources: this.allowExternalResultsResources
         });
     }
@@ -3476,7 +3503,8 @@ export class AgentWindowWidget extends ReactWidget {
         }
         try {
             session.agentSession = await this.agentProvider.createSession({
-                workspaceUri: session.workspaceUri
+                workspaceUri: session.workspaceUri,
+                providerId: this.agentCli
             });
             if (!silent && (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-')))) {
                 session.messages = [{
@@ -3811,6 +3839,7 @@ export class AgentWindowWidget extends ReactWidget {
         try {
             const result = await this.resultsQuestionService.ask(question, {
                 taskId,
+                providerId: this.resultsCli,
                 workspaceUri: session.workspaceUri,
                 taskMetadata: {
                     title: task.title,

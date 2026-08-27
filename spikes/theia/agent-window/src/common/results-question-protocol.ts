@@ -1,3 +1,5 @@
+import { KnownCliId } from './agent-runtime-protocol';
+
 export const ResultsQuestionServer = Symbol('ResultsQuestionServer');
 export const resultsQuestionServerPath = '/services/poiesis/results-question';
 
@@ -20,6 +22,7 @@ export interface ResultsQuestionTaskMetadata {
  */
 export interface ResultsQuestionScope {
     taskId: string;
+    providerId: KnownCliId;
     workspaceUri: string;
     taskMetadata: ResultsQuestionTaskMetadata;
     changeSetSummary: string;

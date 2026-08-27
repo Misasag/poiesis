@@ -1,9 +1,11 @@
 import { Disposable } from '@theia/core/lib/common';
+import { KnownCliId } from './agent-runtime-protocol';
 
 export const AgentProvider = Symbol('AgentProvider');
 
 export interface CreateSessionInput {
     workspaceUri?: string;
+    providerId?: KnownCliId;
 }
 
 export interface AgentSession {

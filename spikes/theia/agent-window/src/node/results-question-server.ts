@@ -10,7 +10,7 @@ import {
     ResultsQuestionScope,
     ResultsQuestionServer
 } from '../common/results-question-protocol';
-import { CliDetector } from './cli-detector';
+import { CliProviderRegistry } from './cli-provider-registry';
 
 type CodexProcess = ChildProcessByStdio<null, Readable, Readable>;
 
@@ -30,9 +30,7 @@ const STDERR_MAX_CHARS = 8_000;
 export class ResultsQuestionServerImpl implements ResultsQuestionServer {
     protected readonly runs = new Map<string, ResultsQuestionRun>();
 
-    constructor(
-        @inject(CliDetector) protected readonly cliDetector: CliDetector
-    ) { }
+    constructor(@inject(CliProviderRegistry) protected readonly providerRegistry: CliProviderRegistry) { }
 
     async ask(question: string, scope: ResultsQuestionScope): Promise<ResultsQuestionResult> {
         const validationError = this.validate(question, scope);
@@ -47,15 +45,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
         }
 
         try {
-            const report = this.cliDetector.recordedReport ?? await this.cliDetector.detect();
-            const codex = report.detections.find(item => item.id === 'codex');
-            if (codex?.status !== 'found' || !codex.path) {
-                return this.failed({
-                    code: 'cli-not-found',
-                    message: 'Codex CLIが見つかりません。設定を確認してください。'
-                });
-            }
-
+            const provider = await this.providerRegistry.resolve('results', scope.providerId);
             const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const prompt = this.buildPrompt(question.trim(), scope);
             const args = [
@@ -64,7 +54,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                 '-C', workspace,
                 '--', prompt
             ];
-            const child = this.spawnCodex(codex.path, args, workspace);
+            const child = this.spawnCodex(provider.path, args, workspace);
             const run: ResultsQuestionRun = { process: child, cancelled: false };
             this.runs.set(scope.taskId, run);
             return await this.collectResult(scope.taskId, run);
@@ -171,6 +161,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
         if (!scope
             || typeof scope.taskId !== 'string'
             || !scope.taskId.trim()
+            || !['codex', 'claude'].includes(scope.providerId)
             || typeof scope.workspaceUri !== 'string'
             || !scope.workspaceUri.trim()
             || !scope.taskMetadata

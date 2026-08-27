@@ -18,6 +18,7 @@ import {
     GitSnapshotRequest
 } from '../common/agent-runtime-protocol';
 import { CliDetector } from './cli-detector';
+import { CliProviderRegistry } from './cli-provider-registry';
 
 interface SnapshotEntry {
     content: Buffer;
@@ -45,7 +46,10 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
     protected client?: AgentRuntimeClient;
     protected snapshotSequence = 0;
 
-    constructor(@inject(CliDetector) protected readonly cliDetector: CliDetector) { }
+    constructor(
+        @inject(CliDetector) protected readonly cliDetector: CliDetector,
+        @inject(CliProviderRegistry) protected readonly providerRegistry: CliProviderRegistry
+    ) { }
 
     setClient(client: AgentRuntimeClient | undefined): void {
         this.client = client;
@@ -147,7 +151,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         }
     }
 
-    async runCodex({ executionId, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
+    async runCodex({ executionId, providerId, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
         if (process.platform !== 'win32') {
             throw new Error('This implementation slice runs Codex only on Windows.');
         }
@@ -158,11 +162,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
             throw new Error('No workspace root is open.');
         }
 
-        const report = this.cliDetector.recordedReport ?? await this.cliDetector.detect();
-        const codex = report.detections.find(item => item.id === 'codex');
-        if (codex?.status !== 'found' || !codex.path) {
-            throw new Error('Codex is not installed.');
-        }
+        const provider = await this.providerRegistry.resolve('agent', providerId);
 
         const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
         const args = [
@@ -173,7 +173,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
             '-C', resolvedWorkspace,
             '--', prompt
         ];
-        const child = this.spawnCodex(codex.path, args, resolvedWorkspace);
+        const child = this.spawnCodex(provider.path, args, resolvedWorkspace);
         const run: CodexRun = { process: child, cancelled: false };
         this.codexRuns.set(executionId, run);
 

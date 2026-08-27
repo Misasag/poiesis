@@ -7,11 +7,13 @@ import {
 } from '../common/agent-runtime-protocol';
 import { AgentRuntimeServerImpl } from './agent-runtime-server';
 import { CliDetector } from './cli-detector';
+import { CliProviderRegistry } from './cli-provider-registry';
 import { ResultsQuestionServer, resultsQuestionServerPath } from '../common/results-question-protocol';
 import { ResultsQuestionServerImpl } from './results-question-server';
 
 export default new ContainerModule(bind => {
     bind(CliDetector).toSelf().inSingletonScope();
+    bind(CliProviderRegistry).toSelf().inSingletonScope();
     bind(ResultsQuestionServer).to(ResultsQuestionServerImpl).inSingletonScope();
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler(resultsQuestionServerPath, () =>

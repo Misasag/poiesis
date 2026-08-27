@@ -17,6 +17,7 @@ import { MockAgentProvider } from './mock-agent-provider';
 import { TaskService } from './task-service';
 
 interface CodexSession extends AgentSession {
+    providerId: 'codex';
     workspacePath?: string;
 }
 
@@ -53,10 +54,12 @@ export class CliAgentProvider implements AgentProvider {
     async createSession(input: CreateSessionInput): Promise<AgentSession> {
         try {
             const report = await this.runtimeServer.detectClis();
-            const codex = report.detections.find(item => item.id === 'codex');
-            if (codex?.status === 'found' && codex.path) {
+            const providerId = input.providerId ?? 'codex';
+            const codex = report.detections.find(item => item.id === providerId);
+            if (providerId === 'codex' && codex?.status === 'found' && codex.path) {
                 const session: CodexSession = {
                     id: `codex-session-${Date.now()}-${++this.sequence}`,
+                    providerId,
                     providerName: 'Codex',
                     workspaceUri: input.workspaceUri,
                     workspacePath: input.workspaceUri ? new URI(input.workspaceUri).path.fsPath() : undefined
@@ -100,6 +103,7 @@ export class CliAgentProvider implements AgentProvider {
         try {
             await this.runtimeServer.runCodex({
                 executionId: run.executionId,
+                providerId: session.providerId,
                 workspacePath: session.workspacePath,
                 prompt: this.implementerPrompt(message.content)
             });

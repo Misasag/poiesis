@@ -3281,6 +3281,18 @@ body.poiesis-code-file-pointer-drag * {
     overflow: hidden;
 }
 
+.poiesis-settings-modal__cli-role {
+    display: grid;
+    gap: 6px;
+}
+
+.poiesis-settings-modal__cli-role h3 {
+    color: var(--poiesis-chrome-copy);
+    font-size: 10px;
+    font-weight: 650;
+    margin: 2px 1px 0;
+}
+
 .poiesis-settings-modal__cli-row {
     align-items: center;
     background: var(--poiesis-chrome-panel-raised);

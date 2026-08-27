@@ -29,6 +29,7 @@ const resultsQuestionProtocol = await read('agent-window/src/common/results-ques
 const resultsQuestionService = await read('agent-window/src/browser/results-question-service.ts');
 const resultsQuestionServer = await read('agent-window/src/node/results-question-server.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
+const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
 const electronFrontendModule = await read('agent-window/src/electron-browser/agent-window-electron-frontend-module.ts');
@@ -124,17 +125,20 @@ for (const marker of [
     "[role='tab']",
     '-webkit-app-region: no-drag;',
     'padding-right: 154px;',
-    '.poiesis-window-controls__close:hover'
+    '.poiesis-window-controls__close:hover',
+    'outline: 2px solid #c28b60'
 ]) {
     assert.ok(electronWindowStyles.includes(marker), `Electron window-control styles are missing ${marker}`);
 }
 assert.equal(extensionPackage.dependencies['@theia/scm'], '1.73.1');
 assert.equal(extensionPackage.dependencies['@theia/search-in-workspace'], '1.73.1');
 assert.ok(resultsQuestionProtocol.includes('workspaceUri: string'), 'Results question scope must name its workspace');
+assert.ok(resultsQuestionProtocol.includes('providerId: KnownCliId'), 'Results question scope must name its AI provider');
 assert.ok(resultsQuestionService.includes('return this.server.ask(question, scope)'), 'Results question browser proxy is missing');
 for (const marker of [
     'this.resultsQuestionService.ask(question, {',
     'workspaceUri: session.workspaceUri',
+    'providerId: this.resultsCli',
     "status: 'sending'",
     "status: 'answered'",
     "status: 'failed'",
@@ -147,6 +151,7 @@ assert.ok(!agentWidget.includes('this.resultsService.answer('), 'Bundled Results
 assert.ok(!resultsSkill.includes('async answer('), 'Bundled Results skill must only generate documents');
 for (const marker of [
     'this.resolveWorkspace(scope.workspaceUri)',
+    "this.providerRegistry.resolve('results', scope.providerId)",
     "resource.scheme !== 'file'",
     "'--sandbox', 'read-only'",
     'this.runs.has(scope.taskId)'
@@ -184,11 +189,13 @@ assert.ok(poiesisWorkspaceTrustService.includes('extends WorkspaceTrustService')
 assert.ok(poiesisWorkspaceTrustService.includes('return Promise.resolve(true)'));
 
 for (const marker of [
-    "item.id === 'codex'",
+    'const providerId = input.providerId',
+    "providerId === 'codex'",
     "providerName: 'Codex'",
     'return this.mockProvider.createSession(input)',
     'await this.taskService.whenBaselineCaptured(task.id)',
     'await this.runtimeServer.runCodex',
+    'providerId: session.providerId',
     'type: \'message-delta\'',
     'type: \'message-completed\'',
     'await this.taskService.end(run.taskId)',
@@ -235,9 +242,11 @@ assert.ok(!taskService.includes("kind: 'placeholder'"), 'TaskService must captur
 
 for (const marker of [
     "KnownCliId = 'codex' | 'claude'",
+    "AiRole = 'agent' | 'results'",
     "CliLocationSource = 'PATH' | 'well-known'",
     "status: 'found' | 'missing'",
     'CodexExecutionRequest',
+    'providerId: KnownCliId',
     'CodexExecutionEvent',
     'notifyCodexEvent',
     'runCodex(request: CodexExecutionRequest)',
@@ -261,7 +270,16 @@ for (const marker of [
 assert.ok(!cliDetector.includes('execFile'), 'CliDetector must not execute detected CLIs');
 assert.ok(backendModule.includes('RpcConnectionHandler'));
 assert.ok(backendModule.includes('CliDetector'));
+assert.ok(backendModule.includes('CliProviderRegistry'));
 assert.ok(backendModule.includes('server.setClient(client)'));
+for (const marker of [
+    "agent: ['codex']",
+    "results: ['codex']",
+    'this.cliDetector.recordedReport',
+    'class CliProviderRegistry'
+]) {
+    assert.ok(cliProviderRegistry.includes(marker), `CLI provider registry is missing ${marker}`);
+}
 
 for (const marker of [
     "'exec'",
@@ -275,6 +293,7 @@ for (const marker of [
     "type: 'exit'",
     "'taskkill'",
     'const resolvedWorkspace = await this.resolveWorkspace(workspacePath)',
+    "this.providerRegistry.resolve('agent', providerId)",
     'const snapshot = await this.captureWorkspace(resolvedWorkspace)'
 ]) {
     assert.ok(runtimeServer.includes(marker), `Codex runtime is missing ${marker}`);
@@ -294,6 +313,8 @@ for (const marker of [
     'この Task ではファイルは変更されませんでした。',
     'role="img" aria-label="変更された設計境界"',
     '<cite class="citation"',
+    '.paper { width: 100%; min-height: 100vh;',
+    '::-webkit-scrollbar-thumb',
     "event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled'",
     "status: 'generating'",
     "status: 'ready'",
@@ -462,6 +483,9 @@ for (const marker of [
     'Content-Security-Policy',
     'protected async clearSavedSessionData(): Promise<void>',
     '<strong>Poiesis plugin bundles</strong>',
+    "this.renderCliRoleSelector('agent', 'Agent の AI', this.agentCli)",
+    "this.renderCliRoleSelector('results', 'Results の AI', this.resultsCli)",
+    'providerId: this.agentCli',
     "<small className='future-note'>実行対応は今後</small>",
     "aria-label='Results skillを有効化'",
     'this.customizationService.setSkillEnabled',

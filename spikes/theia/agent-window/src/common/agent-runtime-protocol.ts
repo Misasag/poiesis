@@ -4,6 +4,7 @@ export const AgentRuntimeServer = Symbol('AgentRuntimeServer');
 export const agentRuntimeServerPath = '/services/poiesis/agent-runtime';
 
 export type KnownCliId = 'codex' | 'claude';
+export type AiRole = 'agent' | 'results';
 export type CliLocationSource = 'PATH' | 'well-known';
 
 export interface CliDetection {
@@ -44,6 +45,7 @@ export interface GitChangeSetCapture {
 
 export interface CodexExecutionRequest {
     executionId: string;
+    providerId: KnownCliId;
     workspacePath?: string;
     prompt: string;
 }
