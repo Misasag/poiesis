@@ -287,7 +287,12 @@ for (const marker of [
     '{!this.codeMode && session?.hasUserMessage && (',
     "aria-label='Agent と Results の切り替え'",
     "<span className='poiesis-agent-window__rail-action-label'>New Chat</span>",
-    "aria-label='Results 画面'",
+    "id='poiesis-results-panel'",
+    "role='tabpanel'",
+    "role='tablist'",
+    "aria-controls='poiesis-agent-panel'",
+    "aria-controls='poiesis-results-panel'",
+    "aria-controls='poiesis-results-task-panel'",
     'poiesis-results__main',
     'poiesis-results__task-switcher',
     "aria-label='Results HTML キャンバス'",
@@ -398,6 +403,8 @@ for (const marker of [
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
 assert.ok(!agentWidget.includes('Saveable.confirmSaveBeforeClose'), 'Editor close must use the Poiesis-owned confirmation dialog');
+assert.ok(!agentWidget.includes('branchPickerVisible'), 'The non-functional branch picker must not return');
+assert.ok(!agentWidget.includes('<strong>No Repo</strong>'), 'The non-functional No Repo option must not return');
 assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.openCustomize()}"), 'Code Extensions must not open Poiesis Customize');
 assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Poiesis Settings');
 assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Poiesis Customize must not manage Code extensions');
@@ -527,7 +534,11 @@ for (const marker of [
     'pointer-events: none',
     '--poiesis-chrome-bg: #181918',
     '--poiesis-chrome-panel: #1d1e1c',
-    'grid-template-columns: var(--poiesis-rail-width, 252px) minmax(0, 1fr)',
+    'grid-template-columns: var(--poiesis-rail-width, 258px) minmax(0, 1fr)',
+    '--poiesis-chrome-muted: #92948d',
+    '--poiesis-results-muted: #9aa5bd',
+    ':is(button, input, textarea, select, [tabindex]):focus-visible',
+    'outline: 2px solid var(--poiesis-focus-ring, #c28b60)',
     ".poiesis-agent-window__content[data-mode='code']",
     ".poiesis-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true']",
     ".poiesis-agent-window__rail[data-collapsed='true']",

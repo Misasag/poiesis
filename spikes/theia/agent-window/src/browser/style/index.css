@@ -975,7 +975,7 @@
     color: var(--poiesis-chrome-text);
     display: grid;
     gap: 0;
-    grid-template-columns: var(--poiesis-rail-width, 252px) minmax(0, 1fr);
+    grid-template-columns: var(--poiesis-rail-width, 258px) minmax(0, 1fr);
     height: 100%;
     margin: 0;
     max-width: none;
@@ -2016,8 +2016,7 @@
     background: #242522;
 }
 
-.poiesis-agent-window__repository-picker,
-.poiesis-agent-window__branch-picker {
+.poiesis-agent-window__repository-picker {
     background: #242522;
     border: 1px solid #494b45;
     border-radius: 10px;
@@ -2030,11 +2029,6 @@
     position: absolute;
     width: min(330px, 72vw);
     z-index: 20;
-}
-
-.poiesis-agent-window__branch-picker {
-    left: 112px;
-    width: min(240px, 60vw);
 }
 
 .poiesis-agent-window__repository-search {
@@ -3765,5 +3759,148 @@ body.poiesis-code-file-pointer-drag * {
 
     .poiesis-agent-window__app-page-body {
         padding: 22px 16px;
+    }
+}
+
+/* Accessibility and readability overrides from the product UI audit. */
+.poiesis-agent-window__content {
+    --poiesis-chrome-muted: #92948d;
+    --poiesis-control-border: #70726b;
+    --poiesis-focus-ring: #c28b60;
+    --poiesis-focus-ring-soft: rgb(194 139 96 / 24%);
+    --poiesis-results-muted: #9aa5bd;
+    --poiesis-results-send: #dce4f7;
+    --poiesis-results-send-text: #232938;
+    --poiesis-shadow-composer: 0 10px 30px rgb(0 0 0 / 16%);
+    --poiesis-shadow-results: 0 8px 24px rgb(0 0 0 / 18%);
+    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+}
+
+.poiesis-agent-window__tabs {
+    background: #20211f;
+    gap: 2px;
+}
+
+.poiesis-agent-window__tabs button {
+    border-radius: 6px;
+}
+
+.poiesis-agent-window__messages {
+    padding-inline: clamp(28px, 7vw, 78px);
+}
+
+.poiesis-agent-window__message p,
+.poiesis-agent-window__user-message p,
+.poiesis-agent-window__message-error pre,
+.poiesis-results__answer p {
+    overflow-wrap: anywhere;
+}
+
+.poiesis-agent-window__session-title,
+.poiesis-results__task-switcher button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.poiesis-results__task-switcher button span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.poiesis-agent-window__composer {
+    border-color: var(--poiesis-control-border);
+    box-shadow: var(--poiesis-shadow-composer);
+}
+
+.poiesis-results__composer {
+    box-shadow: var(--poiesis-shadow-results);
+}
+
+.poiesis-agent-window__send {
+    background: #e2e0d7;
+    color: #222320;
+}
+
+.poiesis-agent-window__send:hover:not(:disabled) {
+    background: #f0eee6;
+}
+
+.poiesis-agent-window__send:active:not(:disabled) {
+    background: #cbc9c1;
+}
+
+.poiesis-results__composer button {
+    background: var(--poiesis-results-send);
+    color: var(--poiesis-results-send-text);
+}
+
+.poiesis-results__composer button .codicon {
+    color: var(--poiesis-results-send-text);
+}
+
+.poiesis-results__composer button:hover:not(:disabled) {
+    background: #eef3ff;
+}
+
+.poiesis-results__composer button:active:not(:disabled) {
+    background: #c6d0e7;
+}
+
+.poiesis-agent-window__rail-heading,
+.poiesis-agent-window__session-section-label,
+.poiesis-agent-window__session-meta,
+.poiesis-agent-window__session-empty,
+.poiesis-agent-window__repository-group-label,
+.poiesis-results__task-switcher-header,
+.poiesis-results__task-switcher button small {
+    color: var(--poiesis-chrome-muted);
+}
+
+.poiesis-results__composer input::placeholder {
+    color: var(--poiesis-results-muted);
+}
+
+.poiesis-agent-window__repository-picker {
+    max-height: min(500px, 62vh);
+    width: min(360px, 78vw);
+}
+
+.poiesis-agent-window__content button:not(:disabled),
+.poiesis-folder-explorer button:not(:disabled) {
+    transition: background-color 120ms cubic-bezier(.2, 0, 0, 1),
+        border-color 120ms cubic-bezier(.2, 0, 0, 1),
+        color 120ms cubic-bezier(.2, 0, 0, 1);
+}
+
+.poiesis-agent-window__content button:disabled,
+.poiesis-folder-explorer button:disabled {
+    cursor: not-allowed;
+}
+
+.poiesis-agent-window__content
+:is(button, input, textarea, select, [tabindex]):focus-visible,
+.poiesis-folder-explorer
+:is(button, input, textarea, select, [tabindex]):focus-visible,
+.poiesis-changes__content
+:is(button, input, textarea, select, [tabindex]):focus-visible {
+    outline: 2px solid var(--poiesis-focus-ring, #c28b60);
+    outline-offset: -2px;
+}
+
+.poiesis-agent-window__composer:focus-within,
+.poiesis-results__composer:focus-within,
+.poiesis-agent-window__session-search:focus-within,
+.poiesis-agent-window__repository-search:focus-within,
+.poiesis-agent-window__workspace-picker-search:focus-within {
+    border-color: var(--poiesis-focus-ring, #c28b60);
+    box-shadow: 0 0 0 1px var(--poiesis-focus-ring-soft, rgb(194 139 96 / 24%));
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .poiesis-agent-window__content *,
+    .poiesis-folder-explorer * {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
     }
 }

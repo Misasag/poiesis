@@ -187,7 +187,6 @@ export class AgentWindowWidget extends ReactWidget {
     protected repositoryPickerVisible = false;
     protected repositorySearchQuery = '';
     protected repositorySearchInput?: HTMLInputElement;
-    protected branchPickerVisible = false;
     protected folderExplorerVisible = false;
     protected folderExplorerSessionId?: string;
     protected folderExplorerResult?: FolderBrowserResult;
@@ -233,10 +232,9 @@ export class AgentWindowWidget extends ReactWidget {
                 this.openSessionMenuId = undefined;
                 this.update();
             }
-            if ((this.repositoryPickerVisible || this.branchPickerVisible)
+            if (this.repositoryPickerVisible
                 && !(event.target as Element | null)?.closest('.poiesis-agent-window__new-agent-context')) {
                 this.repositoryPickerVisible = false;
-                this.branchPickerVisible = false;
                 this.repositorySearchQuery = '';
                 this.update();
             }
@@ -332,8 +330,26 @@ export class AgentWindowWidget extends ReactWidget {
                         {this.codeMode
                             ? this.renderCode()
                             : activeTab === 'agent'
-                                ? this.renderAgent(session, runningTask)
-                                : this.renderResults(session)}
+                                ? <>
+                                    {this.renderAgent(session, runningTask)}
+                                    {session?.hasUserMessage && (
+                                        <section
+                                            id='poiesis-results-panel'
+                                            role='tabpanel'
+                                            aria-labelledby='poiesis-results-tab'
+                                            hidden
+                                        />
+                                    )}
+                                </>
+                                : <>
+                                    <section
+                                        id='poiesis-agent-panel'
+                                        role='tabpanel'
+                                        aria-labelledby='poiesis-agent-tab'
+                                        hidden
+                                    />
+                                    {this.renderResults(session)}
+                                </>}
                     </div>
                 </main>
                 {this.folderExplorerVisible && this.renderFolderExplorer()}
@@ -540,6 +556,7 @@ export class AgentWindowWidget extends ReactWidget {
                     <button
                         type='button'
                         className='poiesis-agent-window__session'
+                        title={session.title}
                         aria-current={selected ? 'true' : undefined}
                         onClick={() => session.archived ? this.restoreSession(session.id, true) : this.selectSession(session.id)}
                     >
@@ -978,7 +995,6 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected toggleRepositoryPicker(): void {
         this.repositoryPickerVisible = !this.repositoryPickerVisible;
-        this.branchPickerVisible = false;
         this.repositorySearchQuery = '';
         this.update();
         if (this.repositoryPickerVisible) {
@@ -986,16 +1002,8 @@ export class AgentWindowWidget extends ReactWidget {
         }
     }
 
-    protected toggleBranchPicker(): void {
-        this.branchPickerVisible = !this.branchPickerVisible;
-        this.repositoryPickerVisible = false;
-        this.repositorySearchQuery = '';
-        this.update();
-    }
-
     protected closeNewAgentPickers(): void {
         this.repositoryPickerVisible = false;
-        this.branchPickerVisible = false;
         this.repositorySearchQuery = '';
         this.update();
     }
@@ -1195,20 +1203,27 @@ export class AgentWindowWidget extends ReactWidget {
                     <strong>{this.codeMode ? 'Code' : session?.hasUserMessage ? session.title : 'New Agent'}</strong>
                 </div>
                 {!this.codeMode && session?.hasUserMessage && (
-                    <nav className='poiesis-agent-window__tabs' aria-label='Agent と Results の切り替え'>
+                    <nav className='poiesis-agent-window__tabs' role='tablist' aria-label='Agent と Results の切り替え'>
                         <button
+                            id='poiesis-agent-tab'
                             type='button'
+                            role='tab'
                             className={activeTab === 'agent' ? 'active' : ''}
-                            aria-current={activeTab === 'agent' ? 'page' : undefined}
+                            aria-selected={activeTab === 'agent'}
+                            aria-controls='poiesis-agent-panel'
+                            tabIndex={activeTab === 'agent' ? 0 : -1}
                             onClick={() => this.selectTab('agent')}
                         >
                             Agent
                         </button>
-                        <span className='poiesis-agent-window__tab-divider' aria-hidden='true'>|</span>
                         <button
+                            id='poiesis-results-tab'
                             type='button'
+                            role='tab'
                             className={activeTab === 'results' ? 'active' : ''}
-                            aria-current={activeTab === 'results' ? 'page' : undefined}
+                            aria-selected={activeTab === 'results'}
+                            aria-controls='poiesis-results-panel'
+                            tabIndex={activeTab === 'results' ? 0 : -1}
                             onClick={() => this.selectTab('results')}
                         >
                             Results
@@ -1222,7 +1237,13 @@ export class AgentWindowWidget extends ReactWidget {
     protected renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
         const newAgent = Boolean(session && !session.hasUserMessage);
         return (
-            <section className='poiesis-agent-window__agent' aria-label='Agent の会話'>
+            <section
+                id={session?.hasUserMessage ? 'poiesis-agent-panel' : undefined}
+                className='poiesis-agent-window__agent'
+                role={session?.hasUserMessage ? 'tabpanel' : undefined}
+                aria-labelledby={session?.hasUserMessage ? 'poiesis-agent-tab' : undefined}
+                aria-label={session?.hasUserMessage ? undefined : 'Agent の会話'}
+            >
                 <div className='poiesis-agent-window__messages' aria-live='polite'>
                     <div className='poiesis-agent-window__messages-inner'>
                         {newAgent && session?.messages.length === 0 && (
@@ -1592,17 +1613,10 @@ export class AgentWindowWidget extends ReactWidget {
                     <span>{this.repositoryLabel(session.workspaceUri)}</span>
                     <span className='codicon codicon-chevron-down' aria-hidden='true' />
                 </button>
-                <button
-                    type='button'
-                    className='poiesis-agent-window__context-pill'
-                    aria-expanded={this.branchPickerVisible}
-                    aria-controls='poiesis-agent-window-branch-picker'
-                    onClick={() => this.toggleBranchPicker()}
-                >
+                <span className='poiesis-agent-window__context-pill static' title='現在のローカルブランチ'>
                     <span className='codicon codicon-git-branch' aria-hidden='true' />
                     <span>{branch}</span>
-                    <span className='codicon codicon-chevron-down' aria-hidden='true' />
-                </button>
+                </span>
                 <span className='poiesis-agent-window__context-pill static' title='現在利用できる実行先はLocalのみです'>
                     <span className='codicon codicon-device-desktop' aria-hidden='true' />
                     <span>Run on · This Computer</span>
@@ -1629,11 +1643,6 @@ export class AgentWindowWidget extends ReactWidget {
                                 }}
                             />
                         </label>
-                        <div className='poiesis-agent-window__repository-group-label'>No Repo</div>
-                        <button type='button' className='poiesis-agent-window__repository-option' disabled title='Local実行にはRepositoryが必要です'>
-                            <span className='codicon codicon-circle-slash' aria-hidden='true' />
-                            <span><strong>No Repo</strong><small>Local runtimeでは未対応</small></span>
-                        </button>
                         {repositoryChoices.length > 0 && (
                             <>
                                 <div className='poiesis-agent-window__repository-group-label'>Recents</div>
@@ -1655,21 +1664,6 @@ export class AgentWindowWidget extends ReactWidget {
                                 New Folder
                             </button>
                         </div>
-                    </div>
-                )}
-                {this.branchPickerVisible && (
-                    <div
-                        className='poiesis-agent-window__branch-picker'
-                        id='poiesis-agent-window-branch-picker'
-                        role='dialog'
-                        aria-label='Branchを選択'
-                    >
-                        <div className='poiesis-agent-window__repository-group-label'>Current branch</div>
-                        <button type='button' className='poiesis-agent-window__repository-option selected' onClick={() => this.closeNewAgentPickers()}>
-                            <span className='codicon codicon-git-branch' aria-hidden='true' />
-                            <span><strong>{branch}</strong><small>Local checkout</small></span>
-                            <span className='codicon codicon-check' aria-hidden='true' />
-                        </button>
                     </div>
                 )}
             </div>
@@ -1705,8 +1699,18 @@ export class AgentWindowWidget extends ReactWidget {
         const notice = selectedTask ? session?.resultsNotices.get(selectedTask.id) : undefined;
 
         return (
-            <section className='poiesis-results' aria-label='Results 画面'>
-                <div className='poiesis-results__main'>
+            <section
+                id='poiesis-results-panel'
+                className='poiesis-results'
+                role='tabpanel'
+                aria-labelledby='poiesis-results-tab'
+            >
+                <div
+                    id='poiesis-results-task-panel'
+                    className='poiesis-results__main'
+                    role='tabpanel'
+                    aria-labelledby={selectedTask ? `poiesis-results-task-tab-${selectedTask.id}` : undefined}
+                >
                     <div className='poiesis-results__canvas' aria-label='Results HTML キャンバス'>
                         {!selectedTask && <div className='poiesis-results__empty'>Agent でタスクを完了すると、ここに成果が表示されます。</div>}
                         {selectedTask?.status === 'failed' && (
@@ -1796,9 +1800,12 @@ export class AgentWindowWidget extends ReactWidget {
                         {finishedTasks.map((task, index) => (
                             <button
                                 key={task.id}
+                                id={`poiesis-results-task-tab-${task.id}`}
                                 type='button'
                                 role='tab'
                                 aria-selected={selectedTask?.id === task.id}
+                                aria-controls='poiesis-results-task-panel'
+                                tabIndex={selectedTask?.id === task.id ? 0 : -1}
                                 className={selectedTask?.id === task.id ? 'active' : ''}
                                 onClick={() => this.selectResultsTask(task.id)}
                             >
@@ -1807,7 +1814,7 @@ export class AgentWindowWidget extends ReactWidget {
                                     {task.status === 'cancelled' ? 'キャンセル' : task.status === 'failed' ? '失敗' : '完了'}
                                     {task.endedAt ? ` · ${this.taskFinishedTime(task)}` : ''}
                                 </small>
-                                <span>{task.title}</span>
+                                <span title={task.title}>{task.title}</span>
                             </button>
                         ))}
                     </div>
@@ -3683,7 +3690,6 @@ export class AgentWindowWidget extends ReactWidget {
         this.sessionSearchVisible = false;
         this.sessionSearchQuery = '';
         this.repositoryPickerVisible = false;
-        this.branchPickerVisible = false;
         this.repositorySearchQuery = '';
         const current = this.selectedSession();
         if (current && !current.archived && !current.hasUserMessage) {
