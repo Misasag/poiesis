@@ -18,6 +18,8 @@ export interface AgentSession {
 export interface AgentMessage {
     role: 'user';
     content: string;
+    /** Stable app-session owner; provider session ids are intentionally ephemeral. */
+    ownerSessionId: string;
 }
 
 export type AgentEvent =

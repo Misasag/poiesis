@@ -59,7 +59,7 @@ export class TaskService {
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService
     ) { }
 
-    start(sessionId: string, request: string): ExecutionTask {
+    start(sessionId: string, request: string, workspacePath?: string): ExecutionTask {
         const startedAt = new Date().toISOString();
         const task: ExecutionTask = {
             id: `task-${Date.now()}-${++this.sequence}`,
@@ -74,8 +74,33 @@ export class TaskService {
             }
         };
         this.tasks.set(task.id, task);
-        this.baselineCaptures.set(task.id, this.captureBaseline());
+        this.baselineCaptures.set(task.id, this.captureBaseline(workspacePath));
         this.onDidChangeEmitter.fire({ type: 'started', task });
+        return task;
+    }
+
+    failBeforeStart(sessionId: string, request: string, failure: TaskFailure): ExecutionTask {
+        const startedAt = new Date().toISOString();
+        const task: ExecutionTask = {
+            id: `task-${Date.now()}-${++this.sequence}`,
+            sessionId,
+            title: this.titleFor(request),
+            request,
+            status: 'failed',
+            startedAt,
+            endedAt: startedAt,
+            baseline: { kind: 'workspace-snapshot', capturedAt: startedAt },
+            changeSet: {
+                source: 'empty',
+                diff: '',
+                files: [],
+                capturedAt: startedAt,
+                error: 'Agent provider did not start; no workspace changes were made.'
+            },
+            failure
+        };
+        this.tasks.set(task.id, task);
+        this.onDidChangeEmitter.fire({ type: 'failed', task });
         return task;
     }
 
@@ -171,12 +196,12 @@ export class TaskService {
         return task;
     }
 
-    protected async captureBaseline(): Promise<GitSnapshotCapture> {
-        const root = this.workspaceService.tryGetRoots()[0]
-            ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
+    protected async captureBaseline(workspacePath?: string): Promise<GitSnapshotCapture> {
         try {
+            const root = this.workspaceService.tryGetRoots()[0]
+                ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
             return await this.runtimeServer.captureGitSnapshot({
-                workspacePath: root?.resource.path.fsPath()
+                workspacePath: workspacePath ?? root?.resource.path.fsPath()
             });
         } catch (error) {
             return {
@@ -189,7 +214,17 @@ export class TaskService {
     protected async captureChangeSet(taskId: string): Promise<GitChangeSetCapture> {
         const baselinePromise = this.baselineCaptures.get(taskId);
         this.baselineCaptures.delete(taskId);
-        const baseline = await baselinePromise;
+        let baseline: GitSnapshotCapture | undefined;
+        try {
+            baseline = await baselinePromise;
+        } catch (error) {
+            return {
+                source: 'empty',
+                diff: '',
+                files: [],
+                error: error instanceof Error ? error.message : String(error)
+            };
+        }
         if (!baseline?.snapshotId) {
             return {
                 source: 'empty',

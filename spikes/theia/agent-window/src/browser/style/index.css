@@ -659,6 +659,20 @@
     grid-template-columns: minmax(0, 1fr);
 }
 
+.poiesis-agent-window__content--initializing {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    place-items: center;
+}
+
+.poiesis-agent-window__initializing {
+    align-items: center;
+    color: var(--poiesis-chrome-muted);
+    display: flex;
+    gap: 10px;
+    min-height: 100%;
+}
+
 .poiesis-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true'] {
     grid-template-columns: 52px minmax(0, 1fr);
 }

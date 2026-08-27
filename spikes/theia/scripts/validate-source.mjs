@@ -219,6 +219,7 @@ for (const signature of [
 ]) {
     assert.ok(providerSource.includes(signature), `AgentProvider is missing ${signature}`);
 }
+assert.ok(providerSource.includes('ownerSessionId: string'), 'Agent messages must retain their stable app-session owner');
 assert.ok(agentWidget.includes("import { AgentEvent, AgentProvider, AgentSession }"));
 assert.ok(!agentWidget.includes("from './mock-agent-provider'"), 'Agent UI must depend on AgentProvider, not its implementation');
 assert.ok(moduleSource.includes('bind(AgentProvider).toService(CliAgentProvider)'));
@@ -231,6 +232,8 @@ for (const marker of [
     'const providerId = input.providerId',
     'providerName: detection.name',
     'return this.mockProvider.createSession(input)',
+    "report.detections.some(item => item.status === 'found')",
+    'this.taskService.start(message.ownerSessionId, message.content, session.workspacePath)',
     'await this.taskService.whenBaselineCaptured(task.id)',
     'await this.runtimeServer.runCodex',
     'providerId: session.providerId',
@@ -265,7 +268,8 @@ for (const forbidden of ['FileService', 'WorkspaceService', 'readFile', 'writeFi
 }
 
 for (const marker of [
-    "start(sessionId: string, request: string)",
+    "start(sessionId: string, request: string, workspacePath?: string)",
+    'failBeforeStart(sessionId: string, request: string, failure: TaskFailure)',
     "async end(taskId: string)",
     "async fail(taskId: string, failure?: TaskFailure)",
     "async cancel(taskId: string)",
@@ -274,6 +278,8 @@ for (const marker of [
     'captureGitSnapshot',
     'captureGitChangeSet',
     'whenBaselineCaptured',
+    'workspacePath ?? root?.resource.path.fsPath()',
+    'baseline = await baselinePromise',
     "source: 'empty'"
 ]) {
     assert.ok(taskService.includes(marker), `TaskService is missing ${marker}`);
@@ -343,6 +349,7 @@ for (const marker of [
     "type: 'output'",
     "type: 'exit'",
     "'taskkill'",
+    "process.env.POIESIS_AGENT_FORCE_PRESPAWN_FAILURE === '1'",
     'const resolvedWorkspace = await this.resolveWorkspace(workspacePath)',
     "this.providerRegistry.resolve('agent', providerId)",
     "provider.id === 'claude'",
@@ -666,7 +673,19 @@ for (const marker of [
     'protected restoreSession(sessionId: string, select = false): void',
     "aria-label='サイドバーの幅を変更'",
     'protected startRailResize(event: React.PointerEvent<HTMLDivElement>): void',
-    'protected async persistWindowState(): Promise<void>',
+    'protected persistWindowState(): Promise<void>',
+    'protected windowStatePersistence: Promise<void> = Promise.resolve()',
+    'this.windowStatePersistence = this.windowStatePersistence',
+    'this.restorePoiesisSettings().then(() => this.initializeSessions())',
+    'protected sessionsInitialized = false',
+    'protected findSessionForTask(task: ExecutionTask)',
+    'protected canonicalWorkspaceUri(workspaceUri: string | undefined)',
+    'protected sameWorkspaceUri(left: string | undefined, right: string | undefined)',
+    '? this.canonicalWorkspaceUri(candidate.workspaceUri)',
+    'await this.persistWindowState()',
+    'ownerSessionId: session.id',
+    'protected async recordPreSpawnFailure(',
+    'this.taskService.failBeforeStart(session.id, request, { summary, details })',
     'protected async restoreWindowState(): Promise<boolean>',
     'protected async loadGlobalWindowState()',
     'protected mergePersistedWindowStates(',
@@ -802,6 +821,8 @@ for (const marker of [
     '.poiesis-agent-window__composer',
     '.poiesis-agent-window__new-agent-empty',
     '.poiesis-agent-window__new-agent-context',
+    '.poiesis-agent-window__content--initializing',
+    '.poiesis-agent-window__initializing',
     '.poiesis-agent-window__repository-picker',
     '.poiesis-agent-window__context-pill',
     'align-self: end',

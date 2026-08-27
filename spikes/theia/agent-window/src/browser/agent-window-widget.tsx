@@ -202,6 +202,10 @@ export class AgentWindowWidget extends ReactWidget {
     protected suppressNextCodeFileClick = false;
     protected explorerMoreVisible = false;
     protected readonly sessions: WindowAgentSession[] = [];
+    protected sessionsInitialized = false;
+    protected sessionsInitialization: Promise<void> = Promise.resolve();
+    protected windowStatePersistence: Promise<void> = Promise.resolve();
+    protected readonly providerPreparationErrors = new Map<string, string>();
     protected selectedSessionId?: string;
     protected sessionSequence = 0;
     protected railCollapsed = false;
@@ -321,7 +325,7 @@ export class AgentWindowWidget extends ReactWidget {
 
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
         this.toDispose.push(this.taskService.onDidChangeTask(event => {
-            const session = this.findSessionByAgentId(event.task.sessionId);
+            const session = this.findSessionForTask(event.task);
             if (session) {
                 if (!session.taskIds.includes(event.task.id)) {
                     session.taskIds.push(event.task.id);
@@ -362,13 +366,32 @@ export class AgentWindowWidget extends ReactWidget {
             this.watchScmProvider(repository.provider);
         }
 
-        void this.initializeSessions();
-        void this.restorePoiesisSettings();
+        this.sessionsInitialization = this.restorePoiesisSettings().then(() => this.initializeSessions()).catch(error => {
+            console.error('[Poiesis] Could not initialize Agent Window sessions.', error);
+        }).finally(() => {
+            this.sessionsInitialized = true;
+            this.update();
+        });
         void this.refreshRecentWorkspaces();
         this.update();
     }
 
     protected render(): React.ReactNode {
+        if (!this.sessionsInitialized) {
+            return (
+                <div
+                    className='poiesis-agent-window__content poiesis-agent-window__content--initializing'
+                    data-mode='agent'
+                    data-rail-collapsed='false'
+                    style={{ '--poiesis-ui-font-scale': this.uiFontScaleValue() } as React.CSSProperties}
+                >
+                    <div className='poiesis-agent-window__initializing' role='status'>
+                        <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
+                        <span>セッションを復元しています…</span>
+                    </div>
+                </div>
+            );
+        }
         const session = this.selectedSession();
         const activeTab = session?.activeTab ?? 'agent';
         const runningTask = this.runningTask(session);
@@ -544,10 +567,10 @@ export class AgentWindowWidget extends ReactWidget {
                     key,
                     workspaceUri,
                     name: resource?.path.base || resource?.displayName || 'ワークスペースなし',
-                    branch: workspaceUri === currentWorkspaceUri
+                    branch: this.sameWorkspaceUri(workspaceUri, currentWorkspaceUri)
                         ? this.gitBranchForWorkspace(workspaceUri) ?? this.currentGitBranch() ?? 'main'
                         : 'main',
-                    current: workspaceUri === currentWorkspaceUri,
+                    current: this.sameWorkspaceUri(workspaceUri, currentWorkspaceUri),
                     activeSessions: [],
                     archivedSessions: []
                 };
@@ -633,7 +656,22 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected workspaceGroupKey(workspaceUri: string | undefined): string {
-        return workspaceUri || '__no-workspace__';
+        return this.canonicalWorkspaceUri(workspaceUri) ?? '__no-workspace__';
+    }
+
+    protected canonicalWorkspaceUri(workspaceUri: string | undefined): string | undefined {
+        if (!workspaceUri) {
+            return undefined;
+        }
+        try {
+            return new URI(workspaceUri).toString();
+        } catch {
+            return workspaceUri;
+        }
+    }
+
+    protected sameWorkspaceUri(left: string | undefined, right: string | undefined): boolean {
+        return this.canonicalWorkspaceUri(left) === this.canonicalWorkspaceUri(right);
     }
 
     protected renderSessionRow(session: WindowAgentSession): React.ReactNode {
@@ -643,7 +681,7 @@ export class AgentWindowWidget extends ReactWidget {
         const state = this.sessionState(session);
         const running = state.kind === 'running';
         const switchesWorkspace = Boolean(session.workspaceUri
-            && session.workspaceUri !== this.workspaceRoot()?.resource.toString());
+            && !this.sameWorkspaceUri(session.workspaceUri, this.workspaceRoot()?.resource.toString()));
         return (
             <div
                 key={session.id}
@@ -1006,10 +1044,10 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected workspaceChoices(): Array<{ uri: string; name: string; path: string; current: boolean }> {
-        const currentUris = new Set(this.repositoryChoices().map(choice => choice.uri));
+        const currentUris = new Set(this.repositoryChoices().map(choice => this.workspaceGroupKey(choice.uri)));
         const choices = this.repositoryChoices().map(choice => ({ ...choice, current: true }));
         for (const workspaceUri of this.recentWorkspaceUris) {
-            if (currentUris.has(workspaceUri)) {
+            if (currentUris.has(this.workspaceGroupKey(workspaceUri))) {
                 continue;
             }
             const resource = new URI(workspaceUri);
@@ -1127,7 +1165,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (!workspaceUri) {
             return 'Select repository';
         }
-        const known = this.repositoryChoices().find(choice => choice.uri === workspaceUri);
+        const known = this.repositoryChoices().find(choice => this.sameWorkspaceUri(choice.uri, workspaceUri));
         return known?.name ?? new URI(workspaceUri).path.base ?? 'Repository';
     }
 
@@ -1832,7 +1870,7 @@ export class AgentWindowWidget extends ReactWidget {
         choice: { uri: string; name: string; path: string },
         iconClass: string
     ): React.ReactNode {
-        const selected = session.workspaceUri === choice.uri;
+        const selected = this.sameWorkspaceUri(session.workspaceUri, choice.uri);
         return (
             <button
                 type='button'
@@ -3495,6 +3533,11 @@ export class AgentWindowWidget extends ReactWidget {
         return this.sessions.find(session => session.agentSession?.id === sessionId);
     }
 
+    protected findSessionForTask(task: ExecutionTask): WindowAgentSession | undefined {
+        return this.sessions.find(session => session.id === task.sessionId)
+            ?? this.findSessionByAgentId(task.sessionId);
+    }
+
     protected selectSession(sessionId: string): void {
         const session = this.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
         if (!session) {
@@ -3505,7 +3548,7 @@ export class AgentWindowWidget extends ReactWidget {
         session.updatedAt = Date.now();
         this.openSessionMenuId = undefined;
         const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
-        if (session.workspaceUri && session.workspaceUri !== currentWorkspaceUri) {
+        if (session.workspaceUri && !this.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)) {
             this.persistWindowState();
             this.update();
             this.workspaceService.open(new URI(session.workspaceUri), { preserveWindow: true });
@@ -3612,6 +3655,7 @@ export class AgentWindowWidget extends ReactWidget {
                 workspaceUri: session.workspaceUri,
                 providerId: this.agentCli
             });
+            this.providerPreparationErrors.delete(session.id);
             if (!silent && (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-')))) {
                 session.messages = [{
                     id: `provider-ready-${session.id}`,
@@ -3624,6 +3668,7 @@ export class AgentWindowWidget extends ReactWidget {
             this.update();
             return true;
         } catch (error) {
+            this.providerPreparationErrors.set(session.id, error instanceof Error ? error.message : String(error));
             if (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-'))) {
                 session.messages = [{
                     id: `provider-error-${session.id}`,
@@ -3682,7 +3727,7 @@ export class AgentWindowWidget extends ReactWidget {
                     createdAt,
                     updatedAt: Number(candidate.updatedAt) || createdAt,
                     workspaceUri: typeof candidate.workspaceUri === 'string'
-                        ? candidate.workspaceUri
+                        ? this.canonicalWorkspaceUri(candidate.workspaceUri)
                         : this.workspaceRoot()?.resource.toString(),
                     branch: typeof candidate.branch === 'string' ? candidate.branch : this.currentGitBranch() ?? 'main',
                     runTarget: 'local',
@@ -3773,7 +3818,7 @@ export class AgentWindowWidget extends ReactWidget {
         };
     }
 
-    protected async persistWindowState(): Promise<void> {
+    protected persistWindowState(): Promise<void> {
         try {
             const state: PersistedAgentWindowState = {
                 version: 1,
@@ -3802,10 +3847,16 @@ export class AgentWindowWidget extends ReactWidget {
                     };
                 })
             };
-            await this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, state);
+            this.windowStatePersistence = this.windowStatePersistence
+                .catch(() => undefined)
+                .then(() => this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, state))
+                .catch(error => {
+                    console.warn('[Poiesis] Could not persist Agent Window sessions.', error);
+                });
         } catch (error) {
             console.warn('[Poiesis] Could not persist Agent Window sessions.', error);
         }
+        return this.windowStatePersistence;
     }
 
     protected titleForSession(message: string): string {
@@ -3839,8 +3890,8 @@ export class AgentWindowWidget extends ReactWidget {
         const activeSessions = this.filteredSessions(false);
         const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
         const selected = activeSessions.find(session =>
-            session.id === this.selectedSessionId && session.workspaceUri === currentWorkspaceUri
-        ) ?? activeSessions.find(session => session.workspaceUri === currentWorkspaceUri);
+            session.id === this.selectedSessionId && this.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)
+        ) ?? activeSessions.find(session => this.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri));
         if (!selected) {
             await this.createSession();
             return;
@@ -3853,18 +3904,10 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected async sendAgentMessage(): Promise<void> {
+        await this.sessionsInitialization;
         const session = this.selectedSession();
         const content = session?.agentDraft.trim() ?? '';
         if (!session || !session.workspaceUri || !content || this.runningTask(session)) {
-            return;
-        }
-        if (session.agentSession?.providerId && session.agentSession.providerId !== this.agentCli) {
-            session.agentSession = undefined;
-        }
-        if (!session.agentSession && !await this.ensureProviderSession(session, false, true)) {
-            return;
-        }
-        if (!session.agentSession) {
             return;
         }
         session.agentDraft = '';
@@ -3879,20 +3922,59 @@ export class AgentWindowWidget extends ReactWidget {
             session.title = this.titleForSession(content);
             session.hasUserMessage = true;
         }
-        this.persistWindowState();
+        await this.persistWindowState();
         this.update();
-        try {
-            await this.agentProvider.sendMessage(session.agentSession.id, { role: 'user', content });
-        } catch (error) {
-            session.messages.push({
-                id: `error-${Date.now()}`,
-                role: 'agent',
-                content: `エージェントとの通信でエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`,
-                complete: true
-            });
-            this.persistWindowState();
-            this.update();
+        if (session.agentSession?.providerId && session.agentSession.providerId !== this.agentCli) {
+            session.agentSession = undefined;
         }
+        if (!session.agentSession && !await this.ensureProviderSession(session, false, true)) {
+            await this.recordPreSpawnFailure(
+                session,
+                content,
+                'Agentを開始できませんでした。',
+                this.providerPreparationErrors.get(session.id)
+            );
+            return;
+        }
+        if (!session.agentSession) {
+            await this.recordPreSpawnFailure(session, content, 'Agentを開始できませんでした。');
+            return;
+        }
+        try {
+            await this.agentProvider.sendMessage(session.agentSession.id, {
+                role: 'user',
+                content,
+                ownerSessionId: session.id
+            });
+        } catch (error) {
+            await this.recordPreSpawnFailure(
+                session,
+                content,
+                'Agentを開始できませんでした。',
+                error instanceof Error ? error.message : String(error)
+            );
+        }
+    }
+
+    protected async recordPreSpawnFailure(
+        session: WindowAgentSession,
+        request: string,
+        summary: string,
+        details?: string
+    ): Promise<void> {
+        const task = this.taskService.failBeforeStart(session.id, request, { summary, details });
+        session.messages.push({
+            id: `agent-${task.id}`,
+            role: 'agent',
+            content: summary,
+            complete: true,
+            taskId: task.id,
+            error: true,
+            errorDetails: details
+        });
+        session.updatedAt = Date.now();
+        await this.persistWindowState();
+        this.update();
     }
 
     protected async cancelRun(): Promise<void> {
@@ -3983,6 +4065,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected async newChat(): Promise<void> {
+        await this.sessionsInitialization;
         this.detachCodeWidgets();
         this.codeMode = false;
         this.sessionSearchVisible = false;

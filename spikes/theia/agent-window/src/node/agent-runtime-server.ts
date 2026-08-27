@@ -162,6 +162,9 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         if (!workspacePath) {
             throw new Error('No workspace root is open.');
         }
+        if (process.env.POIESIS_AGENT_FORCE_PRESPAWN_FAILURE === '1') {
+            throw new Error('Agent pre-spawn failure requested by test hook.');
+        }
 
         const provider = await this.providerRegistry.resolve('agent', providerId);
 

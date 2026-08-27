@@ -69,10 +69,14 @@ export class CliAgentProvider implements AgentProvider {
                 this.sessions.set(session.id, session);
                 return session;
             }
+            if (report.detections.some(item => item.status === 'found')) {
+                throw new Error(`${detection?.name ?? providerId} CLI は現在利用できません。`);
+            }
+            return this.mockProvider.createSession(input);
         } catch (error) {
-            console.warn('[Poiesis] Codex detection failed; using MockAgentProvider.', error);
+            console.warn('[Poiesis] Agent provider preparation failed.', error);
+            throw error;
         }
-        return this.mockProvider.createSession(input);
     }
 
     async sendMessage(sessionId: string, message: AgentMessage): Promise<void> {
@@ -84,7 +88,7 @@ export class CliAgentProvider implements AgentProvider {
             throw new Error('A Codex Task is already running for this session.');
         }
 
-        const task = this.taskService.start(sessionId, message.content);
+        const task = this.taskService.start(message.ownerSessionId, message.content, session.workspacePath);
         const run: CodexRun = {
             sessionId,
             taskId: task.id,
@@ -97,13 +101,12 @@ export class CliAgentProvider implements AgentProvider {
         this.runs.set(sessionId, run);
         this.eventEmitter.fire({ type: 'task-started', sessionId, taskId: task.id });
 
-        await this.taskService.whenBaselineCaptured(task.id);
-        if (this.runs.get(sessionId) !== run || run.state === 'cancelling') {
-            return;
-        }
-
-        run.state = 'running';
         try {
+            await this.taskService.whenBaselineCaptured(task.id);
+            if (this.runs.get(sessionId) !== run || run.state === 'cancelling') {
+                return;
+            }
+            run.state = 'running';
             await this.runtimeServer.runCodex({
                 executionId: run.executionId,
                 providerId: session.providerId,
