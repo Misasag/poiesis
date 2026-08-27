@@ -31,6 +31,9 @@ const startProcess = spawn(electronExecutable, [
     `--electronUserData=${userDataDir}`,
     `--remote-debugging-port=${debugPort}`,
     '--disable-gpu',
+    '--disable-background-timer-throttling',
+    '--disable-renderer-backgrounding',
+    '--disable-backgrounding-occluded-windows',
     '--disable-dev-shm-usage',
     '--no-sandbox'
 ], {
