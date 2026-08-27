@@ -28,6 +28,7 @@ const resultsSkill = await read('agent-window/src/browser/results-skill.ts');
 const resultsQuestionProtocol = await read('agent-window/src/common/results-question-protocol.ts');
 const resultsQuestionService = await read('agent-window/src/browser/results-question-service.ts');
 const resultsQuestionServer = await read('agent-window/src/node/results-question-server.ts');
+const globalStorageService = await read('agent-window/src/browser/global-storage-service.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
@@ -353,7 +354,7 @@ for (const marker of [
     "const NEW_SESSION_TITLE = '新しい会話'",
     'interface WindowAgentSession',
     'protected readonly sessions: WindowAgentSession[] = []',
-    'this.filteredSessions(false).filter(session => session.hasUserMessage)',
+    'const workspaceGroups = this.workspaceSessionGroups()',
     'const activeTab = session?.activeTab ?? \'agent\'',
     "data-mode={this.codeMode ? 'code' : activeTab}",
     "data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}",
@@ -508,10 +509,19 @@ for (const dummyChrome of [
 ]) {
     assert.ok(!agentWidget.includes(dummyChrome), `Dummy Agent chrome must not return: ${dummyChrome}`);
 }
-assert.ok(agentWidget.includes('@inject(StorageService)'), 'Window sessions must use the application storage boundary');
-assert.ok(agentWidget.includes('this.storageService.setData'), 'Window sessions must persist across reloads');
+assert.ok(agentWidget.includes('@inject(GlobalStorageService)'), 'Window sessions must use the global storage boundary');
+assert.ok(agentWidget.includes('this.globalStorageService.setData'), 'Window sessions must persist across workspaces');
 assert.ok(!agentWidget.includes('window.localStorage'), 'The Agent widget must not write browser storage directly');
 assert.ok(!agentWidget.includes('sessionStorage'), 'Window sessions must survive a browser session');
+for (const marker of [
+    'class BrowserGlobalStorageService',
+    'window.localStorage',
+    '`poiesis:global:${key}`',
+    'getWorkspaceData<T>(key: string)',
+    "storageKey.startsWith('theia:')"
+]) {
+    assert.ok(globalStorageService.includes(marker), `Global session storage is missing ${marker}`);
+}
 const railSource = agentWidget.match(
     /protected renderRail\(\): React\.ReactNode \{[\s\S]*?\n    protected readonly setSessionSearchInput/
 )?.[0];
@@ -528,11 +538,12 @@ for (const marker of [
     'protected sessionSearchQuery = \'\'',
     "aria-label='会話をタイトルで検索'",
     'session.title.toLocaleLowerCase().includes(query)',
-    'protected workspaceExpanded = true',
-    'protected toggleWorkspace(): void',
+    'protected readonly expandedWorkspaceGroups = new Set<string>()',
+    'protected toggleWorkspaceGroup(groupKey: string): void',
     "<div className='poiesis-agent-window__rail-heading'>",
     '<span>Workspaces</span>',
-    "className='poiesis-agent-window__workspace-group'",
+    'poiesis-agent-window__workspace-group',
+    '<small>Local · {group.branch}</small>',
     "className='poiesis-agent-window__session-title'",
     'poiesis-agent-window__session-meta',
     'protected sessionMeta(session: WindowAgentSession): string',
@@ -545,6 +556,10 @@ for (const marker of [
     'protected startRailResize(event: React.PointerEvent<HTMLDivElement>): void',
     'protected async persistWindowState(): Promise<void>',
     'protected async restoreWindowState(): Promise<boolean>',
+    'protected async loadGlobalWindowState()',
+    'protected mergePersistedWindowStates(',
+    'SESSION_MIGRATION_MARKER_KEY',
+    'GLOBAL_SESSION_STORAGE_KEY',
     'protected async openRepository(): Promise<void>',
     'protected renderWorkspacePicker(): React.ReactNode',
     "aria-label='Workspaceを開く'",

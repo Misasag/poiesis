@@ -31,12 +31,15 @@ import { getDesignVariant } from './design-variant';
 import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
 import { ResultsQuestionService } from './results-question-service';
+import { GlobalStorageService } from './global-storage-service';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
 type UiFontScale = 'small' | 'standard' | 'large';
 const NEW_SESSION_TITLE = '新しい会話';
 const SESSION_STORAGE_KEY = 'poiesis.agent-window.sessions.v1';
+const GLOBAL_SESSION_STORAGE_KEY = 'poiesis.agent-window.sessions.global.v1';
+const SESSION_MIGRATION_MARKER_KEY = 'poiesis.agent-window.sessions.migrated.v1';
 const SETTINGS_STORAGE_KEY = 'poiesis.settings.v1';
 const DEFAULT_RAIL_WIDTH = 258;
 const MIN_RAIL_WIDTH = 196;
@@ -117,6 +120,16 @@ interface PickerAnchor {
     maxHeight: number;
 }
 
+interface WorkspaceSessionGroup {
+    key: string;
+    workspaceUri?: string;
+    name: string;
+    branch: string;
+    current: boolean;
+    activeSessions: WindowAgentSession[];
+    archivedSessions: WindowAgentSession[];
+}
+
 @injectable()
 export class AgentWindowWidget extends ReactWidget {
     static readonly ID = 'poiesis-agent-window';
@@ -193,7 +206,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected showArchivedSessions = false;
     protected sessionSearchVisible = false;
     protected sessionSearchQuery = '';
-    protected workspaceExpanded = true;
+    protected readonly expandedWorkspaceGroups = new Set<string>();
     protected sessionSearchInput?: HTMLInputElement;
     protected agentComposerInput?: HTMLTextAreaElement;
     protected agentSendButton?: HTMLButtonElement;
@@ -232,6 +245,7 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(IconThemeService) protected readonly iconThemeService: IconThemeService,
         @inject(VSXExtensionsSearchModel) protected readonly extensionsSearchModel: VSXExtensionsSearchModel,
         @inject(StorageService) protected readonly storageService: StorageService,
+        @inject(GlobalStorageService) protected readonly globalStorageService: GlobalStorageService,
         @inject(CustomizationService) protected readonly customizationService: CustomizationService,
         @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService,
         @inject(AgentRuntimeServer) protected readonly agentRuntimeServer: AgentRuntimeServer,
@@ -393,10 +407,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderRail(): React.ReactNode {
-        const activeSessions = this.filteredSessions(false).filter(session => session.hasUserMessage);
-        const pinnedSessions = activeSessions.filter(session => session.pinned);
-        const recentSessions = activeSessions.filter(session => !session.pinned);
-        const archivedSessions = this.filteredSessions(true).filter(session => session.hasUserMessage);
+        const workspaceGroups = this.workspaceSessionGroups();
         const toggleLabel = this.railCollapsed ? '左サイドバーを展開' : '左サイドバーを折りたたむ';
         return (
             <aside
@@ -479,49 +490,7 @@ export class AgentWindowWidget extends ReactWidget {
                     </button>
                 </div>
                 <div className='poiesis-agent-window__sessions'>
-                    <div className='poiesis-agent-window__workspace-group'>
-                        <button
-                            type='button'
-                            className='poiesis-agent-window__workspace-name'
-                            aria-expanded={this.workspaceExpanded}
-                            onClick={() => this.toggleWorkspace()}
-                        >
-                            <span className='codicon codicon-folder-opened' aria-hidden='true' />
-                            <strong>{this.workspaceFolderName()}</strong>
-                            <span
-                                className={`codicon codicon-chevron-${this.workspaceExpanded ? 'down' : 'right'}`}
-                                aria-hidden='true'
-                            />
-                        </button>
-                        {this.workspaceExpanded && pinnedSessions.length > 0 && (
-                            <div className='poiesis-agent-window__session-section-label'>Pinned</div>
-                        )}
-                        {this.workspaceExpanded && pinnedSessions.map(session => this.renderSessionRow(session))}
-                        {this.workspaceExpanded && pinnedSessions.length > 0 && recentSessions.length > 0 && (
-                            <div className='poiesis-agent-window__session-section-label'>Recent</div>
-                        )}
-                        {this.workspaceExpanded && recentSessions.map(session => this.renderSessionRow(session))}
-                        {this.workspaceExpanded && !activeSessions.length && (
-                            <div className='poiesis-agent-window__session-empty'>
-                                {this.sessionSearchQuery.trim() ? '一致する会話はありません。' : 'セッションはありません。'}
-                            </div>
-                        )}
-                        {this.workspaceExpanded && archivedSessions.length > 0 && (
-                            <>
-                                <button
-                                    type='button'
-                                    className='poiesis-agent-window__archived-toggle'
-                                    aria-expanded={this.showArchivedSessions}
-                                    onClick={() => this.toggleArchivedSessions()}
-                                >
-                                    <span className={`codicon codicon-chevron-${this.showArchivedSessions ? 'down' : 'right'}`} aria-hidden='true' />
-                                    <span>Archived</span>
-                                    <small>{archivedSessions.length}</small>
-                                </button>
-                                {this.showArchivedSessions && archivedSessions.map(session => this.renderSessionRow(session))}
-                            </>
-                        )}
-                    </div>
+                    {workspaceGroups.map(group => this.renderWorkspaceSessionGroup(group))}
                 </div>
                 <div className='poiesis-agent-window__rail-footer'>
                     <span className='poiesis-agent-window__rail-footer-label'>Poiesis</span>
@@ -550,12 +519,118 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
+    protected workspaceSessionGroups(): WorkspaceSessionGroup[] {
+        const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
+        const groups = new Map<string, WorkspaceSessionGroup>();
+        const ensureGroup = (workspaceUri?: string): WorkspaceSessionGroup => {
+            const key = this.workspaceGroupKey(workspaceUri);
+            let group = groups.get(key);
+            if (!group) {
+                const resource = workspaceUri ? new URI(workspaceUri) : undefined;
+                group = {
+                    key,
+                    workspaceUri,
+                    name: resource?.path.base || resource?.displayName || 'ワークスペースなし',
+                    branch: workspaceUri === currentWorkspaceUri
+                        ? this.gitBranchForWorkspace(workspaceUri) ?? this.currentGitBranch() ?? 'main'
+                        : 'main',
+                    current: workspaceUri === currentWorkspaceUri,
+                    activeSessions: [],
+                    archivedSessions: []
+                };
+                groups.set(key, group);
+            }
+            return group;
+        };
+        if (currentWorkspaceUri) {
+            ensureGroup(currentWorkspaceUri);
+        }
+        for (const session of this.filteredSessions(false).filter(candidate => candidate.hasUserMessage)) {
+            const group = ensureGroup(session.workspaceUri);
+            group.activeSessions.push(session);
+            group.branch = session.branch ?? group.branch;
+        }
+        for (const session of this.filteredSessions(true).filter(candidate => candidate.hasUserMessage)) {
+            const group = ensureGroup(session.workspaceUri);
+            group.archivedSessions.push(session);
+            group.branch = session.branch ?? group.branch;
+        }
+        return [...groups.values()].sort((left, right) => {
+            if (left.current !== right.current) {
+                return left.current ? -1 : 1;
+            }
+            const latest = (group: WorkspaceSessionGroup): number => Math.max(
+                0,
+                ...group.activeSessions.map(session => session.updatedAt),
+                ...group.archivedSessions.map(session => session.updatedAt)
+            );
+            return latest(right) - latest(left) || left.name.localeCompare(right.name);
+        });
+    }
+
+    protected renderWorkspaceSessionGroup(group: WorkspaceSessionGroup): React.ReactNode {
+        const expanded = this.expandedWorkspaceGroups.has(group.key);
+        const pinnedSessions = group.activeSessions.filter(session => session.pinned);
+        const recentSessions = group.activeSessions.filter(session => !session.pinned);
+        return (
+            <div className={`poiesis-agent-window__workspace-group${group.current ? ' current' : ''}`} key={group.key}>
+                <button
+                    type='button'
+                    className='poiesis-agent-window__workspace-name'
+                    aria-expanded={expanded}
+                    onClick={() => this.toggleWorkspaceGroup(group.key)}
+                >
+                    <span className='codicon codicon-folder-opened' aria-hidden='true' />
+                    <span className='poiesis-agent-window__workspace-name-copy'>
+                        <strong>{group.name}</strong>
+                        <small>Local · {group.branch}</small>
+                    </span>
+                    <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
+                </button>
+                {expanded && pinnedSessions.length > 0 && (
+                    <div className='poiesis-agent-window__session-section-label'>Pinned</div>
+                )}
+                {expanded && pinnedSessions.map(session => this.renderSessionRow(session))}
+                {expanded && pinnedSessions.length > 0 && recentSessions.length > 0 && (
+                    <div className='poiesis-agent-window__session-section-label'>Recent</div>
+                )}
+                {expanded && recentSessions.map(session => this.renderSessionRow(session))}
+                {expanded && !group.activeSessions.length && (
+                    <div className='poiesis-agent-window__session-empty'>
+                        {this.sessionSearchQuery.trim() ? '一致する会話はありません。' : 'セッションはありません。'}
+                    </div>
+                )}
+                {expanded && group.archivedSessions.length > 0 && (
+                    <>
+                        <button
+                            type='button'
+                            className='poiesis-agent-window__archived-toggle'
+                            aria-expanded={this.showArchivedSessions}
+                            onClick={() => this.toggleArchivedSessions()}
+                        >
+                            <span className={`codicon codicon-chevron-${this.showArchivedSessions ? 'down' : 'right'}`} aria-hidden='true' />
+                            <span>Archived</span>
+                            <small>{group.archivedSessions.length}</small>
+                        </button>
+                        {this.showArchivedSessions && group.archivedSessions.map(session => this.renderSessionRow(session))}
+                    </>
+                )}
+            </div>
+        );
+    }
+
+    protected workspaceGroupKey(workspaceUri: string | undefined): string {
+        return workspaceUri || '__no-workspace__';
+    }
+
     protected renderSessionRow(session: WindowAgentSession): React.ReactNode {
         const selected = session.id === this.selectedSessionId;
         const renaming = session.id === this.renamingSessionId;
         const menuOpen = session.id === this.openSessionMenuId;
         const state = this.sessionState(session);
         const running = state.kind === 'running';
+        const switchesWorkspace = Boolean(session.workspaceUri
+            && session.workspaceUri !== this.workspaceRoot()?.resource.toString());
         return (
             <div
                 key={session.id}
@@ -589,7 +664,9 @@ export class AgentWindowWidget extends ReactWidget {
                     <button
                         type='button'
                         className='poiesis-agent-window__session'
-                        title={session.title}
+                        title={switchesWorkspace
+                            ? `${session.title} — ${this.repositoryLabel(session.workspaceUri)}へ切り替え`
+                            : session.title}
                         aria-current={selected ? 'true' : undefined}
                         onClick={() => session.archived ? this.restoreSession(session.id, true) : this.selectSession(session.id)}
                     >
@@ -751,9 +828,9 @@ export class AgentWindowWidget extends ReactWidget {
         session.updatedAt = Date.now();
         this.openSessionMenuId = undefined;
         if (select) {
-            this.selectedSessionId = session.id;
             session.activeTab = 'agent';
-            void this.ensureProviderSession(session);
+            this.selectSession(session.id);
+            return;
         }
         this.persistWindowState();
         this.update();
@@ -877,8 +954,12 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
     }
 
-    protected toggleWorkspace(): void {
-        this.workspaceExpanded = !this.workspaceExpanded;
+    protected toggleWorkspaceGroup(groupKey: string): void {
+        if (this.expandedWorkspaceGroups.has(groupKey)) {
+            this.expandedWorkspaceGroups.delete(groupKey);
+        } else {
+            this.expandedWorkspaceGroups.add(groupKey);
+        }
         this.update();
     }
 
@@ -3406,6 +3487,13 @@ export class AgentWindowWidget extends ReactWidget {
         session.unreadTaskCompletion = false;
         session.updatedAt = Date.now();
         this.openSessionMenuId = undefined;
+        const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
+        if (session.workspaceUri && session.workspaceUri !== currentWorkspaceUri) {
+            this.persistWindowState();
+            this.update();
+            this.workspaceService.open(new URI(session.workspaceUri), { preserveWindow: true });
+            return;
+        }
         if (session.hasUserMessage) {
             void this.ensureProviderSession(session);
         }
@@ -3534,7 +3622,7 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async restoreWindowState(): Promise<boolean> {
         try {
-            const state = await this.storageService.getData<Partial<PersistedAgentWindowState>>(SESSION_STORAGE_KEY);
+            const state = await this.loadGlobalWindowState();
             if (!state) {
                 return false;
             }
@@ -3591,6 +3679,56 @@ export class AgentWindowWidget extends ReactWidget {
         }
     }
 
+    protected async loadGlobalWindowState(): Promise<Partial<PersistedAgentWindowState> | undefined> {
+        const globalState = await this.globalStorageService.getData<Partial<PersistedAgentWindowState>>(GLOBAL_SESSION_STORAGE_KEY);
+        const migrated = await this.globalStorageService.getData<boolean>(SESSION_MIGRATION_MARKER_KEY);
+        if (migrated) {
+            return globalState;
+        }
+        const legacyStates = await this.globalStorageService.getWorkspaceData<Partial<PersistedAgentWindowState>>(SESSION_STORAGE_KEY);
+        const currentLegacyState = await this.storageService.getData<Partial<PersistedAgentWindowState>>(SESSION_STORAGE_KEY);
+        if (currentLegacyState) {
+            legacyStates.push(currentLegacyState);
+        }
+        const merged = this.mergePersistedWindowStates([globalState, ...legacyStates]);
+        if (merged) {
+            await this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, merged);
+        }
+        await this.globalStorageService.setData(SESSION_MIGRATION_MARKER_KEY, true);
+        return merged;
+    }
+
+    protected mergePersistedWindowStates(
+        states: Array<Partial<PersistedAgentWindowState> | undefined>
+    ): PersistedAgentWindowState | undefined {
+        const valid = states.filter((state): state is Partial<PersistedAgentWindowState> =>
+            state?.version === 1 && Array.isArray(state.sessions)
+        );
+        if (!valid.length) {
+            return undefined;
+        }
+        const mergedSessions = new Map<string, PersistedAgentWindowState['sessions'][number]>();
+        for (const state of valid) {
+            for (const session of state.sessions ?? []) {
+                if (!session || typeof session.id !== 'string') {
+                    continue;
+                }
+                const existing = mergedSessions.get(session.id);
+                if (!existing || Number(session.updatedAt) >= Number(existing.updatedAt)) {
+                    mergedSessions.set(session.id, session);
+                }
+            }
+        }
+        const preferred = valid.find(state => typeof state.selectedSessionId === 'string') ?? valid[0];
+        return {
+            version: 1,
+            selectedSessionId: preferred.selectedSessionId,
+            railWidth: Number(preferred.railWidth) || DEFAULT_RAIL_WIDTH,
+            railCollapsed: Boolean(preferred.railCollapsed),
+            sessions: [...mergedSessions.values()]
+        };
+    }
+
     protected async persistWindowState(): Promise<void> {
         try {
             const state: PersistedAgentWindowState = {
@@ -3606,7 +3744,7 @@ export class AgentWindowWidget extends ReactWidget {
                     };
                 })
             };
-            await this.storageService.setData(SESSION_STORAGE_KEY, state);
+            await this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, state);
         } catch (error) {
             console.warn('[Poiesis] Could not persist Agent Window sessions.', error);
         }
@@ -3619,12 +3757,17 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async initializeSessions(): Promise<void> {
         const restored = await this.restoreWindowState();
+        const currentWorkspaceKey = this.workspaceGroupKey(this.workspaceRoot()?.resource.toString());
+        this.expandedWorkspaceGroups.add(currentWorkspaceKey);
         if (!restored) {
             await this.createSession();
             return;
         }
         const activeSessions = this.filteredSessions(false);
-        const selected = activeSessions.find(session => session.id === this.selectedSessionId) ?? activeSessions[0];
+        const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
+        const selected = activeSessions.find(session =>
+            session.id === this.selectedSessionId && session.workspaceUri === currentWorkspaceUri
+        ) ?? activeSessions.find(session => session.workspaceUri === currentWorkspaceUri);
         if (!selected) {
             await this.createSession();
             return;

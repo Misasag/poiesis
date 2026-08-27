@@ -983,10 +983,32 @@
 }
 
 .poiesis-agent-window__workspace-name strong {
+    display: block;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.poiesis-agent-window__workspace-name-copy {
+    display: block;
+    flex: 1;
+    min-width: 0;
+}
+
+.poiesis-agent-window__workspace-name-copy small {
+    color: var(--poiesis-chrome-muted);
+    display: block;
+    font-size: 8px;
+    font-weight: 500;
+    margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-agent-window__workspace-group.current .poiesis-agent-window__workspace-name > .codicon:first-child {
+    color: #aeb9d1;
 }
 
 .poiesis-agent-window__workspace-name .codicon:last-child {

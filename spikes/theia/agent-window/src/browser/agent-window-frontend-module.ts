@@ -21,6 +21,7 @@ import { ResultsQuestionServer, resultsQuestionServerPath } from '../common/resu
 import { ResultsQuestionService } from './results-question-service';
 import { WorkspaceTrustService } from '@theia/workspace/lib/browser/workspace-trust-service';
 import { PoiesisWorkspaceTrustService } from './poiesis-workspace-trust-service';
+import { BrowserGlobalStorageService, GlobalStorageService } from './global-storage-service';
 import '../../src/browser/style/index.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
@@ -46,6 +47,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     bind(ResultsService).toSelf().inSingletonScope();
     bind(CustomizationService).toSelf().inSingletonScope();
     bind(FolderExplorerService).toSelf().inSingletonScope();
+    bind(BrowserGlobalStorageService).toSelf().inSingletonScope();
+    bind(GlobalStorageService).toService(BrowserGlobalStorageService);
 
     bind(DesignShotContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(DesignShotContribution);
