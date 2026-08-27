@@ -1,0 +1,76 @@
+.poiesis-agent-window__header {
+    -webkit-app-region: drag;
+    padding-right: 154px;
+}
+
+.poiesis-agent-window__header.poiesis-agent-window__code-header {
+    min-height: 46px;
+}
+
+.poiesis-agent-window__header button,
+.poiesis-agent-window__header select,
+.poiesis-agent-window__header input,
+.poiesis-agent-window__header textarea,
+.poiesis-agent-window__header [role='tab'],
+.poiesis-agent-window__header a,
+.poiesis-agent-window__header [contenteditable='true'] {
+    -webkit-app-region: no-drag;
+}
+
+.poiesis-window-controls {
+    -webkit-app-region: no-drag;
+    align-items: stretch;
+    color: #d8d9d3;
+    display: flex;
+    height: 46px;
+    position: fixed;
+    right: 0;
+    top: 0;
+    z-index: 1000;
+}
+
+.poiesis-window-controls__button {
+    -webkit-app-region: no-drag;
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: default;
+    display: flex;
+    height: 46px;
+    justify-content: center;
+    margin: 0;
+    min-width: 46px;
+    padding: 0;
+    width: 46px;
+}
+
+.poiesis-window-controls__button:hover,
+.poiesis-window-controls__button:focus-visible {
+    background: #30312e;
+    color: #ffffff;
+    outline: none;
+}
+
+.poiesis-window-controls__button:focus-visible {
+    box-shadow: inset 0 0 0 1px #777a73;
+}
+
+.poiesis-window-controls__button:active {
+    background: #3a3b38;
+}
+
+.poiesis-window-controls__button .codicon {
+    font-size: 12px;
+    pointer-events: none;
+}
+
+.poiesis-window-controls__close:hover,
+.poiesis-window-controls__close:focus-visible {
+    background: #c42b1c;
+    color: #ffffff;
+}
+
+.poiesis-window-controls__close:active {
+    background: #a92315;
+}

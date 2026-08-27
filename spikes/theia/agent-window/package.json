@@ -27,6 +27,9 @@
     {
       "frontend": "lib/browser/agent-window-frontend-module",
       "backend": "lib/node/agent-window-backend-module"
+    },
+    {
+      "frontendElectron": "lib/electron-browser/agent-window-electron-frontend-module"
     }
   ]
 }
