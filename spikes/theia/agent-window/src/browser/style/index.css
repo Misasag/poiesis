@@ -3640,6 +3640,11 @@ body.poiesis-code-file-pointer-drag * {
     white-space: nowrap;
 }
 
+.poiesis-settings-modal__cli-copy small.future-note {
+    color: #d8b178;
+    font-weight: 600;
+}
+
 .poiesis-settings-modal__cli-status {
     color: #c08a7f;
     font-size: 9px;

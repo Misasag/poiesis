@@ -423,6 +423,7 @@ for (const marker of [
     'Content-Security-Policy',
     'protected async clearSavedSessionData(): Promise<void>',
     '<strong>Poiesis plugin bundles</strong>',
+    "<small className='future-note'>実行対応は今後</small>",
     "aria-label='Results skillを有効化'",
     'this.customizationService.setSkillEnabled',
     'onCompositionEnd={event => this.setAgentDraft(event.currentTarget.value)}'

@@ -1512,7 +1512,8 @@ export class AgentWindowWidget extends ReactWidget {
                                             />
                                             <span className='poiesis-settings-modal__cli-copy'>
                                                 <strong>{id === 'codex' ? 'Codex' : 'Claude'}</strong>
-                                                <small title={detection?.path}>{detection?.path ?? (executable ? 'codex CLI' : '実行対応は今後')}</small>
+                                                <small title={detection?.path}>{detection?.path ?? `${id} CLI`}</small>
+                                                {!executable && <small className='future-note'>実行対応は今後</small>}
                                             </span>
                                             <span className={`poiesis-settings-modal__cli-status ${detection?.status ?? 'missing'}`}>{status}</span>
                                         </label>
