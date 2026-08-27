@@ -17,6 +17,8 @@ import { TaskService } from './task-service';
 import { PoiesisFrontendApplication } from './poiesis-frontend-application';
 import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
+import { ResultsQuestionServer, resultsQuestionServerPath } from '../common/results-question-protocol';
+import { ResultsQuestionService } from './results-question-service';
 import '../../src/browser/style/index.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
@@ -28,6 +30,9 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
         return context.container.get(WebSocketConnectionProvider)
             .createProxy<AgentRuntimeServer>(agentRuntimeServerPath, client);
     }).inSingletonScope();
+    bind(ResultsQuestionServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
+        .createProxy<ResultsQuestionServer>(resultsQuestionServerPath)).inSingletonScope();
+    bind(ResultsQuestionService).toSelf().inSingletonScope();
     bind(TaskService).toSelf().inSingletonScope();
     bind(MockAgentProvider).toSelf().inSingletonScope();
     bind(CliAgentProvider).toSelf().inSingletonScope();
