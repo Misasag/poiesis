@@ -9,7 +9,6 @@ import URI from '@theia/core/lib/common/uri';
 import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { Widget } from '@theia/core/shared/@lumino/widgets';
 import { EditorManager, EditorWidget } from '@theia/editor/lib/browser';
-import { FileDialogService } from '@theia/filesystem/lib/browser';
 import { ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-provider';
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
@@ -205,7 +204,6 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(TaskService) protected readonly taskService: TaskService,
         @inject(ResultsService) protected readonly resultsService: ResultsService,
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
-        @inject(FileDialogService) protected readonly fileDialogService: FileDialogService,
         @inject(ScmService) protected readonly scmService: ScmService,
         @inject(TerminalService) protected readonly terminalService: TerminalService,
         @inject(WidgetManager) protected readonly widgetManager: WidgetManager,
@@ -1034,33 +1032,14 @@ export class AgentWindowWidget extends ReactWidget {
         this.persistWindowState();
     }
 
-    protected async chooseExistingRepository(session: WindowAgentSession): Promise<void> {
-        const folder = await this.fileDialogService.showOpenDialog({
-            title: 'Select Repository',
-            canSelectFiles: false,
-            canSelectFolders: true
-        }, this.workspaceRoot());
-        if (!folder) {
-            return;
-        }
-        session.workspaceUri = folder.toString();
-        session.branch = 'main';
-        session.updatedAt = Date.now();
-        this.repositoryPickerVisible = false;
-        this.repositorySearchQuery = '';
-        this.persistWindowState();
-        this.update();
-        this.workspaceService.open(folder, { preserveWindow: true });
-    }
-
-    protected async openFolderExplorer(session: WindowAgentSession): Promise<void> {
+    protected async openFolderExplorer(session?: WindowAgentSession, createFolder = false): Promise<void> {
         this.folderExplorerVisible = true;
-        this.folderExplorerSessionId = session.id;
+        this.folderExplorerSessionId = session?.id;
         this.folderExplorerError = undefined;
-        this.creatingFolder = false;
+        this.creatingFolder = createFolder;
         this.newFolderName = '';
         this.update();
-        await this.loadFolderExplorer(session.workspaceUri
+        await this.loadFolderExplorer(session?.workspaceUri
             ? new URI(session.workspaceUri).path.fsPath()
             : this.workspaceRoot()?.resource.path.fsPath());
     }
@@ -1110,15 +1089,19 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected selectFolderFromExplorer(): void {
-        const session = this.sessions.find(candidate => candidate.id === this.folderExplorerSessionId);
+        const session = this.folderExplorerSessionId
+            ? this.sessions.find(candidate => candidate.id === this.folderExplorerSessionId)
+            : undefined;
         const selectedPath = this.folderExplorerResult?.path;
-        if (!session || !selectedPath) {
+        if (!selectedPath || (this.folderExplorerSessionId && !session)) {
             return;
         }
         const folder = URI.fromFilePath(selectedPath);
-        session.workspaceUri = folder.toString();
-        session.branch = 'main';
-        session.updatedAt = Date.now();
+        if (session) {
+            session.workspaceUri = folder.toString();
+            session.branch = 'main';
+            session.updatedAt = Date.now();
+        }
         this.repositoryPickerVisible = false;
         this.repositorySearchQuery = '';
         this.closeFolderExplorer();
@@ -1129,14 +1112,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected async openRepository(): Promise<void> {
         this.workspacePickerVisible = false;
         this.workspaceSearchQuery = '';
-        const folder = await this.fileDialogService.showOpenDialog({
-            title: 'Open Folder',
-            canSelectFiles: false,
-            canSelectFolders: true
-        }, this.workspaceRoot());
-        if (folder) {
-            this.workspaceService.open(folder, { preserveWindow: true });
-        }
+        await this.openFolderExplorer();
     }
 
     protected sessionMeta(session: WindowAgentSession): string {
@@ -1662,11 +1638,11 @@ export class AgentWindowWidget extends ReactWidget {
                             <div className='poiesis-agent-window__repository-empty'>一致するRepositoryはありません</div>
                         )}
                         <div className='poiesis-agent-window__repository-footer'>
-                            <button type='button' onClick={() => void this.chooseExistingRepository(session)}>
+                            <button type='button' onClick={() => void this.openFolderExplorer(session)}>
                                 <span className='codicon codicon-folder-opened' aria-hidden='true' />
                                 Use Existing…
                             </button>
-                            <button type='button' onClick={() => void this.openFolderExplorer(session)}>
+                            <button type='button' onClick={() => void this.openFolderExplorer(session, true)}>
                                 <span className='codicon codicon-new-folder' aria-hidden='true' />
                                 New Folder
                             </button>

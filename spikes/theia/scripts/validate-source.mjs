@@ -288,7 +288,6 @@ for (const marker of [
     "import { EditorManager, EditorWidget } from '@theia/editor/lib/browser'",
     "import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service'",
     "import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model'",
-    "import { FileDialogService } from '@theia/filesystem/lib/browser'",
     "import { ScmService } from '@theia/scm/lib/browser/scm-service'",
     "const NEW_SESSION_TITLE = '新しい会話'",
     'interface WindowAgentSession',
@@ -486,7 +485,7 @@ for (const marker of [
     'protected renderWorkspacePicker(): React.ReactNode',
     "aria-label='Workspaceを開く'",
     "aria-label='Workspaceを検索'",
-    'this.fileDialogService.showOpenDialog',
+    'await this.openFolderExplorer()',
     'this.workspaceService.open(folder, { preserveWindow: true })',
     "runTarget: 'local'",
     "className='poiesis-agent-window__new-agent-context'",
@@ -495,8 +494,8 @@ for (const marker of [
     '<span>Run on · This Computer</span>',
     'protected repositoryChoices()',
     'protected selectRepository(session: WindowAgentSession, workspaceUri: string): void',
-    'protected async chooseExistingRepository(session: WindowAgentSession): Promise<void>',
-    'protected async openFolderExplorer(session: WindowAgentSession): Promise<void>',
+    'protected async openFolderExplorer(session?: WindowAgentSession, createFolder = false): Promise<void>',
+    'onClick={() => void this.openFolderExplorer(session, true)}',
     'this.folderExplorerService.browse',
     'protected renderFolderExplorer(): React.ReactNode',
     "aria-label='フォルダーを選択'",
@@ -505,6 +504,8 @@ for (const marker of [
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent rail is missing ${marker}`);
 }
+assert.ok(!agentWidget.includes('FileDialogService'), 'Poiesis must not open stock Theia file dialogs');
+assert.ok(!agentWidget.includes('showOpenDialog'), 'Folder selection must use the Poiesis explorer');
 assert.ok(!railSource.includes('<small>現在</small>'), 'Selected sessions must use quiet age metadata, not a current badge');
 assert.ok(
     (agentWidget.match(/onClick=\{\(\) => this\.openSettings\(\)\}/g)?.length ?? 0) >= 2,
