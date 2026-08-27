@@ -432,6 +432,7 @@ for (const marker of [
 assert.ok(!agentWidget.includes('Saveable.confirmSaveBeforeClose'), 'Editor close must use the Poiesis-owned confirmation dialog');
 assert.ok(!agentWidget.includes('branchPickerVisible'), 'The non-functional branch picker must not return');
 assert.ok(!agentWidget.includes('<strong>No Repo</strong>'), 'The non-functional No Repo option must not return');
+assert.ok(!agentWidget.includes('&& session && !session.selectedResultsTaskId'), 'Results must select the latest terminated Task');
 assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.openCustomize()}"), 'Code Extensions must not open Poiesis Customize');
 assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Poiesis Settings');
 assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Poiesis Customize must not manage Code extensions');

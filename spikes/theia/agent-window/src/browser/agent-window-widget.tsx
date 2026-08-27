@@ -277,8 +277,7 @@ export class AgentWindowWidget extends ReactWidget {
                     : event.type === 'ended' ? 'completed' : event.type;
                 session.updatedAt = Date.now();
             }
-            if ((event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled')
-                && session && !session.selectedResultsTaskId) {
+            if ((event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled') && session) {
                 session.selectedResultsTaskId = event.task.id;
             }
             this.persistWindowState();
