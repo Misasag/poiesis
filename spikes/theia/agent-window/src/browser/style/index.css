@@ -50,7 +50,7 @@
 }
 
 .poiesis-folder-explorer__header strong {
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .poiesis-folder-explorer__header button,
@@ -117,7 +117,7 @@
 .poiesis-folder-explorer__column-heading {
     border-bottom: 1px solid #30322e;
     color: #777a73;
-    font-size: 9px;
+    font-size: 12px;
     padding: 5px 9px 7px;
 }
 
@@ -147,7 +147,7 @@
 }
 
 .poiesis-folder-explorer__folder-row strong {
-    font-size: 10px;
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -156,7 +156,7 @@
 .poiesis-folder-explorer__folder-row small,
 .poiesis-folder-explorer__folder-row > .codicon {
     color: #777a73;
-    font-size: 9px;
+    font-size: 12px;
 }
 
 .poiesis-folder-explorer__new-folder-row {
@@ -186,7 +186,7 @@
 
 .poiesis-folder-explorer__state {
     color: var(--poiesis-chrome-muted);
-    font-size: 10px;
+    font-size: 12px;
     padding: 28px 10px;
     text-align: center;
 }
@@ -208,7 +208,7 @@
     border-radius: 6px;
     color: var(--poiesis-chrome-text);
     cursor: pointer;
-    font-size: 9px;
+    font-size: 12px;
     padding: 7px 11px;
 }
 
@@ -232,7 +232,7 @@
 .poiesis-folder-explorer__selection {
     color: #777a73;
     flex: 1;
-    font-size: 9px;
+    font-size: 12px;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -272,7 +272,7 @@
 
 .poiesis-changes__eyebrow {
     color: var(--theia-descriptionForeground);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.08em;
 }
@@ -342,7 +342,7 @@
 
 .poiesis-changes__summary span {
     color: var(--theia-descriptionForeground);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 400;
     margin-left: 8px;
 }
@@ -404,7 +404,7 @@
     border-radius: 10px;
     color: var(--theia-badge-foreground);
     flex: none;
-    font-size: 11px;
+    font-size: 12px;
     padding: 3px 8px;
 }
 
@@ -428,12 +428,12 @@
 
 .poiesis-changes__before-after span {
     color: var(--theia-descriptionForeground);
-    font-size: 11px;
+    font-size: 12px;
     margin-bottom: 5px;
 }
 
 .poiesis-changes__before-after strong {
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.45;
 }
 
@@ -460,13 +460,13 @@
 
 .poiesis-changes__semantic-details dt {
     color: var(--theia-descriptionForeground);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
 }
 
 .poiesis-changes__semantic-details dd {
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.5;
     margin: 0;
 }
@@ -492,7 +492,7 @@
 
 .poiesis-changes__evidence-title {
     color: var(--theia-descriptionForeground);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.08em;
     margin-bottom: 2px;
@@ -526,7 +526,7 @@
 
 .poiesis-changes__status {
     color: var(--theia-descriptionForeground);
-    font-size: 12px;
+    font-size: 13px;
     margin-top: 9px;
 }
 
@@ -564,12 +564,12 @@
 
 .poiesis-agent-window__message-error strong {
     color: #f0d0cb;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .poiesis-agent-window__message-error details {
     color: #b9a4a0;
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__message-error summary {
@@ -593,7 +593,7 @@
     border-radius: 5px;
     color: inherit;
     cursor: pointer;
-    font-size: 10px;
+    font-size: 12px;
     justify-self: start;
     padding: 4px 8px;
 }
@@ -614,7 +614,7 @@
 }
 
 .poiesis-results__state p {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.55;
     margin: 0;
 }
@@ -690,7 +690,7 @@
     border-right: 1px solid var(--poiesis-chrome-line);
     display: grid;
     font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
-    font-size: 12px;
+    font-size: 13px;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     line-height: 1.48;
     min-height: 0;
@@ -759,7 +759,7 @@
     align-items: center;
     color: #a9aaa4;
     display: flex;
-    font-size: 11px;
+    font-size: 12px;
     gap: 9px;
     min-height: 31px;
     padding: 6px 9px;
@@ -809,7 +809,7 @@
     background: transparent;
     border: 0;
     color: var(--poiesis-chrome-text);
-    font-size: 12px;
+    font-size: 13px;
     min-width: 0;
     outline: none;
     padding: 1px 0;
@@ -824,7 +824,7 @@
     align-items: center;
     color: #777a73;
     display: flex;
-    font-size: 10px;
+    font-size: 12px;
     justify-content: space-between;
     padding: 9px 15px 5px;
     position: relative;
@@ -845,7 +845,7 @@
 }
 
 .poiesis-agent-window__workspace-picker-title {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 650;
     padding: 3px 5px 8px;
 }
@@ -870,14 +870,14 @@
     background: transparent;
     border: 0;
     color: var(--poiesis-chrome-text);
-    font-size: 10px;
+    font-size: 12px;
     min-width: 0;
     outline: 0;
 }
 
 .poiesis-agent-window__workspace-picker-label {
     color: #73756f;
-    font-size: 8px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: .07em;
     padding: 8px 7px 3px;
@@ -918,12 +918,12 @@
 }
 
 .poiesis-agent-window__workspace-picker-item strong {
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__workspace-picker-item small {
     color: #858780;
-    font-size: 8px;
+    font-size: 12px;
     margin-top: 2px;
 }
 
@@ -934,7 +934,7 @@
 
 .poiesis-agent-window__workspace-picker-empty {
     color: var(--poiesis-chrome-muted);
-    font-size: 9px;
+    font-size: 12px;
     padding: 12px 7px 8px;
 }
 
@@ -967,7 +967,7 @@
     color: #d2d1cb;
     cursor: pointer;
     display: flex;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     gap: 7px;
     min-height: 28px;
@@ -999,7 +999,7 @@
 .poiesis-agent-window__workspace-name-copy small {
     color: var(--poiesis-chrome-muted);
     display: block;
-    font-size: 8px;
+    font-size: 12px;
     font-weight: 500;
     margin-top: 1px;
     overflow: hidden;
@@ -1013,7 +1013,7 @@
 
 .poiesis-agent-window__workspace-name .codicon:last-child {
     color: #7f817a;
-    font-size: 9px;
+    font-size: 12px;
     margin-left: auto;
 }
 
@@ -1047,7 +1047,7 @@
 .poiesis-agent-window__session > .codicon-pinned {
     color: #a8a9a3;
     flex: 0 0 auto;
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__status-dot {
@@ -1084,7 +1084,7 @@
 
 .poiesis-agent-window__session-title {
     display: block;
-    font-size: 10px;
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1092,7 +1092,7 @@
 
 .poiesis-agent-window__session-meta {
     color: #7f817a;
-    font-size: 9px;
+    font-size: 12px;
     transition: opacity 80ms ease;
 }
 
@@ -1115,7 +1115,7 @@
 .poiesis-agent-window__session-time {
     color: #72746e;
     flex: 0 0 auto;
-    font-size: 9px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__session-row.archived {
@@ -1124,7 +1124,7 @@
 
 .poiesis-agent-window__session-section-label {
     color: #686b64;
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 650;
     letter-spacing: .04em;
     margin: 7px 8px 2px 24px;
@@ -1187,7 +1187,7 @@
     color: #d0d1cb;
     cursor: pointer;
     display: flex;
-    font-size: 11px;
+    font-size: 12px;
     gap: 8px;
     min-height: 29px;
     padding: 5px 8px;
@@ -1213,7 +1213,7 @@
 
 .poiesis-agent-window__session-menu .codicon {
     color: inherit;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .poiesis-agent-window__session-rename {
@@ -1221,7 +1221,7 @@
     border: 1px solid #70726b;
     border-radius: 5px;
     color: var(--poiesis-chrome-text);
-    font-size: 10px;
+    font-size: 12px;
     margin: 3px 4px 3px 7px;
     min-width: 0;
     outline: none;
@@ -1237,7 +1237,7 @@
     color: #858780;
     cursor: pointer;
     display: flex;
-    font-size: 10px;
+    font-size: 12px;
     gap: 6px;
     margin: 8px 0 2px 17px;
     min-height: 25px;
@@ -1253,7 +1253,7 @@
 }
 
 .poiesis-agent-window__archived-toggle .codicon {
-    font-size: 9px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__archived-toggle small {
@@ -1299,7 +1299,7 @@
 
 .poiesis-agent-window__session-empty {
     color: #777a73;
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1.4;
     margin: 5px 7px 0 24px;
 }
@@ -1308,7 +1308,7 @@
     align-items: center;
     color: #7e8079;
     display: flex;
-    font-size: 10px;
+    font-size: 12px;
     justify-content: space-between;
     padding: 10px 15px 13px;
 }
@@ -1395,13 +1395,13 @@
 
 .poiesis-agent-window__context-scope small {
     color: #7e817a;
-    font-size: 9px;
+    font-size: 12px;
     white-space: nowrap;
 }
 
 .poiesis-agent-window__context > strong {
     display: block;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     margin-top: 2px;
     overflow: hidden;
@@ -1417,7 +1417,7 @@
     color: #d9d8d2;
     cursor: pointer;
     display: inline-flex;
-    font-size: 9px;
+    font-size: 12px;
     gap: 5px;
     padding: 3px 7px;
 }
@@ -1439,13 +1439,13 @@
 }
 
 .poiesis-agent-window__code-header .poiesis-agent-window__code-control {
-    font-size: 10px;
+    font-size: 12px;
     padding: 4px 8px;
 }
 
 .poiesis-agent-window__code-workspace {
     color: #a5a69f;
-    font-size: 10px;
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1453,7 +1453,7 @@
 
 .poiesis-agent-window__code-hint {
     color: #6f716b;
-    font-size: 9px;
+    font-size: 12px;
     margin-left: auto;
 }
 
@@ -1473,7 +1473,7 @@
     border-radius: 5px;
     color: #9ea099;
     cursor: pointer;
-    font-size: 10px;
+    font-size: 12px;
     padding: 5px 8px;
 }
 
@@ -1491,7 +1491,7 @@
 
 .poiesis-agent-window__tab-divider {
     color: #4b4d48;
-    font-size: 9px;
+    font-size: 12px;
     padding: 0 1px;
 }
 
@@ -1554,7 +1554,7 @@
 }
 
 .poiesis-agent-window__new-agent-empty small {
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__message,
@@ -1563,7 +1563,7 @@
     border: 0;
     border-radius: 0;
     color: #d7d6d0;
-    font-size: 12px;
+    font-size: 13px;
     margin: 0 0 18px;
     padding: 0;
 }
@@ -1590,7 +1590,7 @@
 .poiesis-agent-window__message-state {
     color: #888b84;
     display: block;
-    font-size: 10px;
+    font-size: 12px;
     margin-top: 8px;
 }
 
@@ -1601,7 +1601,7 @@
     border-radius: 7px;
     color: #979992;
     display: flex;
-    font-size: 10px;
+    font-size: 12px;
     gap: 8px;
     justify-content: space-between;
     margin: 0 clamp(20px, 7vw, 78px) 4px;
@@ -1613,7 +1613,7 @@
     border: 1px solid var(--poiesis-chrome-line-strong);
     border-radius: 5px;
     cursor: pointer;
-    font-size: 10px;
+    font-size: 12px;
     padding: 3px 7px;
 }
 
@@ -1675,7 +1675,7 @@
     color: #babbB4;
     cursor: pointer;
     display: inline-flex;
-    font-size: 9px;
+    font-size: 12px;
     gap: 5px;
     min-height: 25px;
     min-width: 0;
@@ -1744,7 +1744,7 @@
     background: transparent;
     border: 0;
     color: var(--poiesis-chrome-text);
-    font-size: 10px;
+    font-size: 12px;
     min-width: 0;
     outline: 0;
     padding: 0;
@@ -1752,7 +1752,7 @@
 
 .poiesis-agent-window__repository-group-label {
     color: #73756f;
-    font-size: 8px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: .07em;
     padding: 6px 7px 3px;
@@ -1767,7 +1767,7 @@
     color: #d6d5cf;
     cursor: pointer;
     display: grid;
-    font-size: 10px;
+    font-size: 12px;
     gap: 8px;
     grid-template-columns: auto minmax(0, 1fr) auto;
     padding: 7px;
@@ -1802,13 +1802,13 @@
 }
 
 .poiesis-agent-window__repository-option strong {
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
 }
 
 .poiesis-agent-window__repository-option small {
     color: #777a73;
-    font-size: 8px;
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1816,7 +1816,7 @@
 
 .poiesis-agent-window__repository-empty {
     color: var(--poiesis-chrome-muted);
-    font-size: 9px;
+    font-size: 12px;
     padding: 14px 8px;
     text-align: center;
 }
@@ -1838,7 +1838,7 @@
     color: #aaaca5;
     cursor: pointer;
     display: inline-flex;
-    font-size: 9px;
+    font-size: 12px;
     gap: 5px;
     justify-content: center;
     padding: 6px;
@@ -1909,7 +1909,7 @@
 .poiesis-results__empty {
     align-self: center;
     color: var(--poiesis-chrome-muted);
-    font-size: 11px;
+    font-size: 12px;
     margin: auto;
     max-width: 38ch;
     padding: 20px;
@@ -1928,7 +1928,7 @@
 .poiesis-results__answer {
     border-left: 2px solid var(--poiesis-results-accent);
     color: #c8ccd7;
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1.45;
     margin: 2px 16px 0;
     padding: 4px 9px;
@@ -1988,7 +1988,7 @@
     align-items: center;
     color: #777a73;
     display: flex;
-    font-size: 8px;
+    font-size: 12px;
     justify-content: space-between;
     letter-spacing: .08em;
     margin-bottom: 8px;
@@ -2027,12 +2027,12 @@
 .poiesis-results__task-switcher button small,
 .poiesis-results__task-switcher p {
     color: #777a73;
-    font-size: 8px;
+    font-size: 12px;
     margin: 0;
 }
 
 .poiesis-results__task-switcher button span {
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 600;
     line-height: 1.35;
     overflow: visible;
@@ -2093,7 +2093,7 @@
     color: #cccccc;
     cursor: pointer;
     display: flex;
-    font-size: 10px;
+    font-size: 12px;
     gap: 3px;
     letter-spacing: .02em;
     padding: 0 8px;
@@ -2180,7 +2180,7 @@
     border-bottom: 1px solid #242424;
     color: #bbbbbb;
     display: flex;
-    font-size: 10px;
+    font-size: 12px;
     justify-content: space-between;
     letter-spacing: .04em;
     padding: 0 8px 0 12px;
@@ -2226,7 +2226,7 @@
 
 .poiesis-agent-window__code-sidebar-title .poiesis-agent-window__code-explorer-menu button {
     color: #d4d4d4;
-    font-size: 11px;
+    font-size: 12px;
     height: 26px;
     justify-content: flex-start;
     padding: 0 8px;
@@ -2255,7 +2255,7 @@
     align-items: center;
     color: #d0d0d0;
     display: flex;
-    font-size: 10px;
+    font-size: 12px;
     gap: 3px;
     min-width: 0;
     padding: 0 8px;
@@ -2330,7 +2330,7 @@
     color: var(--poiesis-chrome-muted);
     cursor: pointer;
     flex: none;
-    font-size: 10px;
+    font-size: 12px;
     padding: 0 12px;
 }
 
@@ -2395,7 +2395,7 @@ body.poiesis-code-file-pointer-drag * {
     cursor: pointer;
     display: flex;
     flex: 1;
-    font-size: 12px;
+    font-size: 13px;
     gap: 7px;
     min-width: 0;
     outline: none;
@@ -2458,7 +2458,7 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-agent-window__code-editor-tab-dirty {
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__code-editor-tab.dirty .poiesis-agent-window__code-editor-tab-close-icon {
@@ -2531,7 +2531,7 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-agent-window__code-close-dialog > p {
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.5;
     margin: 0;
     padding: 18px 16px 22px;
@@ -2549,7 +2549,7 @@ body.poiesis-code-file-pointer-drag * {
     border: 1px solid var(--poiesis-chrome-line-strong);
     border-radius: 6px;
     color: var(--poiesis-chrome-copy);
-    font-size: 12px;
+    font-size: 13px;
     min-height: 32px;
     padding: 0 14px;
 }
@@ -2619,7 +2619,7 @@ body.poiesis-code-file-pointer-drag * {
     border-top: 1px solid var(--poiesis-chrome-line);
     color: var(--poiesis-chrome-muted);
     display: flex;
-    font-size: 9px;
+    font-size: 12px;
     justify-content: space-between;
     min-height: 34px;
     padding: 0 9px 0 12px;
@@ -2647,7 +2647,7 @@ body.poiesis-code-file-pointer-drag * {
     align-items: center;
     color: var(--poiesis-chrome-muted);
     display: flex;
-    font-size: 11px;
+    font-size: 12px;
     justify-content: center;
 }
 
@@ -2699,7 +2699,7 @@ body.poiesis-code-file-pointer-drag * {
     border-bottom: 1px solid transparent;
     color: #929292;
     display: flex;
-    font-size: 9px;
+    font-size: 12px;
     padding: 0 8px;
 }
 
@@ -2730,7 +2730,7 @@ body.poiesis-code-file-pointer-drag * {
     border: 1px solid transparent;
     border-radius: 3px;
     color: #cccccc;
-    font-size: 10px;
+    font-size: 12px;
     height: 24px;
     max-width: 180px;
     min-width: 92px;
@@ -2761,7 +2761,7 @@ body.poiesis-code-file-pointer-drag * {
     border-top: 1px solid #2b2b2b;
     color: #b7b7b7;
     display: flex;
-    font-size: 9px;
+    font-size: 12px;
     gap: 12px;
     grid-column: 1 / -1;
     grid-row: 2;
@@ -2808,7 +2808,7 @@ body.poiesis-code-file-pointer-drag * {
     color: var(--poiesis-chrome-muted);
     cursor: pointer;
     display: flex;
-    font-size: 10px;
+    font-size: 12px;
     gap: 5px;
     padding: 6px 8px;
 }
@@ -2846,7 +2846,7 @@ body.poiesis-code-file-pointer-drag * {
     color: var(--poiesis-chrome-muted);
     cursor: pointer;
     display: flex;
-    font-size: 11px;
+    font-size: 12px;
     gap: 9px;
     padding: 8px 10px;
     text-align: left;
@@ -2905,7 +2905,7 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-agent-window__page-heading p {
     color: var(--poiesis-chrome-muted);
-    font-size: 11px;
+    font-size: 12px;
     margin-top: 5px;
 }
 
@@ -2915,7 +2915,7 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-agent-window__settings-section h2 {
     color: #a4a69f;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: .06em;
     margin: 0 0 8px;
@@ -2941,14 +2941,14 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-agent-window__setting-row strong {
     color: var(--poiesis-chrome-text);
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__setting-row small,
 .poiesis-agent-window__customize-card p,
 .poiesis-agent-window__customize-note {
     color: var(--poiesis-chrome-muted);
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1.5;
     margin: 4px 0 0;
 }
@@ -2959,7 +2959,7 @@ body.poiesis-code-file-pointer-drag * {
     border: 1px solid #41433e;
     border-radius: 999px;
     color: #aaaCA5;
-    font-size: 8px;
+    font-size: 12px;
     padding: 3px 7px;
 }
 
@@ -2975,7 +2975,7 @@ body.poiesis-code-file-pointer-drag * {
     border-radius: 6px;
     color: var(--poiesis-chrome-text);
     cursor: pointer;
-    font-size: 9px;
+    font-size: 12px;
     padding: 6px 9px;
 }
 
@@ -2998,7 +2998,7 @@ body.poiesis-code-file-pointer-drag * {
     border-bottom: 2px solid transparent;
     color: var(--poiesis-chrome-muted);
     cursor: pointer;
-    font-size: 11px;
+    font-size: 12px;
     padding: 0 2px 9px;
 }
 
@@ -3036,7 +3036,7 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-agent-window__customize-title strong {
     color: var(--poiesis-chrome-text);
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__switch {
@@ -3089,10 +3089,6 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-agent-window__content:not([data-mode='code']) > .poiesis-agent-window__rail,
 .poiesis-agent-window__content:not([data-mode='code']) > .poiesis-agent-window__workspace,
 .poiesis-agent-window__content > .poiesis-folder-explorer,
-.poiesis-agent-window__content .poiesis-settings-modal {
-    zoom: var(--poiesis-ui-font-scale, 1);
-}
-
 .poiesis-settings-modal__backdrop {
     align-items: center;
     background: rgb(0 0 0 / 58%);
@@ -3161,7 +3157,7 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-settings-modal__header p {
     color: var(--poiesis-chrome-muted);
-    font-size: 9px;
+    font-size: 12px;
     margin-top: 2px;
 }
 
@@ -3198,9 +3194,16 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-settings-modal__section h2 {
     color: #b2b4ad;
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 750;
     letter-spacing: .08em;
+    margin: 0;
+}
+
+.poiesis-settings-modal__section-copy {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    line-height: 1.55;
     margin: 0;
 }
 
@@ -3244,7 +3247,7 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-settings-modal__archived > strong,
 .poiesis-settings-modal__archived-row > span strong {
     color: var(--poiesis-chrome-text);
-    font-size: 10px;
+    font-size: 12px;
 }
 
 .poiesis-settings-modal__row small,
@@ -3253,7 +3256,7 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-settings-modal__archived p,
 .poiesis-settings-modal__archived-row > span small {
     color: var(--poiesis-chrome-muted);
-    font-size: 9px;
+    font-size: 12px;
     line-height: 1.5;
     margin: 3px 0 0;
 }
@@ -3283,7 +3286,7 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-settings-modal__segmented span {
     border-radius: 5px;
     color: var(--poiesis-chrome-muted);
-    font-size: 9px;
+    font-size: 12px;
     padding: 5px 9px;
 }
 
@@ -3310,7 +3313,7 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-settings-modal__cli-role h3 {
     color: var(--poiesis-chrome-copy);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 650;
     margin: 2px 1px 0;
 }
@@ -3329,7 +3332,7 @@ body.poiesis-code-file-pointer-drag * {
     border-top: 1px solid var(--poiesis-chrome-line);
 }
 
-.poiesis-settings-modal__cli-row.future {
+.poiesis-settings-modal__cli-row.unavailable {
     cursor: default;
     opacity: .72;
 }
@@ -3344,14 +3347,9 @@ body.poiesis-code-file-pointer-drag * {
     white-space: nowrap;
 }
 
-.poiesis-settings-modal__cli-copy small.future-note {
-    color: #d8b178;
-    font-weight: 600;
-}
-
 .poiesis-settings-modal__cli-status {
     color: #c08a7f;
-    font-size: 9px;
+    font-size: 12px;
 }
 
 .poiesis-settings-modal__cli-status.found {
@@ -3367,7 +3365,7 @@ body.poiesis-code-file-pointer-drag * {
     border-radius: 6px;
     color: var(--poiesis-chrome-text);
     cursor: pointer;
-    font-size: 9px;
+    font-size: 12px;
     padding: 5px 8px;
 }
 
@@ -3407,7 +3405,7 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-agent-window__inline-confirm > span {
     color: #d9aaa4;
     flex-basis: 100%;
-    font-size: 8px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__inline-confirm {
@@ -3426,7 +3424,7 @@ body.poiesis-code-file-pointer-drag * {
     border: 0;
     color: #aeb9d1;
     cursor: pointer;
-    font-size: 9px;
+    font-size: 12px;
     text-decoration: underline;
     text-underline-offset: 3px;
 }
@@ -3483,9 +3481,10 @@ body.poiesis-code-file-pointer-drag * {
     --poiesis-shadow-composer: 0 10px 30px rgb(0 0 0 / 16%);
     --poiesis-shadow-results: 0 8px 24px rgb(0 0 0 / 18%);
     font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.48;
     letter-spacing: 0;
+    zoom: var(--poiesis-ui-font-scale, 1);
 }
 
 .poiesis-agent-window__tabs {
@@ -3502,31 +3501,44 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-agent-window__new-agent-empty small {
-    font-size: 9px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__content .poiesis-agent-window__context-pill {
-    font-size: 8px;
+    font-size: 12px;
 }
 
 .poiesis-agent-window__repository-search input,
 .poiesis-agent-window__content .poiesis-agent-window__repository-option,
 .poiesis-agent-window__content .poiesis-agent-window__repository-option strong {
-    font-size: 9px;
+    font-size: 12px;
 }
 
 .poiesis-results__answer {
-    font-size: 9px;
+    font-size: 12px;
 }
 
 .poiesis-results__composer input {
-    font-size: 10px;
+    font-size: 13px;
 }
 
 .poiesis-agent-window__session-section-label {
-    font-size: 8px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: .08em;
+}
+
+.poiesis-agent-window__session-title,
+.poiesis-results__task-switcher button span,
+.poiesis-results__composer input {
+    font-size: 13px;
+}
+
+.poiesis-agent-window__message,
+.poiesis-agent-window__user-message,
+.poiesis-agent-window__message p,
+.poiesis-agent-window__user-message p {
+    font-size: 14px;
 }
 
 .poiesis-agent-window__message p,
