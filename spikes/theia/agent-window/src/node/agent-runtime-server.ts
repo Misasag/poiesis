@@ -15,7 +15,8 @@ import {
     GitChangeSetCapture,
     GitChangeSetRequest,
     GitSnapshotCapture,
-    GitSnapshotRequest
+    GitSnapshotRequest,
+    KnownCliId
 } from '../common/agent-runtime-protocol';
 import { CliDetector } from './cli-detector';
 import { CliProviderRegistry } from './cli-provider-registry';
@@ -165,22 +166,34 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         const provider = await this.providerRegistry.resolve('agent', providerId);
 
         const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
-        const args = [
-            'exec',
-            '--json',
-            '--color', 'never',
-            '--sandbox', 'workspace-write',
-            '-C', resolvedWorkspace,
-            '--', prompt
-        ];
-        const child = this.spawnCodex(provider.path, args, resolvedWorkspace);
+        const args = provider.id === 'claude'
+            ? [
+                '-p', prompt,
+                '--output-format', 'stream-json',
+                '--verbose',
+                '--permission-mode', 'acceptEdits',
+                '--no-session-persistence',
+                '--safe-mode',
+                '--disable-slash-commands',
+                '--strict-mcp-config',
+                '--mcp-config', '{"mcpServers":{}}'
+            ]
+            : [
+                'exec',
+                '--json',
+                '--color', 'never',
+                '--sandbox', 'workspace-write',
+                '-C', resolvedWorkspace,
+                '--', prompt
+            ];
+        const child = this.spawnCli(provider.id, provider.path, args, resolvedWorkspace);
         const run: CodexRun = { process: child, cancelled: false };
         this.codexRuns.set(executionId, run);
 
         child.stdout.on('data', chunk => this.notifyOutput(executionId, 'stdout', chunk));
         child.stderr.on('data', chunk => this.notifyOutput(executionId, 'stderr', chunk));
         child.once('error', error => {
-            this.notifyOutput(executionId, 'stderr', Buffer.from(`Codex process error: ${error.message}\n`));
+            this.notifyOutput(executionId, 'stderr', Buffer.from(`${provider.name} process error: ${error.message}\n`));
         });
         child.once('close', (code, signal) => {
             this.codexRuns.delete(executionId);
@@ -255,9 +268,17 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         throw new Error(`The Workspace directory was not found: ${resolvedWorkspace}`);
     }
 
-    protected spawnCodex(command: string, args: string[], cwd: string): CodexProcess {
+    protected spawnCli(providerId: KnownCliId, command: string, args: string[], cwd: string): CodexProcess {
         if (!['.cmd', '.bat'].includes(extname(command).toLocaleLowerCase())) {
             return spawn(command, args, {
+                cwd, windowsHide: true,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+        }
+
+        if (providerId === 'claude') {
+            const entryPoint = join(dirname(command), 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+            return spawn(entryPoint, args, {
                 cwd, windowsHide: true,
                 stdio: ['ignore', 'pipe', 'pipe']
             });

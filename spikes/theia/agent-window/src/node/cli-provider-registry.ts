@@ -13,8 +13,8 @@ export interface ResolvedCliProvider {
 @injectable()
 export class CliProviderRegistry {
     protected readonly executableProviders: Record<AiRole, readonly KnownCliId[]> = {
-        agent: ['codex'],
-        results: ['codex']
+        agent: ['codex', 'claude'],
+        results: ['codex', 'claude']
     };
 
     constructor(@inject(CliDetector) protected readonly cliDetector: CliDetector) { }

@@ -11,6 +11,7 @@ export interface CreateSessionInput {
 export interface AgentSession {
     id: string;
     providerName: string;
+    providerId?: KnownCliId;
     workspaceUri?: string;
 }
 

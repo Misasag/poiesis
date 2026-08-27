@@ -1720,12 +1720,12 @@ export class AgentWindowWidget extends ReactWidget {
                 <div className='poiesis-settings-modal__cli-list' role='radiogroup' aria-label={label}>
                     {cliIds.map(id => {
                         const detection = this.cliDetectionReport?.detections.find(item => item.id === id);
-                        const executable = id === 'codex';
+                        const executable = detection?.status === 'found';
                         const status = this.cliDetectionLoading && !detection
                             ? '検出中…'
                             : detection?.status === 'found' ? '検出済み' : '未検出';
                         return (
-                            <label key={`${role}-${id}`} className={`poiesis-settings-modal__cli-row${executable ? '' : ' future'}`}>
+                            <label key={`${role}-${id}`} className={`poiesis-settings-modal__cli-row${executable ? '' : ' unavailable'}`}>
                                 <input
                                     type='radio'
                                     name={`poiesis-${role}-cli`}
@@ -1737,7 +1737,6 @@ export class AgentWindowWidget extends ReactWidget {
                                 <span className='poiesis-settings-modal__cli-copy'>
                                     <strong>{id === 'codex' ? 'Codex' : 'Claude'}</strong>
                                     <small title={detection?.path}>{detection?.path ?? `${id} CLI`}</small>
-                                    {!executable && <small className='future-note'>実行対応は今後</small>}
                                 </span>
                                 <span className={`poiesis-settings-modal__cli-status ${detection?.status ?? 'missing'}`}>{status}</span>
                             </label>
@@ -3364,9 +3363,6 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected setRoleCli(role: AiRole, cli: KnownCliId): void {
-        if (cli !== 'codex') {
-            return;
-        }
         if (role === 'agent') {
             this.agentCli = cli;
         } else {
@@ -3403,9 +3399,15 @@ export class AgentWindowWidget extends ReactWidget {
                 this.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
                     ? state.uiFontScale
                     : 'standard';
-                const legacyCli = state.version === 1 && state.preferredCli === 'codex' ? state.preferredCli : 'codex';
-                this.agentCli = state.version === 2 && state.agentCli === 'codex' ? state.agentCli : legacyCli;
-                this.resultsCli = state.version === 2 && state.resultsCli === 'codex' ? state.resultsCli : legacyCli;
+                const legacyCli = state.version === 1 && (state.preferredCli === 'codex' || state.preferredCli === 'claude')
+                    ? state.preferredCli
+                    : 'codex';
+                this.agentCli = state.version === 2 && (state.agentCli === 'codex' || state.agentCli === 'claude')
+                    ? state.agentCli
+                    : legacyCli;
+                this.resultsCli = state.version === 2 && (state.resultsCli === 'codex' || state.resultsCli === 'claude')
+                    ? state.resultsCli
+                    : legacyCli;
                 this.allowExternalResultsResources = state.allowExternalResultsResources === true;
             }
         } catch (error) {
@@ -3849,6 +3851,9 @@ export class AgentWindowWidget extends ReactWidget {
         const content = session?.agentDraft.trim() ?? '';
         if (!session || !session.workspaceUri || !content || this.runningTask(session)) {
             return;
+        }
+        if (session.agentSession?.providerId && session.agentSession.providerId !== this.agentCli) {
+            session.agentSession = undefined;
         }
         if (!session.agentSession && !await this.ensureProviderSession(session, false, true)) {
             return;

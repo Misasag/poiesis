@@ -10,6 +10,7 @@ import {
     ResultsQuestionScope,
     ResultsQuestionServer
 } from '../common/results-question-protocol';
+import { KnownCliId } from '../common/agent-runtime-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
 
 type CodexProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -17,6 +18,8 @@ type CodexProcess = ChildProcessByStdio<null, Readable, Readable>;
 interface ResultsQuestionRun {
     process: CodexProcess;
     cancelled: boolean;
+    providerId: KnownCliId;
+    providerName: string;
 }
 
 export const RESULTS_HTML_MAX_CHARS = 120_000;
@@ -25,7 +28,7 @@ const CHANGE_SET_MAX_CHARS = 40_000;
 const TASK_METADATA_MAX_CHARS = 20_000;
 const STDERR_MAX_CHARS = 8_000;
 
-/** Runs every Results question in a new, read-only Codex CLI process. */
+/** Runs every Results question in a new, read-only CLI process. */
 @injectable()
 export class ResultsQuestionServerImpl implements ResultsQuestionServer {
     protected readonly runs = new Map<string, ResultsQuestionRun>();
@@ -48,14 +51,31 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             const provider = await this.providerRegistry.resolve('results', scope.providerId);
             const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const prompt = this.buildPrompt(question.trim(), scope);
-            const args = [
-                'exec',
-                '--sandbox', 'read-only',
-                '-C', workspace,
-                '--', prompt
-            ];
-            const child = this.spawnCodex(provider.path, args, workspace);
-            const run: ResultsQuestionRun = { process: child, cancelled: false };
+            const args = provider.id === 'claude'
+                ? [
+                    '-p', prompt,
+                    '--output-format', 'text',
+                    '--permission-mode', 'plan',
+                    '--tools=',
+                    '--no-session-persistence',
+                    '--safe-mode',
+                    '--disable-slash-commands',
+                    '--strict-mcp-config',
+                    '--mcp-config', '{"mcpServers":{}}'
+                ]
+                : [
+                    'exec',
+                    '--sandbox', 'read-only',
+                    '-C', workspace,
+                    '--', prompt
+                ];
+            const child = this.spawnCli(provider.id, provider.path, args, workspace);
+            const run: ResultsQuestionRun = {
+                process: child,
+                cancelled: false,
+                providerId: provider.id,
+                providerName: provider.name
+            };
             this.runs.set(scope.taskId, run);
             return await this.collectResult(scope.taskId, run);
         } catch (error) {
@@ -63,7 +83,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             return this.failed({
                 code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
                 message: this.isCommandMissing(error)
-                    ? 'Codex CLIが見つからないため、回答を開始できませんでした。'
+                    ? '選択したAI CLIが見つからないため、回答を開始できませんでした。'
                     : '回答を開始できませんでした。もう一度お試しください。'
             });
         }
@@ -103,8 +123,8 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                 finish(this.failed({
                     code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
                     message: this.isCommandMissing(error)
-                        ? 'Codex CLIが見つからないため、回答を開始できませんでした。'
-                        : 'Codexの実行中に問題が発生しました。'
+                        ? `${run.providerName} CLIが見つからないため、回答を開始できませんでした。`
+                        : `${run.providerName}の実行中に問題が発生しました。`
                 }));
             });
             run.process.once('close', (code, signal) => {
@@ -124,8 +144,8 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                     finish(this.failed({
                         code: 'cli-failed',
                         message: signal
-                            ? 'Codexの実行が中断されました。'
-                            : `Codexが終了コード${code ?? '不明'}で停止しました。`,
+                            ? `${run.providerName}の実行が中断されました。`
+                            : `${run.providerName}が終了コード${code ?? '不明'}で停止しました。`,
                         exitCode: code,
                         signal,
                         stderr: this.truncate(stderr.trim(), STDERR_MAX_CHARS, 'CLI stderr')
@@ -137,7 +157,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                 if (!answer) {
                     finish(this.failed({
                         code: 'cli-failed',
-                        message: 'Codexから回答を受け取れませんでした。',
+                        message: `${run.providerName}から回答を受け取れませんでした。`,
                         exitCode: code,
                         stderr: this.truncate(stderr.trim(), STDERR_MAX_CHARS, 'CLI stderr')
                     }));
@@ -233,9 +253,17 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
         return workspaceStat.isDirectory() ? workspacePath : dirname(workspacePath);
     }
 
-    protected spawnCodex(command: string, args: string[], cwd: string): CodexProcess {
+    protected spawnCli(providerId: KnownCliId, command: string, args: string[], cwd: string): CodexProcess {
         if (!['.cmd', '.bat'].includes(extname(command).toLocaleLowerCase())) {
             return spawn(command, args, {
+                cwd, windowsHide: true,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+        }
+
+        if (providerId === 'claude') {
+            const entryPoint = join(dirname(command), 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+            return spawn(entryPoint, args, {
                 cwd, windowsHide: true,
                 stdio: ['ignore', 'pipe', 'pipe']
             });

@@ -23,7 +23,14 @@ export class CliDetector {
 
     async detect(): Promise<CliDetectionReport> {
         const definitions = this.definitions();
-        const detections = await Promise.all(definitions.map(definition => this.detectOne(definition)));
+        const detections: CliDetection[] = process.env.POIESIS_DISABLE_CLI_DETECTION === '1'
+            ? definitions.map(definition => ({
+                id: definition.id,
+                name: definition.name,
+                status: 'missing' as const,
+                checkedLocations: []
+            }))
+            : await Promise.all(definitions.map(definition => this.detectOne(definition)));
         const report: CliDetectionReport = {
             detectedAt: new Date().toISOString(),
             platform: process.platform,

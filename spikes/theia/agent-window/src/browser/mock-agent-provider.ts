@@ -1,5 +1,5 @@
 import { Emitter } from '@theia/core/lib/common';
-import { inject, injectable } from '@theia/core/shared/inversify';
+import { injectable } from '@theia/core/shared/inversify';
 import {
     AgentEvent,
     AgentMessage,
@@ -7,22 +7,13 @@ import {
     AgentSession,
     CreateSessionInput
 } from '../common/agent-provider';
-import { TaskService } from './task-service';
-
-interface MockRun {
-    taskId: string;
-    timer?: ReturnType<typeof setTimeout>;
-}
 
 /** Chat-only provider. It never reads, writes, or executes within the workspace. */
 @injectable()
 export class MockAgentProvider implements AgentProvider {
     protected readonly sessions = new Map<string, AgentSession>();
-    protected readonly runs = new Map<string, MockRun>();
     protected readonly eventEmitter = new Emitter<AgentEvent>();
     protected sequence = 0;
-
-    constructor(@inject(TaskService) protected readonly taskService: TaskService) { }
 
     readonly onEvent = this.eventEmitter.event;
 
@@ -40,62 +31,16 @@ export class MockAgentProvider implements AgentProvider {
         if (!this.sessions.has(sessionId)) {
             throw new Error(`Unknown Agent session: ${sessionId}`);
         }
-        if (this.runs.has(sessionId)) {
-            throw new Error('A mock Task is already running for this session.');
-        }
-
-        const task = this.taskService.start(sessionId, message.content);
-        const run: MockRun = { taskId: task.id };
-        this.runs.set(sessionId, run);
-        this.eventEmitter.fire({ type: 'task-started', sessionId, taskId: task.id });
-
-        const chunks = [
-            'Mock run started. ',
-            'This provider does not inspect or edit workspace files. ',
-            'The application will capture the Task change set and prepare Results.'
-        ];
-        let nextChunk = 0;
-
-        const streamNext = async (): Promise<void> => {
-            if (this.runs.get(sessionId) !== run) {
-                return;
-            }
-            if (nextChunk < chunks.length) {
-                this.eventEmitter.fire({
-                    type: 'message-delta',
-                    sessionId,
-                    taskId: task.id,
-                    delta: chunks[nextChunk++]
-                });
-                run.timer = setTimeout(() => void streamNext(), 260);
-                return;
-            }
-
-            this.eventEmitter.fire({ type: 'message-completed', sessionId, taskId: task.id });
-            await this.taskService.end(task.id);
-            if (this.runs.get(sessionId) === run) {
-                this.runs.delete(sessionId);
-                this.eventEmitter.fire({ type: 'task-completed', sessionId, taskId: task.id });
-            }
-        };
-
-        run.timer = setTimeout(() => void streamNext(), 140);
-    }
-
-    async cancel(sessionId: string): Promise<void> {
-        const run = this.runs.get(sessionId);
-        if (!run) {
-            return;
-        }
-        if (run.timer) {
-            clearTimeout(run.timer);
-        }
-        this.runs.delete(sessionId);
-        await this.taskService.cancel(run.taskId);
+        const responseId = `mock-response-${Date.now()}-${++this.sequence}`;
+        this.eventEmitter.fire({ type: 'task-started', sessionId, taskId: responseId });
         this.eventEmitter.fire({
-            type: 'task-cancelled',
+            type: 'message-delta',
             sessionId,
-            taskId: run.taskId
+            taskId: responseId,
+            delta: `モック応答です。「${message.content.slice(0, 80)}」を受け取りました。CLIが未検出のため、Workspaceの読み取り・編集・実行は行っていません。`
         });
+        this.eventEmitter.fire({ type: 'message-completed', sessionId, taskId: responseId });
     }
+
+    async cancel(_sessionId: string): Promise<void> { }
 }

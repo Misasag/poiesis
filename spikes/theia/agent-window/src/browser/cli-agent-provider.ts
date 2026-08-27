@@ -10,14 +10,15 @@ import {
 } from '../common/agent-provider';
 import {
     AgentRuntimeServer,
-    CodexExecutionEvent
+    CodexExecutionEvent,
+    KnownCliId
 } from '../common/agent-runtime-protocol';
 import { AgentRuntimeClientImpl } from './agent-runtime-client';
 import { MockAgentProvider } from './mock-agent-provider';
 import { TaskService } from './task-service';
 
-interface CodexSession extends AgentSession {
-    providerId: 'codex';
+interface CliSession extends AgentSession {
+    providerId: KnownCliId;
     workspacePath?: string;
 }
 
@@ -25,16 +26,17 @@ interface CodexRun {
     sessionId: string;
     taskId: string;
     executionId: string;
+    providerId: KnownCliId;
     stdoutBuffer: string;
     diagnostics: string;
     finalMessage?: string;
     state: 'starting' | 'running' | 'completing' | 'cancelling';
 }
 
-/** Uses detected Codex for implementation Tasks and falls back to the existing mock. */
+/** Uses the selected detected CLI for implementation Tasks and falls back to chat-only mock. */
 @injectable()
 export class CliAgentProvider implements AgentProvider {
-    protected readonly sessions = new Map<string, CodexSession>();
+    protected readonly sessions = new Map<string, CliSession>();
     protected readonly runs = new Map<string, CodexRun>();
     protected readonly eventEmitter = new Emitter<AgentEvent>();
     protected sequence = 0;
@@ -55,12 +57,12 @@ export class CliAgentProvider implements AgentProvider {
         try {
             const report = await this.runtimeServer.detectClis();
             const providerId = input.providerId ?? 'codex';
-            const codex = report.detections.find(item => item.id === providerId);
-            if (providerId === 'codex' && codex?.status === 'found' && codex.path) {
-                const session: CodexSession = {
-                    id: `codex-session-${Date.now()}-${++this.sequence}`,
+            const detection = report.detections.find(item => item.id === providerId);
+            if (detection?.status === 'found' && detection.path) {
+                const session: CliSession = {
+                    id: `${providerId}-session-${Date.now()}-${++this.sequence}`,
                     providerId,
-                    providerName: 'Codex',
+                    providerName: detection.name,
                     workspaceUri: input.workspaceUri,
                     workspacePath: input.workspaceUri ? new URI(input.workspaceUri).path.fsPath() : undefined
                 };
@@ -87,6 +89,7 @@ export class CliAgentProvider implements AgentProvider {
             sessionId,
             taskId: task.id,
             executionId: task.id,
+            providerId: session.providerId,
             stdoutBuffer: '',
             diagnostics: '',
             state: 'starting'
@@ -108,7 +111,7 @@ export class CliAgentProvider implements AgentProvider {
                 prompt: this.implementerPrompt(message.content)
             });
         } catch (error) {
-            await this.failRun(run, 'Codex を開始できませんでした。', this.errorMessage(error));
+            await this.failRun(run, `${this.providerName(run.providerId)} を開始できませんでした。`, this.errorMessage(error));
         }
     }
 
@@ -185,9 +188,10 @@ export class CliAgentProvider implements AgentProvider {
                 taskId: run.taskId
             });
         } else {
+            const name = this.providerName(run.providerId);
             const summary = event.signal
-                ? 'Codex の実行が中断されました。'
-                : `Codex の実行に失敗しました（終了コード ${event.code ?? '不明'}）。`;
+                ? `${name} の実行が中断されました。`
+                : `${name} の実行に失敗しました（終了コード ${event.code ?? '不明'}）。`;
             const details = run.diagnostics.trim() || undefined;
             await this.taskService.fail(run.taskId, { summary, details });
             this.eventEmitter.fire({
@@ -246,7 +250,34 @@ export class CliAgentProvider implements AgentProvider {
                 message?: string;
                 error?: { message?: string } | string;
                 item?: { type?: string; text?: string; message?: string };
+                result?: string;
+                is_error?: boolean;
+                subtype?: string;
             };
+            if (run.providerId === 'claude') {
+                const claudeEvent = event as typeof event & {
+                    message?: {
+                        content?: Array<{ type?: string; text?: string }>;
+                    };
+                };
+                if (claudeEvent.type === 'assistant') {
+                    const text = claudeEvent.message?.content
+                        ?.filter(item => item.type === 'text' && typeof item.text === 'string')
+                        .map(item => item.text)
+                        .join('\n')
+                        .trim();
+                    if (text) {
+                        run.finalMessage = text;
+                    }
+                }
+                if (claudeEvent.type === 'result' && typeof claudeEvent.result === 'string' && claudeEvent.result.trim()) {
+                    run.finalMessage = claudeEvent.result;
+                }
+                if (claudeEvent.is_error || claudeEvent.subtype === 'error') {
+                    this.appendDiagnostic(run, claudeEvent.result ?? line);
+                }
+                return;
+            }
             if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) {
                 run.finalMessage = event.item.text;
             }
@@ -268,6 +299,10 @@ export class CliAgentProvider implements AgentProvider {
 
     protected implementerPrompt(request: string): string {
         return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}`;
+    }
+
+    protected providerName(providerId: KnownCliId): string {
+        return providerId === 'claude' ? 'Claude' : 'Codex';
     }
 
     protected errorMessage(error: unknown): string {
