@@ -260,7 +260,7 @@ for (const marker of [
     'protected readonly sessions: WindowAgentSession[] = []',
     'this.filteredSessions(false).filter(session => session.hasUserMessage)',
     'const activeTab = session?.activeTab ?? \'agent\'',
-    "data-mode={this.appPage ?? (this.codeMode ? 'code' : activeTab)}",
+    "data-mode={this.codeMode ? 'code' : activeTab}",
     "data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}",
     '{!this.codeMode && this.renderRail()}',
     'pinnedSessions.map(session => this.renderSessionRow(session))',
@@ -283,7 +283,7 @@ for (const marker of [
     'poiesis-results__main',
     'poiesis-results__task-switcher',
     "aria-label='Results HTML キャンバス'",
-    "srcDoc={document.html}",
+    "srcDoc={this.resultsDocumentHtml(document.html)}",
     "aria-label='Agent の入力欄'",
     "aria-label='Results の入力欄'",
     "placeholder='次の変更内容や質問を入力…'",
@@ -332,7 +332,7 @@ for (const marker of [
     "className='poiesis-agent-window__code-git-graph-host'",
     'this.attachCodeWidget(this.codeGitGraphWidget, this.codeGitGraphHost)',
     "this.renderCodeActivity('extensions', 'extensions', 'Extensions')",
-    'onClick={() => void this.openCodeSettings()}',
+    'onClick={() => void this.openTheiaSettings()}',
     'protected async ensureCodeTerminal(): Promise<void>',
     'protected scheduleCodeWidgetAttachments(): void',
     'protected readonly codeTerminalWidgets: TerminalWidget[] = []',
@@ -373,12 +373,15 @@ for (const marker of [
     'Widget.attach(widget, host)',
     'Widget.detach(widget)',
     'protected openSettings(): void',
-    "this.appPage = 'settings'",
-    'protected openCustomize(): void',
-    "this.appPage = 'customize'",
-    'protected renderAppPage(): React.ReactNode',
-    'protected renderPoiesisSettings(): React.ReactNode',
-    'protected renderCustomize(): React.ReactNode',
+    'this.settingsModalVisible = true',
+    'protected closeSettings(): void',
+    'protected renderSettingsModal(): React.ReactNode',
+    "role='dialog'",
+    "aria-modal='true'",
+    'protected async restorePoiesisSettings(): Promise<void>',
+    'protected resultsDocumentHtml(html: string): string',
+    'Content-Security-Policy',
+    'protected async clearSavedSessionData(): Promise<void>',
     '<strong>Poiesis plugin bundles</strong>',
     "aria-label='Results skillを有効化'",
     'this.customizationService.setSkillEnabled',
@@ -461,7 +464,7 @@ for (const marker of [
 assert.ok(!railSource.includes('<small>現在</small>'), 'Selected sessions must use quiet age metadata, not a current badge');
 assert.ok(
     (agentWidget.match(/onClick=\{\(\) => this\.openSettings\(\)\}/g)?.length ?? 0) >= 2,
-    'Settings controls must open the Poiesis-owned settings page'
+    'Settings controls must open the Poiesis-owned settings modal'
 );
 assert.ok(!agentWidget.includes('poiesis-agent-window__composer-tools'), 'Deferred composer tools must not be shown');
 assert.ok(!agentWidget.includes('protected activeTab:'), 'Agent / Results selection must belong to each session');
@@ -509,9 +512,6 @@ for (const forbidden of [
     'Kept in Results scope;'
 ]) {
     assert.ok(!agentWidget.includes(forbidden), `Old Agent chrome remains: ${forbidden}`);
-}
-for (const forbidden of ['AgentRuntimeServer', 'CliDetectionReport', 'detectClis()']) {
-    assert.ok(!agentWidget.includes(forbidden), `Agent widget must not expose CLI diagnostics: ${forbidden}`);
 }
 for (const marker of [
     '#poiesis-window-host',

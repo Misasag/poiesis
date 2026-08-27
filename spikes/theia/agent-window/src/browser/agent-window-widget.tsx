@@ -19,7 +19,12 @@ import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-co
 import { SearchInWorkspaceCommands } from '@theia/search-in-workspace/lib/browser/search-in-workspace-frontend-contribution';
 import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
 import { AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
-import { FolderBrowserResult } from '../common/agent-runtime-protocol';
+import {
+    AgentRuntimeServer,
+    CliDetectionReport,
+    FolderBrowserResult,
+    KnownCliId
+} from '../common/agent-runtime-protocol';
 import { ResultsService } from './results-skill';
 import { ExecutionTask, TaskService } from './task-service';
 import { getDesignVariant } from './design-variant';
@@ -28,11 +33,11 @@ import { FolderExplorerService } from './folder-explorer-service';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
-type AppPage = 'settings' | 'customize';
-type CustomizeTab = 'skills' | 'plugins';
+type UiFontScale = 'small' | 'standard' | 'large';
 const NEW_SESSION_TITLE = '新しい会話';
 const SESSION_STORAGE_KEY = 'poiesis.agent-window.sessions.v1';
-const DEFAULT_RAIL_WIDTH = 252;
+const SETTINGS_STORAGE_KEY = 'poiesis.settings.v1';
+const DEFAULT_RAIL_WIDTH = 258;
 const MIN_RAIL_WIDTH = 196;
 const MAX_RAIL_WIDTH = 420;
 const DEFAULT_CODE_SIDEBAR_WIDTH = 260;
@@ -89,6 +94,13 @@ interface PersistedAgentWindowState {
     }>;
 }
 
+interface PersistedPoiesisSettings {
+    version: 1;
+    uiFontScale: UiFontScale;
+    preferredCli: KnownCliId;
+    allowExternalResultsResources: boolean;
+}
+
 @injectable()
 export class AgentWindowWidget extends ReactWidget {
     static readonly ID = 'poiesis-agent-window';
@@ -100,8 +112,14 @@ export class AgentWindowWidget extends ReactWidget {
     static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget';
     static readonly EXTENSIONS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container';
     protected codeMode = false;
-    protected appPage?: AppPage;
-    protected customizeTab: CustomizeTab = 'skills';
+    protected settingsModalVisible = false;
+    protected uiFontScale: UiFontScale = 'standard';
+    protected preferredCli: KnownCliId = 'codex';
+    protected allowExternalResultsResources = false;
+    protected cliDetectionReport?: CliDetectionReport;
+    protected cliDetectionLoading = false;
+    protected deleteSessionConfirmationId?: string;
+    protected clearDataConfirmation = false;
     protected codeSidebarTab: CodeSidebarTab = 'files';
     protected codeFilesWidget?: Widget;
     protected codeSearchWidget?: Widget;
@@ -198,7 +216,8 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(VSXExtensionsSearchModel) protected readonly extensionsSearchModel: VSXExtensionsSearchModel,
         @inject(StorageService) protected readonly storageService: StorageService,
         @inject(CustomizationService) protected readonly customizationService: CustomizationService,
-        @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService
+        @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService,
+        @inject(AgentRuntimeServer) protected readonly agentRuntimeServer: AgentRuntimeServer
     ) {
         super();
     }
@@ -235,6 +254,15 @@ export class AgentWindowWidget extends ReactWidget {
         };
         document.addEventListener('pointerdown', closeSessionMenu);
         this.toDispose.push(Disposable.create(() => document.removeEventListener('pointerdown', closeSessionMenu)));
+        const closeSettingsOnEscape = (event: KeyboardEvent): void => {
+            if (event.key === 'Escape' && this.settingsModalVisible) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.closeSettings();
+            }
+        };
+        document.addEventListener('keydown', closeSettingsOnEscape, true);
+        this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', closeSettingsOnEscape, true)));
         this.installCodeEditorSaveShortcut();
         this.installCodeTerminalShortcut();
         this.installCodeTabDropTarget();
@@ -278,6 +306,7 @@ export class AgentWindowWidget extends ReactWidget {
         }
 
         void this.initializeSessions();
+        void this.restorePoiesisSettings();
         void this.refreshRecentWorkspaces();
         this.update();
     }
@@ -289,17 +318,18 @@ export class AgentWindowWidget extends ReactWidget {
         return (
             <div
                 className='poiesis-agent-window__content'
-                data-mode={this.appPage ?? (this.codeMode ? 'code' : activeTab)}
+                data-mode={this.codeMode ? 'code' : activeTab}
                 data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}
-                style={{ '--poiesis-rail-width': `${this.railWidth}px` } as React.CSSProperties}
+                style={{
+                    '--poiesis-rail-width': `${this.railWidth}px`,
+                    '--poiesis-ui-font-scale': this.uiFontScaleValue()
+                } as React.CSSProperties}
             >
                 {!this.codeMode && this.renderRail()}
                 <main className='poiesis-agent-window__workspace'>
                     {this.renderHeader()}
                     <div className='poiesis-agent-window__viewport'>
-                        {this.appPage
-                            ? this.renderAppPage()
-                            : this.codeMode
+                        {this.codeMode
                             ? this.renderCode()
                             : activeTab === 'agent'
                                 ? this.renderAgent(session, runningTask)
@@ -307,6 +337,7 @@ export class AgentWindowWidget extends ReactWidget {
                     </div>
                 </main>
                 {this.folderExplorerVisible && this.renderFolderExplorer()}
+                {this.settingsModalVisible && this.renderSettingsModal()}
             </div>
         );
     }
@@ -446,9 +477,6 @@ export class AgentWindowWidget extends ReactWidget {
                 <div className='poiesis-agent-window__rail-footer'>
                     <span className='poiesis-agent-window__rail-footer-label'>Poiesis</span>
                     <div className='poiesis-agent-window__rail-footer-actions'>
-                        <button type='button' title='カスタマイズ' aria-label='カスタマイズ' onClick={() => this.openCustomize()}>
-                            <span className='codicon codicon-tools' aria-hidden='true' />
-                        </button>
                         <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
                             <span className='codicon codicon-settings-gear' aria-hidden='true' />
                         </button>
@@ -544,9 +572,17 @@ export class AgentWindowWidget extends ReactWidget {
                                         <button type='button' role='menuitem' onClick={() => this.restoreSession(session.id)}>
                                             <span className='codicon codicon-archive' aria-hidden='true' />復元
                                         </button>
-                                        <button type='button' role='menuitem' className='danger' onClick={() => void this.deleteSession(session.id)}>
-                                            <span className='codicon codicon-trash' aria-hidden='true' />完全に削除
-                                        </button>
+                                        {this.deleteSessionConfirmationId === session.id ? (
+                                            <div className='poiesis-agent-window__inline-confirm' role='group' aria-label='完全削除の確認'>
+                                                <span>取り消せません</span>
+                                                <button type='button' className='danger' onClick={() => void this.deleteSession(session.id)}>削除</button>
+                                                <button type='button' onClick={() => this.cancelDeleteSession()}>戻る</button>
+                                            </div>
+                                        ) : (
+                                            <button type='button' role='menuitem' className='danger' onClick={() => this.beginDeleteSession(session.id)}>
+                                                <span className='codicon codicon-trash' aria-hidden='true' />完全に削除
+                                            </button>
+                                        )}
                                     </>
                                 ) : (
                                     <>
@@ -673,9 +709,19 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
     }
 
+    protected beginDeleteSession(sessionId: string): void {
+        this.deleteSessionConfirmationId = sessionId;
+        this.update();
+    }
+
+    protected cancelDeleteSession(): void {
+        this.deleteSessionConfirmationId = undefined;
+        this.update();
+    }
+
     protected async deleteSession(sessionId: string): Promise<void> {
         const session = this.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
-        if (!session || !window.confirm(`「${session.title}」を完全に削除しますか？この操作は取り消せません。`)) {
+        if (!session || this.deleteSessionConfirmationId !== sessionId) {
             return;
         }
         if (session.agentSession) {
@@ -687,6 +733,7 @@ export class AgentWindowWidget extends ReactWidget {
             this.sessions.splice(index, 1);
         }
         this.openSessionMenuId = undefined;
+        this.deleteSessionConfirmationId = undefined;
         this.persistWindowState();
         this.update();
     }
@@ -1110,20 +1157,6 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderHeader(): React.ReactNode {
-        if (this.appPage) {
-            return (
-                <header className='poiesis-agent-window__header poiesis-agent-window__app-header'>
-                    <div className='poiesis-agent-window__context'>
-                        <small>Poiesis</small>
-                        <strong>{this.appPage === 'settings' ? 'Settings' : 'カスタマイズ'}</strong>
-                    </div>
-                    <button type='button' className='poiesis-agent-window__app-close' onClick={() => this.closeAppPage()}>
-                        <span className='codicon codicon-close' aria-hidden='true' />
-                        <span>Close</span>
-                    </button>
-                </header>
-            );
-        }
         if (this.codeMode) {
             return (
                 <header className='poiesis-agent-window__header poiesis-agent-window__code-header'>
@@ -1270,37 +1303,6 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
-    protected renderAppPage(): React.ReactNode {
-        const page = this.appPage ?? 'settings';
-        return (
-            <section className='poiesis-agent-window__app-page' aria-label={page === 'settings' ? 'Poiesisの設定' : 'Poiesisのカスタマイズ'}>
-                <nav className='poiesis-agent-window__app-nav' aria-label='Poiesis preferences'>
-                    <button
-                        type='button'
-                        className={page === 'settings' ? 'active' : ''}
-                        aria-current={page === 'settings' ? 'page' : undefined}
-                        onClick={() => this.openSettings()}
-                    >
-                        <span className='codicon codicon-settings-gear' aria-hidden='true' />
-                        <span>Settings</span>
-                    </button>
-                    <button
-                        type='button'
-                        className={page === 'customize' ? 'active' : ''}
-                        aria-current={page === 'customize' ? 'page' : undefined}
-                        onClick={() => this.openCustomize()}
-                    >
-                        <span className='codicon codicon-tools' aria-hidden='true' />
-                        <span>カスタマイズ</span>
-                    </button>
-                </nav>
-                <div className='poiesis-agent-window__app-page-body'>
-                    {page === 'settings' ? this.renderPoiesisSettings() : this.renderCustomize()}
-                </div>
-            </section>
-        );
-    }
-
     protected renderFolderExplorer(): React.ReactNode {
         const result = this.folderExplorerResult;
         return (
@@ -1413,54 +1415,133 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
-    protected renderPoiesisSettings(): React.ReactNode {
-        return (
-            <div className='poiesis-agent-window__settings-page'>
-                <div className='poiesis-agent-window__page-heading'>
-                    <span className='codicon codicon-settings-gear' aria-hidden='true' />
-                    <div><h1>Poiesis Settings</h1><p>Poiesis固有の動作とAgent環境を確認します。</p></div>
-                </div>
-                <section className='poiesis-agent-window__settings-section'>
-                    <h2>Workspace</h2>
-                    <div className='poiesis-agent-window__setting-row'>
-                        <div><strong>Open workspace</strong><small>サイドバー内のpickerでWorkspaceを選び、その後フォルダー選択を開きます。</small></div>
-                        <span className='poiesis-agent-window__status-badge'>Poiesis UI</span>
-                    </div>
-                </section>
-                <section className='poiesis-agent-window__settings-section'>
-                    <h2>Agent runtime</h2>
-                    <div className='poiesis-agent-window__setting-row'>
-                        <div><strong>Execution target</strong><small>Agentは現在のWorkspaceを対象に、このコンピューター上で実行されます。</small></div>
-                        <span className='poiesis-agent-window__status-badge active'>Local</span>
-                    </div>
-                </section>
-                <section className='poiesis-agent-window__settings-section'>
-                    <h2>Customization</h2>
-                    <div className='poiesis-agent-window__setting-row'>
-                        <div><strong>Skills and Plugins</strong><small>利用中の機能を確認し、アプリ所有のSkillを有効・無効にします。</small></div>
-                        <button type='button' className='poiesis-agent-window__secondary-action' onClick={() => this.openCustomize()}>
-                            カスタマイズを開く
-                        </button>
-                    </div>
-                </section>
-            </div>
-        );
-    }
-
-    protected renderCustomize(): React.ReactNode {
+    protected renderSettingsModal(): React.ReactNode {
         const resultsEnabled = this.customizationService.isSkillEnabled('results');
+        const archivedSessions = this.sessions
+            .filter(session => session.archived && session.hasUserMessage)
+            .sort((left, right) => right.updatedAt - left.updatedAt);
+        const cliIds: KnownCliId[] = ['codex', 'claude'];
         return (
-            <div className='poiesis-agent-window__customize-page'>
-                <div className='poiesis-agent-window__page-heading'>
-                    <span className='codicon codicon-tools' aria-hidden='true' />
-                    <div><h1>Poiesisをカスタマイズ</h1><p>SkillsとPluginsを一か所で管理します。</p></div>
-                </div>
-                <div className='poiesis-agent-window__customize-tabs' role='tablist' aria-label='カスタマイズのカテゴリ'>
-                    <button type='button' role='tab' aria-selected={this.customizeTab === 'skills'} className={this.customizeTab === 'skills' ? 'active' : ''} onClick={() => this.selectCustomizeTab('skills')}>Skills</button>
-                    <button type='button' role='tab' aria-selected={this.customizeTab === 'plugins'} className={this.customizeTab === 'plugins' ? 'active' : ''} onClick={() => this.selectCustomizeTab('plugins')}>Plugins</button>
-                </div>
-                {this.customizeTab === 'skills' ? (
-                    <div className='poiesis-agent-window__customize-list'>
+            <div
+                className='poiesis-settings-modal__backdrop'
+                onMouseDown={event => {
+                    if (event.target === event.currentTarget) {
+                        this.closeSettings();
+                    }
+                }}
+            >
+                <section
+                    className='poiesis-settings-modal'
+                    role='dialog'
+                    aria-modal='true'
+                    aria-labelledby='poiesis-settings-title'
+                >
+                    <header className='poiesis-settings-modal__header'>
+                        <div>
+                            <span className='codicon codicon-settings-gear' aria-hidden='true' />
+                            <div><h1 id='poiesis-settings-title'>Poiesisの設定</h1><p>アプリの表示とAgent環境を管理します。</p></div>
+                        </div>
+                        <button type='button' aria-label='設定を閉じる' onClick={() => this.closeSettings()} autoFocus>
+                            <span className='codicon codicon-close' aria-hidden='true' />
+                        </button>
+                    </header>
+                    <div className='poiesis-settings-modal__body'>
+                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-general'>
+                            <h2 id='poiesis-settings-general'>一般</h2>
+                            <div className='poiesis-settings-modal__row'>
+                                <div><strong>UI文字サイズ</strong><small>Poiesisのサイドバー、会話、Resultsの表示スケールを変更します。</small></div>
+                                <div className='poiesis-settings-modal__segmented' role='radiogroup' aria-label='UI文字サイズ'>
+                                    {([['small', '小'], ['standard', '標準'], ['large', '大']] as Array<[UiFontScale, string]>).map(([scale, label]) => (
+                                        <label key={scale} className={this.uiFontScale === scale ? 'active' : ''}>
+                                            <input type='radio' name='poiesis-ui-scale' value={scale} checked={this.uiFontScale === scale} onChange={() => this.setUiFontScale(scale)} />
+                                            <span>{label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        </section>
+
+                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-cli'>
+                            <div className='poiesis-settings-modal__section-heading'>
+                                <h2 id='poiesis-settings-cli'>Agent実行 — CLI</h2>
+                                <button type='button' className='poiesis-settings-modal__text-button' disabled={this.cliDetectionLoading} onClick={() => void this.refreshCliDetection()}>再検出</button>
+                            </div>
+                            <div className='poiesis-settings-modal__cli-list'>
+                                {cliIds.map(id => {
+                                    const detection = this.cliDetectionReport?.detections.find(item => item.id === id);
+                                    const executable = id === 'codex';
+                                    const status = this.cliDetectionLoading && !detection
+                                        ? '検出中…'
+                                        : detection?.status === 'found' ? '検出済み' : '未検出';
+                                    return (
+                                        <label key={id} className={`poiesis-settings-modal__cli-row${executable ? '' : ' future'}`}>
+                                            <input
+                                                type='radio'
+                                                name='poiesis-preferred-cli'
+                                                value={id}
+                                                checked={this.preferredCli === id}
+                                                disabled={!executable}
+                                                onChange={() => this.setPreferredCli(id)}
+                                            />
+                                            <span className='poiesis-settings-modal__cli-copy'>
+                                                <strong>{id === 'codex' ? 'Codex' : 'Claude'}</strong>
+                                                <small title={detection?.path}>{detection?.path ?? (executable ? 'codex CLI' : '実行対応は今後')}</small>
+                                            </span>
+                                            <span className={`poiesis-settings-modal__cli-status ${detection?.status ?? 'missing'}`}>{status}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </section>
+
+                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-results'>
+                            <h2 id='poiesis-settings-results'>Results — 外部リソース</h2>
+                            <div className='poiesis-settings-modal__row'>
+                                <div><strong>成果文書の外部リソース読み込みを許可</strong><small>OFFではResults HTMLからのネットワーク画像や外部スタイルをブロックします。</small></div>
+                                <label className='poiesis-agent-window__switch'>
+                                    <input type='checkbox' checked={this.allowExternalResultsResources} aria-label='成果文書の外部リソースを許可' onChange={event => this.setAllowExternalResultsResources(event.currentTarget.checked)} />
+                                    <span aria-hidden='true' />
+                                </label>
+                            </div>
+                        </section>
+
+                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-sessions'>
+                            <h2 id='poiesis-settings-sessions'>セッション — データ管理</h2>
+                            <div className='poiesis-settings-modal__archived'>
+                                <strong>アーカイブ済み</strong>
+                                {archivedSessions.length === 0 && <p>アーカイブ済みのセッションはありません。</p>}
+                                {archivedSessions.map(session => (
+                                    <div className='poiesis-settings-modal__archived-row' key={session.id}>
+                                        <span><strong>{session.title}</strong><small>{this.sessionMeta(session)}</small></span>
+                                        {this.deleteSessionConfirmationId === session.id ? (
+                                            <div className='poiesis-settings-modal__confirm' role='group' aria-label={`${session.title}の完全削除を確認`}>
+                                                <span>完全に削除しますか？</span>
+                                                <button type='button' className='danger' onClick={() => void this.deleteSession(session.id)}>削除</button>
+                                                <button type='button' onClick={() => this.cancelDeleteSession()}>戻る</button>
+                                            </div>
+                                        ) : (
+                                            <button type='button' className='danger ghost' onClick={() => this.beginDeleteSession(session.id)}>完全削除</button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className='poiesis-settings-modal__danger-zone'>
+                                <div><strong>保存データをすべてクリア</strong><small>会話、タスク、Resultsの保存状態をこのWindowから削除します。</small></div>
+                                {this.clearDataConfirmation ? (
+                                    <div className='poiesis-settings-modal__confirm' role='group' aria-label='保存データのクリアを確認'>
+                                        <span>この操作は取り消せません。</span>
+                                        <button type='button' className='danger' onClick={() => void this.clearSavedSessionData()}>クリア</button>
+                                        <button type='button' onClick={() => { this.clearDataConfirmation = false; this.update(); }}>戻る</button>
+                                    </div>
+                                ) : (
+                                    <button type='button' className='danger' onClick={() => { this.clearDataConfirmation = true; this.update(); }}>保存データをすべてクリア</button>
+                                )}
+                            </div>
+                        </section>
+
+                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-skills'>
+                            <h2 id='poiesis-settings-skills'>Skills</h2>
+                            <div className='poiesis-agent-window__customize-list'>
                         <article className='poiesis-agent-window__customize-card'>
                             <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-preview' aria-hidden='true' /></div>
                             <div><div className='poiesis-agent-window__customize-title'><strong>Results</strong><span>Built-in</span></div><p>Task完了後に変更内容からResults文書を生成します。</p></div>
@@ -1470,7 +1551,10 @@ export class AgentWindowWidget extends ReactWidget {
                             </label>
                         </article>
                     </div>
-                ) : (
+                        </section>
+
+                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-plugins'>
+                            <h2 id='poiesis-settings-plugins'>Plugins</h2>
                     <div className='poiesis-agent-window__customize-list'>
                         <article className='poiesis-agent-window__customize-card'>
                             <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-package' aria-hidden='true' /></div>
@@ -1478,14 +1562,14 @@ export class AgentWindowWidget extends ReactWidget {
                             <span className='poiesis-agent-window__status-badge'>No additions</span>
                         </article>
                     </div>
-                )}
+                        </section>
+                    </div>
+                    <footer className='poiesis-settings-modal__footer'>
+                        <button type='button' onClick={() => void this.openTheiaSettings()}>エディタとTerminalの設定は Theia Settings で</button>
+                    </footer>
+                </section>
             </div>
         );
-    }
-
-    protected selectCustomizeTab(tab: CustomizeTab): void {
-        this.customizeTab = tab;
-        this.update();
     }
 
     protected renderNewAgentContext(session: WindowAgentSession): React.ReactNode {
@@ -1660,11 +1744,11 @@ export class AgentWindowWidget extends ReactWidget {
                         {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error
                             && document?.status === 'ready' && document.html && (
                             <iframe
-                                key={selectedTask?.id}
+                                key={`${selectedTask?.id}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
                                 className='poiesis-results__document'
                                 title={`${selectedTask?.title}の成果`}
                                 sandbox=''
-                                srcDoc={document.html}
+                                srcDoc={this.resultsDocumentHtml(document.html)}
                             />
                         )}
                     </div>
@@ -1754,7 +1838,7 @@ export class AgentWindowWidget extends ReactWidget {
                         {this.renderCodeActivity('extensions', 'extensions', 'Extensions')}
                     </div>
                     <div className='poiesis-agent-window__code-activity-footer'>
-                        <button type='button' title='Settings' aria-label='Settings' onClick={() => void this.openCodeSettings()}>
+                        <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
                             <span className='codicon codicon-settings-gear' aria-hidden='true' />
                         </button>
                     </div>
@@ -3080,22 +3164,125 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected openSettings(): void {
-        this.detachCodeWidgets();
-        this.codeMode = false;
-        this.appPage = 'settings';
+        this.settingsModalVisible = true;
+        this.deleteSessionConfirmationId = undefined;
+        this.clearDataConfirmation = false;
+        this.update();
+        void this.refreshCliDetection();
+    }
+
+    protected closeSettings(): void {
+        this.settingsModalVisible = false;
+        this.deleteSessionConfirmationId = undefined;
+        this.clearDataConfirmation = false;
         this.update();
     }
 
-    protected openCustomize(): void {
-        this.detachCodeWidgets();
-        this.codeMode = false;
-        this.appPage = 'customize';
+    protected async openTheiaSettings(): Promise<void> {
+        this.closeSettings();
+        if (!this.codeMode) {
+            this.ensureCodeFileIcons();
+            this.codeMode = true;
+            this.update();
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        }
+        await this.openCodeSettings();
+    }
+
+    protected uiFontScaleValue(): number {
+        return this.uiFontScale === 'small' ? 0.92 : this.uiFontScale === 'large' ? 1.12 : 1;
+    }
+
+    protected setUiFontScale(scale: UiFontScale): void {
+        this.uiFontScale = scale;
+        this.persistPoiesisSettings();
         this.update();
     }
 
-    protected closeAppPage(): void {
-        this.appPage = undefined;
+    protected setPreferredCli(cli: KnownCliId): void {
+        if (cli !== 'codex') {
+            return;
+        }
+        this.preferredCli = cli;
+        this.persistPoiesisSettings();
         this.update();
+    }
+
+    protected setAllowExternalResultsResources(allow: boolean): void {
+        this.allowExternalResultsResources = allow;
+        this.persistPoiesisSettings();
+        this.update();
+    }
+
+    protected async refreshCliDetection(): Promise<void> {
+        if (this.cliDetectionLoading) {
+            return;
+        }
+        this.cliDetectionLoading = true;
+        this.update();
+        try {
+            this.cliDetectionReport = await this.agentRuntimeServer.detectClis();
+        } finally {
+            this.cliDetectionLoading = false;
+            this.update();
+        }
+    }
+
+    protected async restorePoiesisSettings(): Promise<void> {
+        try {
+            const state = await this.storageService.getData<Partial<PersistedPoiesisSettings>>(SETTINGS_STORAGE_KEY);
+            if (state?.version === 1) {
+                this.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
+                    ? state.uiFontScale
+                    : 'standard';
+                this.preferredCli = state.preferredCli === 'codex' ? state.preferredCli : 'codex';
+                this.allowExternalResultsResources = state.allowExternalResultsResources === true;
+            }
+        } catch (error) {
+            console.warn('[Poiesis] Could not restore settings.', error);
+        }
+        this.update();
+    }
+
+    protected persistPoiesisSettings(): void {
+        void this.storageService.setData<PersistedPoiesisSettings>(SETTINGS_STORAGE_KEY, {
+            version: 1,
+            uiFontScale: this.uiFontScale,
+            preferredCli: this.preferredCli,
+            allowExternalResultsResources: this.allowExternalResultsResources
+        });
+    }
+
+    protected resultsDocumentHtml(html: string): string {
+        if (this.allowExternalResultsResources) {
+            return html;
+        }
+        const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">`;
+        return /<head(?:\s[^>]*)?>/i.test(html)
+            ? html.replace(/<head(?:\s[^>]*)?>/i, match => `${match}\n  ${policy}`)
+            : `${policy}\n${html}`;
+    }
+
+    protected async clearSavedSessionData(): Promise<void> {
+        if (!this.clearDataConfirmation) {
+            return;
+        }
+        for (const session of [...this.sessions]) {
+            if (session.agentSession) {
+                try {
+                    await this.agentProvider.cancel(session.agentSession.id);
+                } catch {
+                    // The local process may already have ended; data removal still continues.
+                }
+                const taskIds = this.taskService.removeSession(session.agentSession.id);
+                this.resultsService.remove(taskIds);
+            }
+        }
+        this.sessions.splice(0, this.sessions.length);
+        this.selectedSessionId = undefined;
+        this.deleteSessionConfirmationId = undefined;
+        this.clearDataConfirmation = false;
+        await this.createSession();
     }
 
     protected onBeforeDetach(message: Message): void {
@@ -3130,7 +3317,6 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         this.selectedSessionId = sessionId;
-        this.appPage = undefined;
         session.unreadTaskCompletion = false;
         session.updatedAt = Date.now();
         this.openSessionMenuId = undefined;
@@ -3471,7 +3657,6 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected toggleCodeMode(): void {
-        this.appPage = undefined;
         if (this.codeMode) {
             this.detachCodeWidgets();
             this.codeMode = false;
@@ -3484,7 +3669,6 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected selectTab(tab: AgentWindowTab): void {
-        this.appPage = undefined;
         const session = this.selectedSession();
         if (session) {
             session.activeTab = tab;
@@ -3496,7 +3680,6 @@ export class AgentWindowWidget extends ReactWidget {
     protected async newChat(): Promise<void> {
         this.detachCodeWidgets();
         this.codeMode = false;
-        this.appPage = undefined;
         this.sessionSearchVisible = false;
         this.sessionSearchQuery = '';
         this.repositoryPickerVisible = false;
@@ -3579,7 +3762,6 @@ export class AgentWindowWidget extends ReactWidget {
         }
         this.detachCodeWidgets();
         this.codeMode = false;
-        this.appPage = undefined;
         this.selectedSessionId = session.id;
         session.activeTab = 'agent';
         session.selectedResultsTaskId = undefined;
