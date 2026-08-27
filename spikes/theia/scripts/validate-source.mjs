@@ -31,6 +31,9 @@ const resultsQuestionServer = await read('agent-window/src/node/results-question
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
+const electronFrontendModule = await read('agent-window/src/electron-browser/agent-window-electron-frontend-module.ts');
+const electronWindowControls = await read('agent-window/src/electron-browser/window-controls.tsx');
+const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
 const readme = await read('README.md');
 const firstCompletion = await read('../../docs/FIRST-COMPLETION.md');
 
@@ -88,6 +91,43 @@ assert.equal(
     extensionPackage.theiaExtensions[0].backend,
     'lib/node/agent-window-backend-module'
 );
+assert.equal(
+    extensionPackage.theiaExtensions[1].frontendElectron,
+    'lib/electron-browser/agent-window-electron-frontend-module'
+);
+for (const marker of [
+    'bind(WindowControls).toSelf().inSingletonScope()',
+    'bind(FrontendApplicationContribution).toService(WindowControls)',
+    "import '../../src/electron-browser/window-controls.css'"
+]) {
+    assert.ok(electronFrontendModule.includes(marker), `Electron window-controls module is missing ${marker}`);
+}
+for (const marker of [
+    'window.electronTheiaCore',
+    "this.electron.minimize()",
+    "this.electron.maximize()",
+    "this.electron.unMaximize()",
+    "this.electron.close()",
+    "this.electron.onWindowEvent('maximize'",
+    "document.addEventListener('dblclick'",
+    "event.target.closest('.poiesis-agent-window__header')",
+    "aria-label='最小化'",
+    "'元に戻す' : '最大化'",
+    "aria-label='閉じる'"
+]) {
+    assert.ok(electronWindowControls.includes(marker), `Electron window controls are missing ${marker}`);
+}
+assert.ok(!electronWindowControls.includes("require('electron')"), 'Window controls must use Theia electron APIs');
+for (const marker of [
+    '.poiesis-agent-window__header {',
+    '-webkit-app-region: drag;',
+    "[role='tab']",
+    '-webkit-app-region: no-drag;',
+    'padding-right: 154px;',
+    '.poiesis-window-controls__close:hover'
+]) {
+    assert.ok(electronWindowStyles.includes(marker), `Electron window-control styles are missing ${marker}`);
+}
 assert.equal(extensionPackage.dependencies['@theia/scm'], '1.73.1');
 assert.equal(extensionPackage.dependencies['@theia/search-in-workspace'], '1.73.1');
 assert.ok(resultsQuestionProtocol.includes('workspaceUri: string'), 'Results question scope must name its workspace');
