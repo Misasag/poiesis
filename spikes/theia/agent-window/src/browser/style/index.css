@@ -1358,9 +1358,40 @@
     font-size: 10px;
 }
 
+.poiesis-agent-window__status-dot {
+    background: #696b66;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    height: 6px;
+    width: 6px;
+}
+
+.poiesis-agent-window__status-dot.running {
+    background: #6fa7e8;
+    box-shadow: 0 0 0 2px rgba(111, 167, 232, .12);
+}
+
+.poiesis-agent-window__status-dot.failed {
+    background: #e06c75;
+}
+
+.poiesis-agent-window__status-dot.unread {
+    background: #8fbd72;
+}
+
+.poiesis-agent-window__status-dot.cancelled {
+    background: #b99458;
+}
+
+.poiesis-agent-window__session-copy {
+    display: grid;
+    flex: 1 1 auto;
+    gap: 1px;
+    min-width: 0;
+}
+
 .poiesis-agent-window__session-title {
     display: block;
-    flex: 1 1 auto;
     font-size: 10px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1369,13 +1400,30 @@
 
 .poiesis-agent-window__session-meta {
     color: #7f817a;
-    flex: 0 0 auto;
     font-size: 9px;
     transition: opacity 80ms ease;
 }
 
 .poiesis-agent-window__session-meta.running {
-    color: #b8c890;
+    color: #8fbbea;
+}
+
+.poiesis-agent-window__session-meta.failed {
+    color: #e4878e;
+}
+
+.poiesis-agent-window__session-meta.unread {
+    color: #a6cc8e;
+}
+
+.poiesis-agent-window__session-meta.cancelled {
+    color: #c9a76d;
+}
+
+.poiesis-agent-window__session-time {
+    color: #72746e;
+    flex: 0 0 auto;
+    font-size: 9px;
 }
 
 .poiesis-agent-window__session-row.archived {

@@ -67,6 +67,8 @@ interface WindowAgentSession {
     agentSession?: AgentSession;
     title: string;
     hasUserMessage: boolean;
+    lastTaskStatus?: 'completed' | 'failed' | 'cancelled';
+    unreadTaskCompletion?: boolean;
     pinned: boolean;
     archived: boolean;
     activeTab: AgentWindowTab;
@@ -240,6 +242,13 @@ export class AgentWindowWidget extends ReactWidget {
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
         this.toDispose.push(this.taskService.onDidChangeTask(event => {
             const session = this.findSessionByAgentId(event.task.sessionId);
+            if (session) {
+                session.unreadTaskCompletion = event.type === 'ended' && session.id !== this.selectedSessionId;
+                session.lastTaskStatus = event.type === 'started'
+                    ? undefined
+                    : event.type === 'ended' ? 'completed' : event.type;
+                session.updatedAt = Date.now();
+            }
             if ((event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled')
                 && session && !session.selectedResultsTaskId) {
                 session.selectedResultsTaskId = event.task.id;
@@ -437,7 +446,7 @@ export class AgentWindowWidget extends ReactWidget {
                 <div className='poiesis-agent-window__rail-footer'>
                     <span className='poiesis-agent-window__rail-footer-label'>Poiesis</span>
                     <div className='poiesis-agent-window__rail-footer-actions'>
-                        <button type='button' title='Customize' aria-label='Customize' onClick={() => this.openCustomize()}>
+                        <button type='button' title='カスタマイズ' aria-label='カスタマイズ' onClick={() => this.openCustomize()}>
                             <span className='codicon codicon-tools' aria-hidden='true' />
                         </button>
                         <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
@@ -468,7 +477,8 @@ export class AgentWindowWidget extends ReactWidget {
         const selected = session.id === this.selectedSessionId;
         const renaming = session.id === this.renamingSessionId;
         const menuOpen = session.id === this.openSessionMenuId;
-        const running = Boolean(this.runningTask(session));
+        const state = this.sessionState(session);
+        const running = state.kind === 'running';
         return (
             <div
                 key={session.id}
@@ -506,10 +516,12 @@ export class AgentWindowWidget extends ReactWidget {
                         onClick={() => session.archived ? this.restoreSession(session.id, true) : this.selectSession(session.id)}
                     >
                         {session.pinned && <span className='codicon codicon-pinned' aria-label='ピン留め済み' />}
-                        <span className='poiesis-agent-window__session-title'>{session.title}</span>
-                        <small className={`poiesis-agent-window__session-meta${running ? ' running' : ''}`}>
-                            {running ? '実行中' : this.sessionMeta(session)}
-                        </small>
+                        <span className={`poiesis-agent-window__status-dot ${state.kind}`} aria-hidden='true' />
+                        <span className='poiesis-agent-window__session-copy'>
+                            <span className='poiesis-agent-window__session-title'>{session.title}</span>
+                            <small className={`poiesis-agent-window__session-meta ${state.kind}`}>{state.label}</small>
+                        </span>
+                        <time className='poiesis-agent-window__session-time'>{this.sessionMeta(session)}</time>
                     </button>
                 )}
                 {!renaming && (
@@ -1078,13 +1090,32 @@ export class AgentWindowWidget extends ReactWidget {
         return ageInHours < 24 ? `${ageInHours}h` : `${Math.floor(ageInHours / 24)}d`;
     }
 
+    protected sessionState(session: WindowAgentSession): {
+        kind: 'running' | 'failed' | 'unread' | 'cancelled' | 'idle';
+        label: string;
+    } {
+        if (this.runningTask(session)) {
+            return { kind: 'running', label: '実行中' };
+        }
+        if (session.lastTaskStatus === 'failed') {
+            return { kind: 'failed', label: '失敗' };
+        }
+        if (session.unreadTaskCompletion) {
+            return { kind: 'unread', label: '完了 · 未読' };
+        }
+        if (session.lastTaskStatus === 'cancelled') {
+            return { kind: 'cancelled', label: 'キャンセル' };
+        }
+        return { kind: 'idle', label: '待機中' };
+    }
+
     protected renderHeader(): React.ReactNode {
         if (this.appPage) {
             return (
                 <header className='poiesis-agent-window__header poiesis-agent-window__app-header'>
                     <div className='poiesis-agent-window__context'>
                         <small>Poiesis</small>
-                        <strong>{this.appPage === 'settings' ? 'Settings' : 'Customize'}</strong>
+                        <strong>{this.appPage === 'settings' ? 'Settings' : 'カスタマイズ'}</strong>
                     </div>
                     <button type='button' className='poiesis-agent-window__app-close' onClick={() => this.closeAppPage()}>
                         <span className='codicon codicon-close' aria-hidden='true' />
@@ -1242,7 +1273,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected renderAppPage(): React.ReactNode {
         const page = this.appPage ?? 'settings';
         return (
-            <section className='poiesis-agent-window__app-page' aria-label={page === 'settings' ? 'Poiesisの設定' : 'Customize'}>
+            <section className='poiesis-agent-window__app-page' aria-label={page === 'settings' ? 'Poiesisの設定' : 'Poiesisのカスタマイズ'}>
                 <nav className='poiesis-agent-window__app-nav' aria-label='Poiesis preferences'>
                     <button
                         type='button'
@@ -1260,7 +1291,7 @@ export class AgentWindowWidget extends ReactWidget {
                         onClick={() => this.openCustomize()}
                     >
                         <span className='codicon codicon-tools' aria-hidden='true' />
-                        <span>Customize</span>
+                        <span>カスタマイズ</span>
                     </button>
                 </nav>
                 <div className='poiesis-agent-window__app-page-body'>
@@ -1408,7 +1439,7 @@ export class AgentWindowWidget extends ReactWidget {
                     <div className='poiesis-agent-window__setting-row'>
                         <div><strong>Skills and Plugins</strong><small>利用中の機能を確認し、アプリ所有のSkillを有効・無効にします。</small></div>
                         <button type='button' className='poiesis-agent-window__secondary-action' onClick={() => this.openCustomize()}>
-                            Open Customize
+                            カスタマイズを開く
                         </button>
                     </div>
                 </section>
@@ -1422,9 +1453,9 @@ export class AgentWindowWidget extends ReactWidget {
             <div className='poiesis-agent-window__customize-page'>
                 <div className='poiesis-agent-window__page-heading'>
                     <span className='codicon codicon-tools' aria-hidden='true' />
-                    <div><h1>Customize Poiesis</h1><p>SkillsとPluginsを一か所で管理します。</p></div>
+                    <div><h1>Poiesisをカスタマイズ</h1><p>SkillsとPluginsを一か所で管理します。</p></div>
                 </div>
-                <div className='poiesis-agent-window__customize-tabs' role='tablist' aria-label='Customize categories'>
+                <div className='poiesis-agent-window__customize-tabs' role='tablist' aria-label='カスタマイズのカテゴリ'>
                     <button type='button' role='tab' aria-selected={this.customizeTab === 'skills'} className={this.customizeTab === 'skills' ? 'active' : ''} onClick={() => this.selectCustomizeTab('skills')}>Skills</button>
                     <button type='button' role='tab' aria-selected={this.customizeTab === 'plugins'} className={this.customizeTab === 'plugins' ? 'active' : ''} onClick={() => this.selectCustomizeTab('plugins')}>Plugins</button>
                 </div>
@@ -1690,6 +1721,7 @@ export class AgentWindowWidget extends ReactWidget {
                                 <small>
                                     {index === 0 ? '最新 · ' : ''}
                                     {task.status === 'cancelled' ? 'キャンセル' : task.status === 'failed' ? '失敗' : '完了'}
+                                    {task.endedAt ? ` · ${this.taskFinishedTime(task)}` : ''}
                                 </small>
                                 <span>{task.title}</span>
                             </button>
@@ -1919,6 +1951,7 @@ export class AgentWindowWidget extends ReactWidget {
                                         type='button'
                                         className='poiesis-agent-window__code-panel-tab active'
                                         aria-pressed='true'
+                                        aria-label='ターミナルを選択'
                                         onClick={() => this.codeTerminalWidget?.activate()}
                                     >
                                         TERMINAL
@@ -2559,7 +2592,10 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected codeTerminalLabel(terminal: TerminalWidget): string {
         const index = this.codeTerminalWidgets.indexOf(terminal);
-        return `${index + 1}: ${terminal.title.label || 'Terminal'}`;
+        const label = terminal.title.label || 'Terminal';
+        const fileName = label.split(/[\\/]/).pop() || label;
+        const basename = fileName.replace(/\.[^.]+$/, '');
+        return `${index + 1}: ${basename}`;
     }
 
     protected toggleCodePanel(visible = !this.codePanelVisible): void {
@@ -3095,6 +3131,7 @@ export class AgentWindowWidget extends ReactWidget {
         }
         this.selectedSessionId = sessionId;
         this.appPage = undefined;
+        session.unreadTaskCompletion = false;
         session.updatedAt = Date.now();
         this.openSessionMenuId = undefined;
         if (session.hasUserMessage) {
@@ -3247,6 +3284,12 @@ export class AgentWindowWidget extends ReactWidget {
                     runTarget: 'local',
                     title: candidate.title || NEW_SESSION_TITLE,
                     hasUserMessage: Boolean(candidate.hasUserMessage),
+                    lastTaskStatus: candidate.lastTaskStatus === 'completed'
+                        || candidate.lastTaskStatus === 'failed'
+                        || candidate.lastTaskStatus === 'cancelled'
+                        ? candidate.lastTaskStatus
+                        : undefined,
+                    unreadTaskCompletion: Boolean(candidate.unreadTaskCompletion),
                     pinned: Boolean(candidate.pinned),
                     archived: Boolean(candidate.archived),
                     activeTab: candidate.activeTab === 'results' ? 'results' : 'agent',
@@ -3336,9 +3379,11 @@ export class AgentWindowWidget extends ReactWidget {
         if (this.agentComposerInput) {
             this.agentComposerInput.value = '';
         }
-        session.messages.push({ id: `user-${Date.now()}`, role: 'user', content, complete: true });
-        session.updatedAt = Date.now();
+        const sentAt = Date.now();
+        session.messages.push({ id: `user-${sentAt}`, role: 'user', content, complete: true });
+        session.updatedAt = sentAt;
         if (!session.hasUserMessage) {
+            session.createdAt = sentAt;
             session.title = this.titleForSession(content);
             session.hasUserMessage = true;
         }
@@ -3413,6 +3458,16 @@ export class AgentWindowWidget extends ReactWidget {
         return agentSessionId
             ? this.taskService.list(agentSessionId).filter(task => task.status !== 'running')
             : [];
+    }
+
+    protected taskFinishedTime(task: ExecutionTask): string {
+        const endedAt = task.endedAt ? new Date(task.endedAt) : undefined;
+        if (!endedAt || Number.isNaN(endedAt.getTime())) {
+            return '';
+        }
+        const hours = endedAt.getHours().toString().padStart(2, '0');
+        const minutes = endedAt.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
     }
 
     protected toggleCodeMode(): void {
