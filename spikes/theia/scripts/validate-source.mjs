@@ -899,7 +899,11 @@ for (const marker of [
     'this.agentWindowWidget.registerCodeWidget(factoryId, editor, true)',
     "host.id = 'poiesis-window-host'",
     'document.body.appendChild(host)',
-    'Widget.attach(this.agentWindowWidget, host)'
+    'Widget.attach(this.agentWindowWidget, host)',
+    'this.hostResizeObserver = new ResizeObserver',
+    'MessageLoop.sendMessage(this.agentWindowWidget, new Widget.ResizeMessage(width, height))',
+    'this.hostResizeObserver.observe(host)',
+    'this.hostResizeObserver?.disconnect()'
 ]) {
     assert.ok(agentContribution.includes(marker), `Poiesis-owned Agent host is missing ${marker}`);
 }

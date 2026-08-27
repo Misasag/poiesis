@@ -3100,9 +3100,6 @@ body.poiesis-code-file-pointer-drag * {
     outline-offset: 2px;
 }
 
-.poiesis-agent-window__content:not([data-mode='code']) > .poiesis-agent-window__rail,
-.poiesis-agent-window__content:not([data-mode='code']) > .poiesis-agent-window__workspace,
-.poiesis-agent-window__content > .poiesis-folder-explorer,
 .poiesis-settings-modal__backdrop {
     align-items: center;
     background: rgb(0 0 0 / 58%);

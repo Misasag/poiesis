@@ -82,6 +82,18 @@ try {
     assert(initial.sessionRailVisible, 'Session rail is missing in Electron');
     assert(!initial.legacyChangesVisible, 'Removed Changes UI is still visible in Electron');
 
+    const resizeChecks = [];
+    moveElectronWindow(startProcess.pid, 1100, 700);
+    resizeChecks.push(await assertElectronLayout(page, 'agent'));
+    moveElectronWindow(startProcess.pid, 1500, 850);
+    resizeChecks.push(await assertElectronLayout(page, 'agent'));
+    await page.click('.poiesis-window-controls__button[data-window-action="maximize"]');
+    await page.waitForSelector('.poiesis-window-controls__button[data-window-action="restore"]');
+    resizeChecks.push(await assertElectronLayout(page, 'agent'));
+    await page.click('.poiesis-window-controls__button[data-window-action="restore"]');
+    await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
+    resizeChecks.push(await assertElectronLayout(page, 'agent'));
+
     await clickByText(page, '.poiesis-agent-window__code-control', 'Code');
     await page.waitForSelector('.poiesis-agent-window__code', { timeout: uiTimeout });
     await page.waitForSelector('#files .theia-FileStatNode', { timeout: uiTimeout });
@@ -99,6 +111,10 @@ try {
     assert(code.codeLuminoPanelCount === 0, 'Code reintroduced lm-Widget lm-Panel wrappers in Electron');
     assert(code.codeLuminoTabContainerCount === 0, 'Code reintroduced lm-TabBar-content-container in Electron');
     assert(!code.applicationShellVisible, 'Code mounted the Theia ApplicationShell in Electron');
+    moveElectronWindow(startProcess.pid, 1100, 700);
+    resizeChecks.push(await assertElectronLayout(page, 'code'));
+    moveElectronWindow(startProcess.pid, 1500, 850);
+    resizeChecks.push(await assertElectronLayout(page, 'code'));
 
     await page.waitForSelector('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea', { timeout: uiTimeout });
     assert(await page.$('.poiesis-agent-window__code-terminal-select[aria-label="Active Terminal"]'),
@@ -220,13 +236,14 @@ try {
     assert(reactUnmountWarnings.length === 0,
         `Code widget transitions synchronously unmounted a React root in Electron: ${reactUnmountWarnings.join('\n')}`);
 
-    await page.$eval('.poiesis-agent-window__code-activity-footer button[aria-label="Settings"]', element => element.click());
-    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
-    await page.waitForSelector('.poiesis-agent-window__code-editor-host #settings_widget', { timeout: uiTimeout });
-    assert(await page.$('.poiesis-agent-window__code'), 'Code Settings left Code mode in Electron');
-    await page.$eval('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-close', element => element.click());
-    await page.waitForFunction(() => ![...document.querySelectorAll('.poiesis-agent-window__code-editor-tab-name')]
-        .some(element => element.textContent?.trim() === 'Settings'));
+    await page.$eval('.poiesis-agent-window__code-activity-footer button[aria-label="設定"]', element => element.click());
+    await page.waitForSelector('.poiesis-settings-modal__backdrop', { timeout: uiTimeout });
+    moveElectronWindow(startProcess.pid, 1100, 700);
+    resizeChecks.push(await assertElectronLayout(page, 'code', true));
+    moveElectronWindow(startProcess.pid, 1500, 850);
+    resizeChecks.push(await assertElectronLayout(page, 'code', true));
+    await page.$eval('.poiesis-settings-modal__header button[aria-label="設定を閉じる"]', element => element.click());
+    await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal__backdrop'));
 
     await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Explorer"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Explorer');
@@ -269,7 +286,7 @@ try {
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code-editor-tab.active.dirty'));
     assert(readFileSync(scmFixturePath, 'utf8') === codeSaveFixtureBefore, 'Ctrl+S did not restore the Electron editor fixture');
 
-    console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify({ userAgent, windowTitle, initial, code, editorTabs }, null, 2)}`);
+    console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify({ userAgent, windowTitle, initial, resizeChecks, code, editorTabs }, null, 2)}`);
 } catch (error) {
     console.error(`Electron start log (tail):\n${startLog}`);
     throw error;
@@ -396,6 +413,94 @@ async function clickScmAction(page, label, action) {
 
 function assert(condition, message) {
     if (!condition) throw new Error(message);
+}
+
+function moveElectronWindow(pid, width, height) {
+    if (process.platform !== 'win32') return;
+    const script = `
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class PoiesisNativeWindow {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
+}
+'@
+$poiesisProcess = Get-Process -Id ${pid} -ErrorAction Stop
+$poiesisDeadline = (Get-Date).AddSeconds(10)
+while ($poiesisProcess.MainWindowHandle -eq 0 -and (Get-Date) -lt $poiesisDeadline) {
+    Start-Sleep -Milliseconds 100
+    $poiesisProcess.Refresh()
+}
+if ($poiesisProcess.MainWindowHandle -eq 0) { throw 'Poiesis main window handle was not found.' }
+if (-not [PoiesisNativeWindow]::MoveWindow($poiesisProcess.MainWindowHandle, 40, 40, ${width}, ${height}, $true)) {
+    throw 'MoveWindow failed.'
+}
+`;
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        encoding: 'utf8',
+        windowsHide: true
+    });
+    if (result.status !== 0) {
+        throw new Error(`Could not resize the Electron window: ${result.stderr || result.stdout}`);
+    }
+}
+
+async function assertElectronLayout(page, expectedMode, expectSettings = false) {
+    await delay(350);
+    await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+    const snapshot = await page.evaluate((mode, settingsOpen) => {
+        const rect = selector => {
+            const element = document.querySelector(selector);
+            if (!(element instanceof HTMLElement)) return undefined;
+            const bounds = element.getBoundingClientRect();
+            return {
+                x: Math.round(bounds.x),
+                y: Math.round(bounds.y),
+                width: Math.round(bounds.width),
+                height: Math.round(bounds.height),
+                right: Math.round(bounds.right),
+                position: getComputedStyle(element).position
+            };
+        };
+        return {
+            expectedMode: mode,
+            viewport: { width: innerWidth, height: innerHeight },
+            mode: document.querySelector('.poiesis-agent-window__content')?.getAttribute('data-mode'),
+            content: rect('.poiesis-agent-window__content'),
+            rail: rect('.poiesis-agent-window__rail'),
+            workspace: rect('.poiesis-agent-window__workspace'),
+            header: rect('.poiesis-agent-window__header'),
+            appViewport: rect('.poiesis-agent-window__viewport'),
+            code: rect('.poiesis-agent-window__code'),
+            settingsBackdrop: settingsOpen ? rect('.poiesis-settings-modal__backdrop') : undefined,
+            settingsModal: settingsOpen ? rect('.poiesis-settings-modal') : undefined
+        };
+    }, expectedMode, expectSettings);
+    assert(snapshot.mode === expectedMode, `Electron resize changed ${expectedMode} mode to ${snapshot.mode}`);
+    assert(snapshot.content?.x === 0 && snapshot.content?.y === 0
+        && snapshot.content?.width === snapshot.viewport.width && snapshot.content?.height === snapshot.viewport.height,
+    `Electron content did not fill the resized window: ${JSON.stringify(snapshot)}`);
+    if (expectedMode === 'code') {
+        assert(!snapshot.rail && snapshot.workspace?.width === snapshot.viewport.width
+            && snapshot.code?.width === snapshot.appViewport?.width && snapshot.code?.height === snapshot.appViewport?.height,
+        `Electron Code layout fragmented after resize: ${JSON.stringify(snapshot)}`);
+    } else {
+        assert(snapshot.rail?.width >= 52 && snapshot.rail?.position !== 'absolute'
+            && snapshot.workspace?.position !== 'absolute' && snapshot.rail?.right === snapshot.workspace?.x
+            && snapshot.workspace?.right === snapshot.viewport.width
+            && snapshot.header?.x === snapshot.workspace?.x && snapshot.header?.width === snapshot.workspace?.width,
+        `Electron ${expectedMode} layout fragmented after resize: ${JSON.stringify(snapshot)}`);
+    }
+    if (expectSettings) {
+        assert(snapshot.settingsBackdrop?.x === 0 && snapshot.settingsBackdrop?.y === 0
+            && snapshot.settingsBackdrop?.width === snapshot.viewport.width && snapshot.settingsBackdrop?.height === snapshot.viewport.height
+            && snapshot.settingsModal?.width > 0 && snapshot.settingsModal?.height > 0
+            && snapshot.settingsModal?.x >= 0 && snapshot.settingsModal?.y >= 0
+            && snapshot.settingsModal?.right <= snapshot.viewport.width,
+        `Electron Settings layout fragmented after resize: ${JSON.stringify(snapshot)}`);
+    }
+    return snapshot;
 }
 
 function readPoiesisState() {

@@ -1,6 +1,7 @@
 import { inject, injectable } from '@theia/core/shared/inversify';
 import { FrontendApplicationContribution, WidgetManager } from '@theia/core/lib/browser';
 import { DisposableCollection } from '@theia/core/lib/common';
+import { MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { Widget } from '@theia/core/shared/@lumino/widgets';
 import { EditorManager } from '@theia/editor/lib/browser';
 import { AgentWindowWidget } from './agent-window-widget';
@@ -8,6 +9,7 @@ import { AgentWindowWidget } from './agent-window-widget';
 @injectable()
 export class AgentWindowContribution implements FrontendApplicationContribution {
     protected host?: HTMLElement;
+    protected hostResizeObserver?: ResizeObserver;
     protected readonly toDispose = new DisposableCollection();
 
     constructor(
@@ -55,11 +57,22 @@ export class AgentWindowContribution implements FrontendApplicationContribution 
         // controls near the bottom edge of the window.
         document.body.appendChild(host);
         Widget.attach(this.agentWindowWidget, host);
+        this.hostResizeObserver = new ResizeObserver(entries => {
+            const entry = entries[entries.length - 1];
+            const width = Math.round(entry.contentRect.width);
+            const height = Math.round(entry.contentRect.height);
+            if (width > 0 && height > 0 && this.agentWindowWidget.isAttached) {
+                MessageLoop.sendMessage(this.agentWindowWidget, new Widget.ResizeMessage(width, height));
+            }
+        });
+        this.hostResizeObserver.observe(host);
         this.host = host;
     }
 
     onStop(): void {
         this.toDispose.dispose();
+        this.hostResizeObserver?.disconnect();
+        this.hostResizeObserver = undefined;
         if (this.agentWindowWidget.isAttached) {
             Widget.detach(this.agentWindowWidget);
         }
