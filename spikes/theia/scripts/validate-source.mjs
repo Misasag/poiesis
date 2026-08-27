@@ -25,6 +25,9 @@ const cliProvider = await read('agent-window/src/browser/cli-agent-provider.ts')
 const mockProvider = await read('agent-window/src/browser/mock-agent-provider.ts');
 const taskService = await read('agent-window/src/browser/task-service.ts');
 const resultsSkill = await read('agent-window/src/browser/results-skill.ts');
+const resultsQuestionProtocol = await read('agent-window/src/common/results-question-protocol.ts');
+const resultsQuestionService = await read('agent-window/src/browser/results-question-service.ts');
+const resultsQuestionServer = await read('agent-window/src/node/results-question-server.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
@@ -87,6 +90,30 @@ assert.equal(
 );
 assert.equal(extensionPackage.dependencies['@theia/scm'], '1.73.1');
 assert.equal(extensionPackage.dependencies['@theia/search-in-workspace'], '1.73.1');
+assert.ok(resultsQuestionProtocol.includes('workspaceUri: string'), 'Results question scope must name its workspace');
+assert.ok(resultsQuestionService.includes('return this.server.ask(question, scope)'), 'Results question browser proxy is missing');
+for (const marker of [
+    'this.resultsQuestionService.ask(question, {',
+    'workspaceUri: session.workspaceUri',
+    "status: 'sending'",
+    "status: 'answered'",
+    "status: 'failed'",
+    'question.length > 4_000',
+    "currentNotice?.status === 'sending'"
+]) {
+    assert.ok(agentWidget.includes(marker), `Results question widget wiring is missing ${marker}`);
+}
+assert.ok(!agentWidget.includes('this.resultsService.answer('), 'Bundled Results skill must not answer questions');
+assert.ok(!resultsSkill.includes('async answer('), 'Bundled Results skill must only generate documents');
+for (const marker of [
+    'this.resolveWorkspace(scope.workspaceUri)',
+    "resource.scheme !== 'file'",
+    "'--sandbox', 'read-only'",
+    'this.runs.has(scope.taskId)'
+]) {
+    assert.ok(resultsQuestionServer.includes(marker), `Results question server is missing ${marker}`);
+}
+assert.ok(!resultsQuestionServer.includes('getMostRecentlyUsedWorkspace'), 'Results questions must not use an unrelated recent workspace');
 for (const dependency of [
     '@theia/editor',
     '@theia/filesystem',

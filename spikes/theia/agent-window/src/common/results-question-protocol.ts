@@ -20,6 +20,7 @@ export interface ResultsQuestionTaskMetadata {
  */
 export interface ResultsQuestionScope {
     taskId: string;
+    workspaceUri: string;
     taskMetadata: ResultsQuestionTaskMetadata;
     changeSetSummary: string;
     resultsHtml: string;

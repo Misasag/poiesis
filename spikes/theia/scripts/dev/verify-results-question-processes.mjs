@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const { ResultsQuestionServerImpl } = require('../../agent-window/lib/node/results-question-server');
@@ -9,9 +10,9 @@ const detector = {
         detections: [{ id: 'codex', status: 'found', path: process.execPath }]
     }
 };
-const workspaceServer = { getMostRecentlyUsedWorkspace: async () => undefined };
 const scope = {
     taskId: 'process-test',
+    workspaceUri: pathToFileURL(process.cwd()).toString(),
     taskMetadata: { status: 'completed' },
     changeSetSummary: 'No changes.',
     resultsHtml: '<html><body>Test</body></html>'
@@ -19,12 +20,12 @@ const scope = {
 
 const missing = new ResultsQuestionServerImpl({
     recordedReport: { detections: [{ id: 'codex', status: 'missing' }] }
-}, workspaceServer);
+});
 const missingResult = await missing.ask('Test missing CLI.', scope);
 assert.equal(missingResult.status, 'failed');
 assert.equal(missingResult.error.code, 'cli-not-found');
 
-const failed = new ResultsQuestionServerImpl(detector, workspaceServer);
+const failed = new ResultsQuestionServerImpl(detector);
 failed.spawnCodex = () => spawn(
     process.execPath,
     ['-e', 'process.stderr.write("expected failure");process.exit(7)'],
@@ -35,7 +36,7 @@ assert.equal(failedResult.status, 'failed');
 assert.equal(failedResult.error.code, 'cli-failed');
 assert.equal(failedResult.error.exitCode, 7);
 
-const cancelled = new ResultsQuestionServerImpl(detector, workspaceServer);
+const cancelled = new ResultsQuestionServerImpl(detector);
 cancelled.spawnCodex = () => spawn(
     process.execPath,
     ['-e', 'setTimeout(() => process.stdout.write("late"), 10000)'],

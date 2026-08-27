@@ -8,12 +8,10 @@ const require = createRequire(import.meta.url);
 const { CliDetector } = require('../../agent-window/lib/node/cli-detector');
 const { ResultsQuestionServerImpl } = require('../../agent-window/lib/node/results-question-server');
 
-const workspaceServer = {
-    getMostRecentlyUsedWorkspace: async () => pathToFileURL(workspace).toString()
-};
-const service = new ResultsQuestionServerImpl(new CliDetector(), workspaceServer);
+const service = new ResultsQuestionServerImpl(new CliDetector());
 const result = await service.ask('What status does this fake Task have? Answer in one short sentence.', {
     taskId: 'smoke-task',
+    workspaceUri: pathToFileURL(workspace).toString(),
     taskMetadata: {
         title: 'Results question smoke test',
         status: 'completed',

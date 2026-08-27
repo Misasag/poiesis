@@ -30,6 +30,7 @@ import { ExecutionTask, TaskService } from './task-service';
 import { getDesignVariant } from './design-variant';
 import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
+import { ResultsQuestionService } from './results-question-service';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
@@ -216,7 +217,8 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(StorageService) protected readonly storageService: StorageService,
         @inject(CustomizationService) protected readonly customizationService: CustomizationService,
         @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService,
-        @inject(AgentRuntimeServer) protected readonly agentRuntimeServer: AgentRuntimeServer
+        @inject(AgentRuntimeServer) protected readonly agentRuntimeServer: AgentRuntimeServer,
+        @inject(ResultsQuestionService) protected readonly resultsQuestionService: ResultsQuestionService
     ) {
         super();
     }
@@ -740,6 +742,11 @@ export class AgentWindowWidget extends ReactWidget {
         const session = this.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
         if (!session || this.deleteSessionConfirmationId !== sessionId) {
             return;
+        }
+        for (const [taskId, notice] of session.resultsNotices) {
+            if (notice.status === 'sending') {
+                await this.resultsQuestionService.cancel(taskId);
+            }
         }
         if (session.agentSession) {
             const taskIds = this.taskService.removeSession(session.agentSession.id);
@@ -1697,6 +1704,7 @@ export class AgentWindowWidget extends ReactWidget {
         const document = selectedTask ? this.resultsService.get(selectedTask.id) : undefined;
         const draft = selectedTask ? session?.resultsDrafts.get(selectedTask.id) ?? '' : '';
         const notice = selectedTask ? session?.resultsNotices.get(selectedTask.id) : undefined;
+        const questionSending = notice?.status === 'sending';
 
         return (
             <section
@@ -1773,10 +1781,12 @@ export class AgentWindowWidget extends ReactWidget {
                             value={draft}
                             placeholder='この結果について質問…'
                             aria-label='表示中の成果について質問'
-                            disabled={!selectedTask || document?.status !== 'ready'}
+                            maxLength={4_000}
+                            disabled={!selectedTask || document?.status !== 'ready' || questionSending}
                             onChange={event => selectedTask && this.setResultsDraft(selectedTask.id, event.currentTarget.value)}
                             onKeyDown={event => {
-                                if (event.key === 'Enter' && selectedTask) {
+                                if (event.key === 'Enter' && selectedTask && !questionSending) {
+                                    event.preventDefault();
                                     void this.submitResultsQuestion(selectedTask.id);
                                 }
                             }}
@@ -1784,7 +1794,7 @@ export class AgentWindowWidget extends ReactWidget {
                         <button
                             type='button'
                             aria-label='Results 内へ送信'
-                            disabled={!selectedTask || document?.status !== 'ready' || !draft.trim()}
+                            disabled={!selectedTask || document?.status !== 'ready' || questionSending || !draft.trim()}
                             onClick={() => selectedTask && void this.submitResultsQuestion(selectedTask.id)}
                         >
                             <span className='codicon codicon-arrow-up' aria-hidden='true' />
@@ -3275,6 +3285,11 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         for (const session of [...this.sessions]) {
+            for (const [taskId, notice] of session.resultsNotices) {
+                if (notice.status === 'sending') {
+                    await this.resultsQuestionService.cancel(taskId);
+                }
+            }
             if (session.agentSession) {
                 try {
                     await this.agentProvider.cancel(session.agentSession.id);
@@ -3735,8 +3750,20 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async submitResultsQuestion(taskId: string, retryQuestion?: string): Promise<void> {
         const session = this.selectedSession();
+        const task = this.taskService.get(taskId);
+        const document = this.resultsService.get(taskId);
         const question = retryQuestion?.trim() || session?.resultsDrafts.get(taskId)?.trim();
-        if (!session || !question) {
+        const currentNotice = session?.resultsNotices.get(taskId);
+        if (!session
+            || !session.workspaceUri
+            || !task
+            || task.status === 'running'
+            || !this.finishedTasks(session).some(candidate => candidate.id === taskId)
+            || document?.status !== 'ready'
+            || !document.html
+            || !question
+            || question.length > 4_000
+            || currentNotice?.status === 'sending') {
             return;
         }
         session.resultsDrafts.set(taskId, '');
@@ -3744,8 +3771,29 @@ export class AgentWindowWidget extends ReactWidget {
         this.persistWindowState();
         this.update();
         try {
-            const answer = await this.resultsService.answer(taskId, question);
-            session.resultsNotices.set(taskId, { question, status: 'answered', text: answer });
+            const result = await this.resultsQuestionService.ask(question, {
+                taskId,
+                workspaceUri: session.workspaceUri,
+                taskMetadata: {
+                    title: task.title,
+                    request: task.request,
+                    status: task.status,
+                    startedAt: task.startedAt,
+                    endedAt: task.endedAt
+                },
+                changeSetSummary: task.changeSet?.diff
+                    || task.changeSet?.error
+                    || 'No changes were recorded.',
+                resultsHtml: document.html
+            });
+            if (result.status === 'answered') {
+                session.resultsNotices.set(taskId, { question, status: 'answered', text: result.answer });
+            } else if (result.status === 'failed') {
+                session.resultsNotices.set(taskId, { question, status: 'failed', text: result.error.message });
+            } else {
+                session.resultsDrafts.set(taskId, question);
+                session.resultsNotices.delete(taskId);
+            }
         } catch {
             session.resultsNotices.set(taskId, {
                 question,
@@ -3753,6 +3801,7 @@ export class AgentWindowWidget extends ReactWidget {
                 text: '回答を作成できませんでした。もう一度お試しください。'
             });
         }
+        this.persistWindowState();
         this.update();
     }
 

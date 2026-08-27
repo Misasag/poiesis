@@ -4,7 +4,6 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import URI from '@theia/core/lib/common/uri';
 import { inject, injectable } from '@theia/core/shared/inversify';
-import { WorkspaceServer } from '@theia/workspace/lib/common';
 import {
     ResultsQuestionError,
     ResultsQuestionResult,
@@ -32,8 +31,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
     protected readonly runs = new Map<string, ResultsQuestionRun>();
 
     constructor(
-        @inject(CliDetector) protected readonly cliDetector: CliDetector,
-        @inject(WorkspaceServer) protected readonly workspaceServer: Pick<WorkspaceServer, 'getMostRecentlyUsedWorkspace'>
+        @inject(CliDetector) protected readonly cliDetector: CliDetector
     ) { }
 
     async ask(question: string, scope: ResultsQuestionScope): Promise<ResultsQuestionResult> {
@@ -44,7 +42,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
         if (this.runs.has(scope.taskId)) {
             return this.failed({
                 code: 'already-running',
-                message: 'A Results question is already running for this Task.'
+                message: 'このタスクへの質問はすでに送信中です。'
             });
         }
 
@@ -54,11 +52,11 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             if (codex?.status !== 'found' || !codex.path) {
                 return this.failed({
                     code: 'cli-not-found',
-                    message: 'Codex is not installed.'
+                    message: 'Codex CLIが見つかりません。設定を確認してください。'
                 });
             }
 
-            const workspace = await this.resolveWorkspace();
+            const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const prompt = this.buildPrompt(question.trim(), scope);
             const args = [
                 'exec',
@@ -75,8 +73,8 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             return this.failed({
                 code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
                 message: this.isCommandMissing(error)
-                    ? 'Codex could not be started because the CLI was not found.'
-                    : `The Results question could not be started: ${this.errorMessage(error)}`
+                    ? 'Codex CLIが見つからないため、回答を開始できませんでした。'
+                    : '回答を開始できませんでした。もう一度お試しください。'
             });
         }
     }
@@ -115,8 +113,8 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                 finish(this.failed({
                     code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
                     message: this.isCommandMissing(error)
-                        ? 'Codex could not be started because the CLI was not found.'
-                        : `Codex process error: ${error.message}`
+                        ? 'Codex CLIが見つからないため、回答を開始できませんでした。'
+                        : 'Codexの実行中に問題が発生しました。'
                 }));
             });
             run.process.once('close', (code, signal) => {
@@ -125,7 +123,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                         status: 'cancelled',
                         error: {
                             code: 'cancelled',
-                            message: 'The Results question was cancelled.',
+                            message: '質問をキャンセルしました。',
                             exitCode: code,
                             signal
                         }
@@ -136,8 +134,8 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                     finish(this.failed({
                         code: 'cli-failed',
                         message: signal
-                            ? `Codex exited after signal ${signal}.`
-                            : `Codex exited with code ${code ?? 'unknown'}.`,
+                            ? 'Codexの実行が中断されました。'
+                            : `Codexが終了コード${code ?? '不明'}で停止しました。`,
                         exitCode: code,
                         signal,
                         stderr: this.truncate(stderr.trim(), STDERR_MAX_CHARS, 'CLI stderr')
@@ -149,7 +147,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                 if (!answer) {
                     finish(this.failed({
                         code: 'cli-failed',
-                        message: 'Codex completed without returning an answer.',
+                        message: 'Codexから回答を受け取れませんでした。',
                         exitCode: code,
                         stderr: this.truncate(stderr.trim(), STDERR_MAX_CHARS, 'CLI stderr')
                     }));
@@ -162,17 +160,19 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
 
     protected validate(question: string, scope: ResultsQuestionScope): ResultsQuestionError | undefined {
         if (typeof question !== 'string' || !question.trim()) {
-            return { code: 'invalid-question', message: 'Enter a Results question.' };
+            return { code: 'invalid-question', message: '成果についての質問を入力してください。' };
         }
         if (question.length > QUESTION_MAX_CHARS) {
             return {
                 code: 'invalid-question',
-                message: `Results questions must be ${QUESTION_MAX_CHARS} characters or fewer.`
+                message: `質問は${QUESTION_MAX_CHARS}文字以内で入力してください。`
             };
         }
         if (!scope
             || typeof scope.taskId !== 'string'
             || !scope.taskId.trim()
+            || typeof scope.workspaceUri !== 'string'
+            || !scope.workspaceUri.trim()
             || !scope.taskMetadata
             || typeof scope.taskMetadata !== 'object'
             || typeof scope.changeSetSummary !== 'string'
@@ -180,13 +180,13 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             || !scope.resultsHtml.trim()) {
             return {
                 code: 'invalid-scope',
-                message: 'The selected Task metadata, Change Set summary, and Results HTML are required.'
+                message: '質問に必要な成果情報が揃っていません。'
             };
         }
         if (!['completed', 'failed', 'cancelled'].includes(scope.taskMetadata.status)) {
             return {
                 code: 'invalid-scope',
-                message: 'Results questions require a terminated Task.'
+                message: '実行が終了したタスクの成果を選択してください。'
             };
         }
         return undefined;
@@ -231,9 +231,12 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
         return `${value.slice(0, limit)}\n[${label} truncated; original length: ${value.length} characters]`;
     }
 
-    protected async resolveWorkspace(): Promise<string> {
-        const workspaceUri = await this.workspaceServer.getMostRecentlyUsedWorkspace();
-        const candidate = workspaceUri ? new URI(workspaceUri).path.fsPath() : process.cwd();
+    protected async resolveWorkspace(workspaceUri: string): Promise<string> {
+        const resource = new URI(workspaceUri);
+        if (resource.scheme !== 'file') {
+            throw new Error('Results questions require a local workspace.');
+        }
+        const candidate = resource.path.fsPath();
         const workspacePath = resolve(candidate);
         const workspaceStat = await stat(workspacePath);
         return workspaceStat.isDirectory() ? workspacePath : dirname(workspacePath);
@@ -284,7 +287,4 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
         return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
     }
 
-    protected errorMessage(error: unknown): string {
-        return error instanceof Error ? error.message : String(error);
-    }
 }
