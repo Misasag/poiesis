@@ -2,6 +2,7 @@ import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { ExecutionTask, TaskChangeSet, TaskService } from './task-service';
 import { CustomizationService } from './customization-service';
+import { ResultsSkillBundle } from '../common/skill-bundle';
 
 export const ResultsSkill = Symbol('ResultsSkill');
 
@@ -10,7 +11,7 @@ export interface ResultsSkillInput {
     changeSet: TaskChangeSet;
 }
 
-export interface ResultsSkill {
+export interface ResultsSkill extends ResultsSkillBundle {
     generate(input: ResultsSkillInput): Promise<string>;
 }
 
@@ -38,6 +39,14 @@ interface ResultPage {
 /** The built-in document generator for this slice. */
 @injectable()
 export class BundledResultsSkill implements ResultsSkill {
+    readonly manifest = {
+        id: 'builtin.results',
+        name: 'Bundled Results',
+        version: '1.0.0',
+        kind: 'results' as const,
+        entry: 'builtin:results'
+    };
+
     async generate({ task, changeSet }: ResultsSkillInput): Promise<string> {
         const diff = changeSet.diff.trim();
         const page = this.describe(task, changeSet, diff);

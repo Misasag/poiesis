@@ -1681,10 +1681,11 @@ export class AgentWindowWidget extends ReactWidget {
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-skills'>
                             <h2 id='poiesis-settings-skills'>Skills</h2>
+                            <p className='poiesis-settings-modal__section-copy'>Agent Skillsは作業方法と将来の委譲を定義し、Results Skillsは終了済みTaskから完成HTMLを生成します。install／remove UIはまだありません。</p>
                             <div className='poiesis-agent-window__customize-list'>
                         <article className='poiesis-agent-window__customize-card'>
                             <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-preview' aria-hidden='true' /></div>
-                            <div><div className='poiesis-agent-window__customize-title'><strong>Results</strong><span>Built-in</span></div><p>Task完了後に変更内容からResults文書を生成します。</p></div>
+                            <div><div className='poiesis-agent-window__customize-title'><strong>Bundled Results</strong><span>Results bundle</span></div><p>Task完了後、確定したChange Setから一つの完成HTML文書を生成します。</p></div>
                             <label className='poiesis-agent-window__switch'>
                                 <input type='checkbox' checked={resultsEnabled} aria-label='Results skillを有効化' onChange={event => this.customizationService.setSkillEnabled('results', event.currentTarget.checked)} />
                                 <span aria-hidden='true' />
