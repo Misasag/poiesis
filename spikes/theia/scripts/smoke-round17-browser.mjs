@@ -31,42 +31,73 @@ try {
     await waitForApp(page);
     await selectProviders(page);
 
+    const initialRail = { taskCount: 0, badge: '0' };
+
     const codexRolloutsBefore = codexRolloutFiles();
     const noChangeRun = await runAgentTask(page,
         '1+1の答えだけを短く返してください。ファイルは一切変更しないでください。');
-    await clickText(page, '.poiesis-agent-window__tabs button', 'Results');
-    await page.waitForSelector('.poiesis-results__state.no-change');
-    await page.waitForFunction(() => document.querySelector('.poiesis-results__state.no-change')?.textContent
-        ?.includes('このタスクにファイル変更はありません。会話の返答は Agent タブにあります。'));
+    await page.click('#poiesis-results-tab');
+    await page.waitForFunction(() => document.querySelectorAll('.poiesis-results__task-select').length === 0);
     await new Promise(resolvePromise => setTimeout(resolvePromise, 1_500));
     const noChange = await page.evaluate(() => ({
-        railText: document.querySelector('.poiesis-results__task-row.no-change small')?.textContent?.trim(),
+        taskCount: document.querySelectorAll('.poiesis-results__task-select').length,
+        badge: document.querySelector('.poiesis-results__task-switcher-header span')?.textContent?.trim(),
         iframeCount: document.querySelectorAll('.poiesis-results__document').length,
-        composerCount: document.querySelectorAll('.poiesis-results__composer').length,
-        questionNote: document.querySelector('.poiesis-results__no-change-question-note')?.textContent?.trim(),
-        documentState: document.querySelector('.poiesis-results__state.no-change')?.textContent?.trim()
+        emptyText: document.querySelector('.poiesis-results__empty')?.textContent?.trim(),
+        persisted: (() => {
+            const state = JSON.parse(localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1') ?? '{}');
+            const session = state.sessions?.find(candidate => candidate.id === state.selectedSessionId);
+            const emptyTasks = session?.tasks?.filter(task => task.status === 'completed'
+                && task.changeSet?.source === 'empty' && !task.changeSet?.error) ?? [];
+            return {
+                emptyTaskCount: emptyTasks.length,
+                emptyDocumentCount: session?.resultsDocuments?.filter(document =>
+                    emptyTasks.some(task => task.id === document.taskId)).length ?? 0,
+                selectedResultsTaskId: session?.selectedResultsTaskId
+            };
+        })()
     }));
-    assert(noChange.railText?.includes('完了') && noChange.railText.includes('変更なし'),
-        `No-change rail entry is not compact and honest: ${JSON.stringify(noChange)}`);
+    assert(noChange.taskCount === initialRail.taskCount && noChange.badge === initialRail.badge,
+        `No-change task altered the Results rail: ${JSON.stringify({ initialRail, noChange })}`);
     assert(noChange.iframeCount === 0, 'A Results document was rendered for an empty Change Set.');
-    assert(noChange.composerCount === 0, 'The Results composer remained visible for an empty Change Set.');
-    assert(noChange.questionNote?.includes('成果文書があるタスク'), 'The no-change question boundary was not explained.');
+    assert(noChange.emptyText?.includes('Agent でタスクを完了すると'), 'The empty Results state is missing.');
+    assert(noChange.persisted.emptyTaskCount === 1, 'The internal no-change task metadata was lost.');
+    assert(noChange.persisted.emptyDocumentCount === 0, 'No-change Results HTML was persisted.');
+    assert(!noChange.persisted.selectedResultsTaskId, 'No-change task was auto-selected for Results.');
     const codexRolloutsAfter = codexRolloutFiles();
     const newCodexRollouts = [...codexRolloutsAfter].filter(path => !codexRolloutsBefore.has(path));
     const expectedCodexRollouts = realAgent ? 1 : 0;
     assert(newCodexRollouts.length === expectedCodexRollouts,
         `Expected ${expectedCodexRollouts} Agent rollout(s) and no Results-AI rollout for the empty Change Set: ${JSON.stringify(newCodexRollouts)}`);
 
+    const legacyNoChangeDocumentSeeded = await page.evaluate(() => {
+        const storageKey = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
+        const state = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
+        const session = state?.sessions?.find(candidate => candidate.id === state.selectedSessionId);
+        const noChangeTask = session?.tasks?.find(task => task.status === 'completed'
+            && task.changeSet?.source === 'empty' && !task.changeSet?.error);
+        if (!session || !noChangeTask) return false;
+        session.resultsDocuments = [...session.resultsDocuments ?? [], {
+            taskId: noChangeTask.id,
+            status: 'ready',
+            html: '<!doctype html><html lang="ja"><body><h1>旧版の変更なしResults</h1></body></html>'
+        }];
+        session.selectedResultsTaskId = noChangeTask.id;
+        localStorage.setItem(storageKey, JSON.stringify(state));
+        return true;
+    });
+    assert(legacyNoChangeDocumentSeeded, 'Could not seed the legacy no-change document fixture.');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
-    await page.waitForSelector('.poiesis-results__state.no-change');
     const restoredNoChange = await page.evaluate(() => ({
-        taskCount: document.querySelectorAll('.poiesis-results__task-row').length,
+        taskCount: document.querySelectorAll('.poiesis-results__task-select').length,
         iframeCount: document.querySelectorAll('.poiesis-results__document').length,
-        state: document.querySelector('.poiesis-results__state.no-change')?.textContent?.trim()
+        selectedCount: document.querySelectorAll('.poiesis-results__task-select[aria-selected="true"]').length,
+        emptyText: document.querySelector('.poiesis-results__empty')?.textContent?.trim()
     }));
-    assert(restoredNoChange.taskCount === 1 && restoredNoChange.iframeCount === 0,
-        `No-change metadata did not restore without HTML: ${JSON.stringify(restoredNoChange)}`);
+    assert(restoredNoChange.taskCount === 0 && restoredNoChange.iframeCount === 0
+        && restoredNoChange.selectedCount === 0,
+        `Persisted no-change Results leaked back into the rail: ${JSON.stringify(restoredNoChange)}`);
 
     const seededDocument = await page.evaluate(() => {
         const storageKey = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
@@ -75,6 +106,7 @@ try {
         if (!session) return false;
         const timestamp = new Date().toISOString();
         const taskId = 'round17-document-task';
+        const failedTaskId = 'round18-failed-task';
         session.tasks = [...session.tasks ?? [], {
             id: taskId,
             sessionId: session.id,
@@ -95,8 +127,27 @@ try {
                 answer: 'ROUND17-SMOKE.mdを更新しました。',
                 timestamp
             }]
+        }, {
+            id: failedTaskId,
+            sessionId: session.id,
+            title: 'Round 18 failed task verification',
+            request: '失敗taskを表示する',
+            status: 'failed',
+            startedAt: timestamp,
+            endedAt: timestamp,
+            baseline: { kind: 'workspace-snapshot', capturedAt: timestamp },
+            changeSet: {
+                source: 'empty',
+                diff: '',
+                files: [],
+                capturedAt: timestamp,
+                error: 'Agent provider did not complete.'
+            },
+            failure: { summary: 'Round 18の検証用失敗です。' }
         }];
-        session.resultsDocuments = [...session.resultsDocuments ?? [], {
+        session.resultsDocuments = [...(session.resultsDocuments ?? []).filter(document =>
+            !session.tasks.some(task => task.status === 'completed'
+                && task.changeSet?.source === 'empty' && task.id === document.taskId)), {
             taskId,
             status: 'ready',
             html: '<!doctype html><html lang="ja"><head><meta charset="utf-8"></head><body><main><h1>Round 17 file change verification</h1><p>変更のあるタスクの成果文書です。</p></main></body></html>'
@@ -111,6 +162,25 @@ try {
     await waitForApp(page);
     await page.waitForSelector('.poiesis-results__document');
     await page.waitForFunction(() => document.querySelectorAll('.poiesis-results__task-row').length === 2);
+    const seededRailLabels = await page.$$eval('.poiesis-results__task-select', nodes => nodes.map(node => node.textContent?.trim()));
+    assert(seededRailLabels.some(label => label?.includes('失敗')), `Failed task is missing: ${seededRailLabels.join(' | ')}`);
+    assert(seededRailLabels.some(label => label?.includes('完了')), `Document task is missing: ${seededRailLabels.join(' | ')}`);
+
+    await page.evaluate(() => {
+        const failed = [...document.querySelectorAll('.poiesis-results__task-select')]
+            .find(node => node.textContent?.includes('失敗'));
+        if (!(failed instanceof HTMLElement)) throw new Error('Failed task tab was not found.');
+        failed.click();
+    });
+    await page.waitForFunction(() => document.querySelector('.poiesis-results__state.error')?.textContent
+        ?.includes('Round 18の検証用失敗です。'));
+    await page.evaluate(() => {
+        const completed = [...document.querySelectorAll('.poiesis-results__task-select')]
+            .find(node => node.textContent?.includes('完了'));
+        if (!(completed instanceof HTMLElement)) throw new Error('Document task tab was not found.');
+        completed.click();
+    });
+    await page.waitForSelector('.poiesis-results__document');
 
     await page.setViewport({ width: 1024, height: 600, deviceScaleFactor: 1 });
     const resized = await page.evaluate(() => {
@@ -128,15 +198,18 @@ try {
     await page.waitForSelector('.poiesis-results__task-delete-confirm');
     await page.click('.poiesis-results__task-delete-confirm button.danger');
     await page.waitForFunction(() => document.querySelectorAll('.poiesis-results__task-row').length === 1);
-    await page.waitForSelector('.poiesis-results__state.no-change');
+    await page.waitForFunction(() => document.querySelector('.poiesis-results__state.error')?.textContent
+        ?.includes('Round 18の検証用失敗です。'));
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
-    await page.waitForSelector('.poiesis-results__state.no-change');
+    await page.waitForSelector('.poiesis-results__state.error');
     const afterDocumentDeleteReload = await page.evaluate(() => ({
-        taskCount: document.querySelectorAll('.poiesis-results__task-row').length,
-        iframeCount: document.querySelectorAll('.poiesis-results__document').length
+        taskCount: document.querySelectorAll('.poiesis-results__task-select').length,
+        iframeCount: document.querySelectorAll('.poiesis-results__document').length,
+        failure: document.querySelector('.poiesis-results__state.error')?.textContent?.trim()
     }));
-    assert(afterDocumentDeleteReload.taskCount === 1 && afterDocumentDeleteReload.iframeCount === 0,
+    assert(afterDocumentDeleteReload.taskCount === 1 && afterDocumentDeleteReload.iframeCount === 0
+        && afterDocumentDeleteReload.failure?.includes('Round 18の検証用失敗です。'),
         `Document-bearing task deletion did not persist: ${JSON.stringify(afterDocumentDeleteReload)}`);
 
     await page.click('.poiesis-results__task-delete');
@@ -145,24 +218,37 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('.poiesis-results__task-row').length === 0);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
-    const afterNoChangeDeleteReload = await page.evaluate(() => ({
-        taskCount: document.querySelectorAll('.poiesis-results__task-row').length,
-        emptyText: document.querySelector('.poiesis-results__empty')?.textContent?.trim()
+    const afterAllResultsDeleteReload = await page.evaluate(() => ({
+        taskCount: document.querySelectorAll('.poiesis-results__task-select').length,
+        badge: document.querySelector('.poiesis-results__task-switcher-header span')?.textContent?.trim(),
+        emptyText: document.querySelector('.poiesis-results__empty')?.textContent?.trim(),
+        persisted: (() => {
+            const state = JSON.parse(localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1') ?? '{}');
+            const session = state.sessions?.find(candidate => candidate.id === state.selectedSessionId);
+            return {
+                taskCount: session?.tasks?.length ?? 0,
+                resultsDocumentCount: session?.resultsDocuments?.length ?? 0
+            };
+        })()
     }));
-    assert(afterNoChangeDeleteReload.taskCount === 0
-        && afterNoChangeDeleteReload.emptyText?.includes('Agent でタスクを完了すると'),
-        `No-change task deletion did not persist: ${JSON.stringify(afterNoChangeDeleteReload)}`);
+    assert(afterAllResultsDeleteReload.taskCount === 0 && afterAllResultsDeleteReload.badge === '0'
+        && afterAllResultsDeleteReload.emptyText?.includes('Agent でタスクを完了すると')
+        && afterAllResultsDeleteReload.persisted.taskCount === 1
+        && afterAllResultsDeleteReload.persisted.resultsDocumentCount === 0,
+        `Empty Results rail did not persist cleanly: ${JSON.stringify(afterAllResultsDeleteReload)}`);
 
     console.log(`ROUND17_BROWSER_SMOKE_RESULT=${JSON.stringify({
         noChangeRun,
+        initialRail,
         noChange,
         realAgent,
         noChangeCodexRollouts: newCodexRollouts.length,
         restoredNoChange,
         seededDocument,
+        seededRailLabels,
         resized,
         afterDocumentDeleteReload,
-        afterNoChangeDeleteReload
+        afterAllResultsDeleteReload
     })}`);
 } finally {
     if (browser) await browser.close().catch(() => undefined);

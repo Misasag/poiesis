@@ -694,7 +694,10 @@ export class AgentWindowWidget extends ReactWidget {
                     : event.type === 'ended' ? 'completed' : event.type;
                 session.updatedAt = Date.now();
             }
-            if ((event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled') && session) {
+            const shouldSelectResultsTask = event.type === 'failed'
+                || event.type === 'cancelled'
+                || event.type === 'ended' && !isEmptyTaskChangeSet(event.task.changeSet);
+            if (shouldSelectResultsTask && session) {
                 session.selectedResultsTaskId = event.task.id;
             }
             this.persistWindowState();
@@ -2590,16 +2593,13 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderResults(session: WindowAgentSession | undefined): React.ReactNode {
-        const finishedTasks = [...this.finishedTasks(session)].reverse();
-        const selectedTask = finishedTasks.find(task => task.id === session?.selectedResultsTaskId)
-            ?? finishedTasks[0];
+        const resultsTasks = [...this.finishedTasks(session)].reverse();
+        const selectedTask = resultsTasks.find(task => task.id === session?.selectedResultsTaskId)
+            ?? resultsTasks[0];
         const document = selectedTask ? this.resultsService.get(selectedTask.id) : undefined;
         const draft = selectedTask ? session?.resultsDrafts.get(selectedTask.id) ?? '' : '';
         const notice = selectedTask ? session?.resultsNotices.get(selectedTask.id) : undefined;
         const questionSending = notice?.status === 'sending';
-        const selectedTaskHasNoChanges = selectedTask?.status === 'completed'
-            && isEmptyTaskChangeSet(selectedTask.changeSet);
-        const showNoChangeState = selectedTaskHasNoChanges && !document;
         const questionHistory = (selectedTask?.resultsQuestions ?? []).filter(entry =>
             notice?.status !== 'failed' || entry.timestamp !== notice.historyTimestamp
         );
@@ -2640,14 +2640,7 @@ export class AgentWindowWidget extends ReactWidget {
                                 <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
                             </div>
                         )}
-                        {showNoChangeState && (
-                            <div className='poiesis-results__state no-change' role='status'>
-                                <span className='codicon codicon-check' aria-hidden='true' />
-                                <strong>変更なし</strong>
-                                <p>このタスクにファイル変更はありません。会話の返答は Agent タブにあります。</p>
-                            </div>
-                        )}
-                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error && !selectedTaskHasNoChanges
+                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error
                             && (!document || document.status === 'generating') && (
                             <div className='poiesis-results__empty' role='status'>成果を作成しています…</div>
                         )}
@@ -2672,7 +2665,7 @@ export class AgentWindowWidget extends ReactWidget {
                             </div>
                         )}
                     </div>
-                    {notice && !showNoChangeState && (
+                    {notice && (
                         <div
                             className={`poiesis-results__answer ${notice.status}`}
                             role={notice.status === 'failed' ? 'alert' : 'status'}
@@ -2685,46 +2678,39 @@ export class AgentWindowWidget extends ReactWidget {
                             )}
                         </div>
                     )}
-                    {showNoChangeState ? (
-                        <p className='poiesis-results__no-change-question-note'>
-                            Results への質問は、成果文書があるタスクで利用できます。
-                        </p>
-                    ) : (
-                        <section className='poiesis-results__composer' aria-label='Results の入力欄'>
-                            <PoiesisTextInput
-                                key={selectedTask?.id ?? 'no-results-task'}
-                                value={draft}
-                                placeholder='この結果について質問…'
-                                aria-label='表示中の成果について質問'
-                                maxLength={4_000}
-                                disabled={!selectedTask || document?.status !== 'ready' || questionSending}
-                                onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}
-                                onKeyDown={event => {
-                                    if (event.key === 'Enter' && selectedTask && !questionSending) {
-                                        event.preventDefault();
-                                        void this.submitResultsQuestion(selectedTask.id);
-                                    }
-                                }}
-                            />
-                            <button
-                                type='button'
-                                aria-label='Results 内へ送信'
-                                disabled={!selectedTask || document?.status !== 'ready' || questionSending || !draft.trim()}
-                                onClick={() => selectedTask && void this.submitResultsQuestion(selectedTask.id)}
-                            >
-                                <span className='codicon codicon-arrow-up' aria-hidden='true' />
-                            </button>
-                        </section>
-                    )}
+                    <section className='poiesis-results__composer' aria-label='Results の入力欄'>
+                        <PoiesisTextInput
+                            key={selectedTask?.id ?? 'no-results-task'}
+                            value={draft}
+                            placeholder='この結果について質問…'
+                            aria-label='表示中の成果について質問'
+                            maxLength={4_000}
+                            disabled={!selectedTask || document?.status !== 'ready' || questionSending}
+                            onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}
+                            onKeyDown={event => {
+                                if (event.key === 'Enter' && selectedTask && !questionSending) {
+                                    event.preventDefault();
+                                    void this.submitResultsQuestion(selectedTask.id);
+                                }
+                            }}
+                        />
+                        <button
+                            type='button'
+                            aria-label='Results 内へ送信'
+                            disabled={!selectedTask || document?.status !== 'ready' || questionSending || !draft.trim()}
+                            onClick={() => selectedTask && void this.submitResultsQuestion(selectedTask.id)}
+                        >
+                            <span className='codicon codicon-arrow-up' aria-hidden='true' />
+                        </button>
+                    </section>
                 </div>
                 <aside className='poiesis-results__task-switcher' aria-label='同じセッションの実行タスク'>
                     <div className='poiesis-results__task-switcher-header'>
                         <strong>タスク</strong>
-                        <span>{finishedTasks.length}</span>
+                        <span>{resultsTasks.length}</span>
                     </div>
                     <div className='poiesis-results__task-list' role='tablist'>
-                        {finishedTasks.map((task, index) => {
-                            const noChanges = task.status === 'completed' && isEmptyTaskChangeSet(task.changeSet);
+                        {resultsTasks.map((task, index) => {
                             const confirmingDelete = this.deleteTaskConfirmationId === task.id;
                             const state = task.status === 'cancelled' ? 'キャンセル' : task.status === 'failed' ? '失敗' : '完了';
                             const time = task.endedAt ? this.taskFinishedTime(task) : '';
@@ -2732,13 +2718,12 @@ export class AgentWindowWidget extends ReactWidget {
                                 <div
                                     key={task.id}
                                     role='presentation'
-                                    className={`poiesis-results__task-row${noChanges ? ' no-change' : ''}`}
+                                    className='poiesis-results__task-row'
                                 >
                                     <button
                                         id={`poiesis-results-task-tab-${task.id}`}
                                         type='button'
                                         role='tab'
-                                        aria-label={noChanges ? `${task.title}、${state}、${time}、変更なし` : undefined}
                                         aria-selected={selectedTask?.id === task.id}
                                         aria-controls='poiesis-results-task-panel'
                                         tabIndex={selectedTask?.id === task.id ? 0 : -1}
@@ -2748,9 +2733,8 @@ export class AgentWindowWidget extends ReactWidget {
                                         <small>
                                             {index === 0 ? '最新 · ' : ''}{state}
                                             {time ? ` · ${time}` : ''}
-                                            {noChanges ? ' · 変更なし' : ''}
                                         </small>
-                                        {!noChanges && <span title={task.title}>{task.title}</span>}
+                                        <span title={task.title}>{task.title}</span>
                                     </button>
                                     {confirmingDelete ? (
                                         <div className='poiesis-results__task-delete-confirm' role='group' aria-label={`${task.title}の削除を確認`}>
@@ -2773,7 +2757,7 @@ export class AgentWindowWidget extends ReactWidget {
                             );
                         })}
                     </div>
-                    {!finishedTasks.length && <p>完了したタスクはありません。</p>}
+                    {!resultsTasks.length && <p>完了したタスクはありません。</p>}
                 </aside>
             </section>
         );
@@ -4908,9 +4892,12 @@ export class AgentWindowWidget extends ReactWidget {
                 const createdAt = Number(candidate.createdAt) || Date.now();
                 const restoredTasks = this.taskService.restore(Array.isArray(candidate.tasks) ? candidate.tasks : []);
                 const taskIds = restoredTasks.map(task => task.id);
+                const resultsTaskIds = new Set(restoredTasks
+                    .filter(task => this.isResultsTask(task))
+                    .map(task => task.id));
                 this.resultsService.restore(
                     Array.isArray(candidate.resultsDocuments) ? candidate.resultsDocuments : [],
-                    new Set(taskIds)
+                    resultsTaskIds
                 );
                 const taskById = new Map(restoredTasks.map(task => [task.id, task]));
                 const restoredMessages = (Array.isArray(candidate.messages) ? candidate.messages.filter(message =>
@@ -4962,6 +4949,7 @@ export class AgentWindowWidget extends ReactWidget {
                     messages: restoredMessages,
                     taskIds,
                     selectedResultsTaskId: typeof candidate.selectedResultsTaskId === 'string'
+                        && resultsTaskIds.has(candidate.selectedResultsTaskId)
                         ? candidate.selectedResultsTaskId
                         : undefined,
                     resultsDrafts: new Map(Array.isArray(candidate.resultsDrafts) ? candidate.resultsDrafts : []),
@@ -5066,8 +5054,10 @@ export class AgentWindowWidget extends ReactWidget {
                 railCollapsed: this.railCollapsed,
                 sessions: this.sessions.map(session => {
                     const tasks = this.persistedTasks(session);
-                    const taskIds = new Set(tasks.map(task => task.id));
-                    const resultsDocuments = this.resultsService.list(taskIds).map(document => ({
+                    const resultsTaskIds = new Set(tasks
+                        .filter(task => this.isResultsTask(task))
+                        .map(task => task.id));
+                    const resultsDocuments = this.resultsService.list(resultsTaskIds).map(document => ({
                         ...document,
                         html: document.html?.slice(0, MAX_PERSISTED_RESULTS_HTML_CHARS)
                     }));
@@ -5266,8 +5256,13 @@ export class AgentWindowWidget extends ReactWidget {
     protected finishedTasks(session = this.selectedSession()): ExecutionTask[] {
         return session?.taskIds
             .map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => task !== undefined && task.status !== 'running')
+            .filter((task): task is ExecutionTask => task !== undefined && this.isResultsTask(task))
             ?? [];
+    }
+
+    protected isResultsTask(task: ExecutionTask): boolean {
+        return task.status !== 'running'
+            && !(task.status === 'completed' && isEmptyTaskChangeSet(task.changeSet));
     }
 
     protected taskFinishedTime(task: ExecutionTask): string {

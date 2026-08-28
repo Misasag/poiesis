@@ -78,7 +78,12 @@ try {
                     startedAt: new Date(timestamp - 30_000).toISOString(),
                     endedAt: new Date(timestamp - 20_000).toISOString(),
                     baseline: { kind: 'workspace-snapshot', capturedAt: new Date(timestamp - 30_000).toISOString() },
-                    changeSet: { source: 'empty', diff: '', files: [], capturedAt: new Date(timestamp - 20_000).toISOString() }
+                    changeSet: {
+                        source: 'task-diff',
+                        diff: 'diff --git a/docs/UX.md b/docs/UX.md\n+復元済みResults',
+                        files: ['docs/UX.md'],
+                        capturedAt: new Date(timestamp - 20_000).toISOString()
+                    }
                 }],
                 resultsDocuments: [{
                     taskId,

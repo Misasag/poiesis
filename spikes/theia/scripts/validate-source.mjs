@@ -748,8 +748,10 @@ for (const marker of [
     'if (!composing.current && !nativeEvent.isComposing)',
     'onValueChange={value => this.setAgentDraft(session?.id, value)}',
     'onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}',
-    'このタスクにファイル変更はありません。会話の返答は Agent タブにあります。',
-    'Results への質問は、成果文書があるタスクで利用できます。',
+    'const shouldSelectResultsTask =',
+    'protected isResultsTask(task: ExecutionTask): boolean',
+    "task.status === 'completed' && isEmptyTaskChangeSet(task.changeSet)",
+    'resultsTaskIds.has(candidate.selectedResultsTaskId)',
     'protected async deleteResultsTask(taskId: string): Promise<void>',
     'this.resultsService.remove([taskId])',
     'this.taskService.remove([taskId])'
@@ -801,13 +803,16 @@ for (const marker of [
 assert.equal(rootPackage.scripts['smoke:round17'], 'node scripts/smoke-round17-browser.mjs');
 for (const marker of [
     'codexRolloutFiles()',
-    "document.querySelector('.poiesis-results__state.no-change')",
+    'initialRail',
+    'No-change task altered the Results rail',
     "assert(noChange.iframeCount === 0",
-    "assert(noChange.composerCount === 0",
+    'emptyDocumentCount === 0',
+    'Persisted no-change Results leaked back into the rail',
     "process.env.POIESIS_ROUND17_REAL_AGENT === '1'",
     'const expectedCodexRollouts = realAgent ? 1 : 0',
+    'Failed task is missing',
     'Document-bearing task deletion did not persist',
-    'No-change task deletion did not persist',
+    'Empty Results rail did not persist cleanly',
     'width: 1024, height: 600'
 ]) {
     assert.ok(round17Smoke.includes(marker), `Round 17 live regression is missing ${marker}`);
@@ -870,7 +875,10 @@ for (const marker of [
 assert.ok(!agentWidget.includes('Saveable.confirmSaveBeforeClose'), 'Editor close must use the Poiesis-owned confirmation dialog');
 assert.ok(!agentWidget.includes('branchPickerVisible'), 'The non-functional branch picker must not return');
 assert.ok(!agentWidget.includes('<strong>No Repo</strong>'), 'The non-functional No Repo option must not return');
-assert.ok(!agentWidget.includes('&& session && !session.selectedResultsTaskId'), 'Results must select the latest terminated Task');
+assert.ok(!agentWidget.includes('&& session && !session.selectedResultsTaskId'), 'Results selection must not depend on an empty prior selection');
+assert.ok(!agentWidget.includes('このタスクにファイル変更はありません。会話の返答は Agent タブにあります。'),
+    'No-change completed tasks must not expose a Results-side canvas state');
+assert.ok(!agentStyles.includes('.poiesis-results__task-row.no-change'), 'No-change Results rail styling must stay removed');
 assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.openCustomize()}"), 'Code Extensions must not open Poiesis Customize');
 assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Poiesis Settings');
 assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Poiesis Customize must not manage Code extensions');

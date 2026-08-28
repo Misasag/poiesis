@@ -627,23 +627,6 @@
     color: #d8aaa4;
 }
 
-.poiesis-results__state.no-change {
-    justify-items: center;
-    text-align: center;
-}
-
-.poiesis-results__state.no-change > .codicon {
-    color: #8f9588;
-    font-size: 18px;
-}
-
-.poiesis-results__no-change-question-note {
-    color: var(--poiesis-chrome-muted);
-    font-size: 12px;
-    margin: 8px 16px 12px;
-    text-align: center;
-}
-
 /* Agent Window chrome follows docs/ui/agent-window-spec.html. */
 .poiesis-agent-window {
     min-height: 320px;
@@ -2192,16 +2175,6 @@
     line-height: 1.35;
     overflow: visible;
     white-space: normal;
-}
-
-.poiesis-results__task-row.no-change .poiesis-results__task-select {
-    color: var(--poiesis-chrome-muted);
-    opacity: .78;
-    padding-block: 7px;
-}
-
-.poiesis-results__task-row.no-change .poiesis-results__task-select.active {
-    opacity: .92;
 }
 
 .poiesis-results__task-delete {
