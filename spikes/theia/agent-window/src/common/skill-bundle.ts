@@ -3,13 +3,29 @@ export type SkillBundleKind = 'agent' | 'results';
 export interface SkillBundleManifest<TKind extends SkillBundleKind = SkillBundleKind> {
     id: string;
     name: string;
+    description?: string;
     version: string;
     kind: TKind;
     entry: string;
 }
 
+export interface SkillDocumentFrontmatter<TKind extends SkillBundleKind = SkillBundleKind> {
+    name: string;
+    description: string;
+    kind: TKind;
+}
+
 export interface SkillBundle<TKind extends SkillBundleKind = SkillBundleKind> {
     readonly manifest: SkillBundleManifest<TKind>;
+}
+
+/** A workspace file bundle whose manifest is derived from its folder and skill.md frontmatter. */
+export interface SkillDocumentBundle<TKind extends SkillBundleKind = SkillBundleKind> extends SkillBundle<TKind> {
+    readonly source: 'workspace';
+    readonly rootUri: string;
+    readonly skillDocumentUri: string;
+    readonly frontmatter: SkillDocumentFrontmatter<TKind>;
+    readonly instructions: string;
 }
 
 export type AgentSkillBundle = SkillBundle<'agent'>;

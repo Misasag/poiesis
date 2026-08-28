@@ -15,7 +15,6 @@ import { MockAgentProvider } from './mock-agent-provider';
 import { AiResultsSkill, BundledResultsSkill, ResultsService, ResultsSkill } from './results-skill';
 import { TaskService } from './task-service';
 import { PoiesisFrontendApplication } from './poiesis-frontend-application';
-import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
 import { ResultsQuestionServer, resultsQuestionServerPath } from '../common/results-question-protocol';
 import { ResultsQuestionService } from './results-question-service';
@@ -51,7 +50,6 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     bind(AiResultsSkill).toSelf().inSingletonScope();
     bind(ResultsSkill).toService(AiResultsSkill);
     bind(ResultsService).toSelf().inSingletonScope();
-    bind(CustomizationService).toSelf().inSingletonScope();
     bind(FolderExplorerService).toSelf().inSingletonScope();
     bind(BrowserGlobalStorageService).toSelf().inSingletonScope();
     bind(GlobalStorageService).toService(BrowserGlobalStorageService);

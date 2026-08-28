@@ -16,6 +16,7 @@ SkillをPoiesis本体へ埋め込まれた条件分岐ではなく、install／r
 interface SkillBundleManifest {
   id: string;
   name: string;
+  description?: string;
   version: string;
   kind: 'agent' | 'results';
   entry: string;
@@ -28,6 +29,49 @@ interface SkillBundleManifest {
 - `kind`はAgentとResultsの責務を分離する。
 - `entry`はbundleの実装entryを指す。第一完成点では読み込み方式を固定しない。
 
+## Workspace file bundle
+
+Workspace内の次の構造をUser Skill bundleとして扱う。
+
+```text
+.poiesis/skills/<skill-id>/
+└── skill.md
+```
+
+`skill.md`はYAML frontmatterとMarkdown本文で構成する。frontmatterの値は第一完成点では1行のscalarとする。
+
+```markdown
+---
+name: Review checklist
+description: 変更後の確認観点を定義します
+kind: agent
+---
+
+# Review checklist
+
+ここにSkillの指示を記述します。
+```
+
+```ts
+interface SkillDocumentFrontmatter {
+  name: string;
+  description: string;
+  kind: 'agent' | 'results';
+}
+
+interface SkillDocumentBundle extends SkillBundle {
+  source: 'workspace';
+  rootUri: string;
+  skillDocumentUri: string;
+  frontmatter: SkillDocumentFrontmatter;
+  instructions: string;
+}
+```
+
+file bundleのmanifestはファイルから導出する。`id`は`<skill-id>`フォルダー名、`name`／`description`／`kind`はfrontmatter、`version`は`workspace`、`entry`は`skill.md`とする。この導出により、manifest用の別ファイルを要求せず、`skill.md` bundleも`SkillBundle`契約へ適合する。
+
+Customizeの「新しいSkill」はこの構造をscaffoldし、既存のCode editorで`skill.md`を開く。保存は通常のWorkspaceファイル保存であり、marketplaceからのinstallではない。User Skillの実行反映はまだ行わない。
+
 ## Lifecycle
 
 Application側の境界は次の4操作を提供する。
@@ -37,7 +81,7 @@ Application側の境界は次の4操作を提供する。
 - `enable(id)`：実行対象へ戻す。
 - `disable(id)`：install状態を保ったまま実行対象から外す。
 
-この段階ではinterfaceのみを契約とし、marketplace、検索、download、更新UIは実装しない。存在しないinstall機能を設定画面に装わない。
+この段階ではlifecycle interfaceのみを将来の配布bundle向け境界とし、marketplace、検索、download、更新UIは実装しない。Workspace file bundleのscaffold／編集をinstallと装わない。
 
 ## Role split
 
@@ -77,7 +121,7 @@ Results skillは終了済みTaskと確定済みChange Setを入力に、一つ�
 }
 ```
 
-現在の設定画面は、このResults生成chainをenable／disableする既存操作だけを表示する。install／remove UIや架空のAgent skill一覧は追加しない。
+現在の実行へ反映されるのは、この2つの組み込みResults bundleだけである。Customizeは組み込みbundleを説明し、WorkspaceのUser Skillを走査・scaffold・編集できるが、User SkillをAgent／Results実行へ反映したとは表示しない。install／remove／enable／disable UIは追加しない。
 
 ## Boundary rules
 
@@ -86,3 +130,4 @@ Results skillは終了済みTaskと確定済みChange Setを入力に、一つ�
 - 完成HTMLの内部構成はResults skillが所有する。
 - ApplicationはTask lifecycle、Change Set、Skill起動時点、sandboxed canvasを所有する。
 - bundleはWorkspace外の権限や、選択されたAI providerを暗黙に拡張しない。
+- Workspace file bundleの編集権限は、現在開いているWorkspace内の`.poiesis/skills`に限定する。

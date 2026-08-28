@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -24,6 +24,11 @@ if (scmFixtureOriginal.includes(scmFixtureMarker)) {
     throw new Error('SCM smoke fixture still contains a marker from an interrupted test.');
 }
 const terminalFixturePath = resolve(process.cwd(), '.poiesis-terminal-smoke.txt');
+const existingSkillDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'poiesis-customize-existing-smoke');
+const existingSkillPath = resolve(existingSkillDirectory, 'skill.md');
+const createdSkillDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'poiesis-customize-created-smoke');
+const createdSkillPath = resolve(createdSkillDirectory, 'skill.md');
+const skillEditMarker = 'Edited and saved by the Poiesis Customize smoke.';
 removeTerminalFixture();
 
 const browser = await puppeteer.launch({
@@ -40,6 +45,11 @@ const browser = await puppeteer.launch({
 });
 
 try {
+    if (existsSync(existingSkillDirectory) || existsSync(createdSkillDirectory)) {
+        throw new Error('Customize smoke skill fixture already exists.');
+    }
+    mkdirSync(existingSkillDirectory, { recursive: true });
+    writeFileSync(existingSkillPath, `---\nname: Existing smoke skill\ndescription: Workspace scan fixture\nkind: agent\n---\n\n# Existing smoke skill\n`, 'utf8');
     writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n${scmFixtureMarker}\n`, 'utf8');
     const page = await browser.newPage();
     const reactUnmountWarnings = [];
@@ -96,8 +106,7 @@ try {
             messages: [{ id: `restored-${id}`, role: 'agent', content: `${title} restored`, complete: true }],
             resultsDrafts: []
         });
-        const storageKey = Object.keys(localStorage).find(key => key.endsWith(':poiesis.agent-window.sessions.v1'))
-            ?? `theia:${location.pathname}:poiesis.agent-window.sessions.v1`;
+        const storageKey = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
         localStorage.setItem(storageKey, JSON.stringify({
             version: 1,
             selectedSessionId: 'smoke-alpha',
@@ -108,6 +117,7 @@ try {
                 session('smoke-beta', 'Beta session', now)
             ]
         }));
+        localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.migrated.v1', 'true');
     });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-session-id="smoke-alpha"]');
@@ -146,8 +156,9 @@ try {
     await click(page, '.poiesis-agent-window__session-menu button', 'アーカイブ');
     await page.waitForSelector('[data-session-id="smoke-alpha"][data-session-archived="true"]');
     await page.click('[data-session-id="smoke-alpha"] .poiesis-agent-window__session-menu-trigger');
-    page.once('dialog', dialog => void dialog.accept());
     await click(page, '.poiesis-agent-window__session-menu button', '完全に削除');
+    await page.waitForSelector('[data-session-id="smoke-alpha"] [aria-label="完全削除の確認"]');
+    await click(page, '[data-session-id="smoke-alpha"] [aria-label="完全削除の確認"] button', '削除');
     await page.waitForFunction(() => !document.querySelector('[data-session-id="smoke-alpha"]'));
 
     const activeCountBeforeNewChat = await page.$$eval('.poiesis-agent-window__session-row[data-session-archived="false"]', rows => rows.length);
@@ -161,7 +172,7 @@ try {
     const newAgentContext = await page.evaluate(() => ({
         repository: document.querySelector('.poiesis-agent-window__context-pill.primary span:not(.codicon)')?.textContent,
         branch: document.querySelectorAll('.poiesis-agent-window__context-pill')[1]?.textContent?.trim(),
-        runOn: document.querySelector('.poiesis-agent-window__context-pill.static')?.textContent?.trim(),
+        runOn: document.querySelector('.poiesis-agent-window__context-pill.static[title*="実行先"]')?.textContent?.trim(),
         resultsTabVisible: [...document.querySelectorAll('.poiesis-agent-window__tabs button')]
             .some(button => button.textContent?.trim() === 'Results')
     }));
@@ -175,7 +186,7 @@ try {
     await page.waitForFunction(() => {
         const labels = [...document.querySelectorAll('.poiesis-agent-window__repository-group-label')]
             .map(label => label.textContent?.trim());
-        return labels.includes('No Repo') && labels.includes('Recents') && labels.includes('On This PC');
+        return labels.includes('Recent') && labels.includes('On This PC');
     });
     await page.type('[aria-label="Repositoryを検索"]', '__no_matching_repository__');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__repository-empty')?.textContent?.includes('一致するRepository'));
@@ -450,7 +461,9 @@ try {
     assert(!await page.$('.poiesis-agent-window__customize-page'), 'Code Extensions must stay in Code mode');
     assert(reactUnmountWarnings.length === 0,
         `Code widget transitions synchronously unmounted a React root: ${reactUnmountWarnings.join('\n')}`);
-    await page.click('.poiesis-agent-window__code-activity-footer button[aria-label="Settings"]');
+    await page.click('.poiesis-agent-window__code-activity-footer button[aria-label="設定"]');
+    await page.waitForSelector('.poiesis-settings-modal:not(.poiesis-customize-modal)');
+    await click(page, '.poiesis-settings-modal__footer button', 'エディタとTerminalの設定は Theia Settings で');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
     await page.waitForSelector('.poiesis-agent-window__code-editor-host #settings_widget');
     assert(await page.$('.poiesis-agent-window__code'), 'Code Settings must stay in Code mode');
@@ -592,7 +605,7 @@ try {
 
     await click(page, '.poiesis-agent-window__code-editor-tab-label', 'UX.md');
     const codeSaveFixtureBefore = readFileSync(scmFixturePath, 'utf8');
-    await page.click('.poiesis-agent-window__code-editor-host .monaco-editor .view-lines');
+    await clickStable(page, '.poiesis-agent-window__code-editor-host .monaco-editor .view-lines');
     await page.keyboard.type('x');
     await page.waitForSelector('.poiesis-agent-window__code-editor-tab.active.dirty .poiesis-agent-window__code-editor-tab-dirty');
     await page.keyboard.down('Control');
@@ -662,20 +675,93 @@ try {
     });
     assert(settingsButtonHitTarget, 'An overlay is intercepting the Settings control');
     await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
-    await page.waitForSelector('.poiesis-agent-window__app-page[aria-label="Poiesisの設定"]');
-    const settings = await page.evaluate(readState);
-    assert(settings.mode === 'settings', 'Settings must open the Poiesis-owned settings page');
+    await page.waitForSelector('.poiesis-settings-modal:not(.poiesis-customize-modal)');
+    const settings = await page.evaluate(() => ({
+        modal: Boolean(document.querySelector('.poiesis-settings-modal:not(.poiesis-customize-modal)')),
+        text: document.querySelector('.poiesis-settings-modal:not(.poiesis-customize-modal)')?.textContent ?? '',
+        codeSidebarVisible: Boolean(document.querySelector('.poiesis-agent-window__code-sidebar'))
+    }));
+    assert(settings.modal, 'Settings must open the Poiesis-owned settings modal');
+    assert(!settings.text.includes('Skills') && !settings.text.includes('Plugins'), 'Settings modal still contains Customize sections');
     assert(!settings.codeSidebarVisible, 'Settings must not open the Code sidebar');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
 
-    await click(page, '.poiesis-agent-window__app-nav button', 'Customize');
-    await page.waitForSelector('.poiesis-agent-window__app-page[aria-label="Customize"]');
-    await page.waitForSelector('[aria-label="Results skillを有効化"]');
-    await click(page, '.poiesis-agent-window__customize-tabs button', 'Plugins');
-    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__customize-card')?.textContent?.includes('Poiesis plugin bundles'));
+    await click(page, '.poiesis-agent-window__rail-action', 'Customize');
+    await page.waitForSelector('.poiesis-customize-modal');
+    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-modal__skill-card')]
+        .some(card => card.textContent?.includes('Existing smoke skill')));
+    const expandedCustomize = await page.evaluate(() => ({
+        builtIns: [...document.querySelectorAll('.poiesis-customize-modal .poiesis-agent-window__status-badge.active')]
+            .filter(badge => badge.textContent?.trim() === '組み込み').length,
+        existingSkill: [...document.querySelectorAll('.poiesis-customize-modal__skill-card')]
+            .some(card => card.textContent?.includes('Existing smoke skill')),
+        plugins: document.querySelector('.poiesis-customize-modal')?.textContent?.includes('Poiesis plugin bundles'),
+        hooks: document.querySelector('.poiesis-customize-modal')?.textContent?.includes('Hooks')
+    }));
+    assert(expandedCustomize.builtIns === 2, `Expected two built-in Skills, got ${expandedCustomize.builtIns}`);
+    assert(expandedCustomize.existingSkill, 'Workspace user skill was not scanned');
+    assert(expandedCustomize.plugins, 'Plugins section did not move to Customize');
+    assert(!expandedCustomize.hooks, 'Unsupported Hooks section is visible');
     assert(!await page.$('.poiesis-agent-window__plugins-host'), 'Poiesis Customize must not host the Code extensions manager');
-    assert(!(await page.$eval('.poiesis-agent-window__customize-page', element => element.textContent ?? '')).includes('VS Code built-in extensions'), 'Poiesis Customize still describes Code extensions');
-    const customize = await page.evaluate(readState);
-    assert(customize.mode === 'customize', 'Customize must be a Poiesis-owned page');
+    assert(!(await page.$eval('.poiesis-customize-modal', element => element.textContent ?? '')).includes('VS Code built-in extensions'), 'Poiesis Customize still describes Code extensions');
+    await page.evaluate(() => {
+        const skill = [...document.querySelectorAll('.poiesis-customize-modal__skill-card')]
+            .find(card => card.textContent?.includes('Existing smoke skill'));
+        if (!(skill instanceof HTMLElement)) throw new Error('Existing user skill was not clickable');
+        skill.click();
+    });
+    await page.waitForSelector('.poiesis-agent-window__code');
+    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-label')
+        ?.getAttribute('title')?.includes('poiesis-customize-existing-smoke'));
+    await click(page, '.poiesis-agent-window__code-control', 'Code');
+    await page.waitForSelector('.poiesis-results');
+    await click(page, '.poiesis-agent-window__rail-action', 'Customize');
+    await page.waitForSelector('.poiesis-customize-modal');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-modal'));
+
+    await page.click('.poiesis-agent-window__rail-toggle');
+    await page.waitForSelector('.poiesis-agent-window__rail[data-collapsed="true"]');
+    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.waitForSelector('.poiesis-customize-modal');
+    await page.setViewport({ width: 1100, height: 700, deviceScaleFactor: 1 });
+    await page.waitForFunction(() => {
+        const modal = document.querySelector('.poiesis-customize-modal')?.getBoundingClientRect();
+        const rail = document.querySelector('.poiesis-agent-window__rail')?.getBoundingClientRect();
+        return Boolean(modal && rail && rail.width > 0 && modal.left >= 0 && modal.top >= 0
+            && modal.right <= innerWidth && modal.bottom <= innerHeight);
+    });
+    await click(page, '.poiesis-settings-modal__text-button', '新しいSkill');
+    await page.waitForSelector('[aria-label="新しいSkill ID"]');
+    await page.type('[aria-label="新しいSkill ID"]', 'poiesis-customize-created-smoke');
+    await page.select('[aria-label="新しいSkillの種類"]', 'results');
+    await click(page, '.poiesis-customize-modal__new-skill button', '作成して開く');
+    await page.waitForSelector('.poiesis-agent-window__code');
+    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-label')
+        ?.getAttribute('title')?.includes('poiesis-customize-created-smoke'));
+    assert(existsSync(createdSkillPath), '新しいSkill did not scaffold skill.md');
+    const scaffoldedSkill = readFileSync(createdSkillPath, 'utf8');
+    assert(scaffoldedSkill.includes('kind: results'), 'Scaffolded skill.md did not preserve the selected kind');
+    await clickStable(page, '.poiesis-agent-window__code-editor-host .monaco-editor .view-lines');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('End');
+    await page.keyboard.up('Control');
+    await page.keyboard.type(`\n${skillEditMarker}\n`);
+    await page.waitForSelector('.poiesis-agent-window__code-editor-tab.active.dirty');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyS');
+    await page.keyboard.up('Control');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code-editor-tab.active.dirty'));
+    assert(readFileSync(createdSkillPath, 'utf8').includes(skillEditMarker), 'Edited skill.md was not saved');
+
+    const customize = {
+        expanded: expandedCustomize,
+        collapsedRailOpened: true,
+        resize: { width: 1100, height: 700 },
+        scaffolded: '.poiesis/skills/poiesis-customize-created-smoke/skill.md',
+        editedAndSaved: true
+    };
 
     console.log(JSON.stringify({
         executablePath,
@@ -692,6 +778,7 @@ try {
 } finally {
     restoreScmFixture();
     removeTerminalFixture();
+    removeSkillFixtures();
     await browser.close();
 }
 
@@ -703,6 +790,21 @@ function restoreScmFixture() {
 function removeTerminalFixture() {
     if (existsSync(terminalFixturePath)) {
         unlinkSync(terminalFixturePath);
+    }
+}
+
+function removeSkillFixtures() {
+    for (const directory of [existingSkillDirectory, createdSkillDirectory]) {
+        if (existsSync(directory)) {
+            rmSync(directory, { recursive: true, force: true });
+        }
+    }
+    for (const directory of [resolve(repositoryRoot, '.poiesis', 'skills'), resolve(repositoryRoot, '.poiesis')]) {
+        try {
+            rmdirSync(directory);
+        } catch {
+            // Preserve parent folders when the workspace contains other user data.
+        }
     }
 }
 
@@ -858,16 +960,32 @@ async function click(page, selector, text) {
     }, { selector, text });
 }
 
+async function clickStable(page, selector) {
+    for (let attempt = 0; attempt < 20; attempt++) {
+        try {
+            await page.click(selector);
+            return;
+        } catch (error) {
+            if (!String(error).includes('detached')) throw error;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+    }
+    throw new Error(`${selector} remained detached.`);
+}
+
 async function insertComposedText(page, value) {
-    await page.evaluate(nextValue => {
+    await page.evaluate(() => {
         const input = document.querySelector('[aria-label="Agent へのメッセージ"]');
         if (!(input instanceof HTMLTextAreaElement)) throw new Error('Agent composer is missing');
-        input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: 'あ' }));
-        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-        setter?.call(input, nextValue);
-        input.dispatchEvent(new InputEvent('input', { bubbles: true, data: 'あ', inputType: 'insertCompositionText', isComposing: true }));
-        input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'あ' }));
-    }, value);
+        input.focus();
+        input.select();
+    });
+    const client = await page.createCDPSession();
+    try {
+        await client.send('Input.insertText', { text: value });
+    } finally {
+        await client.detach();
+    }
 }
 
 function readState() {

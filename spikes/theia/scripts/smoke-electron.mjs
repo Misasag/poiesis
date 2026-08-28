@@ -10,9 +10,11 @@ const debugPort = Number(process.env.THEIA_ELECTRON_DEBUG_PORT ?? 9334);
 const browserURL = `http://127.0.0.1:${debugPort}`;
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
 const windowDragOnly = process.env.POIESIS_WINDOW_DRAG_ONLY === '1';
+const customizeWindowOnly = process.env.POIESIS_CUSTOMIZE_WINDOW_ONLY === '1';
+const lightweightElectron = windowDragOnly || customizeWindowOnly;
 mkdirSync(runtimeDir, { recursive: true });
 const emptyPluginsDir = resolve(runtimeDir, 'empty-plugins');
-if (windowDragOnly) mkdirSync(emptyPluginsDir, { recursive: true });
+if (lightweightElectron) mkdirSync(emptyPluginsDir, { recursive: true });
 
 const repositoryRoot = resolve(root, '..', '..');
 const scmFixtureGitPath = 'docs/UX.md';
@@ -29,7 +31,7 @@ const electronExecutable = resolve(root, 'node_modules/electron/dist/electron.ex
 const startProcess = spawn(electronExecutable, [
     resolve(root, 'electron-app'),
     '../../..',
-    windowDragOnly
+    lightweightElectron
         ? `--plugins=local-dir:${emptyPluginsDir.replaceAll('\\', '/')}`
         : '--plugins=local-dir:../plugins',
     `--user-data-dir=${userDataDir}`,
@@ -45,7 +47,7 @@ const startProcess = spawn(electronExecutable, [
     env: {
         ...process.env,
         THEIA_CONFIG_DIR: resolve(root, '.theia-config-electron'),
-        ...(windowDragOnly ? { POIESIS_DISABLE_CLI_DETECTION: '1' } : {})
+        ...(lightweightElectron ? { POIESIS_DISABLE_CLI_DETECTION: '1' } : {})
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     // Native drag regions need a real visible Win32 window; a hidden renderer
@@ -97,13 +99,15 @@ try {
     const nativeWindowChecks = [];
     moveElectronWindow(startProcess.pid, 1280, 720);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
-    nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
-        '.poiesis-agent-window__header', 'Agent header'));
-    nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
-        '.poiesis-agent-window__rail-top', 'session rail top'));
-    nativeWindowChecks.push(await assertNativeHeaderDoubleClick(page, startProcess.pid));
-    nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
-        '.poiesis-agent-window__header', 'Agent header after maximize and restore'));
+    if (!customizeWindowOnly) {
+        nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
+            '.poiesis-agent-window__header', 'Agent header'));
+        nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
+            '.poiesis-agent-window__rail-top', 'session rail top'));
+        nativeWindowChecks.push(await assertNativeHeaderDoubleClick(page, startProcess.pid));
+        nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
+            '.poiesis-agent-window__header', 'Agent header after maximize and restore'));
+    }
     moveElectronWindow(startProcess.pid, 1100, 700);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
     moveElectronWindow(startProcess.pid, 1500, 850);
@@ -151,16 +155,38 @@ try {
     assert(code.codeLuminoPanelCount === 0, 'Code reintroduced lm-Widget lm-Panel wrappers in Electron');
     assert(code.codeLuminoTabContainerCount === 0, 'Code reintroduced lm-TabBar-content-container in Electron');
     assert(!code.applicationShellVisible, 'Code mounted the Theia ApplicationShell in Electron');
-    nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
-        '.poiesis-agent-window__code-header', 'Code header'));
-    if (windowDragOnly) {
-        console.log(`ELECTRON_WINDOW_DRAG_SMOKE_RESULT=${JSON.stringify({
+    if (!customizeWindowOnly) {
+        nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
+            '.poiesis-agent-window__code-header', 'Code header'));
+    }
+    if (lightweightElectron) {
+        await clickByText(page, '.poiesis-agent-window__code-control', 'Code');
+        await page.waitForSelector('.poiesis-agent-window__agent');
+        await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+        await page.waitForSelector('.poiesis-customize-modal');
+        moveElectronWindow(startProcess.pid, 1100, 700);
+        const customizeWindowChecks = {
+            resized: await assertElectronLayout(page, 'agent', true)
+        };
+        await page.click('.poiesis-window-controls__button[data-window-action="maximize"]');
+        await page.waitForSelector('.poiesis-window-controls__button[data-window-action="restore"]');
+        customizeWindowChecks.maximized = await assertElectronLayout(page, 'agent', true);
+        await page.click('.poiesis-window-controls__button[data-window-action="restore"]');
+        await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
+        customizeWindowChecks.restored = await assertElectronLayout(page, 'agent', true);
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => !document.querySelector('.poiesis-customize-modal'));
+        const serializedResult = JSON.stringify({
             userAgent,
             windowTitle,
             nativeWindowChecks,
             headerInteractionChecks,
+            customizeWindowChecks,
             code
-        }, null, 2)}`);
+        }, null, 2);
+        console.log(customizeWindowOnly
+            ? `ELECTRON_CUSTOMIZE_WINDOW_SMOKE_RESULT=${serializedResult}`
+            : `ELECTRON_WINDOW_DRAG_SMOKE_RESULT=${serializedResult}`);
         break smokeRun;
     }
     moveElectronWindow(startProcess.pid, 1100, 700);
@@ -708,7 +734,8 @@ async function assertElectronLayout(page, expectedMode, expectSettings = false) 
             && snapshot.settingsBackdrop?.width === snapshot.viewport.width && snapshot.settingsBackdrop?.height === snapshot.viewport.height
             && snapshot.settingsModal?.width > 0 && snapshot.settingsModal?.height > 0
             && snapshot.settingsModal?.x >= 0 && snapshot.settingsModal?.y >= 0
-            && snapshot.settingsModal?.right <= snapshot.viewport.width,
+            && snapshot.settingsModal?.right <= snapshot.viewport.width
+            && snapshot.settingsModal?.y + snapshot.settingsModal?.height <= snapshot.viewport.height,
         `Electron Settings layout fragmented after resize: ${JSON.stringify(snapshot)}`);
     }
     return snapshot;

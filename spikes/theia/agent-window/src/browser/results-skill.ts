@@ -2,7 +2,6 @@ import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { ExecutionTask, TaskChangeSet, TaskService } from './task-service';
-import { CustomizationService } from './customization-service';
 import { ResultsSkillBundle } from '../common/skill-bundle';
 import { ResultsGenerationServer } from '../common/results-generation-protocol';
 import { ResultsGenerationContext } from './results-generation-context';
@@ -311,8 +310,7 @@ export class ResultsService {
 
     constructor(
         @inject(TaskService) protected readonly taskService: TaskService,
-        @inject(ResultsSkill) protected readonly resultsSkill: ResultsSkill,
-        @inject(CustomizationService) protected readonly customizationService: CustomizationService
+        @inject(ResultsSkill) protected readonly resultsSkill: ResultsSkill
     ) { }
 
     @postConstruct()
@@ -363,7 +361,7 @@ export class ResultsService {
     }
 
     protected async generate(task: ExecutionTask): Promise<void> {
-        if (task.status !== 'completed' || !task.changeSet || !this.customizationService.isSkillEnabled('results')) {
+        if (task.status !== 'completed' || !task.changeSet) {
             return;
         }
         const generationToken = ++this.generationSequence;

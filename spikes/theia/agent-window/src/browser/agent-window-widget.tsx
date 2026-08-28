@@ -12,6 +12,7 @@ import { EditorManager, EditorWidget } from '@theia/editor/lib/browser';
 import { ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-provider';
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
+import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
 import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-contribution';
@@ -28,11 +29,11 @@ import {
 import { ResultsService, TaskResultDocument } from './results-skill';
 import { ExecutionTask, TaskService } from './task-service';
 import { getDesignVariant } from './design-variant';
-import { CustomizationService } from './customization-service';
 import { FolderExplorerService } from './folder-explorer-service';
 import { ResultsQuestionService } from './results-question-service';
 import { GlobalStorageService } from './global-storage-service';
 import { ResultsGenerationContext } from './results-generation-context';
+import { SkillBundleKind } from '../common/skill-bundle';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
@@ -136,6 +137,15 @@ interface WorkspaceSessionGroup {
     archivedSessions: WindowAgentSession[];
 }
 
+interface WorkspaceSkillDefinition {
+    id: string;
+    name: string;
+    description: string;
+    kind?: SkillBundleKind;
+    uri: string;
+    error?: string;
+}
+
 @injectable()
 export class AgentWindowWidget extends ReactWidget {
     static readonly ID = 'poiesis-agent-window';
@@ -148,6 +158,16 @@ export class AgentWindowWidget extends ReactWidget {
     static readonly EXTENSIONS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container';
     protected codeMode = false;
     protected settingsModalVisible = false;
+    protected customizeModalVisible = false;
+    protected workspaceSkills: WorkspaceSkillDefinition[] = [];
+    protected workspaceSkillsLoading = false;
+    protected workspaceSkillsError?: string;
+    protected workspaceSkillsRefreshGeneration = 0;
+    protected newSkillFormVisible = false;
+    protected newSkillId = '';
+    protected newSkillKind: SkillBundleKind = 'agent';
+    protected newSkillError?: string;
+    protected newSkillCreating = false;
     protected uiFontScale: UiFontScale = 'standard';
     protected agentCli: KnownCliId = 'codex';
     protected resultsCli: KnownCliId = 'codex';
@@ -249,13 +269,13 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(TerminalService) protected readonly terminalService: TerminalService,
         @inject(WidgetManager) protected readonly widgetManager: WidgetManager,
         @inject(EditorManager) protected readonly editorManager: EditorManager,
+        @inject(FileService) protected readonly fileService: FileService,
         @inject(CommandService) protected readonly commandService: CommandService,
         @inject(SaveableService) protected readonly saveableService: SaveableService,
         @inject(IconThemeService) protected readonly iconThemeService: IconThemeService,
         @inject(VSXExtensionsSearchModel) protected readonly extensionsSearchModel: VSXExtensionsSearchModel,
         @inject(StorageService) protected readonly storageService: StorageService,
         @inject(GlobalStorageService) protected readonly globalStorageService: GlobalStorageService,
-        @inject(CustomizationService) protected readonly customizationService: CustomizationService,
         @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService,
         @inject(AgentRuntimeServer) protected readonly agentRuntimeServer: AgentRuntimeServer,
         @inject(ResultsQuestionService) protected readonly resultsQuestionService: ResultsQuestionService,
@@ -305,6 +325,10 @@ export class AgentWindowWidget extends ReactWidget {
                 event.preventDefault();
                 event.stopPropagation();
                 this.closeSettings();
+            } else if (this.customizeModalVisible) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.closeCustomize();
             } else if (this.workspacePickerVisible || this.repositoryPickerVisible) {
                 event.preventDefault();
                 this.workspacePickerVisible = false;
@@ -345,13 +369,18 @@ export class AgentWindowWidget extends ReactWidget {
             this.persistWindowState();
             this.update();
         }));
-        this.toDispose.push(this.customizationService.onDidChange(() => this.update()));
         this.toDispose.push(this.workspaceService.onWorkspaceChanged(() => {
             void this.refreshRecentWorkspaces();
+            if (this.customizeModalVisible) {
+                void this.refreshWorkspaceSkills();
+            }
             this.update();
         }));
         this.toDispose.push(this.workspaceService.onWorkspaceLocationChanged(() => {
             void this.refreshRecentWorkspaces();
+            if (this.customizeModalVisible) {
+                void this.refreshWorkspaceSkills();
+            }
             this.update();
         }));
         this.toDispose.push(this.scmService.onDidAddRepository(repository => {
@@ -437,6 +466,7 @@ export class AgentWindowWidget extends ReactWidget {
                 {this.repositoryPickerVisible && this.repositoryPickerAnchor && session && this.renderRepositoryPicker(session)}
                 {this.folderExplorerVisible && this.renderFolderExplorer()}
                 {this.settingsModalVisible && this.renderSettingsModal()}
+                {this.customizeModalVisible && this.renderCustomizeModal()}
             </div>
         );
     }
@@ -490,6 +520,19 @@ export class AgentWindowWidget extends ReactWidget {
                             <span className='codicon codicon-search' />
                         </span>
                         <span className='poiesis-agent-window__rail-action-label'>Search</span>
+                    </button>
+                    <button
+                        type='button'
+                        className={`poiesis-agent-window__rail-action${this.customizeModalVisible ? ' active' : ''}`}
+                        title='Customize'
+                        aria-haspopup='dialog'
+                        aria-expanded={this.customizeModalVisible}
+                        onClick={() => this.openCustomize()}
+                    >
+                        <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
+                            <span className='codicon codicon-tools' />
+                        </span>
+                        <span className='poiesis-agent-window__rail-action-label'>Customize</span>
                     </button>
                     {this.sessionSearchVisible && !this.railCollapsed && (
                         <label className='poiesis-agent-window__session-search' id='poiesis-agent-window-session-search'>
@@ -1619,7 +1662,6 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderSettingsModal(): React.ReactNode {
-        const resultsEnabled = this.customizationService.isSkillEnabled('results');
         const archivedSessions = this.sessions
             .filter(session => session.archived && session.hasUserMessage)
             .sort((left, right) => right.updatedAt - left.updatedAt);
@@ -1718,34 +1760,170 @@ export class AgentWindowWidget extends ReactWidget {
                             </div>
                         </section>
 
-                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-skills'>
-                            <h2 id='poiesis-settings-skills'>Skills</h2>
-                            <p className='poiesis-settings-modal__section-copy'>Agent Skillsは作業方法と将来の委譲を定義し、Results Skillsは終了済みTaskから完成HTMLを生成します。install／remove UIはまだありません。</p>
-                            <div className='poiesis-agent-window__customize-list'>
-                        <article className='poiesis-agent-window__customize-card'>
-                            <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-preview' aria-hidden='true' /></div>
-                            <div><div className='poiesis-agent-window__customize-title'><strong>AI Results</strong><span>Results chain</span></div><p>Results AIが完成HTMLを生成し、実行できない場合は組み込みテンプレートへ切り替えます。</p></div>
-                            <label className='poiesis-agent-window__switch'>
-                                <input type='checkbox' checked={resultsEnabled} aria-label='Results skillを有効化' onChange={event => this.customizationService.setSkillEnabled('results', event.currentTarget.checked)} />
-                                <span aria-hidden='true' />
-                            </label>
-                        </article>
-                    </div>
-                        </section>
-
-                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-plugins'>
-                            <h2 id='poiesis-settings-plugins'>Plugins</h2>
-                    <div className='poiesis-agent-window__customize-list'>
-                        <article className='poiesis-agent-window__customize-card'>
-                            <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-package' aria-hidden='true' /></div>
-                            <div><div className='poiesis-agent-window__customize-title'><strong>Poiesis plugin bundles</strong><span>App</span></div><p>PoiesisのAgent、Skill、外部サービス連携を追加するアプリ用Pluginです。Code拡張機能とは別に管理されます。</p></div>
-                            <span className='poiesis-agent-window__status-badge'>No additions</span>
-                        </article>
-                    </div>
-                        </section>
                     </div>
                     <footer className='poiesis-settings-modal__footer'>
                         <button type='button' onClick={() => void this.openTheiaSettings()}>エディタとTerminalの設定は Theia Settings で</button>
+                    </footer>
+                </section>
+            </div>
+        );
+    }
+
+    protected renderCustomizeModal(): React.ReactNode {
+        const workspaceName = this.workspaceRoot()?.resource.path.base;
+        return (
+            <div
+                className='poiesis-settings-modal__backdrop poiesis-customize-modal__backdrop'
+                onMouseDown={event => {
+                    if (event.target === event.currentTarget) {
+                        this.closeCustomize();
+                    }
+                }}
+            >
+                <section
+                    className='poiesis-settings-modal poiesis-customize-modal'
+                    role='dialog'
+                    aria-modal='true'
+                    aria-labelledby='poiesis-customize-title'
+                >
+                    <header className='poiesis-settings-modal__header'>
+                        <div>
+                            <span className='codicon codicon-tools' aria-hidden='true' />
+                            <div><h1 id='poiesis-customize-title'>Customize</h1><p>PoiesisのSkillとPluginを管理します。</p></div>
+                        </div>
+                        <button type='button' aria-label='Customizeを閉じる' onClick={() => this.closeCustomize()} autoFocus>
+                            <span className='codicon codicon-close' aria-hidden='true' />
+                        </button>
+                    </header>
+                    <div className='poiesis-settings-modal__body'>
+                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-customize-skills'>
+                            <div className='poiesis-settings-modal__section-heading'>
+                                <h2 id='poiesis-customize-skills'>Skills</h2>
+                                <button
+                                    type='button'
+                                    className='poiesis-settings-modal__text-button'
+                                    onClick={() => this.showNewSkillForm()}
+                                >
+                                    新しいSkill
+                                </button>
+                            </div>
+                            <p className='poiesis-settings-modal__section-copy'>
+                                現在の実行に反映されるのは組み込みのResults Skillsだけです。WorkspaceのUser Skillは定義・編集できますが、Agent／Results実行への反映は今後です。
+                            </p>
+
+                            <h3 className='poiesis-customize-modal__group-title'>組み込み</h3>
+                            <div className='poiesis-agent-window__customize-list'>
+                                <article className='poiesis-agent-window__customize-card'>
+                                    <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-file-code' aria-hidden='true' /></div>
+                                    <div>
+                                        <div className='poiesis-agent-window__customize-title'><strong>Bundled Results</strong><span>Results</span></div>
+                                        <p>確定したTaskとChange Setから、組み込みテンプレートで完成HTMLを生成します。</p>
+                                    </div>
+                                    <span className='poiesis-agent-window__status-badge active'>組み込み</span>
+                                </article>
+                                <article className='poiesis-agent-window__customize-card'>
+                                    <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-preview' aria-hidden='true' /></div>
+                                    <div>
+                                        <div className='poiesis-agent-window__customize-title'><strong>AI Results</strong><span>Results</span></div>
+                                        <p>Results AIが完成HTMLを生成し、実行できない場合は組み込みテンプレートへ切り替えます。</p>
+                                    </div>
+                                    <span className='poiesis-agent-window__status-badge active'>組み込み</span>
+                                </article>
+                            </div>
+
+                            <div className='poiesis-customize-modal__user-heading'>
+                                <h3 className='poiesis-customize-modal__group-title'>User Skills</h3>
+                                <span>{workspaceName ? `${workspaceName} / .poiesis/skills` : 'Workspaceが開かれていません'}</span>
+                            </div>
+                            {this.workspaceSkillsLoading && (
+                                <div className='poiesis-customize-modal__state' role='status'>
+                                    <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
+                                    Skillを読み込んでいます…
+                                </div>
+                            )}
+                            {!this.workspaceSkillsLoading && this.workspaceSkillsError && (
+                                <div className='poiesis-customize-modal__state error' role='alert'>{this.workspaceSkillsError}</div>
+                            )}
+                            {!this.workspaceSkillsLoading && !this.workspaceSkillsError && this.workspaceSkills.length === 0 && (
+                                <div className='poiesis-customize-modal__state'>User Skillはまだありません。</div>
+                            )}
+                            {!this.workspaceSkillsLoading && this.workspaceSkills.length > 0 && (
+                                <div className='poiesis-agent-window__customize-list'>
+                                    {this.workspaceSkills.map(skill => (
+                                        <button
+                                            type='button'
+                                            className='poiesis-agent-window__customize-card poiesis-customize-modal__skill-card'
+                                            key={skill.id}
+                                            onClick={() => void this.openWorkspaceSkill(skill.uri)}
+                                        >
+                                            <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-book' aria-hidden='true' /></div>
+                                            <div>
+                                                <div className='poiesis-agent-window__customize-title'>
+                                                    <strong>{skill.name}</strong>
+                                                    <span>{skill.kind ? (skill.kind === 'agent' ? 'Agent' : 'Results') : '要修正'}</span>
+                                                </div>
+                                                <p>{skill.error ?? skill.description}</p>
+                                                <small>.poiesis/skills/{skill.id}/skill.md</small>
+                                            </div>
+                                            <span className='codicon codicon-chevron-right' aria-hidden='true' />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {this.newSkillFormVisible && (
+                                <form className='poiesis-customize-modal__new-skill' onSubmit={event => {
+                                    event.preventDefault();
+                                    void this.createWorkspaceSkill();
+                                }}>
+                                    <label>
+                                        <span>Skill ID</span>
+                                        <input
+                                            autoFocus
+                                            value={this.newSkillId}
+                                            placeholder='my-skill'
+                                            aria-label='新しいSkill ID'
+                                            disabled={this.newSkillCreating}
+                                            onChange={event => this.setNewSkillId(event.currentTarget.value)}
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Kind</span>
+                                        <select
+                                            value={this.newSkillKind}
+                                            aria-label='新しいSkillの種類'
+                                            disabled={this.newSkillCreating}
+                                            onChange={event => this.setNewSkillKind(event.currentTarget.value as SkillBundleKind)}
+                                        >
+                                            <option value='agent'>Agent</option>
+                                            <option value='results'>Results</option>
+                                        </select>
+                                    </label>
+                                    <small>.poiesis/skills/&lt;skill-id&gt;/skill.md を作成します。</small>
+                                    {this.newSkillError && <p role='alert'>{this.newSkillError}</p>}
+                                    <div>
+                                        <button type='button' disabled={this.newSkillCreating} onClick={() => this.hideNewSkillForm()}>キャンセル</button>
+                                        <button type='submit' className='primary' disabled={this.newSkillCreating || !this.newSkillId.trim()}>
+                                            {this.newSkillCreating ? '作成中…' : '作成して開く'}
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+                        </section>
+
+                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-customize-plugins'>
+                            <h2 id='poiesis-customize-plugins'>Plugins</h2>
+                            <div className='poiesis-agent-window__customize-list'>
+                                <article className='poiesis-agent-window__customize-card'>
+                                    <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-package' aria-hidden='true' /></div>
+                                    <div><div className='poiesis-agent-window__customize-title'><strong>Poiesis plugin bundles</strong><span>App</span></div><p>PoiesisのAgent、Skill、外部サービス連携を追加するアプリ用Pluginです。Code拡張機能とは別に管理されます。</p></div>
+                                    <span className='poiesis-agent-window__status-badge'>No additions</span>
+                                </article>
+                            </div>
+                        </section>
+                    </div>
+                    <footer className='poiesis-settings-modal__footer poiesis-customize-modal__footer'>
+                        <span>User SkillはCodeで編集し、Ctrl+Sで保存します。</span>
                     </footer>
                 </section>
             </div>
@@ -3367,6 +3545,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected openSettings(): void {
+        this.closeCustomize(false);
         this.settingsModalVisible = true;
         this.deleteSessionConfirmationId = undefined;
         this.clearDataConfirmation = false;
@@ -3379,6 +3558,207 @@ export class AgentWindowWidget extends ReactWidget {
         this.deleteSessionConfirmationId = undefined;
         this.clearDataConfirmation = false;
         this.update();
+    }
+
+    protected openCustomize(): void {
+        this.settingsModalVisible = false;
+        this.customizeModalVisible = true;
+        this.newSkillFormVisible = false;
+        this.newSkillError = undefined;
+        this.update();
+        void this.refreshWorkspaceSkills();
+    }
+
+    protected closeCustomize(update = true): void {
+        this.customizeModalVisible = false;
+        this.newSkillFormVisible = false;
+        this.newSkillId = '';
+        this.newSkillKind = 'agent';
+        this.newSkillError = undefined;
+        this.newSkillCreating = false;
+        if (update) {
+            this.update();
+        }
+    }
+
+    protected showNewSkillForm(): void {
+        this.newSkillFormVisible = true;
+        this.newSkillId = '';
+        this.newSkillKind = 'agent';
+        this.newSkillError = undefined;
+        this.update();
+    }
+
+    protected hideNewSkillForm(): void {
+        if (this.newSkillCreating) {
+            return;
+        }
+        this.newSkillFormVisible = false;
+        this.newSkillId = '';
+        this.newSkillError = undefined;
+        this.update();
+    }
+
+    protected setNewSkillId(id: string): void {
+        this.newSkillId = id;
+        this.newSkillError = undefined;
+        this.update();
+    }
+
+    protected setNewSkillKind(kind: SkillBundleKind): void {
+        this.newSkillKind = kind;
+        this.update();
+    }
+
+    protected async refreshWorkspaceSkills(): Promise<void> {
+        const generation = ++this.workspaceSkillsRefreshGeneration;
+        const root = this.workspaceRoot()?.resource;
+        this.workspaceSkillsLoading = true;
+        this.workspaceSkillsError = undefined;
+        this.update();
+        if (!root) {
+            this.workspaceSkills = [];
+            this.workspaceSkillsLoading = false;
+            this.workspaceSkillsError = 'User Skillを表示するにはWorkspaceを開いてください。';
+            this.update();
+            return;
+        }
+        const skillsDirectory = root.resolve('.poiesis/skills');
+        try {
+            if (!await this.fileService.exists(skillsDirectory)) {
+                if (generation === this.workspaceSkillsRefreshGeneration) {
+                    this.workspaceSkills = [];
+                }
+                return;
+            }
+            const stat = await this.fileService.resolve(skillsDirectory);
+            const definitions = await Promise.all((stat.children ?? [])
+                .filter(child => child.isDirectory)
+                .sort((left, right) => left.name.localeCompare(right.name))
+                .map(async child => {
+                    const skillUri = child.resource.resolve('skill.md');
+                    if (!await this.fileService.exists(skillUri)) {
+                        return undefined;
+                    }
+                    try {
+                        const content = await this.fileService.read(skillUri);
+                        return this.parseWorkspaceSkill(child.name, skillUri, content.value);
+                    } catch (error) {
+                        return {
+                            id: child.name,
+                            name: child.name,
+                            description: '',
+                            uri: skillUri.toString(),
+                            error: `skill.mdを読み込めませんでした: ${error instanceof Error ? error.message : String(error)}`
+                        } satisfies WorkspaceSkillDefinition;
+                    }
+                }));
+            if (generation === this.workspaceSkillsRefreshGeneration) {
+                this.workspaceSkills = definitions.filter((definition): definition is WorkspaceSkillDefinition => Boolean(definition));
+            }
+        } catch (error) {
+            if (generation === this.workspaceSkillsRefreshGeneration) {
+                this.workspaceSkills = [];
+                this.workspaceSkillsError = `User Skillを読み込めませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            }
+        } finally {
+            if (generation === this.workspaceSkillsRefreshGeneration) {
+                this.workspaceSkillsLoading = false;
+                this.update();
+            }
+        }
+    }
+
+    protected parseWorkspaceSkill(id: string, uri: URI, rawContent: string): WorkspaceSkillDefinition {
+        const content = rawContent.replace(/^\uFEFF/, '');
+        const frontmatter = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+        if (!frontmatter) {
+            return { id, name: id, description: '', uri: uri.toString(), error: 'frontmatterがありません。name、description、kindを定義してください。' };
+        }
+        const fields = new Map<string, string>();
+        for (const line of frontmatter[1].split(/\r?\n/)) {
+            const separator = line.indexOf(':');
+            if (separator > 0) {
+                fields.set(line.slice(0, separator).trim(), this.frontmatterValue(line.slice(separator + 1)));
+            }
+        }
+        const name = fields.get('name');
+        const description = fields.get('description');
+        const kind = fields.get('kind');
+        if (!name || !description || (kind !== 'agent' && kind !== 'results')) {
+            return { id, name: name || id, description: description || '', uri: uri.toString(), error: 'frontmatterのname、description、kind（agent／results）を確認してください。' };
+        }
+        return { id, name, description, kind, uri: uri.toString() };
+    }
+
+    protected frontmatterValue(rawValue: string): string {
+        const value = rawValue.trim();
+        const quote = value[0];
+        return value.length >= 2 && (quote === '"' || quote === "'") && value.at(-1) === quote
+            ? value.slice(1, -1)
+            : value;
+    }
+
+    protected async createWorkspaceSkill(): Promise<void> {
+        if (this.newSkillCreating) {
+            return;
+        }
+        const id = this.newSkillId.trim();
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
+            this.newSkillError = 'Skill IDは小文字の英数字とハイフンで入力してください。';
+            this.update();
+            return;
+        }
+        const root = this.workspaceRoot()?.resource;
+        if (!root) {
+            this.newSkillError = 'Skillを作成するにはWorkspaceを開いてください。';
+            this.update();
+            return;
+        }
+        const skillDirectory = root.resolve(`.poiesis/skills/${id}`);
+        const skillUri = skillDirectory.resolve('skill.md');
+        this.newSkillCreating = true;
+        this.newSkillError = undefined;
+        this.update();
+        try {
+            if (await this.fileService.exists(skillUri)) {
+                this.newSkillError = `「${id}」はすでに存在します。`;
+                return;
+            }
+            await this.fileService.createFolder(skillDirectory);
+            await this.fileService.create(skillUri, this.workspaceSkillTemplate(id, this.newSkillKind));
+            await this.refreshWorkspaceSkills();
+            await this.openWorkspaceSkill(skillUri.toString());
+        } catch (error) {
+            this.newSkillError = `Skillを作成できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+        } finally {
+            this.newSkillCreating = false;
+            this.update();
+        }
+    }
+
+    protected workspaceSkillTemplate(id: string, kind: SkillBundleKind): string {
+        return `---\nname: ${id}\ndescription: このSkillの目的を記述してください\nkind: ${kind}\n---\n\n# ${id}\n\nここにSkillの指示を記述してください。\n`;
+    }
+
+    protected async openWorkspaceSkill(rawUri: string): Promise<void> {
+        this.closeCustomize(false);
+        if (!this.codeMode) {
+            this.ensureCodeFileIcons();
+            this.codeMode = true;
+            this.update();
+            requestAnimationFrame(() => void this.ensureCodeTerminal());
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        } else {
+            this.update();
+        }
+        try {
+            await this.openDraggedCodeFile(rawUri);
+        } catch (error) {
+            this.customizeModalVisible = true;
+            this.workspaceSkillsError = `skill.mdをCodeで開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            this.update();
+        }
     }
 
     protected async openTheiaSettings(): Promise<void> {

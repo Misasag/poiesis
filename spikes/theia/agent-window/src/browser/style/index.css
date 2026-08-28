@@ -3440,6 +3440,169 @@ body.poiesis-code-file-pointer-drag * {
     text-underline-offset: 3px;
 }
 
+.poiesis-customize-modal {
+    width: min(760px, calc(100vw - 40px));
+}
+
+.poiesis-customize-modal__group-title {
+    color: #9ea099;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    margin: 7px 1px 0;
+}
+
+.poiesis-customize-modal__user-heading {
+    align-items: baseline;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    margin-top: 7px;
+}
+
+.poiesis-customize-modal__user-heading > span {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-customize-modal__state {
+    align-items: center;
+    background: var(--poiesis-chrome-panel-raised);
+    border: 1px dashed #454741;
+    border-radius: 9px;
+    color: var(--poiesis-chrome-muted);
+    display: flex;
+    font-size: 12px;
+    gap: 7px;
+    justify-content: center;
+    min-height: 58px;
+    padding: 12px;
+}
+
+.poiesis-customize-modal__state.error {
+    border-color: #76504b;
+    color: #e2aaa4;
+}
+
+.poiesis-customize-modal__skill-card {
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+}
+
+.poiesis-customize-modal__skill-card:hover,
+.poiesis-customize-modal__skill-card:focus-visible {
+    background: #292b27;
+    border-color: #575a52;
+    outline: none;
+}
+
+.poiesis-customize-modal__skill-card > div:nth-child(2) {
+    min-width: 0;
+}
+
+.poiesis-customize-modal__skill-card p,
+.poiesis-customize-modal__skill-card small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-customize-modal__skill-card small {
+    color: #888a83;
+    display: block;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.poiesis-customize-modal__skill-card > .codicon:last-child {
+    color: #858780;
+}
+
+.poiesis-customize-modal__new-skill {
+    align-items: end;
+    background: #20211f;
+    border: 1px solid #4b4d47;
+    border-radius: 9px;
+    display: grid;
+    gap: 9px;
+    grid-template-columns: minmax(0, 1fr) 130px;
+    padding: 12px;
+}
+
+.poiesis-customize-modal__new-skill label {
+    display: grid;
+    gap: 5px;
+}
+
+.poiesis-customize-modal__new-skill label > span {
+    color: #b4b6ae;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.poiesis-customize-modal__new-skill input,
+.poiesis-customize-modal__new-skill select {
+    background: #181917;
+    border: 1px solid #555750;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    min-height: 31px;
+    padding: 5px 8px;
+}
+
+.poiesis-customize-modal__new-skill > small,
+.poiesis-customize-modal__new-skill > p,
+.poiesis-customize-modal__new-skill > div {
+    grid-column: 1 / -1;
+}
+
+.poiesis-customize-modal__new-skill > small {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+}
+
+.poiesis-customize-modal__new-skill > p {
+    color: #e2aaa4;
+    font-size: 12px;
+    margin: 0;
+}
+
+.poiesis-customize-modal__new-skill > div {
+    display: flex;
+    gap: 7px;
+    justify-content: flex-end;
+}
+
+.poiesis-customize-modal__new-skill button {
+    background: #30322e;
+    border: 1px solid #555750;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    cursor: pointer;
+    padding: 6px 10px;
+}
+
+.poiesis-customize-modal__new-skill button.primary {
+    background: #d6d8d1;
+    border-color: #d6d8d1;
+    color: #20211f;
+}
+
+.poiesis-customize-modal__new-skill button:disabled {
+    cursor: default;
+    opacity: .55;
+}
+
+.poiesis-customize-modal__footer {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+}
+
 @media (max-width: 680px) {
     .poiesis-agent-window__header {
         padding-inline: 11px;
@@ -3477,6 +3640,10 @@ body.poiesis-code-file-pointer-drag * {
 
     .poiesis-agent-window__app-page-body {
         padding: 22px 16px;
+    }
+
+    .poiesis-customize-modal__new-skill {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 

@@ -71,6 +71,7 @@ for (const marker of [
     'PoiesisNativeInput',
     'session rail top',
     'headerInteractionChecks',
+    'customizeWindowChecks',
     'POIESIS_WINDOW_DRAG_ONLY',
     'ELECTRON_WINDOW_DRAG_SMOKE_RESULT=',
     'dragExplorerFileToTabs',
@@ -208,6 +209,7 @@ for (const marker of [
 assert.ok(resultsGenerationContext.includes("providerId: KnownCliId = 'codex'"));
 assert.ok(moduleSource.includes('.createProxy<ResultsGenerationServer>(resultsGenerationServerPath)'));
 assert.ok(moduleSource.includes('bind(ResultsSkill).toService(AiResultsSkill)'));
+assert.ok(!resultsSkill.includes('isSkillEnabled'), 'Built-in Results generation must not be disabled by a hidden legacy setting');
 assert.ok(backendModule.includes('bind(ResultsGenerationServer).to(ResultsGenerationServerImpl).inSingletonScope()'));
 for (const dependency of [
     '@theia/editor',
@@ -428,6 +430,10 @@ for (const marker of [
 for (const marker of [
     "SkillBundleKind = 'agent' | 'results'",
     'interface SkillBundleManifest',
+    'interface SkillDocumentFrontmatter',
+    'interface SkillDocumentBundle',
+    "readonly source: 'workspace'",
+    'readonly skillDocumentUri: string',
     'interface SkillBundleLifecycle',
     'install(manifest: SkillBundleManifest)',
     'remove(id: string)',
@@ -442,7 +448,9 @@ for (const marker of [
     'Results skill',
     'multi-agent orchestration',
     'runtime config schema',
-    '`builtin.results`'
+    '`builtin.results`',
+    '.poiesis/skills/<skill-id>/',
+    '`skill.md` bundleも`SkillBundle`契約へ適合する'
 ]) {
     assert.ok(skillsContract.includes(marker), `Skills contract document is missing ${marker}`);
 }
@@ -452,6 +460,7 @@ for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
     "type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions'",
     'protected codeMode = false',
+    'protected customizeModalVisible = false',
     "static readonly FILES_WIDGET_FACTORY_ID = 'files'",
     "static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace'",
     "static readonly GIT_WIDGET_FACTORY_ID = 'scm-view'",
@@ -589,6 +598,7 @@ for (const marker of [
     'this.settingsModalVisible = true',
     'protected closeSettings(): void',
     'protected renderSettingsModal(): React.ReactNode',
+    'protected renderCustomizeModal(): React.ReactNode',
     "role='dialog'",
     "aria-modal='true'",
     'protected async restorePoiesisSettings(): Promise<void>',
@@ -603,10 +613,18 @@ for (const marker of [
     'this.resultsGenerationContext.providerId = this.resultsCli',
     'providerId: this.agentCli',
     "detection?.status === 'found'",
-    'Agent Skillsは作業方法と将来の委譲を定義し',
+    'WorkspaceのUser Skillは定義・編集できますが、Agent／Results実行への反映は今後です。',
+    '<strong>Bundled Results</strong>',
     '<strong>AI Results</strong>',
-    "aria-label='Results skillを有効化'",
-    'this.customizationService.setSkillEnabled',
+    "className={`poiesis-agent-window__rail-action${this.customizeModalVisible ? ' active' : ''}`}",
+    "<span className='poiesis-agent-window__rail-action-label'>Customize</span>",
+    "root.resolve('.poiesis/skills')",
+    'protected parseWorkspaceSkill(',
+    'protected async createWorkspaceSkill(): Promise<void>',
+    'await this.fileService.createFolder(skillDirectory)',
+    'await this.fileService.create(skillUri, this.workspaceSkillTemplate',
+    'await this.openWorkspaceSkill(skillUri.toString())',
+    'protected async openWorkspaceSkill(rawUri: string): Promise<void>',
     "value={session?.agentDraft ?? ''}",
     'onChange={event => this.setAgentDraft(session?.id, event.currentTarget.value)}',
     'onCompositionEnd={event => this.setAgentDraft(session?.id, event.currentTarget.value)}'
@@ -620,6 +638,10 @@ assert.ok(!agentWidget.includes('&& session && !session.selectedResultsTaskId'),
 assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.openCustomize()}"), 'Code Extensions must not open Poiesis Customize');
 assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Poiesis Settings');
 assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Poiesis Customize must not manage Code extensions');
+const settingsModalSource = agentWidget.match(/protected renderSettingsModal\(\): React\.ReactNode \{[\s\S]*?\n    protected renderCustomizeModal/)?.[0] ?? '';
+assert.ok(!settingsModalSource.includes('poiesis-settings-skills'), 'Settings modal must not contain Skills');
+assert.ok(!settingsModalSource.includes('poiesis-settings-plugins'), 'Settings modal must not contain Plugins');
+assert.ok(!agentWidget.includes('<h2>Hooks</h2>'), 'Customize must not advertise unsupported Hooks');
 for (const dummyChrome of [
     '<small>poiesis / main</small>',
     '<strong>poiesis</strong>',
@@ -831,6 +853,9 @@ for (const marker of [
     '.poiesis-agent-window__app-page',
     '.poiesis-agent-window__app-nav',
     '.poiesis-agent-window__customize-card',
+    '.poiesis-customize-modal',
+    '.poiesis-customize-modal__skill-card',
+    '.poiesis-customize-modal__new-skill',
     '.poiesis-agent-window__switch',
     '.poiesis-agent-window__composer',
     '.poiesis-agent-window__new-agent-empty',
