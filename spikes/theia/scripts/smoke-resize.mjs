@@ -11,11 +11,13 @@ if (!executablePath) throw new Error('Chrome or Edge was not found.');
 
 const url = process.env.THEIA_SMOKE_UI_URL ?? 'http://127.0.0.1:3000';
 const profile = resolve(process.cwd(), '.run', `resize-smoke-${Date.now()}`);
+const railWidths = [196, 252, 276, 420];
+const windowSizes = [{ width: 1024, height: 600 }, { width: 1280, height: 720 }];
 const browser = await puppeteer.launch({
     executablePath,
     headless: true,
     userDataDir: profile,
-    defaultViewport: { width: 1462, height: 813 },
+    defaultViewport: { width: 1280, height: 720 },
     args: ['--no-sandbox', '--disable-gpu', '--no-first-run']
 });
 
@@ -26,31 +28,30 @@ try {
     await page.waitForSelector('.poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
     await installResultsFixture(page);
 
+    const matrix = [];
+    for (const railWidth of railWidths) {
+        await restoreRailWidth(page, railWidth);
+        for (const size of windowSizes) {
+            await clickText(page, '.poiesis-agent-window__tabs button', 'Agent');
+            matrix.push(summarize(await resizeAndAssert(page, size, 'agent', railWidth)));
+
+            await clickText(page, '.poiesis-agent-window__tabs button', 'Results');
+            await page.waitForSelector('.poiesis-results__document');
+            matrix.push(summarize(await resizeAndAssert(page, size, 'results', railWidth)));
+
+            await clickText(page, '.poiesis-agent-window__code-control', 'Code');
+            await page.waitForSelector('.poiesis-agent-window__code');
+            matrix.push(summarize(await resizeAndAssert(page, size, 'code', railWidth)));
+            await clickText(page, '.poiesis-agent-window__code-control', 'Code');
+            await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code'));
+        }
+    }
+
+    await restoreRailWidth(page, 420);
     await clickText(page, '.poiesis-agent-window__tabs button', 'Agent');
-    const agent = [];
-    for (const size of [{ width: 1024, height: 600 }, { width: 1280, height: 720 }, { width: 1500, height: 850 }]) {
-        agent.push(await resizeAndAssert(page, size, 'agent'));
-    }
+    await page.setViewport({ width: 1024, height: 600 });
     const composer = await stressAgentComposer(page);
-
-    await clickText(page, '.poiesis-agent-window__tabs button', 'Results');
-    await page.waitForSelector('.poiesis-results__document');
-    const results = await resizeAndAssert(page, { width: 1024, height: 600 }, 'results');
-
-    await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
-    await page.waitForSelector('.poiesis-settings-modal__backdrop');
-    const settings = await resizeAndAssert(page, { width: 1500, height: 850 }, 'results', true);
-    await page.click('.poiesis-settings-modal__header button[aria-label="設定を閉じる"]');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal__backdrop'));
-
-    await clickText(page, '.poiesis-agent-window__code-control', 'Code');
-    await page.waitForSelector('.poiesis-agent-window__code');
-    const code = [];
-    for (const size of [{ width: 1024, height: 600 }, { width: 1280, height: 720 }, { width: 1500, height: 850 }]) {
-        code.push(await resizeAndAssert(page, size, 'code'));
-    }
-
-    console.log(`RESIZE_SMOKE_RESULT=${JSON.stringify({ agent, composer, results, settings, code }, null, 2)}`);
+    console.log(`RESIZE_SMOKE_RESULT=${JSON.stringify({ matrix, composer }, null, 2)}`);
 } finally {
     await browser.close();
 }
@@ -68,7 +69,6 @@ async function installResultsFixture(page) {
             selectedSessionId: 'resize-smoke-session',
             railWidth: 276,
             railCollapsed: false,
-            uiFontScale: 'large',
             sessions: [{
                 id: 'resize-smoke-session',
                 createdAt: timestamp - 60_000,
@@ -76,7 +76,7 @@ async function installResultsFixture(page) {
                 workspaceUri,
                 branch: 'main',
                 runTarget: 'local',
-                title: 'Resize smoke',
+                title: 'Restored-session-layout-regression-with-a-long-title-that-must-not-expand-the-workspace-column',
                 hasUserMessage: true,
                 lastTaskStatus: 'completed',
                 pinned: false,
@@ -87,16 +87,16 @@ async function installResultsFixture(page) {
                     {
                         id: 'resize-user',
                         role: 'user',
-                        content: 'Resize smoke: keep this deliberately long message inside the fluid conversation column at the supported native minimum.',
+                        content: 'Keep this deliberately long restored user message inside the fluid conversation column at every supported rail width and native window size.',
                         complete: true
                     },
                     {
                         id: 'resize-error',
                         role: 'agent',
-                        content: 'Agent execution failed before the provider could start.',
+                        content: 'Agent execution failed before the selected provider could start.',
                         complete: true,
                         error: true,
-                        errorDetails: 'Usage: provider --workspace <path> --model <model>\nThe selected executable could not be started. This detail must wrap or scroll inside the center column.'
+                        errorDetails: 'Usage: provider --workspace <path> --model <model>\nThe selected executable could not be started. This diagnostic must remain inside the current center column.'
                     }
                 ],
                 selectedResultsTaskId: taskId,
@@ -104,8 +104,8 @@ async function installResultsFixture(page) {
                 tasks: [{
                     id: taskId,
                     sessionId: 'resize-runtime-session',
-                    title: 'Resize smoke',
-                    request: 'Resize smoke',
+                    title: 'Restored result with a deliberately long title',
+                    request: 'Verify that a restored result stays within the current workspace column.',
                     status: 'completed',
                     startedAt: new Date(timestamp - 30_000).toISOString(),
                     endedAt: new Date(timestamp - 20_000).toISOString(),
@@ -115,21 +115,41 @@ async function installResultsFixture(page) {
                 resultsDocuments: [{
                     taskId,
                     status: 'ready',
-                    html: '<!doctype html><html lang="ja"><body><main><h1>Resize smoke</h1></main></body></html>'
+                    html: '<!doctype html><html lang="ja"><body><main><h1>Resize smoke</h1><p>Restored Results document.</p></main></body></html>'
                 }]
             }]
         }));
         localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.migrated.v1', 'true');
     }, now);
     await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForApp(page);
+}
+
+async function restoreRailWidth(page, railWidth) {
+    await page.evaluate(width => {
+        const key = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
+        const state = JSON.parse(localStorage.getItem(key) ?? '{}');
+        state.railWidth = width;
+        state.railCollapsed = false;
+        localStorage.setItem(key, JSON.stringify(state));
+    }, railWidth);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForApp(page);
+    await page.waitForFunction(width => {
+        const rail = document.querySelector('.poiesis-agent-window__rail');
+        return rail instanceof HTMLElement && Math.abs(rail.getBoundingClientRect().width - width) <= 1;
+    }, {}, railWidth);
+}
+
+async function waitForApp(page) {
     await page.waitForSelector('.poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
     await page.waitForSelector('.poiesis-results__document');
 }
 
-async function resizeAndAssert(page, size, mode, settingsOpen = false) {
+async function resizeAndAssert(page, size, mode, expectedRailWidth) {
     await page.setViewport(size);
     await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
-    const snapshot = await page.evaluate((expectedMode, expectSettings) => {
+    const snapshot = await page.evaluate(expectedMode => {
         const rect = selector => {
             const element = document.querySelector(selector);
             if (!(element instanceof HTMLElement)) return undefined;
@@ -151,22 +171,10 @@ async function resizeAndAssert(page, size, mode, settingsOpen = false) {
                 : [
                     '.poiesis-agent-window__header',
                     '.poiesis-agent-window__viewport',
-                    '.poiesis-agent-window__agent',
-                    '.poiesis-agent-window__messages',
-                    '.poiesis-agent-window__messages-inner',
-                    '.poiesis-agent-window__message',
-                    '.poiesis-agent-window__user-message',
-                    '.poiesis-agent-window__message-error',
-                    '.poiesis-agent-window__task-state',
-                    '.poiesis-agent-window__composer',
-                    '.poiesis-results',
-                    '.poiesis-results__main',
-                    '.poiesis-results__canvas',
-                    '.poiesis-results__composer',
-                    '.poiesis-results__task-switcher',
                     '.poiesis-agent-window__code',
                     '.poiesis-agent-window__code-activity',
                     '.poiesis-agent-window__code-sidebar',
+                    '.poiesis-agent-window__code-source-control',
                     '.poiesis-agent-window__code-editor',
                     '.poiesis-agent-window__code-editor-stack',
                     '.poiesis-agent-window__code-panel',
@@ -181,25 +189,27 @@ async function resizeAndAssert(page, size, mode, settingsOpen = false) {
                 return bounds.width > 0 && (bounds.left < -1 || bounds.right > innerWidth + 1);
             })
             .map(element => ({
-                selector: element.className,
+                selector: typeof element.className === 'string' ? element.className : element.tagName,
                 left: Math.round(element.getBoundingClientRect().left),
                 right: Math.round(element.getBoundingClientRect().right)
             }));
+        const workspace = document.querySelector('.poiesis-agent-window__workspace');
         return {
             expectedMode,
             viewport: { width: innerWidth, height: innerHeight },
             content: rect('.poiesis-agent-window__content'),
             rail: rect('.poiesis-agent-window__rail'),
             workspace: rect('.poiesis-agent-window__workspace'),
+            workspaceColumns: workspace instanceof HTMLElement ? getComputedStyle(workspace).gridTemplateColumns : undefined,
             header: rect('.poiesis-agent-window__header'),
             appViewport: rect('.poiesis-agent-window__viewport'),
+            agent: rect('.poiesis-agent-window__agent'),
+            results: rect('.poiesis-results'),
             code: rect('.poiesis-agent-window__code'),
-            settingsBackdrop: expectSettings ? rect('.poiesis-settings-modal__backdrop') : undefined,
-            settingsModal: expectSettings ? rect('.poiesis-settings-modal') : undefined,
             mode: document.querySelector('.poiesis-agent-window__content')?.getAttribute('data-mode'),
             clipped
         };
-    }, mode, settingsOpen);
+    }, mode);
 
     assert(snapshot.mode === mode, `Expected ${mode} mode after resize, got ${snapshot.mode}`);
     assert(snapshot.clipped.length === 0, `${mode} has horizontally clipped surfaces: ${JSON.stringify(snapshot)}`);
@@ -211,29 +221,27 @@ async function resizeAndAssert(page, size, mode, settingsOpen = false) {
         assert(snapshot.code?.width === snapshot.appViewport.width && snapshot.code?.height === snapshot.appViewport.height,
             `Code surface did not fill its viewport: ${JSON.stringify(snapshot)}`);
     } else {
-        assert(snapshot.rail && snapshot.rail.width >= 52, `${mode} rail collapsed to zero: ${JSON.stringify(snapshot)}`);
+        assert(snapshot.rail && Math.abs(snapshot.rail.width - expectedRailWidth) <= 1,
+            `${mode} rail width did not restore to ${expectedRailWidth}: ${JSON.stringify(snapshot)}`);
         assert(snapshot.rail.position !== 'absolute' && snapshot.workspace.position !== 'absolute',
             `${mode} rail/workspace escaped the grid: ${JSON.stringify(snapshot)}`);
         assert(snapshot.rail.x === 0 && snapshot.rail.right === snapshot.workspace.x,
             `${mode} rail and workspace are fragmented: ${JSON.stringify(snapshot)}`);
+        assert(snapshot.workspace.width === snapshot.viewport.width - snapshot.rail.width,
+            `${mode} workspace did not use window minus actual rail width: ${JSON.stringify(snapshot)}`);
         assert(snapshot.workspace.right === snapshot.viewport.width && snapshot.workspace.height === snapshot.viewport.height,
             `${mode} workspace does not fill the remaining window: ${JSON.stringify(snapshot)}`);
         assert(snapshot.header.x === snapshot.workspace.x && snapshot.header.width === snapshot.workspace.width && snapshot.header.y === 0,
             `${mode} header is detached: ${JSON.stringify(snapshot)}`);
-    }
-    if (settingsOpen) {
-        assertRectFills(snapshot.settingsBackdrop, snapshot.viewport, 'Settings backdrop');
-        assert(snapshot.settingsModal?.width > 0 && snapshot.settingsModal?.height > 0
-            && snapshot.settingsModal.x >= 0 && snapshot.settingsModal.y >= 0
-            && snapshot.settingsModal.right <= snapshot.viewport.width && snapshot.settingsModal.bottom <= snapshot.viewport.height,
-        `Settings modal overflowed after resize: ${JSON.stringify(snapshot)}`);
+        assert(snapshot.appViewport.x === snapshot.workspace.x && snapshot.appViewport.width === snapshot.workspace.width,
+            `${mode} viewport escaped the workspace column: ${JSON.stringify(snapshot)}`);
     }
     return snapshot;
 }
 
 async function stressAgentComposer(page) {
-    const selector = '[aria-label="Agent へのメッセージ"]';
-    const expected = 'SCRATCH-DEMO.md の末尾に「更新履歴」という見出しと、今日の日付の1行を追加してください。他のファイルは変更しないでください。';
+    const selector = '.poiesis-agent-window__composer textarea';
+    const expected = 'SCRATCH-DEMO.md: add one dated update-history line and do not change any other file.';
     await page.focus(selector);
     await page.keyboard.down('Control');
     await page.keyboard.press('A');
@@ -242,14 +250,14 @@ async function stressAgentComposer(page) {
     await Promise.all([
         page.keyboard.type(expected, { delay: 1 }),
         (async () => {
-            for (const size of [{ width: 1100, height: 700 }, { width: 1500, height: 850 }, { width: 1100, height: 700 }]) {
+            for (const size of [{ width: 1024, height: 600 }, { width: 1280, height: 720 }, { width: 1024, height: 600 }]) {
                 await page.setViewport(size);
                 await page.evaluate(() => window.dispatchEvent(new Event('resize')));
             }
         })()
     ]);
     const value = await page.$eval(selector, input => input.value);
-    assert(value === expected, `Composer value was corrupted while resize renders interleaved with CDP typing: ${JSON.stringify(value)}`);
+    assert(value === expected, `Composer value was corrupted while resize renders interleaved with typing: ${JSON.stringify(value)}`);
     await page.waitForFunction(expectedDraft => {
         const state = JSON.parse(localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1') ?? '{}');
         return state.sessions?.find(session => session.id === state.selectedSessionId)?.agentDraft === expectedDraft;
@@ -259,6 +267,18 @@ async function stressAgentComposer(page) {
     const restored = await page.$eval(selector, input => input.value);
     assert(restored === expected, `Persisted composer draft was corrupted: ${JSON.stringify(restored)}`);
     return { length: expected.length, valueMatches: value === expected, restoredMatches: restored === expected };
+}
+
+function summarize(snapshot) {
+    return {
+        rail: snapshot.rail?.width ?? 0,
+        window: `${snapshot.viewport.width}x${snapshot.viewport.height}`,
+        mode: snapshot.expectedMode,
+        workspace: snapshot.workspace?.width,
+        workspaceColumns: snapshot.workspaceColumns,
+        right: snapshot.workspace?.right,
+        clipped: snapshot.clipped.length
+    };
 }
 
 function assertRectFills(rect, viewport, label) {

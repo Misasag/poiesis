@@ -657,6 +657,7 @@
     overflow: hidden;
     padding: 0;
     position: relative;
+    width: 100%;
 }
 
 .poiesis-agent-window__content[data-mode='code'] {
@@ -1383,6 +1384,7 @@
 .poiesis-agent-window__workspace {
     background: var(--poiesis-chrome-bg);
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
     height: 100%;
     min-height: 0;
@@ -1398,7 +1400,10 @@
     gap: 16px;
     justify-content: space-between;
     min-height: 54px;
+    min-width: 0;
+    overflow: hidden;
     padding: 9px 16px;
+    width: 100%;
 }
 
 .poiesis-agent-window__context {
@@ -1518,11 +1523,13 @@
     min-height: 0;
     min-width: 0;
     overflow: hidden;
+    width: 100%;
 }
 
 .poiesis-agent-window__agent {
     display: grid;
     gap: 0;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto auto;
     height: 100%;
     min-height: 0;
@@ -1944,10 +1951,12 @@
     min-height: 0;
     min-width: 0;
     overflow: hidden;
+    width: 100%;
 }
 
 .poiesis-results__main {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto auto;
     min-height: 0;
     min-width: 0;
@@ -2001,6 +2010,7 @@
     border-top: 1px solid var(--poiesis-chrome-line);
     display: grid;
     gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
     min-width: 0;
     padding: 14px 16px 18px;
 }
@@ -2210,6 +2220,7 @@
     display: grid;
     grid-column: 2;
     grid-row: 1;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 35px minmax(0, 1fr);
     position: relative;
 }
@@ -2220,6 +2231,7 @@
 
 .poiesis-agent-window__code-source-control {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) 24px;
     min-height: 0;
     overflow: hidden;
@@ -2724,11 +2736,13 @@ body.poiesis-code-file-pointer-drag * {
     display: grid;
     grid-column: 3;
     grid-row: 1;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
 }
 
 .poiesis-agent-window__code-editor-stack {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) var(--poiesis-code-panel-height, 190px);
     min-height: 0;
     min-width: 0;
@@ -2800,6 +2814,7 @@ body.poiesis-code-file-pointer-drag * {
     background: #181818;
     border-top: 1px solid #2b2b2b;
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 34px minmax(0, 1fr);
     min-height: 0;
     min-width: 0;

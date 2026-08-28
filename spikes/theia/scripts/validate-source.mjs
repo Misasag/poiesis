@@ -927,6 +927,11 @@ for (const marker of [
 }
 assert.match(
     agentStyles,
+    /\.poiesis-agent-window__workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+    'The restored center column must shrink to the actual remaining rail width'
+);
+assert.match(
+    agentStyles,
     /\.poiesis-agent-window__rail-action\s*\{[^}]*font-size:\s*12px;/,
     'New Chat and Search text must match the sidebar spec'
 );
