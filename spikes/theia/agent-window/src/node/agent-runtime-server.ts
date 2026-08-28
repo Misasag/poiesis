@@ -1,8 +1,7 @@
-import { ChildProcessByStdio, execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
-import { Readable } from 'node:stream';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import {
     AgentRuntimeClient,
@@ -21,6 +20,7 @@ import {
 import { CliDetector } from './cli-detector';
 import { CliProviderRegistry } from './cli-provider-registry';
 import { grokExecutionEnvironment } from './known-cli-registry';
+import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 
 interface SnapshotEntry {
     content: Buffer;
@@ -34,7 +34,7 @@ interface WorkspaceSnapshot {
     entries: Map<string, SnapshotEntry>;
 }
 
-type CodexProcess = ChildProcessByStdio<null, Readable, Readable>;
+type CodexProcess = HiddenCliProcess;
 
 interface CodexRun {
     process: CodexProcess;
@@ -288,32 +288,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
 
     protected spawnCli(providerId: KnownCliId, command: string, args: string[], cwd: string): CodexProcess {
         const env = providerId === 'grok' ? grokExecutionEnvironment() : process.env;
-        if (!['.cmd', '.bat'].includes(extname(command).toLocaleLowerCase())) {
-            return spawn(command, args, {
-                cwd, env, windowsHide: true,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-        }
-
-        if (providerId === 'claude') {
-            const entryPoint = join(dirname(command), 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
-            return spawn(entryPoint, args, {
-                cwd, windowsHide: true,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-        }
-
-        if (providerId === 'codex') {
-            const entryPoint = join(dirname(command), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-            return spawn(process.execPath, [entryPoint, ...args], {
-                cwd, windowsHide: true,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-        }
-        return spawn(command, args, {
-            cwd, env, windowsHide: true, shell: true,
-            stdio: ['ignore', 'pipe', 'pipe']
-        });
+        return spawnHiddenCli(providerId, command, args, { cwd, env });
     }
 
     protected notifyOutput(executionId: string, stream: 'stdout' | 'stderr', chunk: Buffer): void {
@@ -330,25 +305,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
     }
 
     protected killProcess(child: CodexProcess): Promise<void> {
-        if (process.platform !== 'win32' || child.pid === undefined) {
-            child.kill();
-            return Promise.resolve();
-        }
-        return new Promise(resolvePromise => {
-            const killer = spawn(
-                'taskkill',
-                ['/pid', String(child.pid), '/T', '/F'],
-                { windowsHide: true }
-            );
-            killer.once('error', () => {
-                child.kill();
-                resolvePromise();
-            });
-            killer.once('close', () => {
-                child.kill();
-                resolvePromise();
-            });
-        });
+        return killHiddenProcessTree(child);
     }
 
     protected changedFiles(

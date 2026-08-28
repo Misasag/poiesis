@@ -1,6 +1,5 @@
 import { constants } from 'node:fs';
 import { access } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 import { delimiter, extname, join } from 'node:path';
 import { injectable } from '@theia/core/shared/inversify';
 import {
@@ -9,6 +8,7 @@ import {
     CliLocationSource
 } from '../common/agent-runtime-protocol';
 import { KnownCliDefinition, knownCliDefinitions } from './known-cli-registry';
+import { HiddenCliProcess, spawnHiddenCli } from './hidden-process';
 
 /** Registry-backed detector for PATH, well-known locations, and bounded version probes. */
 @injectable()
@@ -54,7 +54,7 @@ export class CliDetector {
                     status: 'found',
                     path: candidate.path,
                     source: candidate.source,
-                    version: await this.probeVersion(candidate.path, definition.versionProbe),
+                    version: await this.probeVersion(definition, candidate.path),
                     executableRoles: [...definition.executableRoles],
                     models: [...definition.models],
                     defaultModel: definition.defaultModel,
@@ -115,17 +115,16 @@ export class CliDetector {
         }
     }
 
-    protected probeVersion(command: string, args: readonly string[]): Promise<string | undefined> {
+    protected probeVersion(definition: KnownCliDefinition, command: string): Promise<string | undefined> {
         return new Promise(resolveProbe => {
-            const useCommandInterpreter = ['.cmd', '.bat'].includes(extname(command).toLocaleLowerCase());
-            const executable = useCommandInterpreter ? (process.env.ComSpec ?? 'cmd.exe') : command;
-            const executableArgs = useCommandInterpreter
-                ? ['/d', '/c', command, ...args]
-                : [...args];
-            const child = spawn(executable, executableArgs, {
-                windowsHide: true,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
+            let child: HiddenCliProcess;
+            try {
+                child = spawnHiddenCli(definition.id, command, definition.versionProbe);
+            } catch (error) {
+                console.warn(`[Poiesis] ${definition.displayName} version probe skipped because no console-free invocation was available.`, error);
+                resolveProbe(undefined);
+                return;
+            }
             let output = '';
             let settled = false;
             const finish = (): void => {

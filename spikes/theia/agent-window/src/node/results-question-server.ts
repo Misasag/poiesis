@@ -1,6 +1,6 @@
-import { ChildProcessByStdio, spawn } from 'node:child_process';
+import { ChildProcessByStdio } from 'node:child_process';
 import { stat } from 'node:fs/promises';
-import { dirname, extname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import URI from '@theia/core/lib/common/uri';
 import { inject, injectable } from '@theia/core/shared/inversify';
@@ -13,6 +13,7 @@ import {
 import { isKnownCliId, KnownCliId } from '../common/agent-runtime-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
 import { grokExecutionEnvironment } from './known-cli-registry';
+import { killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 
 type CodexProcess = ChildProcessByStdio<null, Readable, Readable>;
 
@@ -287,54 +288,11 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
 
     protected spawnCli(providerId: KnownCliId, command: string, args: string[], cwd: string): CodexProcess {
         const env = providerId === 'grok' ? grokExecutionEnvironment() : process.env;
-        if (!['.cmd', '.bat'].includes(extname(command).toLocaleLowerCase())) {
-            return spawn(command, args, {
-                cwd, env, windowsHide: true,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-        }
-
-        if (providerId === 'claude') {
-            const entryPoint = join(dirname(command), 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
-            return spawn(entryPoint, args, {
-                cwd, windowsHide: true,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-        }
-
-        if (providerId === 'codex') {
-            const entryPoint = join(dirname(command), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-            return spawn(process.execPath, [entryPoint, ...args], {
-                cwd, windowsHide: true,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-        }
-        return spawn(command, args, {
-            cwd, env, windowsHide: true, shell: true,
-            stdio: ['ignore', 'pipe', 'pipe']
-        });
+        return spawnHiddenCli(providerId, command, args, { cwd, env });
     }
 
     protected killProcess(child: CodexProcess): Promise<void> {
-        if (process.platform !== 'win32' || child.pid === undefined) {
-            child.kill();
-            return Promise.resolve();
-        }
-        return new Promise(resolvePromise => {
-            const killer = spawn(
-                'taskkill',
-                ['/pid', String(child.pid), '/T', '/F'],
-                { windowsHide: true }
-            );
-            killer.once('error', () => {
-                child.kill();
-                resolvePromise();
-            });
-            killer.once('close', () => {
-                child.kill();
-                resolvePromise();
-            });
-        });
+        return killHiddenProcessTree(child);
     }
 
     protected failed(error: ResultsQuestionError): ResultsQuestionResult {
