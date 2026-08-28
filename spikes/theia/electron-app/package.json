@@ -38,6 +38,7 @@
   "scripts": {
     "build": "node ../scripts/build-electron.mjs",
     "clean": "theia clean",
+    "icon:build": "node ../scripts/build-icon.mjs",
     "rebuild": "node ../scripts/run-electron-rebuild.mjs",
     "start": "set \"THEIA_CONFIG_DIR=%CD%\\..\\.theia-config-electron\" && theia start ../../.. --plugins=local-dir:../plugins --electronUserData=../.electron-runtime/user-data"
   },
@@ -47,6 +48,11 @@
       "config": {
         "applicationName": "Poiesis",
         "reloadOnReconnect": true,
+        "electron": {
+          "windowOptions": {
+            "icon": "resources/poiesis.ico"
+          }
+        },
         "preferences": {
           "security.workspace.trust.enabled": false,
           "extensions.ignoreRecommendations": true
