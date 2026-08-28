@@ -86,6 +86,11 @@ for (const marker of [
     "'Unstage Changes'",
     'assertNativeWindowDrag',
     'assertNativeHeaderDoubleClick',
+    'assertNativeWindowControl',
+    'PoiesisNativeControlInput',
+    'iconicAfterClick && result.restoredAfterCheck',
+    'zoomedAfterClick && result.boundsChanged',
+    'ELECTRON_WINDOW_CONTROL_SMOKE_RESULT=',
     'PoiesisNativeInput',
     'session rail top',
     'headerInteractionChecks',
@@ -158,6 +163,8 @@ for (const marker of [
 assert.ok(!electronWindowControls.includes("require('electron')"), 'Window controls must use Theia electron APIs');
 for (const marker of [
     '.poiesis-agent-window__header {',
+    '.poiesis-agent-window__header > .poiesis-agent-window__window-drag-surface {',
+    'right: 154px;',
     '.poiesis-agent-window__rail-top,',
     '\n    app-region: drag;',
     '-webkit-app-region: drag;',
@@ -171,6 +178,12 @@ for (const marker of [
 ]) {
     assert.ok(electronWindowStyles.includes(marker), `Electron window-control styles are missing ${marker}`);
 }
+assert.ok(agentWidget.includes("className='poiesis-agent-window__window-drag-surface'"),
+    'Every Electron header must expose a bounded native drag surface');
+assert.equal((agentWidget.match(/className='poiesis-agent-window__window-drag-surface'/g) ?? []).length, 3,
+    'Code, Customize, and Agent headers must each expose one native drag surface');
+assert.ok(!electronWindowStyles.includes('.poiesis-agent-window__header *,'),
+    'The full header compositor layer must not become a drag region over the fixed controls');
 assert.equal(extensionPackage.dependencies['@theia/scm'], '1.73.1');
 assert.equal(extensionPackage.dependencies['@theia/search-in-workspace'], '1.73.1');
 assert.ok(resultsQuestionProtocol.includes('workspaceUri: string'), 'Results question scope must name its workspace');

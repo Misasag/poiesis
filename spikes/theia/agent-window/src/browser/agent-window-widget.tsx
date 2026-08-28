@@ -1735,6 +1735,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (this.codeMode) {
             return (
                 <header className='poiesis-agent-window__header poiesis-agent-window__code-header'>
+                    <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
                     <button
                         type='button'
                         className='poiesis-agent-window__code-control active'
@@ -1753,6 +1754,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (this.customizeViewVisible) {
             return (
                 <header className='poiesis-agent-window__header poiesis-agent-window__customize-header'>
+                    <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
                     <div className='poiesis-agent-window__context'>
                         <small>{this.workspaceContextLabel()}</small>
                         <strong>Customize</strong>
@@ -1778,6 +1780,7 @@ export class AgentWindowWidget extends ReactWidget {
         const activeTab = session?.activeTab ?? 'agent';
         return (
             <header className='poiesis-agent-window__header'>
+                <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
                 <div className='poiesis-agent-window__context'>
                     <div className='poiesis-agent-window__context-scope'>
                         <small>{this.workspaceContextLabel()}</small>

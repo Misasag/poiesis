@@ -99,6 +99,7 @@ try {
 
     const resizeChecks = [];
     const nativeWindowChecks = [];
+    const nativeControlChecks = [];
     moveElectronWindow(startProcess.pid, 1024, 600);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
     const minimumSizeCheck = assertNativeMinimumWindowSize(startProcess.pid);
@@ -109,11 +110,45 @@ try {
     if (!modalWindowOnly) {
         nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
             '.poiesis-agent-window__header', 'Agent header'));
-        nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
-            '.poiesis-agent-window__rail-top', 'session rail top'));
+        if (!windowDragOnly) {
+            nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
+                '.poiesis-agent-window__rail-top', 'session rail top'));
+        }
         nativeWindowChecks.push(await assertNativeHeaderDoubleClick(page, startProcess.pid));
         nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
             '.poiesis-agent-window__header', 'Agent header after maximize and restore'));
+    }
+    if (windowDragOnly) {
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'minimize', 'initial'));
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'maximize', 'initial'));
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'restore', 'initial'));
+
+        const titlePoint = await nativeElementPoint(page, '.poiesis-agent-window__context > strong');
+        assert(titlePoint.appRegion === 'drag', `Title is not a native drag region: ${JSON.stringify(titlePoint)}`);
+        nativeWindowChecks.push(await assertNativeWindowDragAtPoint(page, startProcess.pid, titlePoint, 'Agent title'));
+
+        moveElectronWindow(startProcess.pid, 1100, 700);
+        await assertElectronLayout(page, 'agent');
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'minimize', 'after resize'));
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'maximize', 'after resize'));
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'restore', 'after maximize/restore'));
+
+        await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
+        await page.waitForSelector('.poiesis-settings-modal');
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'minimize', 'settings open'));
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'maximize', 'settings open'));
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'restore', 'settings open'));
+        assert(await page.$('.poiesis-settings-modal'), 'Settings modal disappeared during native window controls');
+
+        nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'close', 'settings open'));
+        await waitForProcessExit(startProcess, 10_000);
+        console.log(`ELECTRON_WINDOW_CONTROL_SMOKE_RESULT=${JSON.stringify({
+            userAgent,
+            windowTitle,
+            nativeWindowChecks,
+            nativeControlChecks
+        }, null, 2)}`);
+        break smokeRun;
     }
     moveElectronWindow(startProcess.pid, 1024, 600);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
@@ -684,6 +719,10 @@ if (-not [PoiesisNativeMinimumWindow]::GetWindowRect($windowHandle, [ref]$after)
 
 async function assertNativeWindowDrag(page, pid, selector, label) {
     const point = await findNativeDragPoint(page, selector);
+    return assertNativeWindowDragAtPoint(page, pid, point, label);
+}
+
+async function assertNativeWindowDragAtPoint(page, pid, point, label) {
     const result = sendNativeWindowInput(pid, point, 'drag');
     assert(result.hitHandle === result.windowHandle,
         `${label} Win32 input hit another window: ${JSON.stringify(result)}`);
@@ -691,6 +730,48 @@ async function assertNativeWindowDrag(page, pid, selector, label) {
         `${label} did not move from an OS-level drag: ${JSON.stringify(result)}`);
     await delay(250);
     return { label, point, delta: [result.deltaX, result.deltaY] };
+}
+
+async function nativeElementPoint(page, selector) {
+    return page.$eval(selector, (element, currentSelector) => {
+        if (!(element instanceof HTMLElement)) throw new Error(`${currentSelector} is not an HTML element`);
+        const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+            x: bounds.left + bounds.width / 2,
+            y: bounds.top + bounds.height / 2,
+            viewportWidth: innerWidth,
+            viewportHeight: innerHeight,
+            target: element.id || element.className || element.tagName,
+            appRegion: style.getPropertyValue('app-region') || style.getPropertyValue('-webkit-app-region')
+        };
+    }, selector);
+}
+
+async function assertNativeWindowControl(page, pid, action, phase) {
+    const selectorAction = action === 'restore' ? 'restore' : action;
+    const point = await nativeElementPoint(page,
+        `.poiesis-window-controls__button[data-window-action="${selectorAction}"]`);
+    assert(point.appRegion === 'no-drag',
+        `${action} button is not a no-drag region: ${JSON.stringify(point)}`);
+    const result = sendNativeWindowControlInput(pid, point, action);
+    assert(result.hitHandle === result.windowHandle,
+        `${phase} ${action} click hit another window: ${JSON.stringify(result)}`);
+    if (action === 'minimize') {
+        assert(result.iconicAfterClick && result.restoredAfterCheck,
+            `${phase} minimize was swallowed by a drag region: ${JSON.stringify(result)}`);
+        await page.bringToFront();
+        await page.evaluate(() => window.focus());
+    } else if (action === 'maximize') {
+        assert(result.zoomedAfterClick && result.boundsChanged,
+            `${phase} maximize was swallowed by a drag region: ${JSON.stringify(result)}`);
+        await page.waitForSelector('.poiesis-window-controls__button[data-window-action="restore"]');
+    } else if (action === 'restore') {
+        assert(!result.zoomedAfterClick && result.boundsChanged,
+            `${phase} restore was swallowed by a drag region: ${JSON.stringify(result)}`);
+        await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
+    }
+    return { phase, action, point, ...result };
 }
 
 async function assertNativeHeaderDoubleClick(page, pid) {
@@ -746,6 +827,99 @@ async function findNativeDragPoint(page, selector) {
                 || getComputedStyle(root).getPropertyValue('-webkit-app-region')
         };
     }, selector);
+}
+
+function sendNativeWindowControlInput(pid, point, action) {
+    if (process.platform !== 'win32') {
+        return {
+            windowHandle: 1,
+            hitHandle: 1,
+            iconicAfterClick: action === 'minimize',
+            restoredAfterCheck: true,
+            zoomedAfterClick: action === 'maximize',
+            boundsChanged: action === 'maximize' || action === 'restore'
+        };
+    }
+    const script = `
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class PoiesisNativeControlInput {
+    public delegate bool EnumWindowsProc(IntPtr handle, IntPtr parameter);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr handle, uint flags);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr handle, int command);
+}
+'@
+$targetPid = ${pid}
+$windowHandle = [IntPtr]::Zero
+[PoiesisNativeControlInput]::EnumWindows({
+    param($handle, $parameter)
+    $candidatePid = 0
+    [void][PoiesisNativeControlInput]::GetWindowThreadProcessId($handle, [ref]$candidatePid)
+    if ($candidatePid -eq $targetPid -and [PoiesisNativeControlInput]::IsWindowVisible($handle)) {
+        $script:windowHandle = $handle
+        return $false
+    }
+    return $true
+}, [IntPtr]::Zero) | Out-Null
+if ($windowHandle -eq [IntPtr]::Zero) { throw 'Poiesis main window handle was not found.' }
+$before = New-Object PoiesisNativeControlInput+RECT
+[void][PoiesisNativeControlInput]::GetWindowRect($windowHandle, [ref]$before)
+$startX = $before.Left + [Math]::Round(${point.x} * ($before.Right - $before.Left) / ${point.viewportWidth})
+$startY = $before.Top + [Math]::Round(${point.y} * ($before.Bottom - $before.Top) / ${point.viewportHeight})
+[void][PoiesisNativeControlInput]::BringWindowToTop($windowHandle)
+[void][PoiesisNativeControlInput]::SetForegroundWindow($windowHandle)
+Start-Sleep -Milliseconds 160
+[void][PoiesisNativeControlInput]::SetCursorPos($startX, $startY)
+Start-Sleep -Milliseconds 100
+$point = New-Object PoiesisNativeControlInput+POINT
+$point.X = $startX
+$point.Y = $startY
+$hitHandle = [PoiesisNativeControlInput]::GetAncestor([PoiesisNativeControlInput]::WindowFromPoint($point), 2)
+[PoiesisNativeControlInput]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+[PoiesisNativeControlInput]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+Start-Sleep -Milliseconds 500
+$iconicAfterClick = [PoiesisNativeControlInput]::IsIconic($windowHandle)
+$zoomedAfterClick = [PoiesisNativeControlInput]::IsZoomed($windowHandle)
+$restoredAfterCheck = $false
+if ('${action}' -eq 'minimize' -and $iconicAfterClick) {
+    [void][PoiesisNativeControlInput]::ShowWindow($windowHandle, 9)
+    Start-Sleep -Milliseconds 350
+    $restoredAfterCheck = -not [PoiesisNativeControlInput]::IsIconic($windowHandle)
+}
+$after = New-Object PoiesisNativeControlInput+RECT
+[void][PoiesisNativeControlInput]::GetWindowRect($windowHandle, [ref]$after)
+$boundsChanged = $before.Left -ne $after.Left -or $before.Top -ne $after.Top -or $before.Right -ne $after.Right -or $before.Bottom -ne $after.Bottom
+[pscustomobject]@{
+    windowHandle=$windowHandle.ToInt64()
+    hitHandle=$hitHandle.ToInt64()
+    iconicAfterClick=$iconicAfterClick
+    restoredAfterCheck=$restoredAfterCheck
+    zoomedAfterClick=$zoomedAfterClick
+    boundsChanged=$boundsChanged
+} | ConvertTo-Json -Compress
+`;
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        encoding: 'utf8',
+        windowsHide: true
+    });
+    if (result.status !== 0) {
+        throw new Error(`Could not click Electron ${action} control: ${result.stderr || result.stdout}`);
+    }
+    return JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
 }
 
 function sendNativeWindowInput(pid, point, mode) {
@@ -1134,6 +1308,15 @@ async function dragExplorerFileToTabs(page, label) {
     assert(await page.$eval('.poiesis-agent-window__code-editor-tabs', tabs => tabs.classList.contains('drop-target')),
         `${label} drag did not enter the tab drop target in Electron`);
     await page.mouse.up();
+}
+
+async function waitForProcessExit(process, timeout) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+        if (process.exitCode !== null) return;
+        await delay(100);
+    }
+    throw new Error(`Electron did not exit after the native close click (pid ${process.pid})`);
 }
 
 async function waitForCdp(url, process, timeout) {
