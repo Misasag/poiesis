@@ -192,12 +192,13 @@ try {
             : Promise.resolve(undefined);
         await page.click('[aria-label="Results 内へ送信"]');
         await page.waitForSelector('.poiesis-results__answer.sending');
-        await page.waitForFunction(() => Boolean(document.querySelector('.poiesis-results__answer:not(.sending)')));
-        const answer = await page.$eval('.poiesis-results__answer', node => ({
-            className: node.className,
-            text: node.textContent?.trim()
-        }));
-        assert(!answer.className.includes('failed'), `Results question failed: ${answer.text}`);
+        await page.waitForFunction(() => Boolean(
+            document.querySelector('.poiesis-results__qa-entry')
+            || document.querySelector('.poiesis-results__answer.failed')
+        ));
+        const failure = await page.$eval('.poiesis-results__answer.failed', node => node.textContent?.trim()).catch(() => undefined);
+        assert(!failure, `Results question failed: ${failure}`);
+        assert(await page.$('.poiesis-results__qa-entry:not(.failed)'), 'Results answer was not added to Q&A history.');
         resultsModelArgs = await resultsModelArgsPromise;
 
         await clickText(page, '.poiesis-agent-window__code-control', 'Code');
@@ -206,14 +207,14 @@ try {
         await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar')?.textContent?.includes('UX.md'));
         await clickText(page, '.poiesis-agent-window__code-control', 'Code');
         await page.waitForSelector('.poiesis-results__document');
-        assert(await page.$('.poiesis-results__answer:not(.sending)'), 'Results answer was lost after returning from Code.');
+        assert(await page.$('.poiesis-results__qa-entry:not(.failed)'), 'Results answer was lost after returning from Code.');
         await clickText(page, '.poiesis-agent-window__tabs button', 'Agent');
         const messageCountAfterResultsQuestion = await page.$$eval('[aria-label="Agent のメッセージ"]', nodes => nodes.length);
         assert(messageCountAfterResultsQuestion === agentState.messageCount + 1,
             'Results question leaked into Agent conversation or the cancelled run was not retained.');
         await clickText(page, '.poiesis-agent-window__tabs button', 'Results');
         await page.waitForSelector('.poiesis-results__document');
-        assert(await page.$('.poiesis-results__answer:not(.sending)'), 'Results answer was lost after Agent/Results switching.');
+        assert(await page.$('.poiesis-results__qa-entry:not(.failed)'), 'Results answer was lost after Agent/Results switching.');
     }
 
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -221,11 +222,15 @@ try {
     const restored = await page.evaluate(expectedTitle => ({
         titles: [...document.querySelectorAll('.poiesis-agent-window__session-title')].map(node => node.textContent?.trim()),
         taskLabel: document.querySelector('.poiesis-results__task-list button[aria-selected="true"]')?.textContent?.trim()
-            ?? document.querySelector('.poiesis-results__task-list button')?.textContent?.trim()
+            ?? document.querySelector('.poiesis-results__task-list button')?.textContent?.trim(),
+        questionHistoryCount: document.querySelectorAll('.poiesis-results__qa-entry').length
     }), agentState.title);
     assert(restored.titles.includes(agentState.title), 'New Chat session disappeared after reload.');
     assert(expectPreSpawnFailure ? restored.taskLabel?.includes('失敗') : restored.taskLabel?.includes('完了'),
         `Task state disappeared after reload: ${restored.taskLabel}`);
+    if (!expectPreSpawnFailure) {
+        assert(restored.questionHistoryCount === 1, 'Results Q&A history disappeared after reload.');
+    }
     console.log(`RESTORED_NEW_CHAT_SMOKE_RESULT=${JSON.stringify({
         provider,
         agentModel,
