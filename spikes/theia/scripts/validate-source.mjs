@@ -34,6 +34,7 @@ const resultsGenerationServer = await read('agent-window/src/node/results-genera
 const globalStorageService = await read('agent-window/src/browser/global-storage-service.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
+const knownCliRegistry = await read('agent-window/src/node/known-cli-registry.ts');
 const skillBundleContract = await read('agent-window/src/common/skill-bundle.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
@@ -71,7 +72,9 @@ for (const marker of [
     'PoiesisNativeInput',
     'session rail top',
     'headerInteractionChecks',
-    'customizeWindowChecks',
+    'modalWindowChecks',
+    'POIESIS_SETTINGS_WINDOW_ONLY',
+    'ELECTRON_SETTINGS_WINDOW_SMOKE_RESULT=',
     'POIESIS_WINDOW_DRAG_ONLY',
     'ELECTRON_WINDOW_DRAG_SMOKE_RESULT=',
     'dragExplorerFileToTabs',
@@ -152,11 +155,13 @@ assert.equal(extensionPackage.dependencies['@theia/scm'], '1.73.1');
 assert.equal(extensionPackage.dependencies['@theia/search-in-workspace'], '1.73.1');
 assert.ok(resultsQuestionProtocol.includes('workspaceUri: string'), 'Results question scope must name its workspace');
 assert.ok(resultsQuestionProtocol.includes('providerId: KnownCliId'), 'Results question scope must name its AI provider');
+assert.ok(resultsQuestionProtocol.includes('model?: string'), 'Results question scope must carry its selected model');
 assert.ok(resultsQuestionService.includes('return this.server.ask(question, scope)'), 'Results question browser proxy is missing');
 for (const marker of [
     'this.resultsQuestionService.ask(question, {',
     'workspaceUri: session.workspaceUri',
     'providerId: this.resultsCli',
+    'model: this.resultsModel.trim() || undefined',
     "status: 'sending'",
     "status: 'answered'",
     "status: 'failed'",
@@ -169,12 +174,15 @@ assert.ok(!agentWidget.includes('this.resultsService.answer('), 'Bundled Results
 assert.ok(!resultsSkill.includes('async answer('), 'Bundled Results skill must only generate documents');
 for (const marker of [
     'this.resolveWorkspace(scope.workspaceUri)',
-    "this.providerRegistry.resolve('results', scope.providerId)",
+    "this.providerRegistry.resolve('results', scope.providerId, scope.model)",
     "resource.scheme !== 'file'",
     "'--sandbox', 'read-only'",
     "'--permission-mode', 'plan'",
     "'--tools='",
     "provider.id === 'claude'",
+    "provider.id === 'grok'",
+    "['-m', provider.model]",
+    "['--model', provider.model]",
     'this.runs.has(scope.taskId)'
 ]) {
     assert.ok(resultsQuestionServer.includes(marker), `Results question server is missing ${marker}`);
@@ -183,6 +191,7 @@ assert.ok(!resultsQuestionServer.includes('getMostRecentlyUsedWorkspace'), 'Resu
 for (const marker of [
     "resultsGenerationServerPath = '/services/poiesis/results-generation'",
     'providerId: KnownCliId',
+    'model?: string',
     'workspaceUri: string',
     'changeSetSummary: string',
     'diff: string',
@@ -192,10 +201,11 @@ for (const marker of [
     assert.ok(resultsGenerationProtocol.includes(marker), `Results generation protocol is missing ${marker}`);
 }
 for (const marker of [
-    "this.providerRegistry.resolve('results', request.providerId)",
+    "this.providerRegistry.resolve('results', request.providerId, request.model)",
     "'--sandbox', 'read-only'",
     "'--permission-mode', 'plan'",
     "'--tools='",
+    "provider.id === 'grok'",
     'GENERATED_RESULTS_HTML_MAX_CHARS = 280_000',
     'RESULTS_GENERATION_TIMEOUT_MS = 120_000',
     "process.env.POIESIS_RESULTS_GENERATION_FORCE_FAILURE === '1'",
@@ -207,6 +217,7 @@ for (const marker of [
     assert.ok(resultsGenerationServer.includes(marker), `Results generation server is missing ${marker}`);
 }
 assert.ok(resultsGenerationContext.includes("providerId: KnownCliId = 'codex'"));
+assert.ok(resultsGenerationContext.includes("model = ''"));
 assert.ok(moduleSource.includes('.createProxy<ResultsGenerationServer>(resultsGenerationServerPath)'));
 assert.ok(moduleSource.includes('bind(ResultsSkill).toService(AiResultsSkill)'));
 assert.ok(!resultsSkill.includes('isSkillEnabled'), 'Built-in Results generation must not be disabled by a hidden legacy setting');
@@ -245,12 +256,14 @@ for (const marker of [
     'const providerId = input.providerId',
     'providerName: detection.name',
     'return this.mockProvider.createSession(input)',
-    "report.detections.some(item => item.status === 'found')",
+    "report.detections.some(item => item.status === 'found' && item.executableRoles.includes('agent'))",
     'this.taskService.start(message.ownerSessionId, message.content, session.workspacePath)',
     'await this.taskService.whenBaselineCaptured(task.id)',
     'await this.runtimeServer.runCodex',
     'providerId: session.providerId',
+    'model: session.model',
     "run.providerId === 'claude'",
+    "run.providerId === 'grok'",
     "claudeEvent.type === 'assistant'",
     "claudeEvent.type === 'result'",
     'type: \'message-delta\'',
@@ -310,12 +323,13 @@ for (const marker of [
 }
 
 for (const marker of [
-    "KnownCliId = 'codex' | 'claude'",
+    "KNOWN_CLI_IDS = ['codex', 'claude', 'grok', 'gemini']",
     "AiRole = 'agent' | 'results'",
     "CliLocationSource = 'PATH' | 'well-known'",
     "status: 'found' | 'missing'",
     'CodexExecutionRequest',
     'providerId: KnownCliId',
+    'model?: string',
     'CodexExecutionEvent',
     'notifyCodexEvent',
     'runCodex(request: CodexExecutionRequest)',
@@ -325,28 +339,40 @@ for (const marker of [
 }
 for (const marker of [
     "process.env.PATH",
-    'process.env.APPDATA',
-    'process.env.LOCALAPPDATA',
-    'process.env.USERPROFILE',
-    "id: 'codex'",
-    "id: 'claude'",
     "process.env.POIESIS_DISABLE_CLI_DETECTION === '1'",
     'lastReport',
     "status: 'found'",
-    "status: 'missing'"
+    "status: 'missing'",
+    'probeVersion(candidate.path, definition.versionProbe)'
 ]) {
     assert.ok(cliDetector.includes(marker), `CliDetector is missing ${marker}`);
 }
-assert.ok(!cliDetector.includes('execFile'), 'CliDetector must not execute detected CLIs');
+for (const marker of [
+    'interface KnownCliDefinition',
+    'executableNames: readonly string[]',
+    'wellKnownLocations: readonly string[]',
+    'versionProbe: readonly string[]',
+    "id: 'codex'",
+    "id: 'claude'",
+    "id: 'grok'",
+    "id: 'gemini'",
+    "join(userProfile, '.grok', 'bin', 'grok.exe')",
+    "{ id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol' }",
+    "{ id: 'fable', label: 'fable (既定)' }",
+    "{ id: 'haiku', label: 'haiku' }"
+]) {
+    assert.ok(knownCliRegistry.includes(marker), `Known CLI registry is missing ${marker}`);
+}
 assert.ok(backendModule.includes('RpcConnectionHandler'));
 assert.ok(backendModule.includes('CliDetector'));
 assert.ok(backendModule.includes('CliProviderRegistry'));
 assert.ok(backendModule.includes('server.setClient(client)'));
 for (const marker of [
-    "agent: ['codex', 'claude']",
-    "results: ['codex', 'claude']",
+    'knownCliDefinitions()',
+    'definition?.executableRoles.includes(role)',
     'this.cliDetector.recordedReport',
-    'class CliProviderRegistry'
+    'class CliProviderRegistry',
+    'model: selectedModel || undefined'
 ]) {
     assert.ok(cliProviderRegistry.includes(marker), `CLI provider registry is missing ${marker}`);
 }
@@ -364,16 +390,18 @@ for (const marker of [
     "'taskkill'",
     "process.env.POIESIS_AGENT_FORCE_PRESPAWN_FAILURE === '1'",
     'const resolvedWorkspace = await this.resolveWorkspace(workspacePath)',
-    "this.providerRegistry.resolve('agent', providerId)",
+    "this.providerRegistry.resolve('agent', providerId, model)",
     "provider.id === 'claude'",
+    "provider.id === 'grok'",
     "'--permission-mode', 'acceptEdits'",
     "'--output-format', 'stream-json'",
     "'--safe-mode'",
+    "['-m', provider.model]",
+    "['--model', provider.model]",
     'const snapshot = await this.captureWorkspace(resolvedWorkspace)'
 ]) {
     assert.ok(runtimeServer.includes(marker), `Codex runtime is missing ${marker}`);
 }
-assert.ok(!runtimeServer.includes("'--model'"), 'Poiesis must respect the model selected by Codex configuration');
 assert.ok(!runtimeServer.includes('resolveSampleWorkspace'), 'Codex must run in the open Workspace');
 assert.ok(!runtimeServer.includes('C:\\Users\\owner\\github\\poiesis'), 'Codex runtime must not hard-code the repository root');
 
@@ -610,9 +638,16 @@ for (const marker of [
     "this.renderCliRoleSelector('results', 'Results の AI', this.resultsCli)",
     '成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。',
     'this.resultsGenerationContext.providerId = cli',
+    'this.resultsGenerationContext.model = defaultModel',
     'this.resultsGenerationContext.providerId = this.resultsCli',
     'providerId: this.agentCli',
-    "detection?.status === 'found'",
+    'model: this.agentModel.trim() || undefined',
+    'detection.executableRoles.includes(role)',
+    '検出済み（実行可）',
+    '検出済み（実行対応は今後）',
+    'protected setRoleModelChoice(',
+    'protected setRoleModel(',
+    'version: 3',
     'WorkspaceのUser Skillは定義・編集できますが、Agent／Results実行への反映は今後です。',
     '<strong>Bundled Results</strong>',
     '<strong>AI Results</strong>',
@@ -712,7 +747,8 @@ for (const marker of [
     'protected persistWindowState(): Promise<void>',
     'protected windowStatePersistence: Promise<void> = Promise.resolve()',
     'this.windowStatePersistence = this.windowStatePersistence',
-    'this.restorePoiesisSettings().then(() => this.initializeSessions())',
+    '.then(() => this.refreshCliDetection())',
+    '.then(() => this.initializeSessions())',
     'protected sessionsInitialized = false',
     'protected findSessionForTask(task: ExecutionTask)',
     'protected canonicalWorkspaceUri(workspaceUri: string | undefined)',
@@ -856,6 +892,7 @@ for (const marker of [
     '.poiesis-customize-modal',
     '.poiesis-customize-modal__skill-card',
     '.poiesis-customize-modal__new-skill',
+    '.poiesis-settings-modal__model-field',
     '.poiesis-agent-window__switch',
     '.poiesis-agent-window__composer',
     '.poiesis-agent-window__new-agent-empty',

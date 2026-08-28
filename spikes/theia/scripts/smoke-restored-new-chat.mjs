@@ -1,9 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
 
 const root = resolve(process.cwd(), '..', '..');
-const fixture = resolve(root, 'docs', 'UX.md');
+const fixture = process.env.POIESIS_SMOKE_FIXTURE
+    ? resolve(process.env.POIESIS_SMOKE_FIXTURE)
+    : resolve(root, 'docs', 'UX.md');
 const original = readFileSync(fixture, 'utf8');
 const marker = '<!-- Poiesis restored New Chat smoke -->';
 if (original.includes(marker)) throw new Error('Restored New Chat fixture contains a marker from an interrupted run.');
@@ -14,8 +17,16 @@ const profile = resolve(process.cwd(), '.run', `restored-new-chat-${Date.now()}`
 const url = process.env.THEIA_SMOKE_UI_URL ?? 'http://127.0.0.1:3000';
 const timeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 240_000);
 const expectPreSpawnFailure = process.env.POIESIS_EXPECT_PRESPAWN_FAILURE === '1';
-const provider = process.env.POIESIS_SMOKE_PROVIDER === 'claude' ? 'claude' : 'codex';
+const knownProviders = ['codex', 'claude', 'grok'];
+const provider = knownProviders.includes(process.env.POIESIS_SMOKE_PROVIDER) ? process.env.POIESIS_SMOKE_PROVIDER : 'codex';
+const resultsProvider = knownProviders.includes(process.env.POIESIS_SMOKE_RESULTS_PROVIDER)
+    ? process.env.POIESIS_SMOKE_RESULTS_PROVIDER
+    : provider;
+const agentModel = process.env.POIESIS_SMOKE_AGENT_MODEL?.trim() ?? '';
+const resultsModel = process.env.POIESIS_SMOKE_RESULTS_MODEL?.trim() ?? '';
+const verifyModelArgs = process.env.POIESIS_VERIFY_MODEL_ARGS === '1';
 let browser;
+let resultsModelArgs;
 
 try {
     browser = await puppeteer.launch({
@@ -81,14 +92,29 @@ try {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#poiesis-window-host .poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
     await page.waitForSelector('.poiesis-results__document');
-    if (provider === 'claude') {
+    if (provider !== 'codex' || resultsProvider !== 'codex' || agentModel || resultsModel) {
         await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
         await page.waitForSelector('.poiesis-settings-modal');
-        for (const role of ['agent', 'results']) {
-            const selector = `input[name="poiesis-${role}-cli"][value="claude"]`;
+        for (const [role, selectedProvider, selectedModel] of [
+            ['agent', provider, agentModel],
+            ['results', resultsProvider, resultsModel]
+        ]) {
+            const selector = `input[name="poiesis-${role}-cli"][value="${selectedProvider}"]`;
             await page.waitForFunction(currentSelector => !document.querySelector(currentSelector)?.disabled, {}, selector);
             await page.$eval(selector, input => input.click());
             await page.waitForFunction(currentSelector => document.querySelector(currentSelector)?.checked, {}, selector);
+            if (selectedModel) {
+                const modelSelector = `[aria-label="${role === 'agent' ? 'Agent' : 'Results'} の AI モデル"]`;
+                const optionExists = await page.$eval(modelSelector, (select, model) =>
+                    [...select.options].some(option => option.value === model), selectedModel);
+                if (optionExists) {
+                    await page.select(modelSelector, selectedModel);
+                } else {
+                    await page.select(modelSelector, '__custom__');
+                    const customSelector = `[aria-label="${role === 'agent' ? 'Agent' : 'Results'} の AI カスタムモデルID"]`;
+                    await page.type(customSelector, selectedModel);
+                }
+            }
         }
         await page.click('.poiesis-settings-modal__header button[aria-label="設定を閉じる"]');
         await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
@@ -99,18 +125,24 @@ try {
 
     const prompt = `docs/UX.md の末尾に ${marker} を1行追加してください。このファイル以外は変更せず、コミットしないでください。`;
     await fill(page, prompt);
+    const agentModelArgsPromise = verifyModelArgs && agentModel
+        ? waitForProcessModelArg(provider, provider === 'codex' ? '-m' : '--model', agentModel, timeout)
+        : Promise.resolve(undefined);
     await page.focus('[aria-label="Agent へのメッセージ"]');
     await page.keyboard.down('Control');
     await page.keyboard.press('Enter');
     await page.keyboard.up('Control');
     await page.waitForSelector('.poiesis-agent-window__task-state');
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
+    const agentModelArgs = await agentModelArgsPromise;
 
     const agentState = await page.evaluate(() => ({
         title: document.querySelector('.poiesis-agent-window__context > strong')?.textContent?.trim(),
         error: document.querySelector('.poiesis-agent-window__message-error strong')?.textContent?.trim(),
         errorDetails: document.querySelector('.poiesis-agent-window__message-error details pre')?.textContent?.trim(),
         messageCount: document.querySelectorAll('[aria-label="Agent のメッセージ"]').length,
+        messages: [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')]
+            .map(node => node.textContent?.trim()),
         storedTitles: (() => {
             const state = JSON.parse(localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1') ?? '{}');
             return state.sessions?.map(session => session.title) ?? [];
@@ -142,7 +174,7 @@ try {
         assert(taskLabel?.includes('失敗'), `Pre-spawn failure task is missing: ${taskLabel}`);
         assert(readFileSync(fixture, 'utf8') === original, 'Pre-spawn failure changed the workspace fixture.');
     } else {
-        assert(!agentState.error, `Real provider task failed: ${agentState.error}`);
+        assert(!agentState.error, `Real provider task failed: ${agentState.error}\n${agentState.errorDetails ?? ''}\n${agentState.messages.join('\n')}`);
         assert(taskLabel?.includes('完了'), `Completed task is missing: ${taskLabel}`);
         assert(taskLabels.some(label => label?.includes('キャンセル')), `Cancelled task is missing: ${taskLabels.join(' | ')}`);
         assert(readFileSync(fixture, 'utf8').includes(marker), 'Selected provider did not edit the fixture.');
@@ -155,6 +187,9 @@ try {
         await page.waitForSelector('.poiesis-results__document');
 
         await page.type('[aria-label="表示中の成果について質問"]', 'この成果で変更したファイル名だけを答えてください。');
+        const resultsModelArgsPromise = verifyModelArgs && resultsModel
+            ? waitForProcessModelArg(resultsProvider, resultsProvider === 'codex' ? '-m' : '--model', resultsModel, timeout)
+            : Promise.resolve(undefined);
         await page.click('[aria-label="Results 内へ送信"]');
         await page.waitForSelector('.poiesis-results__answer.sending');
         await page.waitForFunction(() => Boolean(document.querySelector('.poiesis-results__answer:not(.sending)')));
@@ -163,6 +198,7 @@ try {
             text: node.textContent?.trim()
         }));
         assert(!answer.className.includes('failed'), `Results question failed: ${answer.text}`);
+        resultsModelArgs = await resultsModelArgsPromise;
 
         await clickText(page, '.poiesis-agent-window__code-control', 'Code');
         await page.waitForSelector('.poiesis-agent-window__code');
@@ -190,7 +226,17 @@ try {
     assert(restored.titles.includes(agentState.title), 'New Chat session disappeared after reload.');
     assert(expectPreSpawnFailure ? restored.taskLabel?.includes('失敗') : restored.taskLabel?.includes('完了'),
         `Task state disappeared after reload: ${restored.taskLabel}`);
-    console.log(`RESTORED_NEW_CHAT_SMOKE_RESULT=${JSON.stringify({ provider, expectPreSpawnFailure, agentState, taskLabel, restored }, null, 2)}`);
+    console.log(`RESTORED_NEW_CHAT_SMOKE_RESULT=${JSON.stringify({
+        provider,
+        agentModel,
+        resultsProvider,
+        resultsModel,
+        modelArgs: { agent: agentModelArgs, results: resultsModelArgs },
+        expectPreSpawnFailure,
+        agentState,
+        taskLabel,
+        restored
+    }, null, 2)}`);
 } finally {
     if (browser) await browser.close().catch(() => undefined);
     writeFileSync(fixture, original, 'utf8');
@@ -212,6 +258,34 @@ async function clickText(page, selector, text) {
         if (!(node instanceof HTMLElement)) throw new Error(`${text} was not found.`);
         node.click();
     }, { selector, text });
+}
+
+async function waitForProcessModelArg(providerId, flag, model, waitTimeout) {
+    if (!/^[a-z0-9.-]+$/i.test(providerId) || !/^-{1,2}[a-z]+$/i.test(flag) || !/^[a-z0-9.-]+$/i.test(model)) {
+        throw new Error(`Unsafe provider/model argument for process verification: ${providerId} ${flag} ${model}`);
+    }
+    const startedAfter = new Date(Date.now() - 1_000).toISOString();
+    const deadline = Date.now() + waitTimeout;
+    while (Date.now() < deadline) {
+        const command = [
+            `$provider='${providerId.toLocaleLowerCase()}'`,
+            `$flag='${flag}'`,
+            `$model='${model}'`,
+            `$startedAfter=[DateTime]::Parse('${startedAfter}')`,
+            "$found=Get-CimInstance Win32_Process | Where-Object { $line=$_.CommandLine; $_.ProcessId -ne $PID -and $_.CreationDate -ge $startedAfter -and $line -and $line.ToLower().Contains($provider) -and $line.Contains($flag) -and $line.Contains($model) } | Select-Object -First 1",
+            "if ($found) { 'FOUND' }"
+        ].join('; ');
+        const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+            command], {
+            encoding: 'utf8',
+            windowsHide: true
+        });
+        if (result.status === 0 && result.stdout.trim() === 'FOUND') {
+            return { provider: providerId, flag, model, observed: true };
+        }
+        await new Promise(resolveDelay => setTimeout(resolveDelay, 100));
+    }
+    throw new Error(`Did not observe ${providerId} ${flag} ${model} in a live process command line.`);
 }
 
 function assert(condition, message) {

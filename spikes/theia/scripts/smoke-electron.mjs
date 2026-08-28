@@ -11,7 +11,9 @@ const browserURL = `http://127.0.0.1:${debugPort}`;
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
 const windowDragOnly = process.env.POIESIS_WINDOW_DRAG_ONLY === '1';
 const customizeWindowOnly = process.env.POIESIS_CUSTOMIZE_WINDOW_ONLY === '1';
-const lightweightElectron = windowDragOnly || customizeWindowOnly;
+const settingsWindowOnly = process.env.POIESIS_SETTINGS_WINDOW_ONLY === '1';
+const modalWindowOnly = customizeWindowOnly || settingsWindowOnly;
+const lightweightElectron = windowDragOnly || modalWindowOnly;
 mkdirSync(runtimeDir, { recursive: true });
 const emptyPluginsDir = resolve(runtimeDir, 'empty-plugins');
 if (lightweightElectron) mkdirSync(emptyPluginsDir, { recursive: true });
@@ -99,7 +101,7 @@ try {
     const nativeWindowChecks = [];
     moveElectronWindow(startProcess.pid, 1280, 720);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
-    if (!customizeWindowOnly) {
+    if (!modalWindowOnly) {
         nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
             '.poiesis-agent-window__header', 'Agent header'));
         nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
@@ -155,38 +157,46 @@ try {
     assert(code.codeLuminoPanelCount === 0, 'Code reintroduced lm-Widget lm-Panel wrappers in Electron');
     assert(code.codeLuminoTabContainerCount === 0, 'Code reintroduced lm-TabBar-content-container in Electron');
     assert(!code.applicationShellVisible, 'Code mounted the Theia ApplicationShell in Electron');
-    if (!customizeWindowOnly) {
+    if (!modalWindowOnly) {
         nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
             '.poiesis-agent-window__code-header', 'Code header'));
     }
     if (lightweightElectron) {
         await clickByText(page, '.poiesis-agent-window__code-control', 'Code');
         await page.waitForSelector('.poiesis-agent-window__agent');
-        await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
-        await page.waitForSelector('.poiesis-customize-modal');
+        const modalSelector = settingsWindowOnly ? '.poiesis-settings-modal:not(.poiesis-customize-modal)' : '.poiesis-customize-modal';
+        if (settingsWindowOnly) {
+            await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
+        } else {
+            await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+        }
+        await page.waitForSelector(modalSelector);
         moveElectronWindow(startProcess.pid, 1100, 700);
-        const customizeWindowChecks = {
+        const modalWindowChecks = {
             resized: await assertElectronLayout(page, 'agent', true)
         };
         await page.click('.poiesis-window-controls__button[data-window-action="maximize"]');
         await page.waitForSelector('.poiesis-window-controls__button[data-window-action="restore"]');
-        customizeWindowChecks.maximized = await assertElectronLayout(page, 'agent', true);
+        modalWindowChecks.maximized = await assertElectronLayout(page, 'agent', true);
         await page.click('.poiesis-window-controls__button[data-window-action="restore"]');
         await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
-        customizeWindowChecks.restored = await assertElectronLayout(page, 'agent', true);
+        modalWindowChecks.restored = await assertElectronLayout(page, 'agent', true);
         await page.keyboard.press('Escape');
-        await page.waitForFunction(() => !document.querySelector('.poiesis-customize-modal'));
+        await page.waitForFunction(selector => !document.querySelector(selector), {}, modalSelector);
         const serializedResult = JSON.stringify({
             userAgent,
             windowTitle,
             nativeWindowChecks,
             headerInteractionChecks,
-            customizeWindowChecks,
+            modal: settingsWindowOnly ? 'settings' : 'customize',
+            modalWindowChecks,
             code
         }, null, 2);
-        console.log(customizeWindowOnly
-            ? `ELECTRON_CUSTOMIZE_WINDOW_SMOKE_RESULT=${serializedResult}`
-            : `ELECTRON_WINDOW_DRAG_SMOKE_RESULT=${serializedResult}`);
+        console.log(settingsWindowOnly
+            ? `ELECTRON_SETTINGS_WINDOW_SMOKE_RESULT=${serializedResult}`
+            : customizeWindowOnly
+                ? `ELECTRON_CUSTOMIZE_WINDOW_SMOKE_RESULT=${serializedResult}`
+                : `ELECTRON_WINDOW_DRAG_SMOKE_RESULT=${serializedResult}`);
         break smokeRun;
     }
     moveElectronWindow(startProcess.pid, 1100, 700);

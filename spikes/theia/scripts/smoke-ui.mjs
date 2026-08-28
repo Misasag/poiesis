@@ -684,8 +684,49 @@ try {
     assert(settings.modal, 'Settings must open the Poiesis-owned settings modal');
     assert(!settings.text.includes('Skills') && !settings.text.includes('Plugins'), 'Settings modal still contains Customize sections');
     assert(!settings.codeSidebarVisible, 'Settings must not open the Code sidebar');
+    await page.waitForFunction(() => document.querySelectorAll('input[name="poiesis-agent-cli"]').length === 4
+        && document.querySelectorAll('input[name="poiesis-results-cli"]').length === 4);
+    await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal__section-heading .poiesis-settings-modal__text-button')?.disabled);
+    const cliRegistry = await page.evaluate(() => {
+        const role = name => {
+            const heading = [...document.querySelectorAll('.poiesis-settings-modal__cli-role h3')]
+                .find(element => element.textContent?.trim() === name);
+            const container = heading?.closest('.poiesis-settings-modal__cli-role');
+            return [...(container?.querySelectorAll('.poiesis-settings-modal__cli-row') ?? [])].map(row => ({
+                name: row.querySelector('strong')?.textContent?.trim(),
+                status: row.querySelector('.poiesis-settings-modal__cli-status')?.textContent?.trim(),
+                disabled: row.querySelector('input')?.disabled
+            }));
+        };
+        return { agent: role('Agent の AI'), results: role('Results の AI') };
+    });
+    for (const role of [cliRegistry.agent, cliRegistry.results]) {
+        assert(role.some(entry => entry.name === 'Grok' && entry.status === '検出済み（実行可）' && !entry.disabled),
+            `Grok registry status is dishonest: ${JSON.stringify(role)}`);
+        assert(role.some(entry => entry.name === 'Gemini' && entry.status === '未検出' && entry.disabled),
+            `Gemini registry status is dishonest: ${JSON.stringify(role)}`);
+    }
+    await page.click('input[name="poiesis-agent-cli"][value="claude"]');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Agent の AI モデル"]')?.value === 'fable');
+    await page.select('[aria-label="Agent の AI モデル"]', 'haiku');
+    await page.select('[aria-label="Results の AI モデル"]', '__custom__');
+    await page.waitForSelector('[aria-label="Results の AI カスタムモデルID"]');
+    await page.type('[aria-label="Results の AI カスタムモデルID"]', 'custom-model-smoke');
+    await page.select('[aria-label="Results の AI モデル"]', 'gpt-5.4');
+    await page.waitForFunction(() => [...Object.values(localStorage)].some(value =>
+        typeof value === 'string' && value.includes('"agentModel":"haiku"') && value.includes('"resultsModel":"gpt-5.4"')));
+    await page.setViewport({ width: 1100, height: 700, deviceScaleFactor: 1 });
+    const settingsResize = await page.$eval('.poiesis-settings-modal:not(.poiesis-customize-modal)', element => {
+        const bounds = element.getBoundingClientRect();
+        return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom, width: bounds.width, height: bounds.height };
+    });
+    assert(settingsResize.left >= 0 && settingsResize.top >= 0
+        && settingsResize.right <= 1100 && settingsResize.bottom <= 700,
+    `Settings modal overflowed after resize: ${JSON.stringify(settingsResize)}`);
+    const modelSelections = { agent: 'claude/haiku', results: 'codex/gpt-5.4', customField: true };
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
+    await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
 
     await click(page, '.poiesis-agent-window__rail-action', 'Customize');
     await page.waitForSelector('.poiesis-customize-modal');
@@ -755,6 +796,20 @@ try {
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code-editor-tab.active.dirty'));
     assert(readFileSync(createdSkillPath, 'utf8').includes(skillEditMarker), 'Edited skill.md was not saved');
 
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
+    await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
+    await page.waitForSelector('.poiesis-settings-modal:not(.poiesis-customize-modal)');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Agent の AI モデル"]')?.value === 'haiku'
+        && document.querySelector('[aria-label="Results の AI モデル"]')?.value === 'gpt-5.4');
+    const persistedModels = await page.evaluate(() => ({
+        agentProvider: document.querySelector('input[name="poiesis-agent-cli"]:checked')?.value,
+        agentModel: document.querySelector('[aria-label="Agent の AI モデル"]')?.value,
+        resultsProvider: document.querySelector('input[name="poiesis-results-cli"]:checked')?.value,
+        resultsModel: document.querySelector('[aria-label="Results の AI モデル"]')?.value
+    }));
+    await page.keyboard.press('Escape');
+
     const customize = {
         expanded: expandedCustomize,
         collapsedRailOpened: true,
@@ -773,6 +828,10 @@ try {
         code,
         returned,
         settings,
+        cliRegistry,
+        modelSelections,
+        settingsResize,
+        persistedModels,
         customize
     }, null, 2));
 } finally {
