@@ -100,6 +100,7 @@ try {
     const resizeChecks = [];
     const nativeWindowChecks = [];
     const nativeControlChecks = [];
+    const aiPillChecks = [];
     moveElectronWindow(startProcess.pid, 1024, 600);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
     const minimumSizeCheck = assertNativeMinimumWindowSize(startProcess.pid);
@@ -129,8 +130,10 @@ try {
 
         moveElectronWindow(startProcess.pid, 1100, 700);
         await assertElectronLayout(page, 'agent');
+        aiPillChecks.push(await assertElectronAiPillPopover(page, 'after resize'));
         nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'minimize', 'after resize'));
         nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'maximize', 'after resize'));
+        aiPillChecks.push(await assertElectronAiPillPopover(page, 'maximized'));
         nativeControlChecks.push(await assertNativeWindowControl(page, startProcess.pid, 'restore', 'after maximize/restore'));
 
         await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
@@ -146,7 +149,8 @@ try {
             userAgent,
             windowTitle,
             nativeWindowChecks,
-            nativeControlChecks
+            nativeControlChecks,
+            aiPillChecks
         }, null, 2)}`);
         break smokeRun;
     }
@@ -720,6 +724,31 @@ if (-not [PoiesisNativeMinimumWindow]::GetWindowRect($windowHandle, [ref]$after)
 async function assertNativeWindowDrag(page, pid, selector, label) {
     const point = await findNativeDragPoint(page, selector);
     return assertNativeWindowDragAtPoint(page, pid, point, label);
+}
+
+async function assertElectronAiPillPopover(page, phase) {
+    const trigger = '[data-ai-role="agent"] [aria-label="Agent の AI とモデル"]';
+    await page.click(trigger);
+    await page.waitForSelector('.poiesis-ai-role-pill__popover');
+    const snapshot = await page.$eval('.poiesis-ai-role-pill__popover', (popover, currentPhase) => {
+        const bounds = popover.getBoundingClientRect();
+        const pill = document.querySelector('[data-ai-role="agent"]')?.getBoundingClientRect();
+        return {
+            phase: currentPhase,
+            warning: document.querySelector('[data-ai-role="agent"]')?.classList.contains('warning'),
+            viewport: { width: innerWidth, height: innerHeight },
+            popover: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
+            pill: pill && { left: pill.left, top: pill.top, right: pill.right, bottom: pill.bottom }
+        };
+    }, phase);
+    assert(snapshot.popover.left >= 0 && snapshot.popover.top >= 0
+        && snapshot.popover.right <= snapshot.viewport.width && snapshot.popover.bottom <= snapshot.viewport.height,
+    `Electron Agent AI popover clipped ${phase}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.pill && snapshot.pill.left >= 0 && snapshot.pill.right <= snapshot.viewport.width,
+        `Electron Agent AI pill clipped ${phase}: ${JSON.stringify(snapshot)}`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-ai-role-pill__popover'));
+    return snapshot;
 }
 
 async function assertNativeWindowDragAtPoint(page, pid, point, label) {

@@ -25,8 +25,10 @@ const resultsProvider = knownProviders.includes(process.env.POIESIS_SMOKE_RESULT
 const agentModel = process.env.POIESIS_SMOKE_AGENT_MODEL?.trim() ?? '';
 const resultsModel = process.env.POIESIS_SMOKE_RESULTS_MODEL?.trim() ?? '';
 const verifyModelArgs = process.env.POIESIS_VERIFY_MODEL_ARGS === '1';
+const useComposerPill = process.env.POIESIS_SMOKE_USE_COMPOSER_PILL === '1';
 let browser;
 let resultsModelArgs;
+const pillChecks = {};
 
 try {
     browser = await puppeteer.launch({
@@ -97,7 +99,13 @@ try {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#poiesis-window-host .poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
     await page.waitForSelector('.poiesis-results__document');
-    if (provider !== 'codex' || resultsProvider !== 'codex' || agentModel || resultsModel) {
+    if (useComposerPill) {
+        pillChecks.resultsInitial = await selectComposerRole(page, 'results', resultsProvider, resultsModel);
+        await clickText(page, '.poiesis-agent-window__tabs button', 'Agent');
+        pillChecks.agentRestoredSession = await selectComposerRole(page, 'agent', provider, agentModel);
+        pillChecks.customModel = await verifyComposerCustomModel(page, 'agent', provider, agentModel);
+        pillChecks.settingsRoundTrip = await assertSettingsRoleSelections(page, provider, agentModel, resultsProvider, resultsModel);
+    } else if (provider !== 'codex' || resultsProvider !== 'codex' || agentModel || resultsModel) {
         await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
         await page.waitForSelector('.poiesis-settings-modal');
         for (const [role, selectedProvider, selectedModel] of [
@@ -129,6 +137,12 @@ try {
     await clickText(page, '.poiesis-agent-window__tabs button', 'Agent');
     await clickText(page, '.poiesis-agent-window__rail-action', 'New Chat');
     await page.waitForSelector('.poiesis-agent-window__new-agent-empty');
+    if (useComposerPill) {
+        pillChecks.newAgent = await composerPillSnapshot(page, 'agent');
+        await page.setViewport({ width: 1024, height: 600, deviceScaleFactor: 1 });
+        pillChecks.minimumWindow = await assertComposerPopoverUnclipped(page, 'agent');
+        await page.setViewport({ width: 1500, height: 850, deviceScaleFactor: 1 });
+    }
 
     const prompt = `docs/UX.md の末尾に ${marker} を1行追加してください。このファイル以外は変更せず、コミットしないでください。`;
     await fill(page, prompt);
@@ -142,6 +156,9 @@ try {
     await page.waitForSelector('.poiesis-agent-window__task-state');
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
     const agentModelArgs = await agentModelArgsPromise;
+    if (useComposerPill) {
+        pillChecks.ongoingAgent = await composerPillSnapshot(page, 'agent');
+    }
 
     const agentState = await page.evaluate(() => ({
         title: document.querySelector('.poiesis-agent-window__context > strong')?.textContent?.trim(),
@@ -192,6 +209,9 @@ try {
             completed.click();
         });
         await page.waitForSelector('.poiesis-results__document');
+        if (useComposerPill) {
+            pillChecks.resultsComposer = await composerPillSnapshot(page, 'results');
+        }
 
         await page.type('[aria-label="表示中の成果について質問"]', 'この成果で変更したファイル名だけを答えてください。');
         const resultsModelArgsPromise = verifyModelArgs && resultsModel
@@ -238,12 +258,22 @@ try {
     if (!expectPreSpawnFailure) {
         assert(restored.questionHistoryCount === 1, 'Results Q&A history disappeared after reload.');
     }
+    if (useComposerPill && !expectPreSpawnFailure) {
+        pillChecks.restoredResults = await composerPillSnapshot(page, 'results');
+        await clickText(page, '.poiesis-agent-window__tabs button', 'Agent');
+        pillChecks.restoredAgent = await composerPillSnapshot(page, 'agent');
+        assert(pillChecks.restoredAgent.value === `provider:${provider}:${encodeURIComponent(agentModel)}`,
+            `Agent composer pill selection did not persist: ${JSON.stringify(pillChecks.restoredAgent)}`);
+        assert(pillChecks.restoredResults.value === `provider:${resultsProvider}:${encodeURIComponent(resultsModel)}`,
+            `Results composer pill selection did not persist: ${JSON.stringify(pillChecks.restoredResults)}`);
+    }
     console.log(`RESTORED_NEW_CHAT_SMOKE_RESULT=${JSON.stringify({
         provider,
         agentModel,
         resultsProvider,
         resultsModel,
         modelArgs: { agent: agentModelArgs, results: resultsModelArgs },
+        pillChecks,
         expectPreSpawnFailure,
         agentState,
         taskLabel,
@@ -252,6 +282,134 @@ try {
 } finally {
     if (browser) await browser.close().catch(() => undefined);
     writeFileSync(fixture, original, 'utf8');
+}
+
+async function selectComposerRole(page, role, selectedProvider, selectedModel) {
+    const roleLabel = role === 'agent' ? 'Agent' : 'Results';
+    const triggerSelector = `[data-ai-role="${role}"] [aria-label="${roleLabel} の AI とモデル"]`;
+    const modelValue = `provider:${selectedProvider}:${encodeURIComponent(selectedModel)}`;
+    await page.waitForSelector(triggerSelector);
+    await page.click(triggerSelector);
+    await page.waitForSelector('.poiesis-ai-role-pill__popover');
+    const exactOption = await page.evaluate(value => [...document.querySelectorAll('.poiesis-select__option')]
+        .some(option => option.dataset.value === value && option.getAttribute('aria-disabled') !== 'true'), modelValue);
+    if (exactOption) {
+        await choosePoiesisSelectOption(page, triggerSelector, modelValue, true);
+    } else {
+        const customValue = `provider:${selectedProvider}:${encodeURIComponent('__custom__')}`;
+        await choosePoiesisSelectOption(page, triggerSelector, customValue, true);
+        const customSelector = `[aria-label="${roleLabel} の AI カスタムモデルID"]`;
+        await page.waitForSelector(customSelector);
+        await page.type(customSelector, selectedModel);
+        await page.keyboard.press('Escape');
+    }
+    return composerPillSnapshot(page, role);
+}
+
+async function composerPillSnapshot(page, role) {
+    const roleLabel = role === 'agent' ? 'Agent' : 'Results';
+    return page.$eval(`[data-ai-role="${role}"]`, (pill, label) => {
+        const trigger = pill.querySelector(`[aria-label="${label} の AI とモデル"]`);
+        const bounds = pill.getBoundingClientRect();
+        return {
+            value: trigger?.getAttribute('data-value'),
+            text: trigger?.textContent?.trim(),
+            warning: pill.classList.contains('warning'),
+            bounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom }
+        };
+    }, roleLabel);
+}
+
+async function verifyComposerCustomModel(page, role, providerId, restoreModel) {
+    const roleLabel = role === 'agent' ? 'Agent' : 'Results';
+    const triggerSelector = `[data-ai-role="${role}"] [aria-label="${roleLabel} の AI とモデル"]`;
+    const customValue = `provider:${providerId}:${encodeURIComponent('__custom__')}`;
+    await page.click(triggerSelector);
+    await page.waitForSelector('.poiesis-ai-role-pill__popover');
+    await choosePoiesisSelectOption(page, triggerSelector, customValue, true);
+    const customInput = `[aria-label="${roleLabel} の AI カスタムモデルID"]`;
+    await page.waitForSelector(customInput);
+    await page.type(customInput, 'round20-custom-model');
+    const custom = await composerPillSnapshot(page, role);
+    assert(custom.value === customValue && custom.text?.includes('round20-custom-model'),
+        `Custom composer model was not reflected in the pill: ${JSON.stringify(custom)}`);
+    await page.keyboard.press('Escape');
+    const restored = await selectComposerRole(page, role, providerId, restoreModel);
+    return { custom, restored };
+}
+
+async function assertSettingsRoleSelections(page, agentProvider, agentModelId, resultsProviderId, resultsModelId) {
+    await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
+    await page.waitForSelector('.poiesis-settings-modal');
+    for (const [role, providerId, modelId] of [
+        ['agent', agentProvider, agentModelId],
+        ['results', resultsProviderId, resultsModelId]
+    ]) {
+        const providerSelector = `input[name="poiesis-${role}-cli"][value="${providerId}"]`;
+        assert(await page.$eval(providerSelector, input => input.checked),
+            `${role} composer selection was not reflected in Settings provider.`);
+        const roleLabel = role === 'agent' ? 'Agent' : 'Results';
+        const modelSelector = `[aria-label="${roleLabel} の AI モデル"]`;
+        assert(await page.$eval(modelSelector, (trigger, expected) => trigger.dataset.value === expected, modelId),
+            `${role} composer selection was not reflected in Settings model.`);
+    }
+    let settingsToPill;
+    if (agentProvider === 'claude') {
+        const alternateModel = agentModelId === 'sonnet' ? 'haiku' : 'sonnet';
+        await choosePoiesisSelectOption(page, '[aria-label="Agent の AI モデル"]', alternateModel);
+        await page.click('.poiesis-settings-modal__header button[aria-label="設定を閉じる"]');
+        await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
+        settingsToPill = await composerPillSnapshot(page, 'agent');
+        assert(settingsToPill.value === `provider:${agentProvider}:${alternateModel}`,
+            `Settings model change was not reflected in the composer pill: ${JSON.stringify(settingsToPill)}`);
+        await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
+        await page.waitForSelector('.poiesis-settings-modal');
+        await choosePoiesisSelectOption(page, '[aria-label="Agent の AI モデル"]', agentModelId);
+    }
+    await page.click('.poiesis-settings-modal__header button[aria-label="設定を閉じる"]');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
+    const restored = await composerPillSnapshot(page, 'agent');
+    assert(restored.value === `provider:${agentProvider}:${encodeURIComponent(agentModelId)}`,
+        `Settings did not restore the composer selection: ${JSON.stringify(restored)}`);
+    return { settingsToPill, restored };
+}
+
+async function assertComposerPopoverUnclipped(page, role) {
+    const roleLabel = role === 'agent' ? 'Agent' : 'Results';
+    const triggerSelector = `[data-ai-role="${role}"] [aria-label="${roleLabel} の AI とモデル"]`;
+    await page.focus(triggerSelector);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.poiesis-ai-role-pill__popover');
+    const snapshot = await page.$eval('.poiesis-ai-role-pill__popover', popover => {
+        const rect = popover.getBoundingClientRect();
+        const trigger = document.querySelector(`[data-ai-role="${popover.getAttribute('aria-label')?.startsWith('Results') ? 'results' : 'agent'}"] .poiesis-select__trigger`);
+        const composer = document.querySelector('.poiesis-agent-window__composer')?.getBoundingClientRect();
+        const clippedComposerItems = [...document.querySelectorAll('.poiesis-agent-window__new-agent-context > *, .poiesis-agent-window__composer-footer > *')]
+            .filter(element => {
+                const bounds = element.getBoundingClientRect();
+                return bounds.width > 0 && composer && (bounds.left < composer.left - 1 || bounds.right > composer.right + 1);
+            })
+            .map(element => ({ className: element.className, left: element.getBoundingClientRect().left, right: element.getBoundingClientRect().right }));
+        return {
+            viewport: { width: innerWidth, height: innerHeight },
+            bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+            expanded: trigger?.getAttribute('aria-expanded'),
+            clippedComposerItems
+        };
+    });
+    assert(snapshot.bounds.left >= 0 && snapshot.bounds.top >= 0
+        && snapshot.bounds.right <= snapshot.viewport.width && snapshot.bounds.bottom <= snapshot.viewport.height,
+    `Composer AI popover clipped at 1024x600: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.clippedComposerItems.length === 0,
+        `Composer pill row clipped at 1024x600: ${JSON.stringify(snapshot)}`);
+    await page.keyboard.press('ArrowDown');
+    const activeDescendant = await page.$eval(triggerSelector, trigger => trigger.getAttribute('aria-activedescendant'));
+    assert(activeDescendant, 'Composer AI popover keyboard navigation did not set an active option.');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-ai-role-pill__popover'));
+    assert(await page.$eval(triggerSelector, trigger => document.activeElement === trigger && trigger.getAttribute('aria-expanded') === 'false'),
+        'Composer AI popover did not return focus to its trigger after Escape.');
+    return { ...snapshot, keyboard: true, focusReturned: true };
 }
 
 async function fill(page, value) {

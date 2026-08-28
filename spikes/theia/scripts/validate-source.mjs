@@ -47,6 +47,7 @@ const round15Smoke = await read('scripts/smoke-round15-browser.mjs');
 const round16Smoke = await read('scripts/smoke-round16-console.mjs');
 const round16Watcher = await read('scripts/watch-visible-console-windows.ps1');
 const round17Smoke = await read('scripts/smoke-round17-browser.mjs');
+const round20Smoke = await read('scripts/smoke-round20-browser.mjs');
 const electronFrontendModule = await read('agent-window/src/electron-browser/agent-window-electron-frontend-module.ts');
 const electronWindowControls = await read('agent-window/src/electron-browser/window-controls.tsx');
 const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
@@ -91,6 +92,8 @@ for (const marker of [
     'iconicAfterClick && result.restoredAfterCheck',
     'zoomedAfterClick && result.boundsChanged',
     'ELECTRON_WINDOW_CONTROL_SMOKE_RESULT=',
+    'assertElectronAiPillPopover',
+    'Electron Agent AI popover clipped',
     'PoiesisNativeInput',
     'session rail top',
     'headerInteractionChecks',
@@ -749,6 +752,15 @@ for (const marker of [
     "role='listbox'",
     "role='option'",
     'ReactDOM.createPortal(',
+    'protected rolePillOptions(role: AiRole): PoiesisSelectOption[]',
+    'protected setRoleProviderModelChoice(role: AiRole, value: string): void',
+    'protected renderAiRolePill(role: AiRole, compact = false): React.ReactNode',
+    "data-ai-role={role}",
+    "this.renderAiRolePill('agent')",
+    "this.renderAiRolePill('results', true)",
+    "ariaLabel={`${roleLabel} の AI とモデル`}",
+    "aria-label={`${roleLabel} の AI カスタムモデルID`}",
+    "detection.status === 'missing' ? '未検出' : '実行対応は今後'",
     'protected async openCodeFile(rawUri: string): Promise<void>',
     "message.role === 'agent'",
     'this.renderMarkdown(entry.answer ?? \'\')',
@@ -814,6 +826,7 @@ for (const marker of [
     assert.ok(round16Smoke.includes(marker), `Round 16 console smoke is missing ${marker}`);
 }
 assert.equal(rootPackage.scripts['smoke:round17'], 'node scripts/smoke-round17-browser.mjs');
+assert.equal(rootPackage.scripts['smoke:round20'], 'node scripts/smoke-round20-browser.mjs');
 for (const marker of [
     'codexRolloutFiles()',
     'initialRail',
@@ -829,6 +842,16 @@ for (const marker of [
     'width: 1024, height: 600'
 ]) {
     assert.ok(round17Smoke.includes(marker), `Round 17 live regression is missing ${marker}`);
+}
+for (const marker of [
+    '[data-ai-role="agent"]',
+    'Agent の AI とモデル',
+    "textContent?.includes('未検出')",
+    'disabledOptions === 4 && warning.enabledOptions === 0',
+    'Warning popover clipped at 1024x600',
+    'ROUND20_WARNING_SMOKE_RESULT='
+]) {
+    assert.ok(round20Smoke.includes(marker), `Round 20 warning regression is missing ${marker}`);
 }
 for (const marker of [
     "@('powershell', 'pwsh', 'cmd', 'conhost')",
@@ -1119,6 +1142,11 @@ for (const marker of [
     '.poiesis-customize-view__editor',
     '.poiesis-customize-view__new-skill',
     '.poiesis-select__listbox',
+    '.poiesis-select__group',
+    '.poiesis-select__footer',
+    '.poiesis-ai-role-pill',
+    '.poiesis-ai-role-pill.warning',
+    '.poiesis-results__composer > .poiesis-ai-role-pill',
     '.poiesis-settings-modal__model-field',
     '.poiesis-agent-window__switch',
     '.poiesis-agent-window__composer',

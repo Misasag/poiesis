@@ -1695,6 +1695,8 @@
 }
 
 .poiesis-agent-window__composer-footer {
+    align-items: flex-end;
+    flex-wrap: wrap;
     gap: 8px;
     justify-content: flex-end;
     min-width: 0;
@@ -1703,6 +1705,8 @@
 .poiesis-agent-window__new-agent-context {
     align-items: center;
     display: flex;
+    flex: 1 1 420px;
+    flex-wrap: wrap;
     gap: 5px;
     margin-right: auto;
     min-width: 0;
@@ -1748,6 +1752,10 @@
 
 .poiesis-agent-window__context-pill.static:hover {
     background: #242522;
+}
+
+.poiesis-agent-window__composer-footer > .poiesis-ai-role-pill {
+    margin-right: auto;
 }
 
 .poiesis-agent-window__repository-picker {
@@ -1894,7 +1902,7 @@
 }
 
 .poiesis-agent-window__send,
-.poiesis-results__composer button {
+.poiesis-results__send {
     align-items: center;
     background: #e2e0d7;
     border: 0;
@@ -1909,12 +1917,12 @@
 }
 
 .poiesis-agent-window__send .codicon,
-.poiesis-results__composer button .codicon {
+.poiesis-results__send .codicon {
     color: #222320;
 }
 
 .poiesis-agent-window__send:disabled,
-.poiesis-results__composer button:disabled {
+.poiesis-results__send:disabled {
     cursor: default;
     opacity: .38;
 }
@@ -2104,6 +2112,12 @@
 
 .poiesis-results__composer input::placeholder {
     color: #778198;
+}
+
+.poiesis-results__composer > .poiesis-ai-role-pill {
+    grid-column: 1 / -1;
+    justify-self: start;
+    max-width: min(230px, 100%);
 }
 
 .poiesis-results__task-switcher {
@@ -3802,7 +3816,7 @@ body.poiesis-code-file-pointer-drag * {
     width: 100%;
 }
 
-.poiesis-select__trigger > span:first-child {
+.poiesis-select__trigger-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -3879,6 +3893,90 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-select__option .codicon {
     color: #d6a276;
     flex: none;
+}
+
+.poiesis-select__group {
+    color: #a8aaa2;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    padding: 8px 8px 3px;
+}
+
+.poiesis-select__group:first-child {
+    padding-top: 4px;
+}
+
+.poiesis-select__footer {
+    border-top: 1px solid #4b4d47;
+    margin-top: 4px;
+    padding: 8px;
+}
+
+.poiesis-ai-role-pill {
+    flex: 0 1 auto;
+    max-width: min(260px, 100%);
+    min-width: 0;
+}
+
+.poiesis-ai-role-pill .poiesis-select__trigger {
+    background: #242522;
+    border-color: #555851;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    font-size: 12px;
+    gap: 5px;
+    min-height: 25px;
+    padding: 3px 7px;
+}
+
+.poiesis-ai-role-pill .poiesis-select__trigger > .codicon:first-child {
+    color: #c89a72;
+    flex: none;
+}
+
+.poiesis-ai-role-pill.warning .poiesis-select__trigger {
+    background: #352925;
+    border-color: #a26e55;
+    color: #f0c5ad;
+}
+
+.poiesis-ai-role-pill.loading .poiesis-select__trigger {
+    border-color: #4a4c47;
+    color: var(--poiesis-chrome-muted);
+}
+
+.poiesis-ai-role-pill.compact .poiesis-select__trigger {
+    font-size: 12px;
+    min-height: 23px;
+    padding-block: 2px;
+}
+
+.poiesis-ai-role-pill__popover .poiesis-select__option {
+    min-height: 29px;
+    padding-block: 4px;
+}
+
+.poiesis-ai-role-pill__custom-model {
+    display: grid;
+    gap: 5px;
+}
+
+.poiesis-ai-role-pill__custom-model > span {
+    color: #b8bab3;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.poiesis-ai-role-pill__custom-model input {
+    background: #181917;
+    border: 1px solid #666960;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    font: 12px/1.4 var(--theia-ui-font-family, sans-serif);
+    min-width: 0;
+    padding: 6px 7px;
+    width: 100%;
 }
 
 .poiesis-customize-view {
@@ -4463,20 +4561,20 @@ body.poiesis-code-file-pointer-drag * {
     background: #cbc9c1;
 }
 
-.poiesis-results__composer button {
+.poiesis-results__send {
     background: var(--poiesis-results-send);
     color: var(--poiesis-results-send-text);
 }
 
-.poiesis-results__composer button .codicon {
+.poiesis-results__send .codicon {
     color: var(--poiesis-results-send-text);
 }
 
-.poiesis-results__composer button:hover:not(:disabled) {
+.poiesis-results__send:hover:not(:disabled) {
     background: #eef3ff;
 }
 
-.poiesis-results__composer button:active:not(:disabled) {
+.poiesis-results__send:active:not(:disabled) {
     background: #c6d0e7;
 }
 

@@ -156,7 +156,10 @@ interface WorkspaceSkillEditor {
 interface PoiesisSelectOption {
     value: string;
     label: string;
+    triggerLabel?: string;
+    group?: string;
     disabled?: boolean;
+    keepOpen?: boolean;
 }
 
 interface PoiesisSelectProps {
@@ -166,6 +169,10 @@ interface PoiesisSelectProps {
     onChange: (value: string) => void;
     className?: string;
     disabled?: boolean;
+    popoverClassName?: string;
+    popoverFooter?: React.ReactNode;
+    popoverMinWidth?: number;
+    leadingIconClass?: string;
 }
 
 interface PoiesisSelectPosition {
@@ -177,7 +184,18 @@ interface PoiesisSelectPosition {
 }
 
 /** A select-only ARIA combobox whose listbox is portaled so modal and panel overflow cannot clip it. */
-const PoiesisSelect = ({ value, options, ariaLabel, onChange, className = '', disabled = false }: PoiesisSelectProps): React.ReactElement => {
+const PoiesisSelect = ({
+    value,
+    options,
+    ariaLabel,
+    onChange,
+    className = '',
+    disabled = false,
+    popoverClassName = '',
+    popoverFooter,
+    popoverMinWidth = 180,
+    leadingIconClass
+}: PoiesisSelectProps): React.ReactElement => {
     const triggerRef = React.useRef<HTMLButtonElement>(null);
     const popoverRef = React.useRef<HTMLDivElement>(null);
     const listboxId = `poiesis-select-${React.useId().replace(/:/g, '')}`;
@@ -209,7 +227,7 @@ const PoiesisSelect = ({ value, options, ariaLabel, onChange, className = '', di
         const rect = trigger.getBoundingClientRect();
         const margin = 8;
         const gap = 4;
-        const width = Math.min(Math.max(rect.width, 180), window.innerWidth - margin * 2);
+        const width = Math.min(Math.max(rect.width, popoverMinWidth), window.innerWidth - margin * 2);
         const left = Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin);
         const availableBelow = window.innerHeight - rect.bottom - gap - margin;
         const availableAbove = rect.top - gap - margin;
@@ -226,7 +244,7 @@ const PoiesisSelect = ({ value, options, ariaLabel, onChange, className = '', di
             && Math.abs((current.bottom ?? -1) - (nextPosition.bottom ?? -1)) < 0.5
             ? current
             : nextPosition);
-    }, []);
+    }, [popoverMinWidth]);
 
     const close = React.useCallback((restoreFocus = true): void => {
         setOpen(false);
@@ -265,10 +283,19 @@ const PoiesisSelect = ({ value, options, ariaLabel, onChange, className = '', di
         window.addEventListener('resize', reposition);
         window.addEventListener('scroll', reposition, true);
         document.addEventListener('pointerdown', closeOutside, true);
+        const closeOnEscape = (event: KeyboardEvent): void => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                close();
+            }
+        };
+        document.addEventListener('keydown', closeOnEscape, true);
         return () => {
             window.removeEventListener('resize', reposition);
             window.removeEventListener('scroll', reposition, true);
             document.removeEventListener('pointerdown', closeOutside, true);
+            document.removeEventListener('keydown', closeOnEscape, true);
             cancelAnimationFrame(trackingFrame);
         };
     }, [close, open, updatePosition]);
@@ -287,7 +314,9 @@ const PoiesisSelect = ({ value, options, ariaLabel, onChange, className = '', di
         if (option.value !== value) {
             onChange(option.value);
         }
-        close();
+        if (!option.keepOpen) {
+            close();
+        }
     };
 
     const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>): void => {
@@ -311,7 +340,7 @@ const PoiesisSelect = ({ value, options, ariaLabel, onChange, className = '', di
             event.preventDefault();
             event.stopPropagation();
             close();
-        } else if (event.key === 'Tab') {
+        } else if (event.key === 'Tab' && !popoverFooter) {
             close(false);
         }
     };
@@ -334,35 +363,41 @@ const PoiesisSelect = ({ value, options, ariaLabel, onChange, className = '', di
                 onClick={() => open ? close(false) : openList()}
                 onKeyDown={handleKeyDown}
             >
-                <span>{selectedOption?.label ?? value}</span>
+                {leadingIconClass && <span className={`codicon ${leadingIconClass}`} aria-hidden='true' />}
+                <span className='poiesis-select__trigger-label'>{selectedOption?.triggerLabel ?? selectedOption?.label ?? value}</span>
                 <span className={`codicon codicon-chevron-${open ? 'up' : 'down'}`} aria-hidden='true' />
             </button>
             {open && position && ReactDOM.createPortal(
                 <div
                     ref={popoverRef}
                     id={listboxId}
-                    className='poiesis-select__listbox'
+                    className={`poiesis-select__listbox${popoverClassName ? ` ${popoverClassName}` : ''}`}
                     role='listbox'
                     aria-label={ariaLabel}
                     style={position}
                 >
                     {options.map((option, index) => (
-                        <div
-                            key={option.value}
-                            id={`${listboxId}-option-${index}`}
-                            className={`poiesis-select__option${index === activeIndex ? ' active' : ''}${option.disabled ? ' disabled' : ''}`}
-                            data-value={option.value}
-                            role='option'
-                            aria-selected={option.value === value}
-                            aria-disabled={option.disabled || undefined}
-                            onMouseEnter={() => !option.disabled && setActiveIndex(index)}
-                            onMouseDown={event => event.preventDefault()}
-                            onClick={() => choose(index)}
-                        >
-                            <span>{option.label}</span>
-                            {option.value === value && <span className='codicon codicon-check' aria-hidden='true' />}
-                        </div>
+                        <React.Fragment key={option.value}>
+                            {option.group && option.group !== options[index - 1]?.group && (
+                                <div className='poiesis-select__group' role='presentation'>{option.group}</div>
+                            )}
+                            <div
+                                id={`${listboxId}-option-${index}`}
+                                className={`poiesis-select__option${index === activeIndex ? ' active' : ''}${option.disabled ? ' disabled' : ''}`}
+                                data-value={option.value}
+                                role='option'
+                                aria-selected={option.value === value}
+                                aria-disabled={option.disabled || undefined}
+                                onMouseEnter={() => !option.disabled && setActiveIndex(index)}
+                                onMouseDown={event => event.preventDefault()}
+                                onClick={() => choose(index)}
+                            >
+                                <span>{option.label}</span>
+                                {option.value === value && <span className='codicon codicon-check' aria-hidden='true' />}
+                            </div>
+                        </React.Fragment>
                     ))}
+                    {popoverFooter && <div className='poiesis-select__footer' role='presentation'>{popoverFooter}</div>}
                 </div>,
                 document.body
             )}
@@ -1903,6 +1938,7 @@ export class AgentWindowWidget extends ReactWidget {
                     />
                     <div className='poiesis-agent-window__composer-footer'>
                         {session && newAgent && this.renderNewAgentContext(session)}
+                        {session && !newAgent && this.renderAiRolePill('agent')}
                         <button
                             className='poiesis-agent-window__send'
                             type='button'
@@ -2499,6 +2535,137 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
+    protected roleChoiceValue(provider: KnownCliId, model: string): string {
+        return `provider:${provider}:${encodeURIComponent(model)}`;
+    }
+
+    protected roleModelIsCustom(role: AiRole): boolean {
+        const detection = this.cliDetectionReport?.detections.find(item => item.id === (role === 'agent' ? this.agentCli : this.resultsCli));
+        const model = this.roleModel(role);
+        return this.customModelRoles.has(role) || Boolean(detection && !detection.models.some(option => option.id === model));
+    }
+
+    protected rolePillOptions(role: AiRole): PoiesisSelectOption[] {
+        const selectedProvider = role === 'agent' ? this.agentCli : this.resultsCli;
+        const selectedModel = this.roleModel(role);
+        const selectedCustom = this.roleModelIsCustom(role);
+        const detections = this.cliDetectionReport?.detections ?? [];
+        if (!detections.length) {
+            const name = selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1);
+            return [{
+                value: this.roleChoiceValue(selectedProvider, selectedCustom ? '__custom__' : selectedModel),
+                label: '検出中…',
+                triggerLabel: `${name} · ${selectedModel || '既定'} · 検出中…`,
+                group: name,
+                disabled: true
+            }];
+        }
+        return detections.flatMap(detection => {
+            const executable = detection.status === 'found' && detection.executableRoles.includes(role);
+            const selected = detection.id === selectedProvider;
+            if (!executable) {
+                const status = detection.status === 'missing' ? '未検出' : '実行対応は今後';
+                return [{
+                    value: selected
+                        ? this.roleChoiceValue(detection.id, selectedCustom ? '__custom__' : selectedModel)
+                        : `unavailable:${role}:${detection.id}`,
+                    label: status,
+                    triggerLabel: `${detection.name} · ${selectedModel || '既定'} · ${status}`,
+                    group: detection.name,
+                    disabled: true
+                }];
+            }
+            const group = `${detection.name} · 実行可`;
+            return [
+                ...detection.models.map(option => ({
+                    value: this.roleChoiceValue(detection.id, option.id),
+                    label: option.label,
+                    triggerLabel: `${detection.name} · ${option.id || '既定'}`,
+                    group
+                })),
+                {
+                    value: this.roleChoiceValue(detection.id, '__custom__'),
+                    label: 'カスタム…',
+                    triggerLabel: `${detection.name} · ${selected && selectedCustom && selectedModel ? selectedModel : 'カスタム…'}`,
+                    group,
+                    keepOpen: true
+                }
+            ];
+        });
+    }
+
+    protected setRoleProviderModelChoice(role: AiRole, value: string): void {
+        const match = /^provider:([^:]+):(.*)$/.exec(value);
+        if (!match || !isKnownCliId(match[1])) {
+            return;
+        }
+        const provider = match[1];
+        const modelChoice = decodeURIComponent(match[2]);
+        const detection = this.cliDetectionReport?.detections.find(item => item.id === provider);
+        if (detection?.status !== 'found' || !detection.executableRoles.includes(role)
+            || (modelChoice !== '__custom__' && !detection.models.some(option => option.id === modelChoice))) {
+            return;
+        }
+        const model = modelChoice === '__custom__' ? '' : modelChoice;
+        if (role === 'agent') {
+            this.agentCli = provider;
+            this.agentModel = model;
+        } else {
+            this.resultsCli = provider;
+            this.resultsModel = model;
+            this.resultsGenerationContext.providerId = provider;
+            this.resultsGenerationContext.model = model;
+        }
+        if (modelChoice === '__custom__') {
+            this.customModelRoles.add(role);
+        } else {
+            this.customModelRoles.delete(role);
+        }
+        this.persistPoiesisSettings();
+        this.update();
+    }
+
+    protected renderAiRolePill(role: AiRole, compact = false): React.ReactNode {
+        const selectedProvider = role === 'agent' ? this.agentCli : this.resultsCli;
+        const selectedModel = this.roleModel(role);
+        const custom = this.roleModelIsCustom(role);
+        const detection = this.cliDetectionReport?.detections.find(item => item.id === selectedProvider);
+        const executable = detection?.status === 'found' && detection.executableRoles.includes(role);
+        const loading = !this.cliDetectionReport || this.cliDetectionLoading;
+        const warning = !loading && !executable;
+        const value = this.roleChoiceValue(selectedProvider, custom ? '__custom__' : selectedModel);
+        const roleLabel = role === 'agent' ? 'Agent' : 'Results';
+        return (
+            <div
+                className={`poiesis-ai-role-pill ${compact ? 'compact' : ''}${warning ? ' warning' : ''}${loading ? ' loading' : ''}`}
+                data-ai-role={role}
+            >
+                <PoiesisSelect
+                    ariaLabel={`${roleLabel} の AI とモデル`}
+                    value={value}
+                    options={this.rolePillOptions(role)}
+                    popoverClassName='poiesis-ai-role-pill__popover'
+                    popoverMinWidth={280}
+                    leadingIconClass={warning ? 'codicon-warning' : 'codicon-sparkle'}
+                    popoverFooter={custom && executable ? (
+                        <label className='poiesis-ai-role-pill__custom-model'>
+                            <span>{detection?.name ?? selectedProvider} のカスタムモデルID</span>
+                            <PoiesisTextInput
+                                value={selectedModel}
+                                maxLength={160}
+                                placeholder='モデルIDを入力'
+                                aria-label={`${roleLabel} の AI カスタムモデルID`}
+                                autoFocus
+                                onValueChange={model => this.setRoleModel(role, model)}
+                            />
+                        </label>
+                    ) : undefined}
+                    onChange={nextValue => this.setRoleProviderModelChoice(role, nextValue)}
+                />
+            </div>
+        );
+    }
+
     protected renderNewAgentContext(session: WindowAgentSession): React.ReactNode {
         const branch = session.branch ?? this.gitBranchForWorkspace(session.workspaceUri) ?? 'main';
         return (
@@ -2522,6 +2689,7 @@ export class AgentWindowWidget extends ReactWidget {
                     <span className='codicon codicon-device-desktop' aria-hidden='true' />
                     <span>Run on · This Computer</span>
                 </span>
+                {this.renderAiRolePill('agent')}
             </div>
         );
     }
@@ -2699,12 +2867,14 @@ export class AgentWindowWidget extends ReactWidget {
                         />
                         <button
                             type='button'
+                            className='poiesis-results__send'
                             aria-label='Results 内へ送信'
                             disabled={!selectedTask || document?.status !== 'ready' || questionSending || !draft.trim()}
                             onClick={() => selectedTask && void this.submitResultsQuestion(selectedTask.id)}
                         >
                             <span className='codicon codicon-arrow-up' aria-hidden='true' />
                         </button>
+                        {selectedTask && document?.status === 'ready' && this.renderAiRolePill('results', true)}
                     </section>
                 </div>
                 <aside className='poiesis-results__task-switcher' aria-label='同じセッションの実行タスク'>
