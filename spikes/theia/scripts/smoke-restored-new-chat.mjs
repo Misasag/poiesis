@@ -105,12 +105,14 @@ try {
             await page.waitForFunction(currentSelector => document.querySelector(currentSelector)?.checked, {}, selector);
             if (selectedModel) {
                 const modelSelector = `[aria-label="${role === 'agent' ? 'Agent' : 'Results'} の AI モデル"]`;
-                const optionExists = await page.$eval(modelSelector, (select, model) =>
-                    [...select.options].some(option => option.value === model), selectedModel);
+                await page.click(modelSelector);
+                await page.waitForSelector('.poiesis-select__listbox');
+                const optionExists = await page.evaluate(model => [...document.querySelectorAll('.poiesis-select__option')]
+                    .some(option => option.dataset.value === model), selectedModel);
                 if (optionExists) {
-                    await page.select(modelSelector, selectedModel);
+                    await choosePoiesisSelectOption(page, modelSelector, selectedModel, true);
                 } else {
-                    await page.select(modelSelector, '__custom__');
+                    await choosePoiesisSelectOption(page, modelSelector, '__custom__', true);
                     const customSelector = `[aria-label="${role === 'agent' ? 'Agent' : 'Results'} の AI カスタムモデルID"]`;
                     await page.type(customSelector, selectedModel);
                 }
@@ -263,6 +265,23 @@ async function clickText(page, selector, text) {
         if (!(node instanceof HTMLElement)) throw new Error(`${text} was not found.`);
         node.click();
     }, { selector, text });
+}
+
+async function choosePoiesisSelectOption(page, triggerSelector, value, alreadyOpen = false) {
+    if (!alreadyOpen) {
+        await page.click(triggerSelector);
+        await page.waitForSelector('.poiesis-select__listbox');
+    }
+    const selected = await page.evaluate(nextValue => {
+        const option = [...document.querySelectorAll('.poiesis-select__option')]
+            .find(candidate => candidate.dataset.value === nextValue);
+        if (!(option instanceof HTMLElement)) return false;
+        option.click();
+        return true;
+    }, value);
+    assert(selected, `Model option was not found: ${value}`);
+    await page.waitForFunction((selector, nextValue) => document.querySelector(selector)?.dataset.value === nextValue,
+        {}, triggerSelector, value);
 }
 
 async function waitForProcessModelArg(providerId, flag, model, waitTimeout) {

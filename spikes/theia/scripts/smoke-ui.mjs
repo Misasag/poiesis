@@ -277,9 +277,9 @@ try {
         {}, terminalPanelHeight);
     await page.click('.poiesis-agent-window__code-panel-tabs button[aria-label="New Terminal"]');
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id !== id
-        && document.querySelectorAll('.poiesis-agent-window__code-terminal-select option').length === 2, {}, firstTerminalId);
+        && document.querySelector('.poiesis-agent-window__code-terminal-select')?.dataset.optionCount === '2', {}, firstTerminalId);
     const secondTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
-    await page.select('.poiesis-agent-window__code-terminal-select', firstTerminalId);
+    await choosePoiesisSelect(page, '.poiesis-agent-window__code-terminal-select .poiesis-select__trigger', firstTerminalId);
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
     await page.click('.poiesis-agent-window__code-panel-tabs button[aria-label="Close Panel"]');
     await page.waitForSelector('.poiesis-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
@@ -294,10 +294,10 @@ try {
     await page.keyboard.press('Backquote');
     await page.keyboard.up('Control');
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
-    await page.select('.poiesis-agent-window__code-terminal-select', secondTerminalId);
+    await choosePoiesisSelect(page, '.poiesis-agent-window__code-terminal-select .poiesis-select__trigger', secondTerminalId);
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
     await page.click('.poiesis-agent-window__code-panel-tabs button[aria-label="Kill Terminal"]');
-    await page.waitForFunction(id => document.querySelectorAll('.poiesis-agent-window__code-terminal-select option').length === 1
+    await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-select')?.dataset.optionCount === '1'
         && document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
     while (await page.$('.poiesis-agent-window__code-editor-tab-close')) {
         const tabCount = await page.$$eval('.poiesis-agent-window__code-editor-tab', tabs => tabs.length);
@@ -609,7 +609,7 @@ try {
     await page.keyboard.type('x');
     await page.waitForSelector('.poiesis-agent-window__code-editor-tab.active.dirty .poiesis-agent-window__code-editor-tab-dirty');
     await page.keyboard.down('Control');
-    await page.keyboard.press('KeyS');
+    await page.keyboard.press('s');
     await page.keyboard.up('Control');
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code-editor-tab.active.dirty'));
     assert(readFileSync(scmFixturePath, 'utf8') !== codeSaveFixtureBefore, 'Ctrl+S cleared dirty state without writing the editor content');
@@ -707,113 +707,156 @@ try {
             `Gemini registry status is dishonest: ${JSON.stringify(role)}`);
     }
     await page.click('input[name="poiesis-agent-cli"][value="claude"]');
-    await page.waitForFunction(() => document.querySelector('[aria-label="Agent の AI モデル"]')?.value === 'fable');
-    await page.select('[aria-label="Agent の AI モデル"]', 'haiku');
-    await page.select('[aria-label="Results の AI モデル"]', '__custom__');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Agent の AI モデル"]')?.dataset.value === 'fable');
+    await choosePoiesisSelect(page, '[aria-label="Agent の AI モデル"]', 'haiku');
+    await choosePoiesisSelect(page, '[aria-label="Results の AI モデル"]', '__custom__');
     await page.waitForSelector('[aria-label="Results の AI カスタムモデルID"]');
     await page.type('[aria-label="Results の AI カスタムモデルID"]', 'custom-model-smoke');
-    await page.select('[aria-label="Results の AI モデル"]', 'gpt-5.4');
+    await choosePoiesisSelect(page, '[aria-label="Results の AI モデル"]', 'gpt-5.4');
     await page.waitForFunction(() => [...Object.values(localStorage)].some(value =>
         typeof value === 'string' && value.includes('"agentModel":"haiku"') && value.includes('"resultsModel":"gpt-5.4"')));
-    await page.setViewport({ width: 1100, height: 700, deviceScaleFactor: 1 });
+    await page.setViewport({ width: 1024, height: 600, deviceScaleFactor: 1 });
     const settingsResize = await page.$eval('.poiesis-settings-modal:not(.poiesis-customize-modal)', element => {
         const bounds = element.getBoundingClientRect();
         return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom, width: bounds.width, height: bounds.height };
     });
     assert(settingsResize.left >= 0 && settingsResize.top >= 0
-        && settingsResize.right <= 1100 && settingsResize.bottom <= 700,
+        && settingsResize.right <= 1024 && settingsResize.bottom <= 600,
     `Settings modal overflowed after resize: ${JSON.stringify(settingsResize)}`);
+    await page.click('[aria-label="Results の AI モデル"]');
+    await page.waitForSelector('.poiesis-select__listbox');
+    const settingsDropdownBounds = await page.$eval('.poiesis-select__listbox', element => {
+        const bounds = element.getBoundingClientRect();
+        return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom };
+    });
+    assert(settingsDropdownBounds.left >= 0 && settingsDropdownBounds.top >= 0
+        && settingsDropdownBounds.right <= 1024 && settingsDropdownBounds.bottom <= 600,
+    `Settings dropdown clipped at 1024x600: ${JSON.stringify(settingsDropdownBounds)}`);
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Results の AI モデル"]')?.dataset.value !== 'gpt-5.4');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Results の AI モデル"]') === document.activeElement);
+    await choosePoiesisSelect(page, '[aria-label="Results の AI モデル"]', 'gpt-5.4');
     const modelSelections = { agent: 'claude/haiku', results: 'codex/gpt-5.4', customField: true };
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
     await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
 
     await click(page, '.poiesis-agent-window__rail-action', 'Customize');
-    await page.waitForSelector('.poiesis-customize-modal');
-    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-modal__skill-card')]
+    await page.waitForSelector('.poiesis-customize-view');
+    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
         .some(card => card.textContent?.includes('Existing smoke skill')));
     const expandedCustomize = await page.evaluate(() => ({
-        builtIns: [...document.querySelectorAll('.poiesis-customize-modal .poiesis-agent-window__status-badge.active')]
+        mode: document.querySelector('.poiesis-agent-window__content')?.dataset.mode,
+        railVisible: Boolean(document.querySelector('.poiesis-agent-window__rail')),
+        modalBackdrop: Boolean(document.querySelector('.poiesis-customize-modal__backdrop')),
+        builtIns: [...document.querySelectorAll('.poiesis-customize-view .poiesis-agent-window__status-badge.active')]
             .filter(badge => badge.textContent?.trim() === '組み込み').length,
-        existingSkill: [...document.querySelectorAll('.poiesis-customize-modal__skill-card')]
+        existingSkill: [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
             .some(card => card.textContent?.includes('Existing smoke skill')),
-        plugins: document.querySelector('.poiesis-customize-modal')?.textContent?.includes('Poiesis plugin bundles'),
-        hooks: document.querySelector('.poiesis-customize-modal')?.textContent?.includes('Hooks')
+        plugins: document.querySelector('.poiesis-customize-view')?.textContent?.includes('Poiesis plugin bundles'),
+        hooks: document.querySelector('.poiesis-customize-view')?.textContent?.includes('Hooks')
     }));
+    assert(expandedCustomize.mode === 'customize' && expandedCustomize.railVisible && !expandedCustomize.modalBackdrop,
+        `Customize must be an inline central view: ${JSON.stringify(expandedCustomize)}`);
     assert(expandedCustomize.builtIns === 2, `Expected two built-in Skills, got ${expandedCustomize.builtIns}`);
     assert(expandedCustomize.existingSkill, 'Workspace user skill was not scanned');
     assert(expandedCustomize.plugins, 'Plugins section did not move to Customize');
     assert(!expandedCustomize.hooks, 'Unsupported Hooks section is visible');
     assert(!await page.$('.poiesis-agent-window__plugins-host'), 'Poiesis Customize must not host the Code extensions manager');
-    assert(!(await page.$eval('.poiesis-customize-modal', element => element.textContent ?? '')).includes('VS Code built-in extensions'), 'Poiesis Customize still describes Code extensions');
+    assert(!(await page.$eval('.poiesis-customize-view', element => element.textContent ?? '')).includes('VS Code built-in extensions'), 'Poiesis Customize still describes Code extensions');
     await page.evaluate(() => {
-        const skill = [...document.querySelectorAll('.poiesis-customize-modal__skill-card')]
+        const skill = [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
+            .find(card => card.textContent?.includes('Bundled Results'));
+        if (!(skill instanceof HTMLElement)) throw new Error('Bundled Results was not clickable');
+        skill.click();
+    });
+    await page.waitForSelector('.poiesis-customize-view__builtin-preview');
+    assert((await page.$eval('.poiesis-customize-view__builtin-preview', element => element.textContent ?? '')).includes('読み取り専用'),
+        'Built-in skill preview is not read-only');
+    await page.evaluate(() => {
+        const skill = [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
             .find(card => card.textContent?.includes('Existing smoke skill'));
         if (!(skill instanceof HTMLElement)) throw new Error('Existing user skill was not clickable');
         skill.click();
     });
-    await page.waitForSelector('.poiesis-agent-window__code');
-    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-label')
-        ?.getAttribute('title')?.includes('poiesis-customize-existing-smoke'));
-    await click(page, '.poiesis-agent-window__code-control', 'Code');
-    await page.waitForSelector('.poiesis-results');
-    await click(page, '.poiesis-agent-window__rail-action', 'Customize');
-    await page.waitForSelector('.poiesis-customize-modal');
+    await page.waitForSelector('.poiesis-customize-view__editor-input');
+    assert((await page.$eval('.poiesis-customize-view__editor-input', element => element.value)).includes('# Existing smoke skill'),
+        'User skill did not open in the inline editor');
     await page.keyboard.press('Escape');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-modal'));
+    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view__editor'));
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view'));
 
     await page.click('.poiesis-agent-window__rail-toggle');
     await page.waitForSelector('.poiesis-agent-window__rail[data-collapsed="true"]');
     await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
-    await page.waitForSelector('.poiesis-customize-modal');
-    await page.setViewport({ width: 1100, height: 700, deviceScaleFactor: 1 });
+    await page.waitForSelector('.poiesis-customize-view');
+    await page.setViewport({ width: 1024, height: 600, deviceScaleFactor: 1 });
     await page.waitForFunction(() => {
-        const modal = document.querySelector('.poiesis-customize-modal')?.getBoundingClientRect();
+        const view = document.querySelector('.poiesis-customize-view')?.getBoundingClientRect();
         const rail = document.querySelector('.poiesis-agent-window__rail')?.getBoundingClientRect();
-        return Boolean(modal && rail && rail.width > 0 && modal.left >= 0 && modal.top >= 0
-            && modal.right <= innerWidth && modal.bottom <= innerHeight);
+        return Boolean(view && rail && rail.width > 0 && view.left >= rail.right && view.top >= 0
+            && view.right <= innerWidth && view.bottom <= innerHeight);
     });
-    await click(page, '.poiesis-settings-modal__text-button', '新しいSkill');
+    await click(page, '.poiesis-customize-view__text-button', '新しいSkill');
     await page.waitForSelector('[aria-label="新しいSkill ID"]');
     await page.type('[aria-label="新しいSkill ID"]', 'poiesis-customize-created-smoke');
-    await page.select('[aria-label="新しいSkillの種類"]', 'results');
-    await click(page, '.poiesis-customize-modal__new-skill button', '作成して開く');
-    await page.waitForSelector('.poiesis-agent-window__code');
-    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-label')
-        ?.getAttribute('title')?.includes('poiesis-customize-created-smoke'));
+    await page.click('[aria-label="新しいSkillの種類"]');
+    await page.waitForSelector('.poiesis-select__listbox');
+    const customizeDropdownBounds = await page.$eval('.poiesis-select__listbox', element => {
+        const bounds = element.getBoundingClientRect();
+        return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom };
+    });
+    assert(customizeDropdownBounds.left >= 0 && customizeDropdownBounds.top >= 0
+        && customizeDropdownBounds.right <= 1024 && customizeDropdownBounds.bottom <= 600,
+    `Customize dropdown clipped at 1024x600: ${JSON.stringify(customizeDropdownBounds)}`);
+    await page.evaluate(() => document.querySelector('.poiesis-select__option[data-value="results"]')?.click());
+    await click(page, '.poiesis-customize-view__new-skill button', '作成して開く');
+    await page.waitForSelector('.poiesis-customize-view__editor-input');
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__editor header small')
+        ?.textContent?.includes('poiesis-customize-created-smoke'));
     assert(existsSync(createdSkillPath), '新しいSkill did not scaffold skill.md');
     const scaffoldedSkill = readFileSync(createdSkillPath, 'utf8');
     assert(scaffoldedSkill.includes('kind: results'), 'Scaffolded skill.md did not preserve the selected kind');
-    await clickStable(page, '.poiesis-agent-window__code-editor-host .monaco-editor .view-lines');
+    await page.focus('.poiesis-customize-view__editor-input');
     await page.keyboard.down('Control');
     await page.keyboard.press('End');
     await page.keyboard.up('Control');
     await page.keyboard.type(`\n${skillEditMarker}\n`);
-    await page.waitForSelector('.poiesis-agent-window__code-editor-tab.active.dirty');
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__dirty.active')?.textContent?.includes('未保存'));
     await page.keyboard.down('Control');
-    await page.keyboard.press('KeyS');
+    await page.keyboard.press('s');
     await page.keyboard.up('Control');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code-editor-tab.active.dirty'));
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__dirty:not(.active)')?.textContent?.includes('保存済み'));
     assert(readFileSync(createdSkillPath, 'utf8').includes(skillEditMarker), 'Edited skill.md was not saved');
+    await page.focus('.poiesis-customize-view__editor-input');
+    await page.keyboard.type('\ndiscard-this-smoke-change');
+    await click(page, '.poiesis-customize-view__editor footer button', '閉じる');
+    await page.waitForSelector('.poiesis-customize-view__discard-confirm');
+    await click(page, '.poiesis-customize-view__discard-confirm button', '破棄して閉じる');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view__editor'));
+    assert(!readFileSync(createdSkillPath, 'utf8').includes('discard-this-smoke-change'), 'Inline close did not discard the unsaved edit');
+    assert(await page.$eval('body', () => document.querySelectorAll('select').length === 0), 'Native select remained in Customize');
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
     await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
-    await page.waitForSelector('.poiesis-settings-modal:not(.poiesis-customize-modal)');
-    await page.waitForFunction(() => document.querySelector('[aria-label="Agent の AI モデル"]')?.value === 'haiku'
-        && document.querySelector('[aria-label="Results の AI モデル"]')?.value === 'gpt-5.4');
+    await page.waitForSelector('.poiesis-settings-modal');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Agent の AI モデル"]')?.dataset.value === 'haiku'
+        && document.querySelector('[aria-label="Results の AI モデル"]')?.dataset.value === 'gpt-5.4');
     const persistedModels = await page.evaluate(() => ({
         agentProvider: document.querySelector('input[name="poiesis-agent-cli"]:checked')?.value,
-        agentModel: document.querySelector('[aria-label="Agent の AI モデル"]')?.value,
+        agentModel: document.querySelector('[aria-label="Agent の AI モデル"]')?.dataset.value,
         resultsProvider: document.querySelector('input[name="poiesis-results-cli"]:checked')?.value,
-        resultsModel: document.querySelector('[aria-label="Results の AI モデル"]')?.value
+        resultsModel: document.querySelector('[aria-label="Results の AI モデル"]')?.dataset.value
     }));
     await page.keyboard.press('Escape');
 
     const customize = {
         expanded: expandedCustomize,
         collapsedRailOpened: true,
-        resize: { width: 1100, height: 700 },
+        resize: { width: 1024, height: 600 },
         scaffolded: '.poiesis/skills/poiesis-customize-created-smoke/skill.md',
         editedAndSaved: true
     };
@@ -1017,6 +1060,21 @@ async function click(page, selector, text) {
         if (!(element instanceof HTMLElement)) throw new Error(`${currentText} was not clickable`);
         element.click();
     }, { selector, text });
+}
+
+async function choosePoiesisSelect(page, triggerSelector, value) {
+    await page.click(triggerSelector);
+    await page.waitForSelector('.poiesis-select__listbox');
+    const selected = await page.evaluate(nextValue => {
+        const option = [...document.querySelectorAll('.poiesis-select__option')]
+            .find(candidate => candidate.dataset.value === nextValue);
+        if (!(option instanceof HTMLElement)) return false;
+        option.click();
+        return true;
+    }, value);
+    assert(selected, `Poiesis select option was not found: ${value}`);
+    await page.waitForFunction((selector, nextValue) => document.querySelector(selector)?.dataset.value === nextValue,
+        {}, triggerSelector, value);
 }
 
 async function clickStable(page, selector) {

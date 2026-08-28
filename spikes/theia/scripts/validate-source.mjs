@@ -506,7 +506,7 @@ for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
     "type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions'",
     'protected codeMode = false',
-    'protected customizeModalVisible = false',
+    'protected customizeViewVisible = false',
     "static readonly FILES_WIDGET_FACTORY_ID = 'files'",
     "static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace'",
     "static readonly GIT_WIDGET_FACTORY_ID = 'scm-view'",
@@ -523,7 +523,7 @@ for (const marker of [
     'protected readonly sessions: WindowAgentSession[] = []',
     'const workspaceGroups = this.workspaceSessionGroups()',
     'const activeTab = session?.activeTab ?? \'agent\'',
-    "data-mode={this.codeMode ? 'code' : activeTab}",
+    "data-mode={this.codeMode ? 'code' : this.customizeViewVisible ? 'customize' : activeTab}",
     "data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}",
     '{!this.codeMode && this.renderRail()}',
     'pinnedSessions.map(session => this.renderSessionRow(session))',
@@ -644,7 +644,7 @@ for (const marker of [
     'this.settingsModalVisible = true',
     'protected closeSettings(): void',
     'protected renderSettingsModal(): React.ReactNode',
-    'protected renderCustomizeModal(): React.ReactNode',
+    'protected renderCustomizeView(): React.ReactNode',
     "role='dialog'",
     "aria-modal='true'",
     'protected async restorePoiesisSettings(): Promise<void>',
@@ -669,15 +669,24 @@ for (const marker of [
     'WorkspaceのUser Skillは定義・編集できますが、Agent／Results実行への反映は今後です。',
     '<strong>Bundled Results</strong>',
     '<strong>AI Results</strong>',
-    "className={`poiesis-agent-window__rail-action${this.customizeModalVisible ? ' active' : ''}`}",
+    "className={`poiesis-agent-window__rail-action${this.customizeViewVisible ? ' active' : ''}`}",
     "<span className='poiesis-agent-window__rail-action-label'>Customize</span>",
     "root.resolve('.poiesis/skills')",
     'protected parseWorkspaceSkill(',
     'protected async createWorkspaceSkill(): Promise<void>',
     'await this.fileService.createFolder(skillDirectory)',
-    'await this.fileService.create(skillUri, this.workspaceSkillTemplate',
-    'await this.openWorkspaceSkill(skillUri.toString())',
-    'protected async openWorkspaceSkill(rawUri: string): Promise<void>',
+    'await this.fileService.create(skillUri, content)',
+    'await this.openWorkspaceSkillInline(this.parseWorkspaceSkill',
+    'protected async openWorkspaceSkillInline(skill: WorkspaceSkillDefinition): Promise<void>',
+    'protected async saveWorkspaceSkill(): Promise<void>',
+    'protected installWorkspaceSkillSaveShortcut(): void',
+    'protected requestCloseWorkspaceSkill(): void',
+    'protected async openWorkspaceSkillInCode(rawUri: string): Promise<void>',
+    'const PoiesisSelect = (',
+    "role='combobox'",
+    "role='listbox'",
+    "role='option'",
+    'ReactDOM.createPortal(',
     'protected async openCodeFile(rawUri: string): Promise<void>',
     "message.role === 'agent'",
     'this.renderMarkdown(entry.answer ?? \'\')',
@@ -702,6 +711,7 @@ for (const marker of [
     assert.ok(safeMarkdown.includes(marker), `Safe Agent markdown is missing ${marker}`);
 }
 assert.equal(rootPackage.scripts['smoke:markdown'], 'node scripts/smoke-markdown.mjs');
+assert.equal(rootPackage.scripts['smoke:round13'], 'node scripts/smoke-round13-browser.mjs');
 for (const marker of [
     'userStayedPlain',
     'javascriptAnchorCount',
@@ -718,10 +728,11 @@ assert.ok(!agentWidget.includes('&& session && !session.selectedResultsTaskId'),
 assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.openCustomize()}"), 'Code Extensions must not open Poiesis Customize');
 assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Poiesis Settings');
 assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Poiesis Customize must not manage Code extensions');
-const settingsModalSource = agentWidget.match(/protected renderSettingsModal\(\): React\.ReactNode \{[\s\S]*?\n    protected renderCustomizeModal/)?.[0] ?? '';
+const settingsModalSource = agentWidget.match(/protected renderSettingsModal\(\): React\.ReactNode \{[\s\S]*?\n    protected renderShortcutsOverlay/)?.[0] ?? '';
 assert.ok(!settingsModalSource.includes('poiesis-settings-skills'), 'Settings modal must not contain Skills');
 assert.ok(!settingsModalSource.includes('poiesis-settings-plugins'), 'Settings modal must not contain Plugins');
 assert.ok(!agentWidget.includes('<h2>Hooks</h2>'), 'Customize must not advertise unsupported Hooks');
+assert.ok(!agentWidget.includes('<select'), 'Poiesis UI must not render native select elements');
 for (const dummyChrome of [
     '<small>poiesis / main</small>',
     '<strong>poiesis</strong>',
@@ -934,9 +945,11 @@ for (const marker of [
     '.poiesis-agent-window__app-page',
     '.poiesis-agent-window__app-nav',
     '.poiesis-agent-window__customize-card',
-    '.poiesis-customize-modal',
-    '.poiesis-customize-modal__skill-card',
-    '.poiesis-customize-modal__new-skill',
+    '.poiesis-customize-view',
+    '.poiesis-customize-view__skill-card',
+    '.poiesis-customize-view__editor',
+    '.poiesis-customize-view__new-skill',
+    '.poiesis-select__listbox',
     '.poiesis-settings-modal__model-field',
     '.poiesis-agent-window__switch',
     '.poiesis-agent-window__composer',

@@ -1,4 +1,5 @@
 import * as React from '@theia/core/shared/react';
+import * as ReactDOM from '@theia/core/shared/react-dom';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { FormatType, open, OpenerService, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser';
 import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
@@ -159,6 +160,230 @@ interface WorkspaceSkillDefinition {
     error?: string;
 }
 
+interface WorkspaceSkillEditor {
+    uri: string;
+    path: string;
+    content: string;
+    savedContent: string;
+}
+
+interface PoiesisSelectOption {
+    value: string;
+    label: string;
+    disabled?: boolean;
+}
+
+interface PoiesisSelectProps {
+    value: string;
+    options: PoiesisSelectOption[];
+    ariaLabel: string;
+    onChange: (value: string) => void;
+    className?: string;
+    disabled?: boolean;
+}
+
+interface PoiesisSelectPosition {
+    left: number;
+    width: number;
+    maxHeight: number;
+    top?: number;
+    bottom?: number;
+}
+
+/** A select-only ARIA combobox whose listbox is portaled so modal and panel overflow cannot clip it. */
+const PoiesisSelect = ({ value, options, ariaLabel, onChange, className = '', disabled = false }: PoiesisSelectProps): React.ReactElement => {
+    const triggerRef = React.useRef<HTMLButtonElement>(null);
+    const popoverRef = React.useRef<HTMLDivElement>(null);
+    const listboxId = `poiesis-select-${React.useId().replace(/:/g, '')}`;
+    const selectedIndex = Math.max(0, options.findIndex(option => option.value === value));
+    const [open, setOpen] = React.useState(false);
+    const [activeIndex, setActiveIndex] = React.useState(selectedIndex);
+    const [position, setPosition] = React.useState<PoiesisSelectPosition>();
+    const selectedOption = options[selectedIndex];
+
+    const enabledIndex = React.useCallback((start: number, direction: 1 | -1): number => {
+        if (!options.length) {
+            return -1;
+        }
+        let index = start;
+        for (let count = 0; count < options.length; count++) {
+            index = (index + direction + options.length) % options.length;
+            if (!options[index].disabled) {
+                return index;
+            }
+        }
+        return -1;
+    }, [options]);
+
+    const updatePosition = React.useCallback((): void => {
+        const trigger = triggerRef.current;
+        if (!trigger) {
+            return;
+        }
+        const rect = trigger.getBoundingClientRect();
+        const margin = 8;
+        const gap = 4;
+        const width = Math.min(Math.max(rect.width, 180), window.innerWidth - margin * 2);
+        const left = Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin);
+        const availableBelow = window.innerHeight - rect.bottom - gap - margin;
+        const availableAbove = rect.top - gap - margin;
+        const flipAbove = availableBelow < 160 && availableAbove > availableBelow;
+        const maxHeight = Math.max(72, Math.min(280, flipAbove ? availableAbove : availableBelow));
+        const nextPosition: PoiesisSelectPosition = flipAbove
+            ? { left, width, maxHeight, bottom: Math.max(margin, window.innerHeight - rect.top + gap) }
+            : { left, width, maxHeight, top: rect.bottom + gap };
+        setPosition(current => current
+            && Math.abs(current.left - nextPosition.left) < 0.5
+            && Math.abs(current.width - nextPosition.width) < 0.5
+            && Math.abs(current.maxHeight - nextPosition.maxHeight) < 0.5
+            && Math.abs((current.top ?? -1) - (nextPosition.top ?? -1)) < 0.5
+            && Math.abs((current.bottom ?? -1) - (nextPosition.bottom ?? -1)) < 0.5
+            ? current
+            : nextPosition);
+    }, []);
+
+    const close = React.useCallback((restoreFocus = true): void => {
+        setOpen(false);
+        if (restoreFocus) {
+            requestAnimationFrame(() => triggerRef.current?.focus());
+        }
+    }, []);
+
+    const openList = React.useCallback((direction?: 1 | -1): void => {
+        if (disabled || !options.length) {
+            return;
+        }
+        const initial = options[selectedIndex]?.disabled
+            ? enabledIndex(selectedIndex, direction ?? 1)
+            : selectedIndex;
+        setActiveIndex(initial);
+        updatePosition();
+        setOpen(true);
+    }, [disabled, enabledIndex, options, selectedIndex, updatePosition]);
+
+    React.useEffect(() => {
+        if (!open) {
+            return undefined;
+        }
+        const reposition = (): void => updatePosition();
+        let trackingFrame = requestAnimationFrame(function trackAnchor(): void {
+            updatePosition();
+            trackingFrame = requestAnimationFrame(trackAnchor);
+        });
+        const closeOutside = (event: PointerEvent): void => {
+            const target = event.target as Node | null;
+            if (target && !triggerRef.current?.contains(target) && !popoverRef.current?.contains(target)) {
+                close();
+            }
+        };
+        window.addEventListener('resize', reposition);
+        window.addEventListener('scroll', reposition, true);
+        document.addEventListener('pointerdown', closeOutside, true);
+        return () => {
+            window.removeEventListener('resize', reposition);
+            window.removeEventListener('scroll', reposition, true);
+            document.removeEventListener('pointerdown', closeOutside, true);
+            cancelAnimationFrame(trackingFrame);
+        };
+    }, [close, open, updatePosition]);
+
+    React.useEffect(() => {
+        if (open) {
+            setActiveIndex(selectedIndex);
+        }
+    }, [open, selectedIndex]);
+
+    const choose = (index: number): void => {
+        const option = options[index];
+        if (!option || option.disabled) {
+            return;
+        }
+        if (option.value !== value) {
+            onChange(option.value);
+        }
+        close();
+    };
+
+    const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>): void => {
+        if (!open) {
+            if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                openList(event.key === 'ArrowUp' ? -1 : 1);
+            }
+            return;
+        }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const next = enabledIndex(activeIndex, event.key === 'ArrowDown' ? 1 : -1);
+            if (next >= 0) {
+                setActiveIndex(next);
+            }
+        } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            choose(activeIndex);
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            close();
+        } else if (event.key === 'Tab') {
+            close(false);
+        }
+    };
+
+    const rootClass = `poiesis-select${className ? ` ${className}` : ''}`;
+    return (
+        <div className={rootClass} data-value={value} data-option-count={options.length}>
+            <button
+                ref={triggerRef}
+                type='button'
+                className='poiesis-select__trigger'
+                data-value={value}
+                role='combobox'
+                aria-label={ariaLabel}
+                aria-haspopup='listbox'
+                aria-controls={listboxId}
+                aria-expanded={open}
+                aria-activedescendant={open && activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
+                disabled={disabled}
+                onClick={() => open ? close(false) : openList()}
+                onKeyDown={handleKeyDown}
+            >
+                <span>{selectedOption?.label ?? value}</span>
+                <span className={`codicon codicon-chevron-${open ? 'up' : 'down'}`} aria-hidden='true' />
+            </button>
+            {open && position && ReactDOM.createPortal(
+                <div
+                    ref={popoverRef}
+                    id={listboxId}
+                    className='poiesis-select__listbox'
+                    role='listbox'
+                    aria-label={ariaLabel}
+                    style={position}
+                >
+                    {options.map((option, index) => (
+                        <div
+                            key={option.value}
+                            id={`${listboxId}-option-${index}`}
+                            className={`poiesis-select__option${index === activeIndex ? ' active' : ''}${option.disabled ? ' disabled' : ''}`}
+                            data-value={option.value}
+                            role='option'
+                            aria-selected={option.value === value}
+                            aria-disabled={option.disabled || undefined}
+                            onMouseEnter={() => !option.disabled && setActiveIndex(index)}
+                            onMouseDown={event => event.preventDefault()}
+                            onClick={() => choose(index)}
+                        >
+                            <span>{option.label}</span>
+                            {option.value === value && <span className='codicon codicon-check' aria-hidden='true' />}
+                        </div>
+                    ))}
+                </div>,
+                document.body
+            )}
+        </div>
+    );
+};
+
 @injectable()
 export class AgentWindowWidget extends ReactWidget {
     static readonly ID = 'poiesis-agent-window';
@@ -171,7 +396,7 @@ export class AgentWindowWidget extends ReactWidget {
     static readonly EXTENSIONS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container';
     protected codeMode = false;
     protected settingsModalVisible = false;
-    protected customizeModalVisible = false;
+    protected customizeViewVisible = false;
     protected shortcutsOverlayVisible = false;
     protected workspaceSkills: WorkspaceSkillDefinition[] = [];
     protected workspaceSkillsLoading = false;
@@ -182,6 +407,12 @@ export class AgentWindowWidget extends ReactWidget {
     protected newSkillKind: SkillBundleKind = 'agent';
     protected newSkillError?: string;
     protected newSkillCreating = false;
+    protected selectedBuiltinSkill?: 'bundled-results' | 'ai-results';
+    protected workspaceSkillEditor?: WorkspaceSkillEditor;
+    protected workspaceSkillEditorLoading = false;
+    protected workspaceSkillEditorError?: string;
+    protected workspaceSkillDiscardConfirmation = false;
+    protected workspaceSkillSaving = false;
     protected uiFontScale: UiFontScale = 'standard';
     protected agentCli: KnownCliId = DEFAULT_CLI_ID;
     protected agentModel = '';
@@ -358,10 +589,12 @@ export class AgentWindowWidget extends ReactWidget {
                 event.preventDefault();
                 event.stopPropagation();
                 this.closeSettings();
-            } else if (this.customizeModalVisible) {
+            } else if (document.querySelector('.poiesis-select__listbox')) {
+                return;
+            } else if (this.customizeViewVisible) {
                 event.preventDefault();
                 event.stopPropagation();
-                this.closeCustomize();
+                this.handleCustomizeEscape();
             } else if (this.workspacePickerVisible || this.repositoryPickerVisible) {
                 event.preventDefault();
                 this.workspacePickerVisible = false;
@@ -380,6 +613,7 @@ export class AgentWindowWidget extends ReactWidget {
         };
         document.addEventListener('keydown', closeOverlaysOnEscape, true);
         this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', closeOverlaysOnEscape, true)));
+        this.installWorkspaceSkillSaveShortcut();
         this.installCodeEditorSaveShortcut();
         this.installCodeTerminalShortcut();
         this.installCodeTabDropTarget();
@@ -409,14 +643,14 @@ export class AgentWindowWidget extends ReactWidget {
         }));
         this.toDispose.push(this.workspaceService.onWorkspaceChanged(() => {
             void this.refreshRecentWorkspaces();
-            if (this.customizeModalVisible) {
+            if (this.customizeViewVisible) {
                 void this.refreshWorkspaceSkills();
             }
             this.update();
         }));
         this.toDispose.push(this.workspaceService.onWorkspaceLocationChanged(() => {
             void this.refreshRecentWorkspaces();
-            if (this.customizeModalVisible) {
+            if (this.customizeViewVisible) {
                 void this.refreshWorkspaceSkills();
             }
             this.update();
@@ -466,7 +700,7 @@ export class AgentWindowWidget extends ReactWidget {
         return (
             <div
                 className='poiesis-agent-window__content'
-                data-mode={this.codeMode ? 'code' : activeTab}
+                data-mode={this.codeMode ? 'code' : this.customizeViewVisible ? 'customize' : activeTab}
                 data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}
                 style={{
                     '--poiesis-rail-width': `${this.railWidth}px`,
@@ -479,6 +713,8 @@ export class AgentWindowWidget extends ReactWidget {
                     <div className='poiesis-agent-window__viewport'>
                         {this.codeMode
                             ? this.renderCode()
+                            : this.customizeViewVisible
+                                ? this.renderCustomizeView()
                             : activeTab === 'agent'
                                 ? <>
                                     {this.renderAgent(session, runningTask)}
@@ -506,7 +742,6 @@ export class AgentWindowWidget extends ReactWidget {
                 {this.repositoryPickerVisible && this.repositoryPickerAnchor && session && this.renderRepositoryPicker(session)}
                 {this.folderExplorerVisible && this.renderFolderExplorer()}
                 {this.settingsModalVisible && this.renderSettingsModal()}
-                {this.customizeModalVisible && this.renderCustomizeModal()}
                 {this.shortcutsOverlayVisible && this.renderShortcutsOverlay()}
             </div>
         );
@@ -564,10 +799,9 @@ export class AgentWindowWidget extends ReactWidget {
                     </button>
                     <button
                         type='button'
-                        className={`poiesis-agent-window__rail-action${this.customizeModalVisible ? ' active' : ''}`}
+                        className={`poiesis-agent-window__rail-action${this.customizeViewVisible ? ' active' : ''}`}
                         title='Customize'
-                        aria-haspopup='dialog'
-                        aria-expanded={this.customizeModalVisible}
+                        aria-current={this.customizeViewVisible ? 'page' : undefined}
                         onClick={() => this.openCustomize()}
                     >
                         <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
@@ -1450,6 +1684,30 @@ export class AgentWindowWidget extends ReactWidget {
                 </header>
             );
         }
+        if (this.customizeViewVisible) {
+            return (
+                <header className='poiesis-agent-window__header poiesis-agent-window__customize-header'>
+                    <div className='poiesis-agent-window__context'>
+                        <small>{this.workspaceContextLabel()}</small>
+                        <strong>Customize</strong>
+                    </div>
+                    <div className='poiesis-agent-window__customize-header-actions'>
+                        <button type='button' className='poiesis-agent-window__code-control' onClick={() => this.toggleCodeMode()}>
+                            <span className='codicon codicon-code' aria-hidden='true' />
+                            <span>Code</span>
+                        </button>
+                        <button
+                            type='button'
+                            className='poiesis-agent-window__customize-close'
+                            aria-label='Customizeを閉じる'
+                            onClick={() => this.closeCustomize()}
+                        >
+                            <span className='codicon codicon-close' aria-hidden='true' />
+                        </button>
+                    </div>
+                </header>
+            );
+        }
         const session = this.selectedSession();
         const activeTab = session?.activeTab ?? 'agent';
         return (
@@ -1862,92 +2120,106 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
-    protected renderCustomizeModal(): React.ReactNode {
+    protected renderCustomizeView(): React.ReactNode {
         const workspaceName = this.workspaceRoot()?.resource.path.base;
+        const editor = this.workspaceSkillEditor;
+        const editorDirty = Boolean(editor && editor.content !== editor.savedContent);
         return (
-            <div
-                className='poiesis-settings-modal__backdrop poiesis-customize-modal__backdrop'
-                onMouseDown={event => {
-                    if (event.target === event.currentTarget) {
-                        this.closeCustomize();
-                    }
-                }}
-            >
-                <section
-                    className='poiesis-settings-modal poiesis-customize-modal'
-                    role='dialog'
-                    aria-modal='true'
-                    aria-labelledby='poiesis-customize-title'
-                >
-                    <header className='poiesis-settings-modal__header'>
-                        <div>
-                            <span className='codicon codicon-tools' aria-hidden='true' />
-                            <div><h1 id='poiesis-customize-title'>Customize</h1><p>PoiesisのSkillとPluginを管理します。</p></div>
-                        </div>
-                        <button type='button' aria-label='Customizeを閉じる' onClick={() => this.closeCustomize()} autoFocus>
-                            <span className='codicon codicon-close' aria-hidden='true' />
-                        </button>
+            <section className='poiesis-customize-view' aria-labelledby='poiesis-customize-title'>
+                <div className='poiesis-customize-view__page'>
+                    <header className='poiesis-customize-view__intro'>
+                        <span className='codicon codicon-tools' aria-hidden='true' />
+                        <div><h1 id='poiesis-customize-title'>Customize</h1><p>PoiesisのSkillとPluginを管理します。</p></div>
                     </header>
-                    <div className='poiesis-settings-modal__body'>
-                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-customize-skills'>
-                            <div className='poiesis-settings-modal__section-heading'>
+                    <section className='poiesis-customize-view__section' aria-labelledby='poiesis-customize-skills'>
+                            <div className='poiesis-customize-view__section-heading'>
                                 <h2 id='poiesis-customize-skills'>Skills</h2>
                                 <button
                                     type='button'
-                                    className='poiesis-settings-modal__text-button'
+                                    className='poiesis-customize-view__text-button'
                                     onClick={() => this.showNewSkillForm()}
                                 >
                                     新しいSkill
                                 </button>
                             </div>
-                            <p className='poiesis-settings-modal__section-copy'>
+                            <p className='poiesis-customize-view__section-copy'>
                                 現在の実行に反映されるのは組み込みのResults Skillsだけです。WorkspaceのUser Skillは定義・編集できますが、Agent／Results実行への反映は今後です。
                             </p>
 
-                            <h3 className='poiesis-customize-modal__group-title'>組み込み</h3>
+                            <h3 className='poiesis-customize-view__group-title'>組み込み</h3>
                             <div className='poiesis-agent-window__customize-list'>
-                                <article className='poiesis-agent-window__customize-card'>
+                                <button
+                                    type='button'
+                                    className={`poiesis-agent-window__customize-card poiesis-customize-view__skill-card${this.selectedBuiltinSkill === 'bundled-results' ? ' selected' : ''}`}
+                                    aria-pressed={this.selectedBuiltinSkill === 'bundled-results'}
+                                    onClick={() => this.selectBuiltinSkill('bundled-results')}
+                                >
                                     <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-file-code' aria-hidden='true' /></div>
                                     <div>
                                         <div className='poiesis-agent-window__customize-title'><strong>Bundled Results</strong><span>Results</span></div>
                                         <p>確定したTaskとChange Setから、組み込みテンプレートで完成HTMLを生成します。</p>
                                     </div>
                                     <span className='poiesis-agent-window__status-badge active'>組み込み</span>
-                                </article>
-                                <article className='poiesis-agent-window__customize-card'>
+                                </button>
+                                <button
+                                    type='button'
+                                    className={`poiesis-agent-window__customize-card poiesis-customize-view__skill-card${this.selectedBuiltinSkill === 'ai-results' ? ' selected' : ''}`}
+                                    aria-pressed={this.selectedBuiltinSkill === 'ai-results'}
+                                    onClick={() => this.selectBuiltinSkill('ai-results')}
+                                >
                                     <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-preview' aria-hidden='true' /></div>
                                     <div>
                                         <div className='poiesis-agent-window__customize-title'><strong>AI Results</strong><span>Results</span></div>
                                         <p>Results AIが完成HTMLを生成し、実行できない場合は組み込みテンプレートへ切り替えます。</p>
                                     </div>
                                     <span className='poiesis-agent-window__status-badge active'>組み込み</span>
-                                </article>
+                                </button>
                             </div>
+                            {this.selectedBuiltinSkill && (
+                                <article className='poiesis-customize-view__builtin-preview' aria-live='polite'>
+                                    <header>
+                                        <div>
+                                            <strong>{this.selectedBuiltinSkill === 'ai-results' ? 'AI Results' : 'Bundled Results'}</strong>
+                                            <span>読み取り専用 · 組み込み</span>
+                                        </div>
+                                        <button type='button' aria-label='組み込みSkillの詳細を閉じる' onClick={() => this.selectBuiltinSkill(undefined)}>
+                                            <span className='codicon codicon-close' aria-hidden='true' />
+                                        </button>
+                                    </header>
+                                    <p>{this.selectedBuiltinSkill === 'ai-results'
+                                        ? 'Task情報、Change Set、差分をResults AIへ読み取り専用で渡し、1つの自己完結HTML文書を生成します。失敗時はBundled Resultsへ切り替わります。'
+                                        : 'Task情報とChange Setを決定的なテンプレートへ渡し、外部リソースやスクリプトを含まない自己完結HTML文書を生成します。'}</p>
+                                    <pre>{this.selectedBuiltinSkill === 'ai-results'
+                                        ? '入力 → Results AI → HTML検証 → Results canvas\n                    ↘ 失敗時: Bundled Results'
+                                        : 'Task + Change Set → 組み込みHTML → Results canvas'}</pre>
+                                </article>
+                            )}
 
-                            <div className='poiesis-customize-modal__user-heading'>
-                                <h3 className='poiesis-customize-modal__group-title'>User Skills</h3>
+                            <div className='poiesis-customize-view__user-heading'>
+                                <h3 className='poiesis-customize-view__group-title'>User Skills</h3>
                                 <span>{workspaceName ? `${workspaceName} / .poiesis/skills` : 'Workspaceが開かれていません'}</span>
                             </div>
                             {this.workspaceSkillsLoading && (
-                                <div className='poiesis-customize-modal__state' role='status'>
+                                <div className='poiesis-customize-view__state' role='status'>
                                     <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
                                     Skillを読み込んでいます…
                                 </div>
                             )}
                             {!this.workspaceSkillsLoading && this.workspaceSkillsError && (
-                                <div className='poiesis-customize-modal__state error' role='alert'>{this.workspaceSkillsError}</div>
+                                <div className='poiesis-customize-view__state error' role='alert'>{this.workspaceSkillsError}</div>
                             )}
                             {!this.workspaceSkillsLoading && !this.workspaceSkillsError && this.workspaceSkills.length === 0 && (
-                                <div className='poiesis-customize-modal__state'>User Skillはまだありません。</div>
+                                <div className='poiesis-customize-view__state'>User Skillはまだありません。</div>
                             )}
                             {!this.workspaceSkillsLoading && this.workspaceSkills.length > 0 && (
                                 <div className='poiesis-agent-window__customize-list'>
                                     {this.workspaceSkills.map(skill => (
                                         <button
                                             type='button'
-                                            className='poiesis-agent-window__customize-card poiesis-customize-modal__skill-card'
+                                            className={`poiesis-agent-window__customize-card poiesis-customize-view__skill-card${editor?.uri === skill.uri ? ' selected' : ''}`}
                                             key={skill.id}
-                                            onClick={() => void this.openWorkspaceSkill(skill.uri)}
+                                            aria-pressed={editor?.uri === skill.uri}
+                                            onClick={() => void this.openWorkspaceSkillInline(skill)}
                                         >
                                             <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-book' aria-hidden='true' /></div>
                                             <div>
@@ -1964,8 +2236,69 @@ export class AgentWindowWidget extends ReactWidget {
                                 </div>
                             )}
 
+                            {(this.workspaceSkillEditorLoading || this.workspaceSkillEditorError || editor) && (
+                                <section className='poiesis-customize-view__editor' aria-label='User Skill editor'>
+                                    {this.workspaceSkillEditorLoading ? (
+                                        <div className='poiesis-customize-view__state' role='status'>
+                                            <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
+                                            skill.mdを開いています…
+                                        </div>
+                                    ) : !editor && this.workspaceSkillEditorError ? (
+                                        <div className='poiesis-customize-view__state error' role='alert'>{this.workspaceSkillEditorError}</div>
+                                    ) : editor && (
+                                        <>
+                                            <header>
+                                                <div>
+                                                    <strong>{editor.path.split('/').at(-2) ?? 'skill.md'}</strong>
+                                                    <small title={editor.path}>{editor.path}</small>
+                                                </div>
+                                                <span className={`poiesis-customize-view__dirty${editorDirty ? ' active' : ''}`}>
+                                                    {editorDirty ? '未保存' : '保存済み'}
+                                                </span>
+                                            </header>
+                                            <textarea
+                                                className='poiesis-customize-view__editor-input'
+                                                aria-label={`${editor.path}を編集`}
+                                                spellCheck={false}
+                                                value={editor.content}
+                                                onChange={event => this.setWorkspaceSkillEditorContent(event.currentTarget.value)}
+                                                onKeyDown={event => {
+                                                    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+                                                        event.preventDefault();
+                                                        void this.saveWorkspaceSkill();
+                                                    }
+                                                }}
+                                            />
+                                            {this.workspaceSkillEditorError && <p role='alert'>{this.workspaceSkillEditorError}</p>}
+                                            {this.workspaceSkillDiscardConfirmation && (
+                                                <div className='poiesis-customize-view__discard-confirm' role='group' aria-label='未保存の変更を破棄する確認'>
+                                                    <span>未保存の変更を破棄しますか？</span>
+                                                    <button type='button' onClick={() => this.cancelWorkspaceSkillClose()}>編集を続ける</button>
+                                                    <button type='button' className='danger' onClick={() => this.discardWorkspaceSkillChanges()}>破棄して閉じる</button>
+                                                </div>
+                                            )}
+                                            <footer>
+                                                <button
+                                                    type='button'
+                                                    disabled={editorDirty}
+                                                    title={editorDirty ? '先に変更を保存してください' : undefined}
+                                                    onClick={() => void this.openWorkspaceSkillInCode(editor.uri)}
+                                                >
+                                                    Codeで開く
+                                                </button>
+                                                <span />
+                                                <button type='button' onClick={() => this.requestCloseWorkspaceSkill()}>閉じる</button>
+                                                <button type='button' className='primary' disabled={!editorDirty || this.workspaceSkillSaving} onClick={() => void this.saveWorkspaceSkill()}>
+                                                    {this.workspaceSkillSaving ? '保存中…' : '保存'}
+                                                </button>
+                                            </footer>
+                                        </>
+                                    )}
+                                </section>
+                            )}
+
                             {this.newSkillFormVisible && (
-                                <form className='poiesis-customize-modal__new-skill' onSubmit={event => {
+                                <form className='poiesis-customize-view__new-skill' onSubmit={event => {
                                     event.preventDefault();
                                     void this.createWorkspaceSkill();
                                 }}>
@@ -1982,15 +2315,16 @@ export class AgentWindowWidget extends ReactWidget {
                                     </label>
                                     <label>
                                         <span>Kind</span>
-                                        <select
+                                        <PoiesisSelect
                                             value={this.newSkillKind}
-                                            aria-label='新しいSkillの種類'
+                                            ariaLabel='新しいSkillの種類'
                                             disabled={this.newSkillCreating}
-                                            onChange={event => this.setNewSkillKind(event.currentTarget.value as SkillBundleKind)}
-                                        >
-                                            <option value='agent'>Agent</option>
-                                            <option value='results'>Results</option>
-                                        </select>
+                                            options={[
+                                                { value: 'agent', label: 'Agent' },
+                                                { value: 'results', label: 'Results' }
+                                            ]}
+                                            onChange={value => this.setNewSkillKind(value as SkillBundleKind)}
+                                        />
                                     </label>
                                     <small>.poiesis/skills/&lt;skill-id&gt;/skill.md を作成します。</small>
                                     {this.newSkillError && <p role='alert'>{this.newSkillError}</p>}
@@ -2002,9 +2336,9 @@ export class AgentWindowWidget extends ReactWidget {
                                     </div>
                                 </form>
                             )}
-                        </section>
+                    </section>
 
-                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-customize-plugins'>
+                    <section className='poiesis-customize-view__section' aria-labelledby='poiesis-customize-plugins'>
                             <h2 id='poiesis-customize-plugins'>Plugins</h2>
                             <div className='poiesis-agent-window__customize-list'>
                                 <article className='poiesis-agent-window__customize-card'>
@@ -2013,13 +2347,10 @@ export class AgentWindowWidget extends ReactWidget {
                                     <span className='poiesis-agent-window__status-badge'>No additions</span>
                                 </article>
                             </div>
-                        </section>
-                    </div>
-                    <footer className='poiesis-settings-modal__footer poiesis-customize-modal__footer'>
-                        <span>User SkillはCodeで編集し、Ctrl+Sで保存します。</span>
-                    </footer>
-                </section>
-            </div>
+                    </section>
+                    <footer className='poiesis-customize-view__footer'>User Skillはこの画面で編集し、保存またはCtrl+Sで保存します。</footer>
+                </div>
+            </section>
         );
     }
 
@@ -2064,15 +2395,16 @@ export class AgentWindowWidget extends ReactWidget {
                     <div className='poiesis-settings-modal__model-field'>
                         <label>
                             <span>モデル</span>
-                            <select
-                                aria-label={`${label} モデル`}
+                            <PoiesisSelect
+                                ariaLabel={`${label} モデル`}
                                 value={modelSelection}
                                 disabled={selectedDetection.status !== 'found' || !selectedDetection.executableRoles.includes(role)}
-                                onChange={event => this.setRoleModelChoice(role, event.currentTarget.value)}
-                            >
-                                {selectedDetection.models.map(option => <option key={option.id || 'cli-default'} value={option.id}>{option.label}</option>)}
-                                <option value='__custom__'>カスタム…</option>
-                            </select>
+                                options={[
+                                    ...selectedDetection.models.map(option => ({ value: option.id, label: option.label })),
+                                    { value: '__custom__', label: 'カスタム…' }
+                                ]}
+                                onChange={value => this.setRoleModelChoice(role, value)}
+                            />
                         </label>
                         {customModel && (
                             <label>
@@ -2640,16 +2972,16 @@ export class AgentWindowWidget extends ReactWidget {
                                     </button>
                                     <span className='poiesis-agent-window__code-panel-spacer' />
                                     {this.codeTerminalWidgets.length > 0 && this.codeTerminalWidget && (
-                                        <select
+                                        <PoiesisSelect
                                             className='poiesis-agent-window__code-terminal-select'
-                                            aria-label='Active Terminal'
+                                            ariaLabel='Active Terminal'
                                             value={this.codeTerminalWidget.id}
-                                            onChange={event => this.selectCodeTerminalById(event.currentTarget.value)}
-                                        >
-                                            {this.codeTerminalWidgets.map(terminal => (
-                                                <option key={terminal.id} value={terminal.id}>{this.codeTerminalLabel(terminal)}</option>
-                                            ))}
-                                        </select>
+                                            options={this.codeTerminalWidgets.map(terminal => ({
+                                                value: terminal.id,
+                                                label: this.codeTerminalLabel(terminal)
+                                            }))}
+                                            onChange={value => this.selectCodeTerminalById(value)}
+                                        />
                                     )}
                                     <button type='button' title='New Terminal' aria-label='New Terminal' onClick={() => void this.createCodeTerminal()}>
                                         <span className='codicon codicon-add' aria-hidden='true' />
@@ -3624,6 +3956,25 @@ export class AgentWindowWidget extends ReactWidget {
         this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
     }
 
+    protected installWorkspaceSkillSaveShortcut(): void {
+        const onKeyDown = (event: KeyboardEvent): void => {
+            const savePressed = (event.ctrlKey || event.metaKey)
+                && !event.altKey
+                && !event.shiftKey
+                && (event.key.toLocaleLowerCase() === 's' || event.code === 'KeyS');
+            const editorFocused = event.target instanceof Element
+                && event.target.classList.contains('poiesis-customize-view__editor-input');
+            if (!savePressed || !this.customizeViewVisible || !this.workspaceSkillEditor || !editorFocused) {
+                return;
+            }
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            void this.saveWorkspaceSkill();
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
+    }
+
     protected installCodeTerminalShortcut(): void {
         const onKeyDown = (event: KeyboardEvent): void => {
             const togglePressed = (event.ctrlKey || event.metaKey)
@@ -3780,24 +4131,39 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected openCustomize(): void {
+        if (this.customizeViewVisible) {
+            this.closeCustomize();
+            return;
+        }
+        if (this.codeMode) {
+            this.detachCodeWidgets();
+            this.codeMode = false;
+        }
         this.settingsModalVisible = false;
         this.shortcutsOverlayVisible = false;
-        this.customizeModalVisible = true;
-        this.newSkillFormVisible = false;
-        this.newSkillError = undefined;
+        this.customizeViewVisible = true;
         this.update();
         void this.refreshWorkspaceSkills();
     }
 
     protected closeCustomize(update = true): void {
-        this.customizeModalVisible = false;
-        this.newSkillFormVisible = false;
-        this.newSkillId = '';
-        this.newSkillKind = 'agent';
-        this.newSkillError = undefined;
-        this.newSkillCreating = false;
+        this.customizeViewVisible = false;
         if (update) {
             this.update();
+        }
+    }
+
+    protected handleCustomizeEscape(): void {
+        if (this.workspaceSkillDiscardConfirmation) {
+            this.cancelWorkspaceSkillClose();
+        } else if (this.workspaceSkillEditor) {
+            this.requestCloseWorkspaceSkill();
+        } else if (this.selectedBuiltinSkill) {
+            this.selectBuiltinSkill(undefined);
+        } else if (this.newSkillFormVisible) {
+            this.hideNewSkillForm();
+        } else {
+            this.closeCustomize();
         }
     }
 
@@ -3837,6 +4203,107 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected setNewSkillKind(kind: SkillBundleKind): void {
         this.newSkillKind = kind;
+        this.update();
+    }
+
+    protected selectBuiltinSkill(skill: 'bundled-results' | 'ai-results' | undefined): void {
+        if (this.workspaceSkillEditor && this.workspaceSkillEditor.content !== this.workspaceSkillEditor.savedContent) {
+            this.workspaceSkillDiscardConfirmation = true;
+            this.update();
+            return;
+        }
+        this.workspaceSkillEditor = undefined;
+        this.workspaceSkillEditorError = undefined;
+        this.workspaceSkillDiscardConfirmation = false;
+        this.selectedBuiltinSkill = skill;
+        this.update();
+    }
+
+    protected async openWorkspaceSkillInline(skill: WorkspaceSkillDefinition): Promise<void> {
+        if (this.workspaceSkillEditor?.uri === skill.uri) {
+            return;
+        }
+        if (this.workspaceSkillEditor && this.workspaceSkillEditor.content !== this.workspaceSkillEditor.savedContent) {
+            this.workspaceSkillDiscardConfirmation = true;
+            this.update();
+            return;
+        }
+        this.selectedBuiltinSkill = undefined;
+        this.workspaceSkillEditor = undefined;
+        this.workspaceSkillEditorError = undefined;
+        this.workspaceSkillDiscardConfirmation = false;
+        this.workspaceSkillEditorLoading = true;
+        this.update();
+        try {
+            const uri = new URI(skill.uri);
+            const content = await this.fileService.read(uri);
+            this.workspaceSkillEditor = {
+                uri: skill.uri,
+                path: FileUri.fsPath(uri).replace(/\\/g, '/'),
+                content: content.value,
+                savedContent: content.value
+            };
+        } catch (error) {
+            this.workspaceSkillEditorError = `skill.mdを開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
+        } finally {
+            this.workspaceSkillEditorLoading = false;
+            this.update();
+        }
+    }
+
+    protected setWorkspaceSkillEditorContent(content: string): void {
+        if (!this.workspaceSkillEditor || this.workspaceSkillSaving) {
+            return;
+        }
+        this.workspaceSkillEditor.content = content;
+        this.workspaceSkillEditorError = undefined;
+        this.workspaceSkillDiscardConfirmation = false;
+        this.update();
+    }
+
+    protected async saveWorkspaceSkill(): Promise<void> {
+        const editor = this.workspaceSkillEditor;
+        if (!editor || this.workspaceSkillSaving || editor.content === editor.savedContent) {
+            return;
+        }
+        this.workspaceSkillSaving = true;
+        this.workspaceSkillEditorError = undefined;
+        this.update();
+        try {
+            await this.fileService.write(new URI(editor.uri), editor.content);
+            editor.savedContent = editor.content;
+            this.workspaceSkillDiscardConfirmation = false;
+            await this.refreshWorkspaceSkills();
+        } catch (error) {
+            this.workspaceSkillEditorError = `skill.mdを保存できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+        } finally {
+            this.workspaceSkillSaving = false;
+            this.update();
+        }
+    }
+
+    protected requestCloseWorkspaceSkill(): void {
+        if (!this.workspaceSkillEditor) {
+            return;
+        }
+        if (this.workspaceSkillEditor.content !== this.workspaceSkillEditor.savedContent) {
+            this.workspaceSkillDiscardConfirmation = true;
+        } else {
+            this.workspaceSkillEditor = undefined;
+            this.workspaceSkillEditorError = undefined;
+        }
+        this.update();
+    }
+
+    protected cancelWorkspaceSkillClose(): void {
+        this.workspaceSkillDiscardConfirmation = false;
+        this.update();
+    }
+
+    protected discardWorkspaceSkillChanges(): void {
+        this.workspaceSkillEditor = undefined;
+        this.workspaceSkillEditorError = undefined;
+        this.workspaceSkillDiscardConfirmation = false;
         this.update();
     }
 
@@ -3956,9 +4423,12 @@ export class AgentWindowWidget extends ReactWidget {
                 return;
             }
             await this.fileService.createFolder(skillDirectory);
-            await this.fileService.create(skillUri, this.workspaceSkillTemplate(id, this.newSkillKind));
+            const content = this.workspaceSkillTemplate(id, this.newSkillKind);
+            await this.fileService.create(skillUri, content);
             await this.refreshWorkspaceSkills();
-            await this.openWorkspaceSkill(skillUri.toString());
+            this.newSkillFormVisible = false;
+            this.newSkillId = '';
+            await this.openWorkspaceSkillInline(this.parseWorkspaceSkill(id, skillUri, content));
         } catch (error) {
             this.newSkillError = `Skillを作成できませんでした: ${error instanceof Error ? error.message : String(error)}`;
         } finally {
@@ -3971,18 +4441,19 @@ export class AgentWindowWidget extends ReactWidget {
         return `---\nname: ${id}\ndescription: このSkillの目的を記述してください\nkind: ${kind}\n---\n\n# ${id}\n\nここにSkillの指示を記述してください。\n`;
     }
 
-    protected async openWorkspaceSkill(rawUri: string): Promise<void> {
+    protected async openWorkspaceSkillInCode(rawUri: string): Promise<void> {
         this.closeCustomize(false);
         try {
             await this.openCodeFile(rawUri);
         } catch (error) {
-            this.customizeModalVisible = true;
-            this.workspaceSkillsError = `skill.mdをCodeで開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            this.customizeViewVisible = true;
+            this.workspaceSkillEditorError = `skill.mdをCodeで開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
             this.update();
         }
     }
 
     protected async openCodeFile(rawUri: string): Promise<void> {
+        this.closeCustomize(false);
         if (!this.codeMode) {
             this.ensureCodeFileIcons();
             this.codeMode = true;
@@ -4208,6 +4679,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (!session) {
             return;
         }
+        this.closeCustomize(false);
         this.selectedSessionId = sessionId;
         session.unreadTaskCompletion = false;
         session.updatedAt = Date.now();
@@ -4742,6 +5214,7 @@ export class AgentWindowWidget extends ReactWidget {
             this.detachCodeWidgets();
             this.codeMode = false;
         } else {
+            this.closeCustomize(false);
             this.ensureCodeFileIcons();
             this.codeMode = true;
             requestAnimationFrame(() => void this.ensureCodeTerminal());
@@ -4760,6 +5233,7 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async newChat(): Promise<void> {
         await this.sessionsInitialization;
+        this.closeCustomize(false);
         this.detachCodeWidgets();
         this.codeMode = false;
         this.sessionSearchVisible = false;
@@ -4909,6 +5383,7 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         this.detachCodeWidgets();
+        this.closeCustomize(false);
         this.codeMode = false;
         this.selectedSessionId = session.id;
         session.activeTab = 'agent';

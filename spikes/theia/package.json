@@ -25,6 +25,7 @@
     "smoke:resize": "node scripts/smoke-resize.mjs",
     "smoke:restored-new-chat": "node scripts/smoke-restored-new-chat.mjs",
     "smoke:round10": "node scripts/smoke-round10-browser.mjs",
+    "smoke:round13": "node scripts/smoke-round13-browser.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
     "start": "npm run start --workspace=@poiesis/theia-browser-app",
     "start:background": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-background.ps1",

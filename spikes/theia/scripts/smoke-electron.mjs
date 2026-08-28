@@ -190,25 +190,47 @@ try {
     if (lightweightElectron) {
         await clickByText(page, '.poiesis-agent-window__code-control', 'Code');
         await page.waitForSelector('.poiesis-agent-window__agent');
-        const modalSelector = settingsWindowOnly ? '.poiesis-settings-modal:not(.poiesis-customize-modal)' : '.poiesis-customize-modal';
+        const surfaceSelector = settingsWindowOnly ? '.poiesis-settings-modal' : '.poiesis-customize-view';
         if (settingsWindowOnly) {
             await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
         } else {
             await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
         }
-        await page.waitForSelector(modalSelector);
+        await page.waitForSelector(surfaceSelector);
+        if (customizeWindowOnly) {
+            await clickByText(page, '.poiesis-customize-view__text-button', '新しいSkill');
+            await page.click('[aria-label="新しいSkillの種類"]');
+            await page.waitForSelector('.poiesis-select__listbox');
+        }
         moveElectronWindow(startProcess.pid, 1024, 600);
         const modalWindowChecks = {
-            resized: await assertElectronLayout(page, 'agent', true)
+            resized: await assertElectronLayout(page, settingsWindowOnly ? 'agent' : 'customize', settingsWindowOnly)
         };
+        if (customizeWindowOnly) {
+            modalWindowChecks.dropdownResized = await assertPoiesisSelectUnclipped(page, 'Customize dropdown after resize');
+        }
         await page.click('.poiesis-window-controls__button[data-window-action="maximize"]');
         await page.waitForSelector('.poiesis-window-controls__button[data-window-action="restore"]');
-        modalWindowChecks.maximized = await assertElectronLayout(page, 'agent', true);
+        modalWindowChecks.maximized = await assertElectronLayout(page, settingsWindowOnly ? 'agent' : 'customize', settingsWindowOnly);
+        if (customizeWindowOnly) {
+            await page.click('[aria-label="新しいSkillの種類"]');
+            await page.waitForSelector('.poiesis-select__listbox');
+            modalWindowChecks.dropdownMaximized = await assertPoiesisSelectUnclipped(page, 'Customize dropdown after maximize');
+        }
         await page.click('.poiesis-window-controls__button[data-window-action="restore"]');
         await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
-        modalWindowChecks.restored = await assertElectronLayout(page, 'agent', true);
-        await page.keyboard.press('Escape');
-        await page.waitForFunction(selector => !document.querySelector(selector), {}, modalSelector);
+        modalWindowChecks.restored = await assertElectronLayout(page, settingsWindowOnly ? 'agent' : 'customize', settingsWindowOnly);
+        if (customizeWindowOnly) {
+            await page.click('[aria-label="新しいSkillの種類"]');
+            await page.waitForSelector('.poiesis-select__listbox');
+            modalWindowChecks.dropdownRestored = await assertPoiesisSelectUnclipped(page, 'Customize dropdown after restore');
+            await page.keyboard.press('Escape');
+            await page.waitForFunction(() => !document.querySelector('.poiesis-select__listbox'));
+            await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+        } else {
+            await page.keyboard.press('Escape');
+        }
+        await page.waitForFunction(selector => !document.querySelector(selector), {}, surfaceSelector);
         const serializedResult = JSON.stringify({
             userAgent,
             windowTitle,
@@ -233,7 +255,7 @@ try {
     resizeChecks.push(await assertElectronLayout(page, 'code'));
 
     await page.waitForSelector('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea', { timeout: uiTimeout });
-    assert(await page.$('.poiesis-agent-window__code-terminal-select[aria-label="Active Terminal"]'),
+    assert(await page.$('.poiesis-agent-window__code-terminal-select [aria-label="Active Terminal"]'),
         'Active Terminal selector is missing in Electron');
     const firstTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
     await page.focus('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea');
@@ -254,26 +276,24 @@ try {
         {}, terminalPanelHeight);
     await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="New Terminal"]', element => element.click());
     try {
-        await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__code-terminal-select option').length === 2);
+        await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-terminal-select')?.dataset.optionCount === '2');
     } catch (error) {
         const terminalState = await page.evaluate(() => ({
             activeHostIds: [...document.querySelectorAll('.poiesis-agent-window__code-terminal-host > *')]
                 .map(element => element.id),
-            selectedId: document.querySelector('.poiesis-agent-window__code-terminal-select')?.value,
-            options: [...document.querySelectorAll('.poiesis-agent-window__code-terminal-select option')]
-                .map(option => ({ value: option.value, label: option.textContent?.trim() }))
+            selectedId: document.querySelector('.poiesis-agent-window__code-terminal-select')?.dataset.value,
+            optionCount: document.querySelector('.poiesis-agent-window__code-terminal-select')?.dataset.optionCount
         }));
         throw new Error(`New Terminal was not registered in Electron: ${JSON.stringify(terminalState)}`, { cause: error });
     }
-    const secondTerminalId = await page.$$eval('.poiesis-agent-window__code-terminal-select option',
-        (options, id) => options.map(option => option.value).find(value => value !== id), firstTerminalId);
-    assert(secondTerminalId, 'New Terminal did not expose a distinct Electron terminal option');
+    const secondTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
+    assert(secondTerminalId && secondTerminalId !== firstTerminalId, 'New Terminal did not expose a distinct Electron terminal option');
     const activeTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
     if (activeTerminalId !== secondTerminalId) {
-        await page.select('.poiesis-agent-window__code-terminal-select', secondTerminalId);
+        await choosePoiesisSelect(page, '.poiesis-agent-window__code-terminal-select .poiesis-select__trigger', secondTerminalId);
     }
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
-    await page.select('.poiesis-agent-window__code-terminal-select', firstTerminalId);
+    await choosePoiesisSelect(page, '.poiesis-agent-window__code-terminal-select .poiesis-select__trigger', firstTerminalId);
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
     await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="Close Panel"]', element => element.click());
     await page.waitForSelector('.poiesis-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
@@ -288,10 +308,10 @@ try {
     await page.keyboard.press('Backquote');
     await page.keyboard.up('Control');
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
-    await page.select('.poiesis-agent-window__code-terminal-select', secondTerminalId);
+    await choosePoiesisSelect(page, '.poiesis-agent-window__code-terminal-select .poiesis-select__trigger', secondTerminalId);
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
     await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="Kill Terminal"]', element => element.click());
-    await page.waitForFunction(id => document.querySelectorAll('.poiesis-agent-window__code-terminal-select option').length === 1
+    await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-select')?.dataset.optionCount === '1'
         && document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
 
     while (await page.$('.poiesis-agent-window__code-editor-tab-close')) {
@@ -807,6 +827,8 @@ async function assertElectronLayout(page, expectedMode, expectSettings = false) 
             ? '.poiesis-agent-window__agent, .poiesis-agent-window__agent *'
             : mode === 'results'
                 ? '.poiesis-results, .poiesis-results *'
+                : mode === 'customize'
+                    ? '.poiesis-customize-view, .poiesis-customize-view *'
                 : [
                     '.poiesis-agent-window__header',
                     '.poiesis-agent-window__viewport',
@@ -840,6 +862,7 @@ async function assertElectronLayout(page, expectedMode, expectSettings = false) 
             workspace: rect('.poiesis-agent-window__workspace'),
             header: rect('.poiesis-agent-window__header'),
             appViewport: rect('.poiesis-agent-window__viewport'),
+            customize: rect('.poiesis-customize-view'),
             code: rect('.poiesis-agent-window__code'),
             settingsBackdrop: settingsOpen ? rect('.poiesis-settings-modal__backdrop') : undefined,
             settingsModal: settingsOpen ? rect('.poiesis-settings-modal') : undefined,
@@ -862,6 +885,12 @@ async function assertElectronLayout(page, expectedMode, expectSettings = false) 
             && snapshot.workspace?.right === snapshot.viewport.width
             && snapshot.header?.x === snapshot.workspace?.x && snapshot.header?.width === snapshot.workspace?.width,
         `Electron ${expectedMode} layout fragmented after resize: ${JSON.stringify(snapshot)}`);
+        if (expectedMode === 'customize') {
+            assert(snapshot.customize?.x === snapshot.appViewport?.x
+                && snapshot.customize?.width === snapshot.appViewport?.width
+                && snapshot.customize?.height === snapshot.appViewport?.height,
+            `Electron Customize did not fill the central viewport: ${JSON.stringify(snapshot)}`);
+        }
     }
     if (expectSettings) {
         assert(snapshot.settingsBackdrop?.x === 0 && snapshot.settingsBackdrop?.y === 0
@@ -872,6 +901,28 @@ async function assertElectronLayout(page, expectedMode, expectSettings = false) 
             && snapshot.settingsModal?.y + snapshot.settingsModal?.height <= snapshot.viewport.height,
         `Electron Settings layout fragmented after resize: ${JSON.stringify(snapshot)}`);
     }
+    return snapshot;
+}
+
+async function assertPoiesisSelectUnclipped(page, label) {
+    const snapshot = await page.$eval('.poiesis-select__listbox', element => {
+        const bounds = element.getBoundingClientRect();
+        const trigger = document.querySelector('[aria-label="新しいSkillの種類"]')?.getBoundingClientRect();
+        return {
+            viewport: { width: innerWidth, height: innerHeight },
+            left: bounds.left,
+            top: bounds.top,
+            right: bounds.right,
+            bottom: bounds.bottom,
+            width: bounds.width,
+            height: bounds.height,
+            inlineStyle: element.getAttribute('style'),
+            trigger: trigger ? { left: trigger.left, top: trigger.top, right: trigger.right, bottom: trigger.bottom } : undefined
+        };
+    });
+    assert(snapshot.left >= 0 && snapshot.top >= 0
+        && snapshot.right <= snapshot.viewport.width && snapshot.bottom <= snapshot.viewport.height,
+    `${label} clipped: ${JSON.stringify(snapshot)}`);
     return snapshot;
 }
 
@@ -903,6 +954,21 @@ async function clickByText(page, selector, text) {
         if (!(element instanceof HTMLElement)) throw new Error(`${currentText} was not clickable`);
         element.click();
     }, { selector, text });
+}
+
+async function choosePoiesisSelect(page, triggerSelector, value) {
+    await page.click(triggerSelector);
+    await page.waitForSelector('.poiesis-select__listbox');
+    const selected = await page.evaluate(nextValue => {
+        const option = [...document.querySelectorAll('.poiesis-select__option')]
+            .find(candidate => candidate.dataset.value === nextValue);
+        if (!(option instanceof HTMLElement)) return false;
+        option.click();
+        return true;
+    }, value);
+    assert(selected, `Poiesis select option was not found in Electron: ${value}`);
+    await page.waitForFunction((selector, nextValue) => document.querySelector(selector)?.dataset.value === nextValue,
+        {}, triggerSelector, value);
 }
 
 async function expandExplorerDirectory(page, label) {

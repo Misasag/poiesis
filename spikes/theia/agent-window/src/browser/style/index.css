@@ -2886,19 +2886,23 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-agent-window__code-terminal-select {
     align-self: center;
+    max-width: 180px;
+    min-width: 92px;
+}
+
+.poiesis-agent-window__code-terminal-select .poiesis-select__trigger {
     background: #181818;
-    border: 1px solid transparent;
+    border-color: transparent;
     border-radius: 3px;
     color: #cccccc;
     font-size: 12px;
     height: 24px;
-    max-width: 180px;
-    min-width: 92px;
-    padding: 0 22px 0 7px;
+    min-height: 24px;
+    padding: 0 5px 0 7px;
 }
 
-.poiesis-agent-window__code-terminal-select:hover,
-.poiesis-agent-window__code-terminal-select:focus-visible {
+.poiesis-agent-window__code-terminal-select .poiesis-select__trigger:hover,
+.poiesis-agent-window__code-terminal-select .poiesis-select__trigger:focus-visible {
     background: #252526;
     border-color: #454545;
     outline: none;
@@ -3543,7 +3547,14 @@ body.poiesis-code-file-pointer-drag * {
     font-weight: 650;
 }
 
-.poiesis-settings-modal__model-field select,
+.poiesis-settings-modal__model-field .poiesis-select,
+.poiesis-settings-modal__model-field input {
+    min-height: 33px;
+    min-width: 0;
+    width: 100%;
+}
+
+.poiesis-settings-modal__model-field .poiesis-select__trigger,
 .poiesis-settings-modal__model-field input {
     background: #181917;
     border: 1px solid #555750;
@@ -3551,19 +3562,17 @@ body.poiesis-code-file-pointer-drag * {
     color: var(--poiesis-chrome-text);
     font: inherit;
     min-height: 33px;
-    min-width: 0;
     padding: 5px 8px;
-    width: 100%;
 }
 
-.poiesis-settings-modal__model-field select:focus-visible,
+.poiesis-settings-modal__model-field .poiesis-select__trigger:focus-visible,
 .poiesis-settings-modal__model-field input:focus-visible {
     border-color: #c28b60;
     outline: 2px solid #c28b60;
     outline-offset: 1px;
 }
 
-.poiesis-settings-modal__model-field select:disabled {
+.poiesis-settings-modal__model-field .poiesis-select__trigger:disabled {
     cursor: default;
     opacity: .58;
 }
@@ -3733,11 +3742,177 @@ body.poiesis-code-file-pointer-drag * {
     text-align: center;
 }
 
-.poiesis-customize-modal {
-    width: min(760px, calc(100vw - 40px));
+.poiesis-select {
+    min-width: 0;
+    position: relative;
 }
 
-.poiesis-customize-modal__group-title {
+.poiesis-select__trigger {
+    align-items: center;
+    background: #20211f;
+    border: 1px solid var(--poiesis-control-border, #70726b);
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text, #efeee9);
+    cursor: pointer;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    min-height: 32px;
+    min-width: 0;
+    padding: 5px 8px;
+    width: 100%;
+}
+
+.poiesis-select__trigger > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-select__trigger > .codicon {
+    color: #a8aaa2;
+    flex: none;
+}
+
+.poiesis-select__trigger:hover:not(:disabled) {
+    background: #2b2d29;
+    border-color: #85877f;
+}
+
+.poiesis-select__trigger:disabled {
+    cursor: default;
+    opacity: .58;
+}
+
+.poiesis-select__listbox {
+    background: #242522;
+    border: 1px solid #676a62;
+    border-radius: 8px;
+    box-sizing: border-box;
+    box-shadow: 0 14px 34px rgb(0 0 0 / 42%);
+    color: #efeee9;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 4px;
+    position: fixed;
+    scrollbar-color: #666961 transparent;
+    scrollbar-width: thin;
+    z-index: 500;
+}
+
+.poiesis-select__listbox::-webkit-scrollbar {
+    width: 8px;
+}
+
+.poiesis-select__listbox::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.poiesis-select__listbox::-webkit-scrollbar-thumb {
+    background: #666961;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 999px;
+}
+
+.poiesis-select__option {
+    align-items: center;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    font-size: 13px;
+    gap: 8px;
+    justify-content: space-between;
+    min-height: 32px;
+    padding: 6px 8px;
+}
+
+.poiesis-select__option.active {
+    background: #383a35;
+    color: #fffef9;
+}
+
+.poiesis-select__option.disabled {
+    cursor: default;
+    opacity: .5;
+}
+
+.poiesis-select__option .codicon {
+    color: #d6a276;
+    flex: none;
+}
+
+.poiesis-customize-view {
+    height: 100%;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    width: 100%;
+}
+
+.poiesis-customize-view__page {
+    margin: 0 auto;
+    max-width: 920px;
+    padding: clamp(22px, 4vw, 44px) clamp(18px, 5vw, 54px) 48px;
+}
+
+.poiesis-customize-view__intro {
+    align-items: flex-start;
+    display: flex;
+    gap: 12px;
+    margin-bottom: 28px;
+}
+
+.poiesis-customize-view__intro > .codicon {
+    color: #c28b60;
+    font-size: 22px;
+    margin-top: 4px;
+}
+
+.poiesis-customize-view__intro h1,
+.poiesis-customize-view__intro p {
+    margin: 0;
+}
+
+.poiesis-customize-view__intro h1 {
+    font-size: 22px;
+}
+
+.poiesis-customize-view__intro p,
+.poiesis-customize-view__section-copy {
+    color: var(--poiesis-chrome-muted);
+    font-size: 13px;
+    line-height: 1.55;
+    margin: 5px 0 0;
+}
+
+.poiesis-customize-view__section {
+    border-top: 1px solid var(--poiesis-chrome-line);
+    padding: 24px 0;
+}
+
+.poiesis-customize-view__section-heading {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+}
+
+.poiesis-customize-view__section h2 {
+    font-size: 17px;
+    margin: 0;
+}
+
+.poiesis-customize-view__text-button {
+    background: #30322e;
+    border: 1px solid #60625b;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 7px 11px;
+}
+
+.poiesis-customize-view__group-title {
     color: #9ea099;
     font-size: 12px;
     font-weight: 700;
@@ -3745,7 +3920,7 @@ body.poiesis-code-file-pointer-drag * {
     margin: 7px 1px 0;
 }
 
-.poiesis-customize-modal__user-heading {
+.poiesis-customize-view__user-heading {
     align-items: baseline;
     display: flex;
     gap: 10px;
@@ -3753,7 +3928,7 @@ body.poiesis-code-file-pointer-drag * {
     margin-top: 7px;
 }
 
-.poiesis-customize-modal__user-heading > span {
+.poiesis-customize-view__user-heading > span {
     color: var(--poiesis-chrome-muted);
     font-size: 12px;
     overflow: hidden;
@@ -3761,7 +3936,7 @@ body.poiesis-code-file-pointer-drag * {
     white-space: nowrap;
 }
 
-.poiesis-customize-modal__state {
+.poiesis-customize-view__state {
     align-items: center;
     background: var(--poiesis-chrome-panel-raised);
     border: 1px dashed #454741;
@@ -3775,48 +3950,220 @@ body.poiesis-code-file-pointer-drag * {
     padding: 12px;
 }
 
-.poiesis-customize-modal__state.error {
+.poiesis-customize-view__state.error {
     border-color: #76504b;
     color: #e2aaa4;
 }
 
-.poiesis-customize-modal__skill-card {
+.poiesis-customize-view__skill-card {
     color: inherit;
     cursor: pointer;
     text-align: left;
     width: 100%;
 }
 
-.poiesis-customize-modal__skill-card:hover,
-.poiesis-customize-modal__skill-card:focus-visible {
+.poiesis-customize-view__skill-card:hover,
+.poiesis-customize-view__skill-card:focus-visible,
+.poiesis-customize-view__skill-card.selected {
     background: #292b27;
     border-color: #575a52;
     outline: none;
 }
 
-.poiesis-customize-modal__skill-card > div:nth-child(2) {
+.poiesis-customize-view__skill-card > div:nth-child(2) {
     min-width: 0;
 }
 
-.poiesis-customize-modal__skill-card p,
-.poiesis-customize-modal__skill-card small {
+.poiesis-customize-view__skill-card p,
+.poiesis-customize-view__skill-card small {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.poiesis-customize-modal__skill-card small {
+.poiesis-customize-view__skill-card small {
     color: #888a83;
     display: block;
     font-size: 12px;
     margin-top: 4px;
 }
 
-.poiesis-customize-modal__skill-card > .codicon:last-child {
+.poiesis-customize-view__skill-card > .codicon:last-child {
     color: #858780;
 }
 
-.poiesis-customize-modal__new-skill {
+.poiesis-agent-window__customize-header-actions {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+}
+
+.poiesis-agent-window__customize-header .poiesis-agent-window__context > small {
+    color: var(--poiesis-chrome-muted);
+    display: block;
+    font-size: 12px;
+}
+
+.poiesis-agent-window__customize-close,
+.poiesis-customize-view__builtin-preview header button {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: #aaaCA5;
+    cursor: pointer;
+    display: inline-flex;
+    height: 30px;
+    justify-content: center;
+    width: 30px;
+}
+
+.poiesis-agent-window__customize-close:hover,
+.poiesis-customize-view__builtin-preview header button:hover {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
+}
+
+.poiesis-customize-view__builtin-preview,
+.poiesis-customize-view__editor {
+    background: #20211f;
+    border: 1px solid #4d4f49;
+    border-radius: 10px;
+    margin-top: 12px;
+    padding: 13px;
+}
+
+.poiesis-customize-view__builtin-preview header,
+.poiesis-customize-view__editor > header {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+}
+
+.poiesis-customize-view__builtin-preview header > div,
+.poiesis-customize-view__editor > header > div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.poiesis-customize-view__builtin-preview header span,
+.poiesis-customize-view__editor header small {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-customize-view__builtin-preview p {
+    color: var(--poiesis-chrome-copy);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.poiesis-customize-view__builtin-preview pre {
+    background: #171816;
+    border: 1px solid var(--poiesis-chrome-line);
+    border-radius: 7px;
+    color: #c8c9c3;
+    font: 12px/1.55 var(--theia-code-font-family, monospace);
+    margin: 0;
+    overflow: auto;
+    padding: 10px;
+}
+
+.poiesis-customize-view__dirty {
+    background: #2b2c29;
+    border-radius: 999px;
+    color: #a1a39c;
+    flex: none;
+    font-size: 12px;
+    padding: 3px 8px;
+}
+
+.poiesis-customize-view__dirty.active {
+    background: #4a3728;
+    color: #f0c79f;
+}
+
+.poiesis-customize-view__editor-input {
+    background: #151614;
+    border: 1px solid #555750;
+    border-radius: 7px;
+    color: #e5e4de;
+    display: block;
+    font: 13px/1.55 var(--theia-code-font-family, "Cascadia Code", Consolas, monospace);
+    margin-top: 11px;
+    min-height: 300px;
+    padding: 12px;
+    resize: vertical;
+    tab-size: 2;
+    width: 100%;
+}
+
+.poiesis-customize-view__editor > p[role='alert'] {
+    color: #e2aaa4;
+    font-size: 12px;
+    margin: 8px 0 0;
+}
+
+.poiesis-customize-view__editor > footer {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.poiesis-customize-view__editor > footer > span {
+    flex: 1;
+}
+
+.poiesis-customize-view__editor button,
+.poiesis-customize-view__discard-confirm button {
+    background: #30322e;
+    border: 1px solid #62645d;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    cursor: pointer;
+    padding: 6px 10px;
+}
+
+.poiesis-customize-view__editor button.primary {
+    background: #d6d8d1;
+    border-color: #d6d8d1;
+    color: #20211f;
+}
+
+.poiesis-customize-view__editor button:disabled {
+    cursor: default;
+    opacity: .5;
+}
+
+.poiesis-customize-view__discard-confirm {
+    align-items: center;
+    background: #332722;
+    border: 1px solid #755349;
+    border-radius: 7px;
+    display: flex;
+    font-size: 12px;
+    gap: 7px;
+    margin-top: 9px;
+    padding: 8px 9px;
+}
+
+.poiesis-customize-view__discard-confirm > span {
+    color: #e6c2b5;
+    flex: 1;
+}
+
+.poiesis-customize-view__discard-confirm button.danger {
+    background: #68413a;
+    border-color: #8b5a51;
+}
+
+.poiesis-customize-view__new-skill {
     align-items: end;
     background: #20211f;
     border: 1px solid #4b4d47;
@@ -3827,19 +4174,19 @@ body.poiesis-code-file-pointer-drag * {
     padding: 12px;
 }
 
-.poiesis-customize-modal__new-skill label {
+.poiesis-customize-view__new-skill label {
     display: grid;
     gap: 5px;
 }
 
-.poiesis-customize-modal__new-skill label > span {
+.poiesis-customize-view__new-skill label > span {
     color: #b4b6ae;
     font-size: 12px;
     font-weight: 650;
 }
 
-.poiesis-customize-modal__new-skill input,
-.poiesis-customize-modal__new-skill select {
+.poiesis-customize-view__new-skill input,
+.poiesis-customize-view__new-skill .poiesis-select__trigger {
     background: #181917;
     border: 1px solid #555750;
     border-radius: 6px;
@@ -3848,30 +4195,30 @@ body.poiesis-code-file-pointer-drag * {
     padding: 5px 8px;
 }
 
-.poiesis-customize-modal__new-skill > small,
-.poiesis-customize-modal__new-skill > p,
-.poiesis-customize-modal__new-skill > div {
+.poiesis-customize-view__new-skill > small,
+.poiesis-customize-view__new-skill > p,
+.poiesis-customize-view__new-skill > div {
     grid-column: 1 / -1;
 }
 
-.poiesis-customize-modal__new-skill > small {
+.poiesis-customize-view__new-skill > small {
     color: var(--poiesis-chrome-muted);
     font-size: 12px;
 }
 
-.poiesis-customize-modal__new-skill > p {
+.poiesis-customize-view__new-skill > p {
     color: #e2aaa4;
     font-size: 12px;
     margin: 0;
 }
 
-.poiesis-customize-modal__new-skill > div {
+.poiesis-customize-view__new-skill > div {
     display: flex;
     gap: 7px;
     justify-content: flex-end;
 }
 
-.poiesis-customize-modal__new-skill button {
+.poiesis-customize-view__new-skill button {
     background: #30322e;
     border: 1px solid #555750;
     border-radius: 6px;
@@ -3880,18 +4227,18 @@ body.poiesis-code-file-pointer-drag * {
     padding: 6px 10px;
 }
 
-.poiesis-customize-modal__new-skill button.primary {
+.poiesis-customize-view__new-skill button.primary {
     background: #d6d8d1;
     border-color: #d6d8d1;
     color: #20211f;
 }
 
-.poiesis-customize-modal__new-skill button:disabled {
+.poiesis-customize-view__new-skill button:disabled {
     cursor: default;
     opacity: .55;
 }
 
-.poiesis-customize-modal__footer {
+.poiesis-customize-view__footer {
     color: var(--poiesis-chrome-muted);
     font-size: 12px;
 }
@@ -3935,7 +4282,7 @@ body.poiesis-code-file-pointer-drag * {
         padding: 22px 16px;
     }
 
-    .poiesis-customize-modal__new-skill {
+    .poiesis-customize-view__new-skill {
         grid-template-columns: minmax(0, 1fr);
     }
 }
