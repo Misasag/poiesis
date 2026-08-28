@@ -28,14 +28,14 @@ try {
 
     await clickText(page, '.poiesis-agent-window__tabs button', 'Agent');
     const agent = [];
-    for (const size of [{ width: 1100, height: 700 }, { width: 1500, height: 850 }]) {
+    for (const size of [{ width: 1024, height: 600 }, { width: 1280, height: 720 }, { width: 1500, height: 850 }]) {
         agent.push(await resizeAndAssert(page, size, 'agent'));
     }
     const composer = await stressAgentComposer(page);
 
     await clickText(page, '.poiesis-agent-window__tabs button', 'Results');
     await page.waitForSelector('.poiesis-results__document');
-    const results = await resizeAndAssert(page, { width: 1100, height: 700 }, 'results');
+    const results = await resizeAndAssert(page, { width: 1024, height: 600 }, 'results');
 
     await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
     await page.waitForSelector('.poiesis-settings-modal__backdrop');
@@ -46,7 +46,7 @@ try {
     await clickText(page, '.poiesis-agent-window__code-control', 'Code');
     await page.waitForSelector('.poiesis-agent-window__code');
     const code = [];
-    for (const size of [{ width: 1100, height: 700 }, { width: 1500, height: 850 }]) {
+    for (const size of [{ width: 1024, height: 600 }, { width: 1280, height: 720 }, { width: 1500, height: 850 }]) {
         code.push(await resizeAndAssert(page, size, 'code'));
     }
 
@@ -66,8 +66,9 @@ async function installResultsFixture(page) {
         localStorage.setItem(key, JSON.stringify({
             version: 1,
             selectedSessionId: 'resize-smoke-session',
-            railWidth: 258,
+            railWidth: 276,
             railCollapsed: false,
+            uiFontScale: 'large',
             sessions: [{
                 id: 'resize-smoke-session',
                 createdAt: timestamp - 60_000,
@@ -82,7 +83,22 @@ async function installResultsFixture(page) {
                 archived: false,
                 activeTab: 'results',
                 agentDraft: '',
-                messages: [{ id: 'resize-user', role: 'user', content: 'Resize smoke', complete: true }],
+                messages: [
+                    {
+                        id: 'resize-user',
+                        role: 'user',
+                        content: 'Resize smoke: keep this deliberately long message inside the fluid conversation column at the supported native minimum.',
+                        complete: true
+                    },
+                    {
+                        id: 'resize-error',
+                        role: 'agent',
+                        content: 'Agent execution failed before the provider could start.',
+                        complete: true,
+                        error: true,
+                        errorDetails: 'Usage: provider --workspace <path> --model <model>\nThe selected executable could not be started. This detail must wrap or scroll inside the center column.'
+                    }
+                ],
                 selectedResultsTaskId: taskId,
                 resultsDrafts: [],
                 tasks: [{
@@ -128,6 +144,47 @@ async function resizeAndAssert(page, size, mode, settingsOpen = false) {
                 position: getComputedStyle(element).position
             };
         };
+        const surfaceSelector = expectedMode === 'agent'
+            ? '.poiesis-agent-window__agent, .poiesis-agent-window__agent *'
+            : expectedMode === 'results'
+                ? '.poiesis-results, .poiesis-results *'
+                : [
+                    '.poiesis-agent-window__header',
+                    '.poiesis-agent-window__viewport',
+                    '.poiesis-agent-window__agent',
+                    '.poiesis-agent-window__messages',
+                    '.poiesis-agent-window__messages-inner',
+                    '.poiesis-agent-window__message',
+                    '.poiesis-agent-window__user-message',
+                    '.poiesis-agent-window__message-error',
+                    '.poiesis-agent-window__task-state',
+                    '.poiesis-agent-window__composer',
+                    '.poiesis-results',
+                    '.poiesis-results__main',
+                    '.poiesis-results__canvas',
+                    '.poiesis-results__composer',
+                    '.poiesis-results__task-switcher',
+                    '.poiesis-agent-window__code',
+                    '.poiesis-agent-window__code-activity',
+                    '.poiesis-agent-window__code-sidebar',
+                    '.poiesis-agent-window__code-editor',
+                    '.poiesis-agent-window__code-editor-stack',
+                    '.poiesis-agent-window__code-panel',
+                    '.poiesis-agent-window__code-status'
+                ].join(',');
+        const clipped = [...document.querySelectorAll(surfaceSelector)]
+            .filter(element => {
+                if (!(element instanceof HTMLElement)) return false;
+                const style = getComputedStyle(element);
+                if (style.display === 'none' || style.visibility === 'hidden') return false;
+                const bounds = element.getBoundingClientRect();
+                return bounds.width > 0 && (bounds.left < -1 || bounds.right > innerWidth + 1);
+            })
+            .map(element => ({
+                selector: element.className,
+                left: Math.round(element.getBoundingClientRect().left),
+                right: Math.round(element.getBoundingClientRect().right)
+            }));
         return {
             expectedMode,
             viewport: { width: innerWidth, height: innerHeight },
@@ -139,11 +196,13 @@ async function resizeAndAssert(page, size, mode, settingsOpen = false) {
             code: rect('.poiesis-agent-window__code'),
             settingsBackdrop: expectSettings ? rect('.poiesis-settings-modal__backdrop') : undefined,
             settingsModal: expectSettings ? rect('.poiesis-settings-modal') : undefined,
-            mode: document.querySelector('.poiesis-agent-window__content')?.getAttribute('data-mode')
+            mode: document.querySelector('.poiesis-agent-window__content')?.getAttribute('data-mode'),
+            clipped
         };
     }, mode, settingsOpen);
 
     assert(snapshot.mode === mode, `Expected ${mode} mode after resize, got ${snapshot.mode}`);
+    assert(snapshot.clipped.length === 0, `${mode} has horizontally clipped surfaces: ${JSON.stringify(snapshot)}`);
     assertRectFills(snapshot.content, snapshot.viewport, `${mode} content`);
     assert(snapshot.workspace && snapshot.header && snapshot.appViewport, `${mode} workspace structure is missing`);
     if (mode === 'code') {

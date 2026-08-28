@@ -50,7 +50,9 @@
         "reloadOnReconnect": true,
         "electron": {
           "windowOptions": {
-            "icon": "resources/poiesis.ico"
+            "icon": "resources/poiesis.ico",
+            "minWidth": 1024,
+            "minHeight": 600
           }
         },
         "preferences": {

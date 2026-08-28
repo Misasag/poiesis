@@ -99,6 +99,11 @@ try {
 
     const resizeChecks = [];
     const nativeWindowChecks = [];
+    moveElectronWindow(startProcess.pid, 1024, 600);
+    resizeChecks.push(await assertElectronLayout(page, 'agent'));
+    const minimumSizeCheck = assertNativeMinimumWindowSize(startProcess.pid);
+    assert(minimumSizeCheck.width >= 1024 && minimumSizeCheck.height >= 600,
+        `Electron allowed an OS resize below 1024x600: ${JSON.stringify(minimumSizeCheck)}`);
     moveElectronWindow(startProcess.pid, 1280, 720);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
     if (!modalWindowOnly) {
@@ -110,7 +115,7 @@ try {
         nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
             '.poiesis-agent-window__header', 'Agent header after maximize and restore'));
     }
-    moveElectronWindow(startProcess.pid, 1100, 700);
+    moveElectronWindow(startProcess.pid, 1024, 600);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
     moveElectronWindow(startProcess.pid, 1500, 850);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
@@ -120,6 +125,23 @@ try {
     await page.click('.poiesis-window-controls__button[data-window-action="restore"]');
     await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
+
+    const minimumSurfaceChecks = {};
+    if (settingsWindowOnly) {
+        await page.type('.poiesis-agent-window__composer textarea',
+            'Keep this deliberately long Electron smoke message inside the fluid conversation column at 1024 by 600.');
+        await page.click('.poiesis-agent-window__send');
+        await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__user-message').length === 1
+            && document.querySelectorAll('.poiesis-agent-window__message').length >= 1
+            && !document.querySelector('.poiesis-agent-window__message-state'));
+        await settleElectronWindowSize(page, startProcess.pid, 1024, 600);
+        minimumSurfaceChecks.agentWithMessages = await assertElectronLayout(page, 'agent');
+        await page.click('#poiesis-results-tab');
+        await page.waitForSelector('.poiesis-results');
+        minimumSurfaceChecks.results = await assertElectronLayout(page, 'results');
+        await page.click('#poiesis-agent-tab');
+        await page.waitForSelector('.poiesis-agent-window__agent');
+    }
 
     const headerInteractionChecks = [];
     if (windowDragOnly) {
@@ -157,6 +179,10 @@ try {
     assert(code.codeLuminoPanelCount === 0, 'Code reintroduced lm-Widget lm-Panel wrappers in Electron');
     assert(code.codeLuminoTabContainerCount === 0, 'Code reintroduced lm-TabBar-content-container in Electron');
     assert(!code.applicationShellVisible, 'Code mounted the Theia ApplicationShell in Electron');
+    if (settingsWindowOnly) {
+        await settleElectronWindowSize(page, startProcess.pid, 1024, 600);
+        minimumSurfaceChecks.code = await assertElectronLayout(page, 'code');
+    }
     if (!modalWindowOnly) {
         nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
             '.poiesis-agent-window__code-header', 'Code header'));
@@ -171,7 +197,7 @@ try {
             await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
         }
         await page.waitForSelector(modalSelector);
-        moveElectronWindow(startProcess.pid, 1100, 700);
+        moveElectronWindow(startProcess.pid, 1024, 600);
         const modalWindowChecks = {
             resized: await assertElectronLayout(page, 'agent', true)
         };
@@ -187,6 +213,8 @@ try {
             userAgent,
             windowTitle,
             nativeWindowChecks,
+            minimumSizeCheck,
+            minimumSurfaceChecks,
             headerInteractionChecks,
             modal: settingsWindowOnly ? 'settings' : 'customize',
             modalWindowChecks,
@@ -199,7 +227,7 @@ try {
                 : `ELECTRON_WINDOW_DRAG_SMOKE_RESULT=${serializedResult}`);
         break smokeRun;
     }
-    moveElectronWindow(startProcess.pid, 1100, 700);
+    moveElectronWindow(startProcess.pid, 1024, 600);
     resizeChecks.push(await assertElectronLayout(page, 'code'));
     moveElectronWindow(startProcess.pid, 1500, 850);
     resizeChecks.push(await assertElectronLayout(page, 'code'));
@@ -326,7 +354,7 @@ try {
 
     await page.$eval('.poiesis-agent-window__code-activity-footer button[aria-label="設定"]', element => element.click());
     await page.waitForSelector('.poiesis-settings-modal__backdrop', { timeout: uiTimeout });
-    moveElectronWindow(startProcess.pid, 1100, 700);
+    moveElectronWindow(startProcess.pid, 1024, 600);
     resizeChecks.push(await assertElectronLayout(page, 'code', true));
     moveElectronWindow(startProcess.pid, 1500, 850);
     resizeChecks.push(await assertElectronLayout(page, 'code', true));
@@ -374,7 +402,7 @@ try {
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code-editor-tab.active.dirty'));
     assert(readFileSync(scmFixturePath, 'utf8') === codeSaveFixtureBefore, 'Ctrl+S did not restore the Electron editor fixture');
 
-    console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify({ userAgent, windowTitle, initial, nativeWindowChecks, resizeChecks, code, editorTabs }, null, 2)}`);
+    console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify({ userAgent, windowTitle, initial, minimumSizeCheck, nativeWindowChecks, resizeChecks, code, editorTabs }, null, 2)}`);
     }
 } catch (error) {
     console.error(`Electron start log (tail):\n${startLog}`);
@@ -533,6 +561,71 @@ if (-not [PoiesisNativeWindow]::MoveWindow($poiesisProcess.MainWindowHandle, 40,
     if (result.status !== 0) {
         throw new Error(`Could not resize the Electron window: ${result.stderr || result.stdout}`);
     }
+}
+
+async function settleElectronWindowSize(page, pid, width, height) {
+    moveElectronWindow(pid, width, height);
+    await delay(350);
+    const settled = await page.evaluate(({ expectedWidth, expectedHeight }) =>
+        innerWidth === expectedWidth && innerHeight === expectedHeight, {
+        expectedWidth: width,
+        expectedHeight: height
+    });
+    if (!settled) moveElectronWindow(pid, width, height);
+    await page.waitForFunction(({ expectedWidth, expectedHeight }) =>
+        innerWidth === expectedWidth && innerHeight === expectedHeight, {}, {
+        expectedWidth: width,
+        expectedHeight: height
+    });
+}
+
+function assertNativeMinimumWindowSize(pid) {
+    if (process.platform !== 'win32') return { width: 1024, height: 600, skipped: true };
+    const script = `
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class PoiesisNativeMinimumWindow {
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+}
+'@
+$poiesisProcess = Get-Process -Id ${pid} -ErrorAction Stop
+$poiesisProcess.Refresh()
+$windowHandle = $poiesisProcess.MainWindowHandle
+if ($windowHandle -eq 0) { throw 'Poiesis main window handle was not found.' }
+$before = New-Object PoiesisNativeMinimumWindow+RECT
+if (-not [PoiesisNativeMinimumWindow]::GetWindowRect($windowHandle, [ref]$before)) { throw 'GetWindowRect failed.' }
+[void][PoiesisNativeMinimumWindow]::SetForegroundWindow($windowHandle)
+[void][PoiesisNativeMinimumWindow]::SetCursorPos($before.Right - 2, $before.Bottom - 2)
+Start-Sleep -Milliseconds 100
+[PoiesisNativeMinimumWindow]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+for ($step = 1; $step -le 8; $step++) {
+    [void][PoiesisNativeMinimumWindow]::SetCursorPos($before.Right - 2 - (40 * $step), $before.Bottom - 2 - (24 * $step))
+    Start-Sleep -Milliseconds 25
+}
+[PoiesisNativeMinimumWindow]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+Start-Sleep -Milliseconds 250
+$after = New-Object PoiesisNativeMinimumWindow+RECT
+if (-not [PoiesisNativeMinimumWindow]::GetWindowRect($windowHandle, [ref]$after)) { throw 'GetWindowRect failed after resize.' }
+[pscustomobject]@{
+    requestedWidth=($before.Right - $before.Left - 320)
+    requestedHeight=($before.Bottom - $before.Top - 192)
+    width=($after.Right - $after.Left)
+    height=($after.Bottom - $after.Top)
+} | ConvertTo-Json -Compress
+`;
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        encoding: 'utf8',
+        windowsHide: true
+    });
+    if (result.status !== 0) {
+        throw new Error(`Could not verify the Electron minimum window size: ${result.stderr || result.stdout}`);
+    }
+    return JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
 }
 
 async function assertNativeWindowDrag(page, pid, selector, label) {
@@ -710,6 +803,34 @@ async function assertElectronLayout(page, expectedMode, expectSettings = false) 
                 position: getComputedStyle(element).position
             };
         };
+        const surfaceSelector = mode === 'agent'
+            ? '.poiesis-agent-window__agent, .poiesis-agent-window__agent *'
+            : mode === 'results'
+                ? '.poiesis-results, .poiesis-results *'
+                : [
+                    '.poiesis-agent-window__header',
+                    '.poiesis-agent-window__viewport',
+                    '.poiesis-agent-window__code',
+                    '.poiesis-agent-window__code-activity',
+                    '.poiesis-agent-window__code-sidebar',
+                    '.poiesis-agent-window__code-editor',
+                    '.poiesis-agent-window__code-editor-stack',
+                    '.poiesis-agent-window__code-panel',
+                    '.poiesis-agent-window__code-status'
+                ].join(',');
+        const clipped = [...document.querySelectorAll(surfaceSelector)]
+            .filter(element => {
+                if (!(element instanceof HTMLElement)) return false;
+                const style = getComputedStyle(element);
+                if (style.display === 'none' || style.visibility === 'hidden') return false;
+                const bounds = element.getBoundingClientRect();
+                return bounds.width > 0 && (bounds.left < -1 || bounds.right > innerWidth + 1);
+            })
+            .map(element => ({
+                selector: element.className,
+                left: Math.round(element.getBoundingClientRect().left),
+                right: Math.round(element.getBoundingClientRect().right)
+            }));
         return {
             expectedMode: mode,
             viewport: { width: innerWidth, height: innerHeight },
@@ -721,10 +842,13 @@ async function assertElectronLayout(page, expectedMode, expectSettings = false) 
             appViewport: rect('.poiesis-agent-window__viewport'),
             code: rect('.poiesis-agent-window__code'),
             settingsBackdrop: settingsOpen ? rect('.poiesis-settings-modal__backdrop') : undefined,
-            settingsModal: settingsOpen ? rect('.poiesis-settings-modal') : undefined
+            settingsModal: settingsOpen ? rect('.poiesis-settings-modal') : undefined,
+            clipped
         };
     }, expectedMode, expectSettings);
     assert(snapshot.mode === expectedMode, `Electron resize changed ${expectedMode} mode to ${snapshot.mode}`);
+    assert(snapshot.clipped.length === 0,
+        `Electron ${expectedMode} has horizontally clipped surfaces: ${JSON.stringify(snapshot)}`);
     assert(snapshot.content?.x === 0 && snapshot.content?.y === 0
         && snapshot.content?.width === snapshot.viewport.width && snapshot.content?.height === snapshot.viewport.height,
     `Electron content did not fill the resized window: ${JSON.stringify(snapshot)}`);

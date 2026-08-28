@@ -55,6 +55,8 @@ assert.equal(electronPackage.theia.target, 'electron');
 assert.equal(electronPackage.dependencies['@theia/electron'], '1.73.1');
 assert.equal(electronPackage.devDependencies.electron, '39.8.7');
 assert.equal(electronPackage.theia.frontend.config.electron.windowOptions.icon, 'resources/poiesis.ico');
+assert.equal(electronPackage.theia.frontend.config.electron.windowOptions.minWidth, 1024);
+assert.equal(electronPackage.theia.frontend.config.electron.windowOptions.minHeight, 600);
 assert.equal(appIcon.readUInt16LE(2), 1, 'Poiesis app icon must be an ICO image');
 assert.equal(appIcon.readUInt16LE(4), 7, 'Poiesis app icon must contain seven sizes');
 assert.ok(iconBuildScript.includes('const sizes = [16, 24, 32, 48, 64, 128, 256]'), 'App icon build sizes are missing');
@@ -79,6 +81,8 @@ for (const marker of [
     'session rail top',
     'headerInteractionChecks',
     'modalWindowChecks',
+    'assertNativeMinimumWindowSize',
+    'Electron allowed an OS resize below 1024x600',
     'POIESIS_SETTINGS_WINDOW_ONLY',
     'ELECTRON_SETTINGS_WINDOW_SMOKE_RESULT=',
     'POIESIS_WINDOW_DRAG_ONLY',
@@ -937,6 +941,8 @@ assert.match(agentStyles, /\.poiesis-agent-window__message,[\s\S]*?font-size:\s*
     'Agent conversation text must be at least 14px');
 assert.ok(!/font-size:\s*(?:8|9|10|11)px;/.test(agentStyles), 'Poiesis chrome text must not fall below the 12px CSS floor');
 assert.ok(!agentStyles.includes('.poiesis-agent-window__composer-tools'), 'Deferred composer tool styles must not remain');
+assert.match(agentStyles, /@media \(max-width: 1279px\)[\s\S]*?\.poiesis-agent-window__composer\s*\{[^}]*width:\s*min\(680px, calc\(100% - 32px\)\);/,
+    'Agent composer must shrink fluidly between the native minimum and the design floor');
 for (const marker of [
     'EXAMPLE_AGENT_PROMPTS',
     'useExamplePrompt(session.id, prompt)',
