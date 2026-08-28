@@ -15,6 +15,13 @@ export interface ResultsQuestionTaskMetadata {
     [key: string]: unknown;
 }
 
+export interface ResultsQuestionHistoryEntry {
+    question: string;
+    answer?: string;
+    error?: string;
+    timestamp: string;
+}
+
 /**
  * The complete information boundary for one Results question.
  * Optional fields such as a short `history` can be added later without changing
@@ -28,6 +35,7 @@ export interface ResultsQuestionScope {
     taskMetadata: ResultsQuestionTaskMetadata;
     changeSetSummary: string;
     resultsHtml: string;
+    history?: ResultsQuestionHistoryEntry[];
 }
 
 export type ResultsQuestionErrorCode =

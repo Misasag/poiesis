@@ -163,8 +163,9 @@ for (const marker of [
     'providerId: this.resultsCli',
     'model: this.resultsModel.trim() || undefined',
     "status: 'sending'",
-    "status: 'answered'",
     "status: 'failed'",
+    'this.taskService.recordResultsQuestion(taskId',
+    'history: (task.resultsQuestions ?? []).slice(-6)',
     'question.length > 4_000',
     "currentNotice?.status === 'sending'"
 ]) {

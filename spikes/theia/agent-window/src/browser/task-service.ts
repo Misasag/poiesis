@@ -27,6 +27,13 @@ export interface TaskFailure {
     details?: string;
 }
 
+export interface TaskResultsQuestion {
+    question: string;
+    answer?: string;
+    error?: string;
+    timestamp: string;
+}
+
 export interface ExecutionTask {
     id: string;
     sessionId: string;
@@ -38,6 +45,7 @@ export interface ExecutionTask {
     baseline: TaskBaseline;
     changeSet?: TaskChangeSet;
     failure?: TaskFailure;
+    resultsQuestions?: TaskResultsQuestion[];
 }
 
 export interface TaskEvent {
@@ -48,6 +56,9 @@ export interface TaskEvent {
 /** Application-owned lifecycle and workspace change-set boundary. */
 @injectable()
 export class TaskService {
+    static readonly MAX_RESULTS_QUESTIONS_PER_TASK = 20;
+    static readonly MAX_RESULTS_QUESTION_CHARS = 4_000;
+    static readonly MAX_RESULTS_RESPONSE_CHARS = 12_000;
     protected readonly tasks = new Map<string, ExecutionTask>();
     protected readonly baselineCaptures = new Map<string, Promise<GitSnapshotCapture>>();
     protected readonly onDidChangeEmitter = new Emitter<TaskEvent>();
@@ -142,18 +153,54 @@ export class TaskService {
                 || !['running', 'completed', 'failed', 'cancelled'].includes(candidate.status)) {
                 continue;
             }
+            const resultsQuestions = Array.isArray(candidate.resultsQuestions)
+                ? candidate.resultsQuestions.flatMap(entry => {
+                    if (!entry
+                        || typeof entry.question !== 'string'
+                        || typeof entry.timestamp !== 'string'
+                        || entry.answer !== undefined && typeof entry.answer !== 'string'
+                        || entry.error !== undefined && typeof entry.error !== 'string'
+                        || !entry.answer && !entry.error) {
+                        return [];
+                    }
+                    return [{
+                        question: entry.question.slice(0, TaskService.MAX_RESULTS_QUESTION_CHARS),
+                        answer: entry.answer?.slice(0, TaskService.MAX_RESULTS_RESPONSE_CHARS),
+                        error: entry.error?.slice(0, TaskService.MAX_RESULTS_RESPONSE_CHARS),
+                        timestamp: entry.timestamp
+                    }];
+                }).slice(-TaskService.MAX_RESULTS_QUESTIONS_PER_TASK)
+                : [];
             const task: ExecutionTask = candidate.status === 'running'
                 ? {
                     ...candidate,
                     status: 'failed',
                     endedAt: new Date().toISOString(),
-                    failure: { summary: 'アプリ終了により中断されました' }
+                    failure: { summary: 'アプリ終了により中断されました' },
+                    resultsQuestions
                 }
-                : candidate;
+                : { ...candidate, resultsQuestions };
             this.tasks.set(task.id, task);
             restored.push(task);
         }
         return restored.sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+    }
+
+    recordResultsQuestion(taskId: string, entry: TaskResultsQuestion): TaskResultsQuestion | undefined {
+        const current = this.tasks.get(taskId);
+        if (!current || current.status === 'running') {
+            return undefined;
+        }
+        const stored: TaskResultsQuestion = {
+            question: entry.question.slice(0, TaskService.MAX_RESULTS_QUESTION_CHARS),
+            answer: entry.answer?.slice(0, TaskService.MAX_RESULTS_RESPONSE_CHARS),
+            error: entry.error?.slice(0, TaskService.MAX_RESULTS_RESPONSE_CHARS),
+            timestamp: entry.timestamp
+        };
+        const resultsQuestions = [...current.resultsQuestions ?? [], stored]
+            .slice(-TaskService.MAX_RESULTS_QUESTIONS_PER_TASK);
+        this.tasks.set(taskId, { ...current, resultsQuestions });
+        return stored;
     }
 
     remove(taskIds: Iterable<string>): void {

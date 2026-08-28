@@ -27,6 +27,8 @@ export const RESULTS_HTML_MAX_CHARS = 120_000;
 const QUESTION_MAX_CHARS = 4_000;
 const CHANGE_SET_MAX_CHARS = 40_000;
 const TASK_METADATA_MAX_CHARS = 20_000;
+const HISTORY_MAX_ITEMS = 6;
+const HISTORY_MAX_CHARS = 12_000;
 const STDERR_MAX_CHARS = 8_000;
 
 /** Runs every Results question in a new, read-only CLI process. */
@@ -204,7 +206,14 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             || typeof scope.taskMetadata !== 'object'
             || typeof scope.changeSetSummary !== 'string'
             || typeof scope.resultsHtml !== 'string'
-            || !scope.resultsHtml.trim()) {
+            || !scope.resultsHtml.trim()
+            || scope.history !== undefined && (!Array.isArray(scope.history) || scope.history.some(entry =>
+                !entry
+                || typeof entry.question !== 'string'
+                || typeof entry.timestamp !== 'string'
+                || entry.answer !== undefined && typeof entry.answer !== 'string'
+                || entry.error !== undefined && typeof entry.error !== 'string'
+            ))) {
             return {
                 code: 'invalid-scope',
                 message: '質問に必要な成果情報が揃っていません。'
@@ -231,6 +240,11 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             'Change Set summary'
         );
         const resultsHtml = this.truncate(scope.resultsHtml, RESULTS_HTML_MAX_CHARS, 'Results HTML');
+        const recentHistory = this.truncate(JSON.stringify(
+            (scope.history ?? []).slice(-HISTORY_MAX_ITEMS),
+            undefined,
+            2
+        ), HISTORY_MAX_CHARS, 'Recent Results Q&A history');
 
         return [
             'You answer short questions about one completed Poiesis execution result.',
@@ -246,6 +260,8 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             `Task metadata:\n${taskMetadata}`,
             '',
             `Change Set summary:\n${changeSetSummary}`,
+            '',
+            `Recent Results Q&A history:\n${recentHistory || 'No earlier questions.'}`,
             '',
             `Results HTML:\n${resultsHtml}`
         ].join('\n');

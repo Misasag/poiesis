@@ -29,7 +29,7 @@ import {
     KnownCliId
 } from '../common/agent-runtime-protocol';
 import { ResultsService, TaskResultDocument } from './results-skill';
-import { ExecutionTask, TaskService } from './task-service';
+import { ExecutionTask, TaskResultsQuestion, TaskService } from './task-service';
 import { getDesignVariant } from './design-variant';
 import { FolderExplorerService } from './folder-explorer-service';
 import { ResultsQuestionService } from './results-question-service';
@@ -70,6 +70,7 @@ interface ResultsNotice {
     question: string;
     status: 'sending' | 'answered' | 'failed';
     text: string;
+    historyTimestamp?: string;
 }
 
 interface WindowAgentSession {
@@ -234,6 +235,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected sessionsInitialized = false;
     protected sessionsInitialization: Promise<void> = Promise.resolve();
     protected windowStatePersistence: Promise<void> = Promise.resolve();
+    protected legacyErrorMessagesMigrated = false;
     protected readonly providerPreparationErrors = new Map<string, string>();
     protected selectedSessionId?: string;
     protected sessionSequence = 0;
@@ -2114,6 +2116,9 @@ export class AgentWindowWidget extends ReactWidget {
         const draft = selectedTask ? session?.resultsDrafts.get(selectedTask.id) ?? '' : '';
         const notice = selectedTask ? session?.resultsNotices.get(selectedTask.id) : undefined;
         const questionSending = notice?.status === 'sending';
+        const questionHistory = (selectedTask?.resultsQuestions ?? []).filter(entry =>
+            notice?.status !== 'failed' || entry.timestamp !== notice.historyTimestamp
+        );
 
         return (
             <section
@@ -2164,13 +2169,16 @@ export class AgentWindowWidget extends ReactWidget {
                         )}
                         {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error
                             && document?.status === 'ready' && document.html && (
-                            <iframe
-                                key={`${selectedTask?.id}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
-                                className='poiesis-results__document'
-                                title={`${selectedTask?.title}の成果`}
-                                sandbox=''
-                                srcDoc={this.resultsDocumentHtml(document.html)}
-                            />
+                            <div className='poiesis-results__canvas-scroll'>
+                                <iframe
+                                    key={`${selectedTask?.id}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
+                                    className='poiesis-results__document'
+                                    title={`${selectedTask?.title}の成果`}
+                                    sandbox=''
+                                    srcDoc={this.resultsDocumentHtml(document.html)}
+                                />
+                                {questionHistory.length > 0 && this.renderResultsQuestionHistory(selectedTask, questionHistory)}
+                            </div>
                         )}
                     </div>
                     {notice && (
@@ -2241,6 +2249,38 @@ export class AgentWindowWidget extends ReactWidget {
                 </aside>
             </section>
         );
+    }
+
+    protected renderResultsQuestionHistory(task: ExecutionTask, history: readonly TaskResultsQuestion[]): React.ReactNode {
+        return (
+            <section className='poiesis-results__qa-history' aria-label={`${task.title}への質問履歴`}>
+                <header><strong>この成果への質問</strong><span>{history.length}</span></header>
+                {history.map((entry, index) => (
+                    <article className={`poiesis-results__qa-entry${entry.error ? ' failed' : ''}`} key={`${entry.timestamp}-${index}`}>
+                        <div className='poiesis-results__qa-meta'>
+                            <strong>質問</strong>
+                            <time dateTime={entry.timestamp}>{this.questionTime(entry.timestamp)}</time>
+                        </div>
+                        <p>{entry.question}</p>
+                        <div className='poiesis-results__qa-response'>
+                            <strong>{entry.error ? '回答に失敗' : '回答'}</strong>
+                            <p>{entry.answer ?? entry.error}</p>
+                            {entry.error && (
+                                <button type='button' onClick={() => void this.submitResultsQuestion(task.id, entry.question)}>再試行</button>
+                            )}
+                        </div>
+                    </article>
+                ))}
+            </section>
+        );
+    }
+
+    protected questionTime(timestamp: string): string {
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) {
+            return '';
+        }
+        return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
     }
 
     protected renderCode(): React.ReactNode {
@@ -4185,7 +4225,10 @@ export class AgentWindowWidget extends ReactWidget {
                     message && typeof message.id === 'string'
                     && (message.role === 'user' || message.role === 'agent')
                     && typeof message.content === 'string'
-                ).map(message => ({ ...message, complete: Boolean(message.complete) })) : []).map(message => {
+                ).map(message => this.migrateLegacyCliErrorMessage({
+                    ...message,
+                    complete: Boolean(message.complete)
+                })) : []).map(message => {
                     const task = message.taskId ? taskById.get(message.taskId) : undefined;
                     if (message.complete || task?.status !== 'failed') {
                         return message;
@@ -4238,11 +4281,38 @@ export class AgentWindowWidget extends ReactWidget {
             this.railWidth = this.clampRailWidth(Number(state.railWidth) || DEFAULT_RAIL_WIDTH);
             this.railCollapsed = Boolean(state.railCollapsed);
             this.sessionSequence = this.sessions.length;
+            if (this.legacyErrorMessagesMigrated) {
+                await this.persistWindowState();
+            }
             return this.sessions.length > 0;
         } catch (error) {
             console.warn('[Poiesis] Could not restore Agent Window sessions.', error);
             return false;
         }
+    }
+
+    protected migrateLegacyCliErrorMessage(message: ChatMessage): ChatMessage {
+        if (message.role !== 'agent' || message.error || !message.complete) {
+            return message;
+        }
+        const content = message.content.trim();
+        const hasRawCliEvidence = /(?:^|\n)\s*(?:error|usage):|\b(?:codex|claude|grok|gemini)\b[^\n]{0,160}(?:exited with code|終了コード)|(?:unknown|unexpected|invalid)\s+(?:argument|option)/i.test(content);
+        const hasExplicitFailure = /実行に失敗しました。?\s*$/u.test(content)
+            || /(?:^|\n)\s*usage:\s*\S+/im.test(content)
+            || /\b(?:codex|claude|grok|gemini)\b[^\n]{0,160}(?:exited with code|終了コード)/i.test(content);
+        if (!hasRawCliEvidence || !hasExplicitFailure) {
+            return message;
+        }
+        this.legacyErrorMessagesMigrated = true;
+        const optionFailure = /(?:argument|option)|--[a-z][\w-]*/i.test(content);
+        return {
+            ...message,
+            content: optionFailure
+                ? 'Agent CLI の起動オプションに問題があり、実行に失敗しました。'
+                : 'Agent CLI が異常終了し、実行に失敗しました。',
+            error: true,
+            errorDetails: content
+        };
     }
 
     protected async loadGlobalWindowState(): Promise<Partial<PersistedAgentWindowState> | undefined> {
@@ -4627,21 +4697,44 @@ export class AgentWindowWidget extends ReactWidget {
                 changeSetSummary: task.changeSet?.diff
                     || task.changeSet?.error
                     || 'No changes were recorded.',
-                resultsHtml: document.html
+                resultsHtml: document.html,
+                history: (task.resultsQuestions ?? []).slice(-6)
             });
             if (result.status === 'answered') {
-                session.resultsNotices.set(taskId, { question, status: 'answered', text: result.answer });
+                this.taskService.recordResultsQuestion(taskId, {
+                    question,
+                    answer: result.answer,
+                    timestamp: new Date().toISOString()
+                });
+                session.resultsNotices.delete(taskId);
             } else if (result.status === 'failed') {
-                session.resultsNotices.set(taskId, { question, status: 'failed', text: result.error.message });
+                const history = this.taskService.recordResultsQuestion(taskId, {
+                    question,
+                    error: result.error.message,
+                    timestamp: new Date().toISOString()
+                });
+                session.resultsNotices.set(taskId, {
+                    question,
+                    status: 'failed',
+                    text: result.error.message,
+                    historyTimestamp: history?.timestamp
+                });
             } else {
                 session.resultsDrafts.set(taskId, question);
                 session.resultsNotices.delete(taskId);
             }
         } catch {
+            const text = '回答を作成できませんでした。もう一度お試しください。';
+            const history = this.taskService.recordResultsQuestion(taskId, {
+                question,
+                error: text,
+                timestamp: new Date().toISOString()
+            });
             session.resultsNotices.set(taskId, {
                 question,
                 status: 'failed',
-                text: '回答を作成できませんでした。もう一度お試しください。'
+                text,
+                historyTimestamp: history?.timestamp
             });
         }
         this.persistWindowState();
