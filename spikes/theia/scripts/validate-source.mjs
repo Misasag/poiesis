@@ -12,6 +12,7 @@ const electronPackage = JSON.parse(await read('electron-app/package.json'));
 const extensionPackage = JSON.parse(await read('agent-window/package.json'));
 const agentWidget = await read('agent-window/src/browser/agent-window-widget.tsx');
 const agentStyles = await read('agent-window/src/browser/style/index.css');
+const safeMarkdown = await read('agent-window/src/browser/safe-markdown.ts');
 const moduleSource = await read('agent-window/src/browser/agent-window-frontend-module.ts');
 const poiesisFrontendApplication = await read('agent-window/src/browser/poiesis-frontend-application.ts');
 const poiesisWorkspaceTrustService = await read('agent-window/src/browser/poiesis-workspace-trust-service.ts');
@@ -38,6 +39,7 @@ const knownCliRegistry = await read('agent-window/src/node/known-cli-registry.ts
 const skillBundleContract = await read('agent-window/src/common/skill-bundle.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
+const markdownSmoke = await read('scripts/smoke-markdown.mjs');
 const electronFrontendModule = await read('agent-window/src/electron-browser/agent-window-electron-frontend-module.ts');
 const electronWindowControls = await read('agent-window/src/electron-browser/window-controls.tsx');
 const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
@@ -557,7 +559,7 @@ for (const marker of [
     'submitResultsQuestion',
     'protected toggleCodeMode(): void',
     'protected renderCode(): React.ReactNode',
-    "import { FormatType, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser'",
+    "import { FormatType, open, OpenerService, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser'",
     'protected installCodeEditorSaveShortcut(): void',
     'saveReason: SaveReason.Manual',
     'const dirty = Saveable.isDirty(widget)',
@@ -676,11 +678,38 @@ for (const marker of [
     'await this.fileService.create(skillUri, this.workspaceSkillTemplate',
     'await this.openWorkspaceSkill(skillUri.toString())',
     'protected async openWorkspaceSkill(rawUri: string): Promise<void>',
+    'protected async openCodeFile(rawUri: string): Promise<void>',
+    "message.role === 'agent'",
+    'this.renderMarkdown(entry.answer ?? \'\')',
+    'renderSafeMarkdown(content, workspaceUri)',
+    'POIESIS_FILE_LINK_ATTRIBUTE',
+    'open(this.openerService, new URI(externalUri))',
     "value={session?.agentDraft ?? ''}",
     'onChange={event => this.setAgentDraft(session?.id, event.currentTarget.value)}',
     'onCompositionEnd={event => this.setAgentDraft(session?.id, event.currentTarget.value)}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
+}
+for (const marker of [
+    'html: false',
+    'linkify: false',
+    'DOMPurify.sanitize',
+    "ALLOWED_TAGS: ['a', 'blockquote', 'br', 'code'",
+    "workspace.isEqualOrParent(candidate, false)",
+    "replaceWithCode(anchor, decodedHref(href))",
+    'linkBareWorkspacePaths(host, workspace)'
+]) {
+    assert.ok(safeMarkdown.includes(marker), `Safe Agent markdown is missing ${marker}`);
+}
+assert.equal(rootPackage.scripts['smoke:markdown'], 'node scripts/smoke-markdown.mjs');
+for (const marker of [
+    'userStayedPlain',
+    'javascriptAnchorCount',
+    'outsideIsCode',
+    "getAttribute('data-poiesis-file-uri')",
+    "textContent?.trim() === 'SCRATCH-DEMO.md'"
+]) {
+    assert.ok(markdownSmoke.includes(marker), `Agent markdown smoke is missing ${marker}`);
 }
 assert.ok(!agentWidget.includes('Saveable.confirmSaveBeforeClose'), 'Editor close must use the Poiesis-owned confirmation dialog');
 assert.ok(!agentWidget.includes('branchPickerVisible'), 'The non-functional branch picker must not return');
@@ -917,6 +946,8 @@ for (const marker of [
     '.poiesis-agent-window__initializing',
     '.poiesis-agent-window__repository-picker',
     '.poiesis-agent-window__context-pill',
+    '.poiesis-markdown pre',
+    '.poiesis-markdown a:focus-visible',
     'align-self: end',
     '.poiesis-results__main',
     'grid-template-rows: minmax(0, 1fr) auto auto',

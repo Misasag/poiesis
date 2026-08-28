@@ -21,6 +21,7 @@
     "rebuild:electron": "npm run rebuild --workspace=@poiesis/theia-electron-app",
     "shots:design": "node scripts/capture-design-shots.mjs",
     "smoke:electron": "node scripts/smoke-electron.mjs",
+    "smoke:markdown": "node scripts/smoke-markdown.mjs",
     "smoke:resize": "node scripts/smoke-resize.mjs",
     "smoke:restored-new-chat": "node scripts/smoke-restored-new-chat.mjs",
     "smoke:round10": "node scripts/smoke-round10-browser.mjs",

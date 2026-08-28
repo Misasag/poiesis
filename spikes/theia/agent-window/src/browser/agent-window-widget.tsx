@@ -1,6 +1,6 @@
 import * as React from '@theia/core/shared/react';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { FormatType, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser';
+import { FormatType, open, OpenerService, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser';
 import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { CommandService, Disposable } from '@theia/core/lib/common';
@@ -36,6 +36,7 @@ import { ResultsQuestionService } from './results-question-service';
 import { GlobalStorageService } from './global-storage-service';
 import { ResultsGenerationContext } from './results-generation-context';
 import { SkillBundleKind } from '../common/skill-bundle';
+import { POIESIS_EXTERNAL_LINK_ATTRIBUTE, POIESIS_FILE_LINK_ATTRIBUTE, renderSafeMarkdown } from './safe-markdown';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
@@ -286,6 +287,7 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(TerminalService) protected readonly terminalService: TerminalService,
         @inject(WidgetManager) protected readonly widgetManager: WidgetManager,
         @inject(EditorManager) protected readonly editorManager: EditorManager,
+        @inject(OpenerService) protected readonly openerService: OpenerService,
         @inject(FileService) protected readonly fileService: FileService,
         @inject(CommandService) protected readonly commandService: CommandService,
         @inject(SaveableService) protected readonly saveableService: SaveableService,
@@ -1546,7 +1548,9 @@ export class AgentWindowWidget extends ReactWidget {
                                             <button type='button' onClick={() => void this.retryTask(message.taskId!)}>再試行</button>
                                         )}
                                     </div>
-                                ) : <p>{message.content || '…'}</p>}
+                                ) : message.role === 'agent'
+                                    ? this.renderMarkdown(message.content)
+                                    : <p>{message.content || '…'}</p>}
                                 {!message.complete && <small className='poiesis-agent-window__message-state'>作業中…</small>}
                             </section>
                         ))}
@@ -2263,7 +2267,8 @@ export class AgentWindowWidget extends ReactWidget {
                             role={notice.status === 'failed' ? 'alert' : 'status'}
                         >
                             <strong>{notice.status === 'sending' ? '回答を作成しています…' : notice.question}</strong>
-                            {notice.status !== 'sending' && <p>{notice.text}</p>}
+                            {notice.status === 'answered' && this.renderMarkdown(notice.text)}
+                            {notice.status === 'failed' && <p>{notice.text}</p>}
                             {notice.status === 'failed' && (
                                 <button type='button' onClick={() => void this.submitResultsQuestion(selectedTask!.id, notice.question)}>再試行</button>
                             )}
@@ -2340,7 +2345,9 @@ export class AgentWindowWidget extends ReactWidget {
                         <p>{entry.question}</p>
                         <div className='poiesis-results__qa-response'>
                             <strong>{entry.error ? '回答に失敗' : '回答'}</strong>
-                            <p>{entry.answer ?? entry.error}</p>
+                            {entry.error
+                                ? <p>{entry.error}</p>
+                                : this.renderMarkdown(entry.answer ?? '')}
                             {entry.error && (
                                 <button type='button' onClick={() => void this.submitResultsQuestion(task.id, entry.question)}>再試行</button>
                             )}
@@ -2357,6 +2364,55 @@ export class AgentWindowWidget extends ReactWidget {
             return '';
         }
         return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    }
+
+    protected renderMarkdown(content: string): React.ReactNode {
+        const workspaceUri = this.workspaceRoot()?.resource.toString();
+        return (
+            <div
+                className='poiesis-markdown'
+                onClick={event => this.handleMarkdownClick(event)}
+                dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(content, workspaceUri) }}
+            />
+        );
+    }
+
+    protected handleMarkdownClick(event: React.MouseEvent<HTMLElement>): void {
+        const target = event.target instanceof Element ? event.target.closest('a') : undefined;
+        if (!(target instanceof HTMLAnchorElement)) {
+            return;
+        }
+        const fileUri = target.getAttribute(POIESIS_FILE_LINK_ATTRIBUTE);
+        const externalUri = target.getAttribute(POIESIS_EXTERNAL_LINK_ATTRIBUTE);
+        if (!fileUri && !externalUri) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (fileUri) {
+            try {
+                void this.openMarkdownFile(decodeURIComponent(fileUri));
+            } catch {
+                return;
+            }
+        } else if (externalUri) {
+            void open(this.openerService, new URI(externalUri)).catch(error => {
+                console.error(`Poiesis could not open the external Agent link: ${externalUri}`, error);
+            });
+        }
+    }
+
+    protected async openMarkdownFile(rawUri: string): Promise<void> {
+        try {
+            const workspace = this.workspaceRoot()?.resource.normalizePath();
+            const file = new URI(rawUri).withQuery('').withFragment('').normalizePath();
+            if (!workspace?.isEqualOrParent(file, false) || !await this.fileService.exists(file)) {
+                return;
+            }
+            await this.openCodeFile(file.toString());
+        } catch (error) {
+            console.error(`Poiesis could not open the Agent file link: ${rawUri}`, error);
+        }
     }
 
     protected renderCode(): React.ReactNode {
@@ -3917,6 +3973,16 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async openWorkspaceSkill(rawUri: string): Promise<void> {
         this.closeCustomize(false);
+        try {
+            await this.openCodeFile(rawUri);
+        } catch (error) {
+            this.customizeModalVisible = true;
+            this.workspaceSkillsError = `skill.mdをCodeで開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            this.update();
+        }
+    }
+
+    protected async openCodeFile(rawUri: string): Promise<void> {
         if (!this.codeMode) {
             this.ensureCodeFileIcons();
             this.codeMode = true;
@@ -3926,13 +3992,7 @@ export class AgentWindowWidget extends ReactWidget {
         } else {
             this.update();
         }
-        try {
-            await this.openDraggedCodeFile(rawUri);
-        } catch (error) {
-            this.customizeModalVisible = true;
-            this.workspaceSkillsError = `skill.mdをCodeで開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
-            this.update();
-        }
+        await this.openDraggedCodeFile(rawUri);
     }
 
     protected async openTheiaSettings(): Promise<void> {

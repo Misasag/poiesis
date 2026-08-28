@@ -4093,6 +4093,121 @@ body.poiesis-code-file-pointer-drag * {
     width: min(360px, 78vw);
 }
 
+.poiesis-markdown {
+    font-size: inherit;
+    line-height: 1.55;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.poiesis-markdown > :first-child {
+    margin-top: 0;
+}
+
+.poiesis-markdown > :last-child {
+    margin-bottom: 0;
+}
+
+.poiesis-markdown p,
+.poiesis-results__qa-response .poiesis-markdown p,
+.poiesis-results__answer .poiesis-markdown p {
+    margin: 0 0 8px;
+    white-space: normal;
+}
+
+.poiesis-markdown h1,
+.poiesis-markdown h2,
+.poiesis-markdown h3,
+.poiesis-markdown h4,
+.poiesis-markdown h5,
+.poiesis-markdown h6 {
+    color: var(--poiesis-chrome-text);
+    font-size: 1em;
+    font-weight: 650;
+    line-height: 1.4;
+    margin: 12px 0 6px;
+}
+
+.poiesis-markdown ul,
+.poiesis-markdown ol {
+    margin: 7px 0;
+    padding-left: 1.5em;
+}
+
+.poiesis-markdown li + li {
+    margin-top: 3px;
+}
+
+.poiesis-markdown a {
+    color: #d7a87d;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: rgb(215 168 125 / 55%);
+    text-underline-offset: 2px;
+}
+
+.poiesis-results .poiesis-markdown a {
+    color: #aebee2;
+    text-decoration-color: rgb(174 190 226 / 55%);
+}
+
+.poiesis-markdown a:hover {
+    color: #f0c49e;
+    text-decoration-color: currentColor;
+}
+
+.poiesis-markdown a:focus-visible {
+    border-radius: 2px;
+    outline: 2px solid var(--poiesis-focus-ring, #c28b60);
+    outline-offset: 2px;
+}
+
+.poiesis-markdown code {
+    background: #292a27;
+    border: 1px solid var(--poiesis-chrome-line);
+    border-radius: 4px;
+    color: #ebe7dd;
+    font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: .92em;
+    padding: 1px 4px;
+}
+
+.poiesis-markdown pre {
+    background: #131412;
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 7px;
+    margin: 9px 0;
+    max-width: 100%;
+    overflow: auto;
+    padding: 10px 11px;
+    white-space: pre;
+}
+
+.poiesis-markdown pre code {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: #deddd7;
+    display: block;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 0;
+    white-space: inherit;
+}
+
+.poiesis-markdown blockquote {
+    border-left: 2px solid var(--poiesis-chrome-line-strong);
+    color: var(--poiesis-chrome-muted);
+    margin: 8px 0;
+    padding-left: 10px;
+}
+
+.poiesis-markdown hr {
+    border: 0;
+    border-top: 1px solid var(--poiesis-chrome-line);
+    margin: 11px 0;
+}
+
 .poiesis-agent-window__workspace-picker,
 .poiesis-agent-window__repository-picker {
     bottom: auto;
