@@ -31,6 +31,7 @@ try {
     for (const size of [{ width: 1100, height: 700 }, { width: 1500, height: 850 }]) {
         agent.push(await resizeAndAssert(page, size, 'agent'));
     }
+    const composer = await stressAgentComposer(page);
 
     await clickText(page, '.poiesis-agent-window__tabs button', 'Results');
     await page.waitForSelector('.poiesis-results__document');
@@ -49,7 +50,7 @@ try {
         code.push(await resizeAndAssert(page, size, 'code'));
     }
 
-    console.log(`RESIZE_SMOKE_RESULT=${JSON.stringify({ agent, results, settings, code }, null, 2)}`);
+    console.log(`RESIZE_SMOKE_RESULT=${JSON.stringify({ agent, composer, results, settings, code }, null, 2)}`);
 } finally {
     await browser.close();
 }
@@ -169,6 +170,36 @@ async function resizeAndAssert(page, size, mode, settingsOpen = false) {
         `Settings modal overflowed after resize: ${JSON.stringify(snapshot)}`);
     }
     return snapshot;
+}
+
+async function stressAgentComposer(page) {
+    const selector = '[aria-label="Agent へのメッセージ"]';
+    const expected = 'SCRATCH-DEMO.md の末尾に「更新履歴」という見出しと、今日の日付の1行を追加してください。他のファイルは変更しないでください。';
+    await page.focus(selector);
+    await page.keyboard.down('Control');
+    await page.keyboard.press('A');
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Backspace');
+    await Promise.all([
+        page.keyboard.type(expected, { delay: 1 }),
+        (async () => {
+            for (const size of [{ width: 1100, height: 700 }, { width: 1500, height: 850 }, { width: 1100, height: 700 }]) {
+                await page.setViewport(size);
+                await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+            }
+        })()
+    ]);
+    const value = await page.$eval(selector, input => input.value);
+    assert(value === expected, `Composer value was corrupted while resize renders interleaved with CDP typing: ${JSON.stringify(value)}`);
+    await page.waitForFunction(expectedDraft => {
+        const state = JSON.parse(localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1') ?? '{}');
+        return state.sessions?.find(session => session.id === state.selectedSessionId)?.agentDraft === expectedDraft;
+    }, {}, expected);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForSelector(selector);
+    const restored = await page.$eval(selector, input => input.value);
+    assert(restored === expected, `Persisted composer draft was corrupted: ${JSON.stringify(restored)}`);
+    return { length: expected.length, valueMatches: value === expected, restoredMatches: restored === expected };
 }
 
 function assertRectFills(rect, viewport, label) {

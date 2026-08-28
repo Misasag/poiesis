@@ -14,6 +14,7 @@ const profile = resolve(process.cwd(), '.run', `restored-new-chat-${Date.now()}`
 const url = process.env.THEIA_SMOKE_UI_URL ?? 'http://127.0.0.1:3000';
 const timeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 240_000);
 const expectPreSpawnFailure = process.env.POIESIS_EXPECT_PRESPAWN_FAILURE === '1';
+const provider = process.env.POIESIS_SMOKE_PROVIDER === 'claude' ? 'claude' : 'codex';
 let browser;
 
 try {
@@ -22,7 +23,7 @@ try {
         headless: true,
         userDataDir: profile,
         protocolTimeout: 300_000,
-        defaultViewport: { width: 1280, height: 720 },
+        defaultViewport: { width: 1500, height: 850 },
         args: ['--no-sandbox', '--disable-gpu', '--no-first-run']
     });
     const page = await browser.newPage();
@@ -80,6 +81,18 @@ try {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#poiesis-window-host .poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
     await page.waitForSelector('.poiesis-results__document');
+    if (provider === 'claude') {
+        await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
+        await page.waitForSelector('.poiesis-settings-modal');
+        for (const role of ['agent', 'results']) {
+            const selector = `input[name="poiesis-${role}-cli"][value="claude"]`;
+            await page.waitForFunction(currentSelector => !document.querySelector(currentSelector)?.disabled, {}, selector);
+            await page.$eval(selector, input => input.click());
+            await page.waitForFunction(currentSelector => document.querySelector(currentSelector)?.checked, {}, selector);
+        }
+        await page.click('.poiesis-settings-modal__header button[aria-label="設定を閉じる"]');
+        await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
+    }
     await clickText(page, '.poiesis-agent-window__tabs button', 'Agent');
     await clickText(page, '.poiesis-agent-window__rail-action', 'New Chat');
     await page.waitForSelector('.poiesis-agent-window__new-agent-empty');
@@ -177,19 +190,19 @@ try {
     assert(restored.titles.includes(agentState.title), 'New Chat session disappeared after reload.');
     assert(expectPreSpawnFailure ? restored.taskLabel?.includes('失敗') : restored.taskLabel?.includes('完了'),
         `Task state disappeared after reload: ${restored.taskLabel}`);
-    console.log(`RESTORED_NEW_CHAT_SMOKE_RESULT=${JSON.stringify({ expectPreSpawnFailure, agentState, taskLabel, restored }, null, 2)}`);
+    console.log(`RESTORED_NEW_CHAT_SMOKE_RESULT=${JSON.stringify({ provider, expectPreSpawnFailure, agentState, taskLabel, restored }, null, 2)}`);
 } finally {
     if (browser) await browser.close().catch(() => undefined);
     writeFileSync(fixture, original, 'utf8');
 }
 
 async function fill(page, value) {
-    await page.$eval('[aria-label="Agent へのメッセージ"]', (input, nextValue) => {
-        input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: nextValue }));
-        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(input, nextValue);
-        input.dispatchEvent(new InputEvent('input', { bubbles: true, data: nextValue, inputType: 'insertText', isComposing: true }));
-        input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: nextValue }));
-    }, value);
+    await page.focus('[aria-label="Agent へのメッセージ"]');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('A');
+    await page.keyboard.up('Control');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type(value, { delay: 1 });
     await page.waitForFunction(() => !document.querySelector('[aria-label="Agent へ送信"]')?.disabled);
 }
 

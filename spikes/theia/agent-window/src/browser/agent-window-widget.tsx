@@ -219,7 +219,6 @@ export class AgentWindowWidget extends ReactWidget {
     protected readonly expandedWorkspaceGroups = new Set<string>();
     protected sessionSearchInput?: HTMLInputElement;
     protected agentComposerInput?: HTMLTextAreaElement;
-    protected agentSendButton?: HTMLButtonElement;
     protected workspacePickerVisible = false;
     protected workspacePickerAnchor?: PickerAnchor;
     protected workspaceSearchQuery = '';
@@ -1476,13 +1475,13 @@ export class AgentWindowWidget extends ReactWidget {
                     <textarea
                         key={session?.id ?? 'no-session'}
                         ref={input => { this.agentComposerInput = input ?? undefined; }}
-                        defaultValue={session?.agentDraft ?? ''}
+                        value={session?.agentDraft ?? ''}
                         placeholder='次の変更内容や質問を入力…'
                         aria-label='Agent へのメッセージ'
                         rows={2}
                         disabled={!session || Boolean(runningTask)}
-                        onChange={event => this.setAgentDraft(event.currentTarget.value)}
-                        onCompositionEnd={event => this.setAgentDraft(event.currentTarget.value)}
+                        onChange={event => this.setAgentDraft(session?.id, event.currentTarget.value)}
+                        onCompositionEnd={event => this.setAgentDraft(session?.id, event.currentTarget.value)}
                         onKeyDown={event => {
                             if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                                 event.preventDefault();
@@ -1493,7 +1492,6 @@ export class AgentWindowWidget extends ReactWidget {
                     <div className='poiesis-agent-window__composer-footer'>
                         {session && newAgent && this.renderNewAgentContext(session)}
                         <button
-                            ref={button => { this.agentSendButton = button ?? undefined; }}
                             className='poiesis-agent-window__send'
                             type='button'
                             aria-label='Agent へ送信'
@@ -3911,9 +3909,6 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         session.agentDraft = '';
-        if (this.agentComposerInput) {
-            this.agentComposerInput.value = '';
-        }
         const sentAt = Date.now();
         session.messages.push({ id: `user-${sentAt}`, role: 'user', content, complete: true });
         session.updatedAt = sentAt;
@@ -3922,8 +3917,8 @@ export class AgentWindowWidget extends ReactWidget {
             session.title = this.titleForSession(content);
             session.hasUserMessage = true;
         }
-        await this.persistWindowState();
         this.update();
+        await this.persistWindowState();
         if (session.agentSession?.providerId && session.agentSession.providerId !== this.agentCli) {
             session.agentSession = undefined;
         }
@@ -4087,15 +4082,14 @@ export class AgentWindowWidget extends ReactWidget {
         requestAnimationFrame(() => this.agentComposerInput?.focus());
     }
 
-    protected setAgentDraft(value: string): void {
+    protected setAgentDraft(sessionId: string | undefined, value: string): void {
         const session = this.selectedSession();
-        if (session) {
-            session.agentDraft = value;
-            this.persistWindowState();
+        if (!sessionId || session?.id !== sessionId) {
+            return;
         }
-        if (this.agentSendButton) {
-            this.agentSendButton.disabled = !session?.workspaceUri || Boolean(this.runningTask(session)) || !value.trim();
-        }
+        session.agentDraft = value;
+        this.persistWindowState();
+        this.update();
     }
 
     protected selectResultsTask(taskId: string): void {

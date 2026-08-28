@@ -596,7 +596,9 @@ for (const marker of [
     '<strong>AI Results</strong>',
     "aria-label='Results skillを有効化'",
     'this.customizationService.setSkillEnabled',
-    'onCompositionEnd={event => this.setAgentDraft(event.currentTarget.value)}'
+    "value={session?.agentDraft ?? ''}",
+    'onChange={event => this.setAgentDraft(session?.id, event.currentTarget.value)}',
+    'onCompositionEnd={event => this.setAgentDraft(session?.id, event.currentTarget.value)}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
@@ -630,6 +632,7 @@ for (const marker of [
 ]) {
     assert.ok(agentWidget.includes(marker), `Session artifact persistence is missing ${marker}`);
 }
+assert.ok(!agentWidget.includes("defaultValue={session?.agentDraft ?? ''}"), 'Agent composer must have one controlled source of truth');
 assert.ok(!agentWidget.includes('window.localStorage'), 'The Agent widget must not write browser storage directly');
 assert.ok(!agentWidget.includes('sessionStorage'), 'Window sessions must survive a browser session');
 for (const marker of [
