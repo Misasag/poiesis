@@ -66,6 +66,13 @@ for (const marker of [
     'scm-history-graph-row',
     "'Stage Changes'",
     "'Unstage Changes'",
+    'assertNativeWindowDrag',
+    'assertNativeHeaderDoubleClick',
+    'PoiesisNativeInput',
+    'session rail top',
+    'headerInteractionChecks',
+    'POIESIS_WINDOW_DRAG_ONLY',
+    'ELECTRON_WINDOW_DRAG_SMOKE_RESULT=',
     'dragExplorerFileToTabs',
     'ELECTRON_SMOKE_RESULT='
 ]) {
@@ -127,8 +134,12 @@ for (const marker of [
 assert.ok(!electronWindowControls.includes("require('electron')"), 'Window controls must use Theia electron APIs');
 for (const marker of [
     '.poiesis-agent-window__header {',
+    '.poiesis-agent-window__rail-top,',
+    '\n    app-region: drag;',
     '-webkit-app-region: drag;',
+    'user-select: none;',
     "[role='tab']",
+    '\n    app-region: no-drag;',
     '-webkit-app-region: no-drag;',
     'padding-right: 154px;',
     '.poiesis-window-controls__close:hover',

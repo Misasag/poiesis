@@ -1,5 +1,14 @@
-.poiesis-agent-window__header {
+.poiesis-agent-window__header,
+.poiesis-agent-window__header *,
+.poiesis-agent-window__rail-top,
+.poiesis-agent-window__rail-top * {
+    app-region: drag;
     -webkit-app-region: drag;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.poiesis-agent-window__header {
     padding-right: 154px;
 }
 
@@ -8,16 +17,34 @@
 }
 
 .poiesis-agent-window__header button,
+.poiesis-agent-window__header button *,
 .poiesis-agent-window__header select,
+.poiesis-agent-window__header select *,
 .poiesis-agent-window__header input,
+.poiesis-agent-window__header input *,
 .poiesis-agent-window__header textarea,
+.poiesis-agent-window__header textarea *,
 .poiesis-agent-window__header [role='tab'],
+.poiesis-agent-window__header [role='tab'] *,
 .poiesis-agent-window__header a,
+.poiesis-agent-window__header a *,
 .poiesis-agent-window__header [contenteditable='true'] {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+}
+
+.poiesis-agent-window__rail-top button,
+.poiesis-agent-window__rail-top button *,
+.poiesis-agent-window__rail-top input,
+.poiesis-agent-window__rail-top input *,
+.poiesis-agent-window__rail-top textarea,
+.poiesis-agent-window__rail-top textarea * {
+    app-region: no-drag;
     -webkit-app-region: no-drag;
 }
 
 .poiesis-window-controls {
+    app-region: no-drag;
     -webkit-app-region: no-drag;
     align-items: stretch;
     color: #d8d9d3;
@@ -30,6 +57,7 @@
 }
 
 .poiesis-window-controls__button {
+    app-region: no-drag;
     -webkit-app-region: no-drag;
     align-items: center;
     background: transparent;

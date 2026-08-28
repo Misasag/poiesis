@@ -9,7 +9,10 @@ const userDataDir = resolve(runtimeDir, `user-data-${Date.now()}`);
 const debugPort = Number(process.env.THEIA_ELECTRON_DEBUG_PORT ?? 9334);
 const browserURL = `http://127.0.0.1:${debugPort}`;
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
+const windowDragOnly = process.env.POIESIS_WINDOW_DRAG_ONLY === '1';
 mkdirSync(runtimeDir, { recursive: true });
+const emptyPluginsDir = resolve(runtimeDir, 'empty-plugins');
+if (windowDragOnly) mkdirSync(emptyPluginsDir, { recursive: true });
 
 const repositoryRoot = resolve(root, '..', '..');
 const scmFixtureGitPath = 'docs/UX.md';
@@ -26,10 +29,14 @@ const electronExecutable = resolve(root, 'node_modules/electron/dist/electron.ex
 const startProcess = spawn(electronExecutable, [
     resolve(root, 'electron-app'),
     '../../..',
-    '--plugins=local-dir:../plugins',
+    windowDragOnly
+        ? `--plugins=local-dir:${emptyPluginsDir.replaceAll('\\', '/')}`
+        : '--plugins=local-dir:../plugins',
     `--user-data-dir=${userDataDir}`,
     `--electronUserData=${userDataDir}`,
     `--remote-debugging-port=${debugPort}`,
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
     '--disable-gpu',
     '--disable-dev-shm-usage',
     '--no-sandbox'
@@ -37,10 +44,13 @@ const startProcess = spawn(electronExecutable, [
     cwd: resolve(root, 'electron-app'),
     env: {
         ...process.env,
-        THEIA_CONFIG_DIR: resolve(root, '.theia-config-electron')
+        THEIA_CONFIG_DIR: resolve(root, '.theia-config-electron'),
+        ...(windowDragOnly ? { POIESIS_DISABLE_CLI_DETECTION: '1' } : {})
     },
     stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true
+    // Native drag regions need a real visible Win32 window; a hidden renderer
+    // also stalls Theia's startup animationFrame before Poiesis is mounted.
+    windowsHide: false
 });
 
 let startLog = '';
@@ -54,6 +64,7 @@ for (const stream of [startProcess.stdout, startProcess.stderr]) {
 
 let browser;
 try {
+    smokeRun: {
     writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n${scmFixtureMarker}\n`, 'utf8');
     await waitForCdp(browserURL, startProcess, 120_000);
     browser = await puppeteer.connect({ browserURL, defaultViewport: null });
@@ -83,6 +94,16 @@ try {
     assert(!initial.legacyChangesVisible, 'Removed Changes UI is still visible in Electron');
 
     const resizeChecks = [];
+    const nativeWindowChecks = [];
+    moveElectronWindow(startProcess.pid, 1280, 720);
+    resizeChecks.push(await assertElectronLayout(page, 'agent'));
+    nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
+        '.poiesis-agent-window__header', 'Agent header'));
+    nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
+        '.poiesis-agent-window__rail-top', 'session rail top'));
+    nativeWindowChecks.push(await assertNativeHeaderDoubleClick(page, startProcess.pid));
+    nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
+        '.poiesis-agent-window__header', 'Agent header after maximize and restore'));
     moveElectronWindow(startProcess.pid, 1100, 700);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
     moveElectronWindow(startProcess.pid, 1500, 850);
@@ -93,6 +114,25 @@ try {
     await page.click('.poiesis-window-controls__button[data-window-action="restore"]');
     await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
+
+    const headerInteractionChecks = [];
+    if (windowDragOnly) {
+        await page.type('.poiesis-agent-window__composer textarea', 'Window drag smoke conversation');
+        await page.click('.poiesis-agent-window__send');
+        await page.waitForSelector('.poiesis-agent-window__tabs');
+        await page.click('#poiesis-results-tab');
+        await page.waitForFunction(() => document.querySelector('#poiesis-results-tab')?.getAttribute('aria-selected') === 'true');
+        await page.click('#poiesis-agent-tab');
+        await page.waitForFunction(() => document.querySelector('#poiesis-agent-tab')?.getAttribute('aria-selected') === 'true');
+        const tabRegions = await page.$$eval('.poiesis-agent-window__tabs [role="tab"]', tabs => tabs.map(tab => ({
+            label: tab.textContent?.trim(),
+            appRegion: getComputedStyle(tab).getPropertyValue('app-region')
+                || getComputedStyle(tab).getPropertyValue('-webkit-app-region')
+        })));
+        assert(tabRegions.length === 2 && tabRegions.every(tab => tab.appRegion === 'no-drag'),
+            `Agent/Results tabs are not interactive no-drag regions: ${JSON.stringify(tabRegions)}`);
+        headerInteractionChecks.push({ label: 'Agent/Results tabs', clicked: true, tabRegions });
+    }
 
     await clickByText(page, '.poiesis-agent-window__code-control', 'Code');
     await page.waitForSelector('.poiesis-agent-window__code', { timeout: uiTimeout });
@@ -111,6 +151,18 @@ try {
     assert(code.codeLuminoPanelCount === 0, 'Code reintroduced lm-Widget lm-Panel wrappers in Electron');
     assert(code.codeLuminoTabContainerCount === 0, 'Code reintroduced lm-TabBar-content-container in Electron');
     assert(!code.applicationShellVisible, 'Code mounted the Theia ApplicationShell in Electron');
+    nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
+        '.poiesis-agent-window__code-header', 'Code header'));
+    if (windowDragOnly) {
+        console.log(`ELECTRON_WINDOW_DRAG_SMOKE_RESULT=${JSON.stringify({
+            userAgent,
+            windowTitle,
+            nativeWindowChecks,
+            headerInteractionChecks,
+            code
+        }, null, 2)}`);
+        break smokeRun;
+    }
     moveElectronWindow(startProcess.pid, 1100, 700);
     resizeChecks.push(await assertElectronLayout(page, 'code'));
     moveElectronWindow(startProcess.pid, 1500, 850);
@@ -286,7 +338,8 @@ try {
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code-editor-tab.active.dirty'));
     assert(readFileSync(scmFixturePath, 'utf8') === codeSaveFixtureBefore, 'Ctrl+S did not restore the Electron editor fixture');
 
-    console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify({ userAgent, windowTitle, initial, resizeChecks, code, editorTabs }, null, 2)}`);
+    console.log(`ELECTRON_SMOKE_RESULT=${JSON.stringify({ userAgent, windowTitle, initial, nativeWindowChecks, resizeChecks, code, editorTabs }, null, 2)}`);
+    }
 } catch (error) {
     console.error(`Electron start log (tail):\n${startLog}`);
     throw error;
@@ -444,6 +497,164 @@ if (-not [PoiesisNativeWindow]::MoveWindow($poiesisProcess.MainWindowHandle, 40,
     if (result.status !== 0) {
         throw new Error(`Could not resize the Electron window: ${result.stderr || result.stdout}`);
     }
+}
+
+async function assertNativeWindowDrag(page, pid, selector, label) {
+    const point = await findNativeDragPoint(page, selector);
+    const result = sendNativeWindowInput(pid, point, 'drag');
+    assert(result.hitHandle === result.windowHandle,
+        `${label} Win32 input hit another window: ${JSON.stringify(result)}`);
+    assert(Math.abs(result.deltaX) > 20 || Math.abs(result.deltaY) > 20,
+        `${label} did not move from an OS-level drag: ${JSON.stringify(result)}`);
+    await delay(250);
+    return { label, point, delta: [result.deltaX, result.deltaY] };
+}
+
+async function assertNativeHeaderDoubleClick(page, pid) {
+    const selector = '.poiesis-agent-window__header';
+    const maximizePoint = await findNativeDragPoint(page, selector);
+    const maximizeResult = sendNativeWindowInput(pid, maximizePoint, 'double-click');
+    assert(maximizeResult.hitHandle === maximizeResult.windowHandle,
+        `Header double-click hit another window: ${JSON.stringify(maximizeResult)}`);
+    await page.waitForSelector('.poiesis-window-controls__button[data-window-action="restore"]');
+    assert(await page.evaluate(() => window.electronTheiaCore.isMaximized()),
+        'OS-level header double-click did not maximize the Electron window');
+
+    const restorePoint = await findNativeDragPoint(page, selector);
+    const restoreResult = sendNativeWindowInput(pid, restorePoint, 'double-click');
+    assert(restoreResult.hitHandle === restoreResult.windowHandle,
+        `Header restore double-click hit another window: ${JSON.stringify(restoreResult)}`);
+    await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
+    await page.waitForFunction(() => !window.electronTheiaCore.isMaximized());
+    return { label: 'header double-click', maximized: true, restored: true };
+}
+
+async function findNativeDragPoint(page, selector) {
+    return page.$eval(selector, (root, currentSelector) => {
+        if (!(root instanceof HTMLElement)) throw new Error(`${currentSelector} is not an HTML element`);
+        const interactive = 'button, select, input, textarea, [role="tab"], a, [contenteditable="true"], .poiesis-window-controls';
+        const bounds = root.getBoundingClientRect();
+        const candidates = [];
+        for (let y = bounds.top + 6; y < bounds.bottom - 4; y += 8) {
+            for (let x = bounds.left + 6; x < bounds.right - 6; x += 12) {
+                const target = document.elementFromPoint(x, y);
+                if (!(target instanceof HTMLElement) || !root.contains(target) || target.closest(interactive)) continue;
+                const style = getComputedStyle(target);
+                const appRegion = style.getPropertyValue('app-region') || style.getPropertyValue('-webkit-app-region');
+                if (appRegion !== 'drag') continue;
+                candidates.push({
+                    x,
+                    y,
+                    target: target.id || target.className || target.tagName,
+                    distance: Math.abs(x - (bounds.left + bounds.width / 2)) + Math.abs(y - (bounds.top + bounds.height / 2))
+                });
+            }
+        }
+        candidates.sort((left, right) => left.distance - right.distance);
+        const candidate = candidates[0];
+        if (!candidate) throw new Error(`No non-interactive drag point was found in ${currentSelector}`);
+        return {
+            x: candidate.x,
+            y: candidate.y,
+            target: String(candidate.target),
+            viewportWidth: innerWidth,
+            viewportHeight: innerHeight,
+            appRegion: getComputedStyle(root).getPropertyValue('app-region')
+                || getComputedStyle(root).getPropertyValue('-webkit-app-region')
+        };
+    }, selector);
+}
+
+function sendNativeWindowInput(pid, point, mode) {
+    if (process.platform !== 'win32') {
+        return { windowHandle: 1, hitHandle: 1, deltaX: 48, deltaY: 36 };
+    }
+    const shouldDrag = mode === 'drag';
+    const script = `
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class PoiesisNativeInput {
+    public delegate bool EnumWindowsProc(IntPtr handle, IntPtr parameter);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr handle, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr handle, uint flags);
+    [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
+}
+'@
+$targetPid = ${pid}
+$windowHandle = [IntPtr]::Zero
+[PoiesisNativeInput]::EnumWindows({
+    param($handle, $parameter)
+    $candidatePid = 0
+    [void][PoiesisNativeInput]::GetWindowThreadProcessId($handle, [ref]$candidatePid)
+    if ($candidatePid -eq $targetPid -and [PoiesisNativeInput]::IsWindowVisible($handle)) {
+        $script:windowHandle = $handle
+        return $false
+    }
+    return $true
+}, [IntPtr]::Zero) | Out-Null
+if ($windowHandle -eq [IntPtr]::Zero) { throw 'Poiesis main window handle was not found.' }
+$before = New-Object PoiesisNativeInput+RECT
+[void][PoiesisNativeInput]::GetWindowRect($windowHandle, [ref]$before)
+$beforeLeft = [int]$before.Left
+$beforeTop = [int]$before.Top
+$beforeRight = [int]$before.Right
+$beforeBottom = [int]$before.Bottom
+$startX = $beforeLeft + [Math]::Round(${point.x} * ($beforeRight - $beforeLeft) / ${point.viewportWidth})
+$startY = $beforeTop + [Math]::Round(${point.y} * ($beforeBottom - $beforeTop) / ${point.viewportHeight})
+[void][PoiesisNativeInput]::SetWindowPos($windowHandle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002)
+[void][PoiesisNativeInput]::BringWindowToTop($windowHandle)
+[void][PoiesisNativeInput]::SetForegroundWindow($windowHandle)
+Start-Sleep -Milliseconds 160
+[void][PoiesisNativeInput]::SetCursorPos($startX, $startY)
+Start-Sleep -Milliseconds 100
+$point = New-Object PoiesisNativeInput+POINT
+$point.X = $startX
+$point.Y = $startY
+$hitHandle = [PoiesisNativeInput]::GetAncestor([PoiesisNativeInput]::WindowFromPoint($point), 2)
+${shouldDrag ? `
+[PoiesisNativeInput]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+for ($step = 1; $step -le 12; $step++) {
+    [void][PoiesisNativeInput]::SetCursorPos($startX + [Math]::Round(96 * $step / 12), $startY + [Math]::Round(72 * $step / 12))
+    Start-Sleep -Milliseconds 25
+}
+[PoiesisNativeInput]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+` : `
+for ($click = 0; $click -lt 2; $click++) {
+    [PoiesisNativeInput]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [PoiesisNativeInput]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 80
+}
+`}
+Start-Sleep -Milliseconds 220
+$after = New-Object PoiesisNativeInput+RECT
+[void][PoiesisNativeInput]::GetWindowRect($windowHandle, [ref]$after)
+$deltaX = [int]$after.Left - $beforeLeft
+$deltaY = [int]$after.Top - $beforeTop
+${shouldDrag ? '[void][PoiesisNativeInput]::MoveWindow($windowHandle, $beforeLeft, $beforeTop, $beforeRight - $beforeLeft, $beforeBottom - $beforeTop, $true)' : ''}
+[void][PoiesisNativeInput]::SetWindowPos($windowHandle, [IntPtr](-2), 0, 0, 0, 0, 0x0001 -bor 0x0002)
+[pscustomobject]@{ windowHandle=$windowHandle.ToInt64(); hitHandle=$hitHandle.ToInt64(); deltaX=$deltaX; deltaY=$deltaY } | ConvertTo-Json -Compress
+`;
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        encoding: 'utf8',
+        windowsHide: true
+    });
+    if (result.status !== 0) {
+        throw new Error(`Could not send ${mode} to the Electron window: ${result.stderr || result.stdout}`);
+    }
+    const serialized = result.stdout.trim().split(/\r?\n/).at(-1);
+    return JSON.parse(serialized);
 }
 
 async function assertElectronLayout(page, expectedMode, expectSettings = false) {
