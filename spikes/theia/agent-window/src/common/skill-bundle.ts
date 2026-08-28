@@ -26,6 +26,15 @@ export interface SkillDocumentBundle<TKind extends SkillBundleKind = SkillBundle
     readonly skillDocumentUri: string;
     readonly frontmatter: SkillDocumentFrontmatter<TKind>;
     readonly instructions: string;
+    /** App-owned global activation state; it is deliberately not writable from skill.md. */
+    readonly enabled: boolean;
+}
+
+export interface SkillPromptContribution<TKind extends SkillBundleKind = SkillBundleKind> {
+    readonly id: string;
+    readonly name: string;
+    readonly kind: TKind;
+    readonly instructions: string;
 }
 
 export type AgentSkillBundle = SkillBundle<'agent'>;

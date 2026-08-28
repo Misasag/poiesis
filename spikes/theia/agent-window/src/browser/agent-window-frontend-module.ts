@@ -25,6 +25,7 @@ import { ResultsGenerationServer, resultsGenerationServerPath } from '../common/
 import { ResultsGenerationContext } from './results-generation-context';
 import { FileResourceResolver } from '@theia/filesystem/lib/browser/file-resource';
 import { PoiesisFileResourceResolver } from './poiesis-file-resource-resolver';
+import { WorkspaceSkillService } from './workspace-skill-service';
 import '../../src/browser/style/index.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
@@ -57,6 +58,7 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     bind(FolderExplorerService).toSelf().inSingletonScope();
     bind(BrowserGlobalStorageService).toSelf().inSingletonScope();
     bind(GlobalStorageService).toService(BrowserGlobalStorageService);
+    bind(WorkspaceSkillService).toSelf().inSingletonScope();
 
     bind(DesignShotContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(DesignShotContribution);

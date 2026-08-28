@@ -38,6 +38,7 @@ import { GlobalStorageService } from './global-storage-service';
 import { ResultsGenerationContext } from './results-generation-context';
 import { SkillBundleKind } from '../common/skill-bundle';
 import { POIESIS_EXTERNAL_LINK_ATTRIBUTE, POIESIS_FILE_LINK_ATTRIBUTE, renderSafeMarkdown } from './safe-markdown';
+import { WorkspaceSkillDefinition, WorkspaceSkillService } from './workspace-skill-service';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
@@ -143,15 +144,6 @@ interface WorkspaceSessionGroup {
     current: boolean;
     activeSessions: WindowAgentSession[];
     archivedSessions: WindowAgentSession[];
-}
-
-interface WorkspaceSkillDefinition {
-    id: string;
-    name: string;
-    description: string;
-    kind?: SkillBundleKind;
-    uri: string;
-    error?: string;
 }
 
 interface WorkspaceSkillEditor {
@@ -598,7 +590,8 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(FolderExplorerService) protected readonly folderExplorerService: FolderExplorerService,
         @inject(AgentRuntimeServer) protected readonly agentRuntimeServer: AgentRuntimeServer,
         @inject(ResultsQuestionService) protected readonly resultsQuestionService: ResultsQuestionService,
-        @inject(ResultsGenerationContext) protected readonly resultsGenerationContext: ResultsGenerationContext
+        @inject(ResultsGenerationContext) protected readonly resultsGenerationContext: ResultsGenerationContext,
+        @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService
     ) {
         super();
     }
@@ -2204,7 +2197,7 @@ export class AgentWindowWidget extends ReactWidget {
                                 </button>
                             </div>
                             <p className='poiesis-customize-view__section-copy'>
-                                現在の実行に反映されるのは組み込みのResults Skillsだけです。WorkspaceのUser Skillは定義・編集できますが、Agent／Results実行への反映は今後です。
+                                有効なAgent Skillは次のTaskから実装指示へ加わり、有効なResults SkillはAI成果文書の構成を案内します。組み込みテンプレートへのfallback時はResults Skillの追加指示を使いません。
                             </p>
 
                             <h3 className='poiesis-customize-view__group-title'>組み込み</h3>
@@ -2275,24 +2268,37 @@ export class AgentWindowWidget extends ReactWidget {
                             {!this.workspaceSkillsLoading && this.workspaceSkills.length > 0 && (
                                 <div className='poiesis-agent-window__customize-list'>
                                     {this.workspaceSkills.map(skill => (
-                                        <button
-                                            type='button'
-                                            className={`poiesis-agent-window__customize-card poiesis-customize-view__skill-card${editor?.uri === skill.uri ? ' selected' : ''}`}
-                                            key={skill.id}
-                                            aria-pressed={editor?.uri === skill.uri}
-                                            onClick={() => void this.openWorkspaceSkillInline(skill)}
-                                        >
-                                            <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-book' aria-hidden='true' /></div>
-                                            <div>
-                                                <div className='poiesis-agent-window__customize-title'>
-                                                    <strong>{skill.name}</strong>
-                                                    <span>{skill.kind ? (skill.kind === 'agent' ? 'Agent' : 'Results') : '要修正'}</span>
+                                        <div className={`poiesis-customize-view__skill-row${skill.error ? ' has-error' : ''}`} key={skill.id}>
+                                            <button
+                                                type='button'
+                                                className={`poiesis-agent-window__customize-card poiesis-customize-view__skill-card${editor?.uri === skill.uri ? ' selected' : ''}`}
+                                                aria-pressed={editor?.uri === skill.uri}
+                                                onClick={() => void this.openWorkspaceSkillInline(skill)}
+                                            >
+                                                <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-book' aria-hidden='true' /></div>
+                                                <div>
+                                                    <div className='poiesis-agent-window__customize-title'>
+                                                        <strong>{skill.name}</strong>
+                                                        <span>{skill.kind ? (skill.kind === 'agent' ? 'Agent' : 'Results') : '要修正'}</span>
+                                                    </div>
+                                                    <p>{skill.error ?? skill.description}</p>
+                                                    <small>.poiesis/skills/{skill.id}/skill.md</small>
                                                 </div>
-                                                <p>{skill.error ?? skill.description}</p>
-                                                <small>.poiesis/skills/{skill.id}/skill.md</small>
+                                                <span className='codicon codicon-chevron-right' aria-hidden='true' />
+                                            </button>
+                                            <div className='poiesis-customize-view__skill-enablement'>
+                                                <span>{skill.enabled ? '有効' : '無効'}</span>
+                                                <label className='poiesis-agent-window__switch' title={`${skill.name}を${skill.enabled ? '無効' : '有効'}にする`}>
+                                                    <input
+                                                        type='checkbox'
+                                                        checked={skill.enabled}
+                                                        aria-label={`${skill.name}を有効にする`}
+                                                        onChange={event => void this.setWorkspaceSkillEnabled(skill, event.currentTarget.checked)}
+                                                    />
+                                                    <span aria-hidden='true' />
+                                                </label>
                                             </div>
-                                            <span className='codicon codicon-chevron-right' aria-hidden='true' />
-                                        </button>
+                                        </div>
                                     ))}
                                 </div>
                             )}
@@ -4383,38 +4389,10 @@ export class AgentWindowWidget extends ReactWidget {
             this.update();
             return;
         }
-        const skillsDirectory = root.resolve('.poiesis/skills');
         try {
-            if (!await this.fileService.exists(skillsDirectory)) {
-                if (generation === this.workspaceSkillsRefreshGeneration) {
-                    this.workspaceSkills = [];
-                }
-                return;
-            }
-            const stat = await this.fileService.resolve(skillsDirectory);
-            const definitions = await Promise.all((stat.children ?? [])
-                .filter(child => child.isDirectory)
-                .sort((left, right) => left.name.localeCompare(right.name))
-                .map(async child => {
-                    const skillUri = child.resource.resolve('skill.md');
-                    if (!await this.fileService.exists(skillUri)) {
-                        return undefined;
-                    }
-                    try {
-                        const content = await this.fileService.read(skillUri);
-                        return this.parseWorkspaceSkill(child.name, skillUri, content.value);
-                    } catch (error) {
-                        return {
-                            id: child.name,
-                            name: child.name,
-                            description: '',
-                            uri: skillUri.toString(),
-                            error: `skill.mdを読み込めませんでした: ${error instanceof Error ? error.message : String(error)}`
-                        } satisfies WorkspaceSkillDefinition;
-                    }
-                }));
+            const definitions = await this.workspaceSkillService.list(root);
             if (generation === this.workspaceSkillsRefreshGeneration) {
-                this.workspaceSkills = definitions.filter((definition): definition is WorkspaceSkillDefinition => Boolean(definition));
+                this.workspaceSkills = definitions;
             }
         } catch (error) {
             if (generation === this.workspaceSkillsRefreshGeneration) {
@@ -4427,36 +4405,6 @@ export class AgentWindowWidget extends ReactWidget {
                 this.update();
             }
         }
-    }
-
-    protected parseWorkspaceSkill(id: string, uri: URI, rawContent: string): WorkspaceSkillDefinition {
-        const content = rawContent.replace(/^\uFEFF/, '');
-        const frontmatter = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
-        if (!frontmatter) {
-            return { id, name: id, description: '', uri: uri.toString(), error: 'frontmatterがありません。name、description、kindを定義してください。' };
-        }
-        const fields = new Map<string, string>();
-        for (const line of frontmatter[1].split(/\r?\n/)) {
-            const separator = line.indexOf(':');
-            if (separator > 0) {
-                fields.set(line.slice(0, separator).trim(), this.frontmatterValue(line.slice(separator + 1)));
-            }
-        }
-        const name = fields.get('name');
-        const description = fields.get('description');
-        const kind = fields.get('kind');
-        if (!name || !description || (kind !== 'agent' && kind !== 'results')) {
-            return { id, name: name || id, description: description || '', uri: uri.toString(), error: 'frontmatterのname、description、kind（agent／results）を確認してください。' };
-        }
-        return { id, name, description, kind, uri: uri.toString() };
-    }
-
-    protected frontmatterValue(rawValue: string): string {
-        const value = rawValue.trim();
-        const quote = value[0];
-        return value.length >= 2 && (quote === '"' || quote === "'") && value.at(-1) === quote
-            ? value.slice(1, -1)
-            : value;
     }
 
     protected async createWorkspaceSkill(): Promise<void> {
@@ -4488,10 +4436,11 @@ export class AgentWindowWidget extends ReactWidget {
             await this.fileService.createFolder(skillDirectory);
             const content = this.workspaceSkillTemplate(id, this.newSkillKind);
             await this.fileService.create(skillUri, content);
+            await this.workspaceSkillService.setEnabled(skillUri.toString(), true);
             await this.refreshWorkspaceSkills();
             this.newSkillFormVisible = false;
             this.newSkillId = '';
-            await this.openWorkspaceSkillInline(this.parseWorkspaceSkill(id, skillUri, content));
+            await this.openWorkspaceSkillInline(this.workspaceSkillService.parse(id, skillUri, content));
         } catch (error) {
             this.newSkillError = `Skillを作成できませんでした: ${error instanceof Error ? error.message : String(error)}`;
         } finally {
@@ -4502,6 +4451,19 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected workspaceSkillTemplate(id: string, kind: SkillBundleKind): string {
         return `---\nname: ${id}\ndescription: このSkillの目的を記述してください\nkind: ${kind}\n---\n\n# ${id}\n\nここにSkillの指示を記述してください。\n`;
+    }
+
+    protected async setWorkspaceSkillEnabled(skill: WorkspaceSkillDefinition, enabled: boolean): Promise<void> {
+        const previous = skill.enabled;
+        skill.enabled = enabled;
+        this.update();
+        try {
+            await this.workspaceSkillService.setEnabled(skill.uri, enabled);
+        } catch (error) {
+            skill.enabled = previous;
+            this.workspaceSkillsError = `Skillの有効状態を保存できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            this.update();
+        }
     }
 
     protected async openWorkspaceSkillInCode(rawUri: string): Promise<void> {

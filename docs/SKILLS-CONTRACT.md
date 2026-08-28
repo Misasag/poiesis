@@ -65,12 +65,13 @@ interface SkillDocumentBundle extends SkillBundle {
   skillDocumentUri: string;
   frontmatter: SkillDocumentFrontmatter;
   instructions: string;
+  enabled: boolean;
 }
 ```
 
 file bundleのmanifestはファイルから導出する。`id`は`<skill-id>`フォルダー名、`name`／`description`／`kind`はfrontmatter、`version`は`workspace`、`entry`は`skill.md`とする。この導出により、manifest用の別ファイルを要求せず、`skill.md` bundleも`SkillBundle`契約へ適合する。
 
-Customizeの「新しいSkill」はこの構造をscaffoldし、既存のCode editorで`skill.md`を開く。保存は通常のWorkspaceファイル保存であり、marketplaceからのinstallではない。User Skillの実行反映はまだ行わない。
+Customizeの「新しいSkill」はこの構造をscaffoldし、画面内editorで`skill.md`を開く。保存は通常のWorkspaceファイル保存であり、marketplaceからのinstallではない。`enabled`は`skill.md`本文に書き戻さず、WorkspaceをまたぐApplicationのglobal storageに保存する。新規作成時の既定値は`true`とする。
 
 ## Lifecycle
 
@@ -91,9 +92,21 @@ Agent skillは作業を「どのように行うか」を定義する。prompt構
 
 Agent skillは成果の正本を自己申告しない。Task、Baseline、Change Setの正本は引き続きApplicationが所有する。
 
+有効なWorkspace Agent skillはTask開始時に毎回ファイルから読み直し、frontmatterを除いた本文をimplementer promptの末尾へ次の形で加える。順序は`skill-id`の昇順とする。
+
+```text
+## Workspace skills (user-defined instructions)
+### <skill name>
+<skill.md body>
+```
+
+本文は1 Skillあたり8,000文字、合計24,000文字を上限とする。個別上限では切り詰めを明記し、合計上限を超える後続Skillはdiagnosticsへ理由を残して除外する。これはprompt contentだけの境界であり、Skill本文をcodeとして実行／evalせず、provider、model、sandbox、runtime configを変更する権限を与えない。
+
 ### Results skill
 
 Results skillは終了済みTaskと確定済みChange Setを入力に、一つの完成HTML文書を生成する。Agent会話の途中では起動せず、不完全なHTML断片をcanvasへstreamしない。Results内の質問応答は文書生成とは別のResults AI境界であり、Skill HTMLを変更しない。
+
+有効なWorkspace Results skillも生成開始時に毎回読み直し、同じ区切り・順序・文字数上限でAI Resultsのpromptへ成果文書の追加ガイダンスとして加える。静的な`builtin.results` templateはUser Skillを解釈しないため、AI生成からtemplateへfallbackした場合はこの追加ガイダンスを反映しない。
 
 ## Conforming bundles
 
@@ -121,7 +134,7 @@ Results skillは終了済みTaskと確定済みChange Setを入力に、一つ�
 }
 ```
 
-現在の実行へ反映されるのは、この2つの組み込みResults bundleだけである。Customizeは組み込みbundleを説明し、WorkspaceのUser Skillを走査・scaffold・編集できるが、User SkillをAgent／Results実行へ反映したとは表示しない。install／remove／enable／disable UIは追加しない。
+Customizeは組み込みbundleを説明し、WorkspaceのUser Skillを走査・scaffold・編集できる。有効なUser Skillは上記のprompt境界でAgent／AI Results実行へ反映し、行ごとのswitchでglobalな有効状態を変更できる。読み取り／parseに失敗したSkillは行へエラーを表示し、diagnosticsへ理由を残して実行から除外する。marketplace向けinstall／remove UIは追加しない。
 
 ## Boundary rules
 

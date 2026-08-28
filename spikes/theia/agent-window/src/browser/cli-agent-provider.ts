@@ -16,6 +16,7 @@ import {
 import { AgentRuntimeClientImpl } from './agent-runtime-client';
 import { MockAgentProvider } from './mock-agent-provider';
 import { TaskService } from './task-service';
+import { WorkspaceSkillService } from './workspace-skill-service';
 
 interface CliSession extends AgentSession {
     providerId: KnownCliId;
@@ -50,7 +51,8 @@ export class CliAgentProvider implements AgentProvider {
         @inject(AgentRuntimeServer) protected readonly runtimeServer: AgentRuntimeServer,
         @inject(AgentRuntimeClientImpl) protected readonly runtimeClient: AgentRuntimeClientImpl,
         @inject(MockAgentProvider) protected readonly mockProvider: MockAgentProvider,
-        @inject(TaskService) protected readonly taskService: TaskService
+        @inject(TaskService) protected readonly taskService: TaskService,
+        @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService
     ) {
         this.mockProvider.onEvent(event => this.eventEmitter.fire(event));
         this.runtimeClient.onCodexEvent(event => this.handleCodexEvent(event));
@@ -108,6 +110,11 @@ export class CliAgentProvider implements AgentProvider {
         this.eventEmitter.fire({ type: 'task-started', sessionId, taskId: task.id });
 
         try {
+            const workspaceSkills = await this.workspaceSkillService.buildPrompt(session.workspaceUri, 'agent');
+            for (const diagnostic of workspaceSkills.diagnostics) {
+                this.appendDiagnostic(run, diagnostic);
+                console.warn(`[Poiesis] ${diagnostic}`);
+            }
             await this.taskService.whenBaselineCaptured(task.id);
             if (this.runs.get(sessionId) !== run || run.state === 'cancelling') {
                 return;
@@ -118,7 +125,7 @@ export class CliAgentProvider implements AgentProvider {
                 providerId: session.providerId,
                 model: session.model,
                 workspacePath: session.workspacePath,
-                prompt: this.implementerPrompt(message.content)
+                prompt: this.implementerPrompt(message.content, workspaceSkills.content)
             });
         } catch (error) {
             await this.failRun(run, `${run.providerName} を開始できませんでした。`, this.errorMessage(error));
@@ -311,8 +318,8 @@ export class CliAgentProvider implements AgentProvider {
         run.diagnostics = `${run.diagnostics}${run.diagnostics ? '\n' : ''}${detail}`.slice(-20_000);
     }
 
-    protected implementerPrompt(request: string): string {
-        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}`;
+    protected implementerPrompt(request: string, workspaceSkillPrompt = ''): string {
+        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}${workspaceSkillPrompt}`;
     }
 
     protected errorMessage(error: unknown): string {

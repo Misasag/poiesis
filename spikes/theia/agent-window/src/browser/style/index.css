@@ -3937,6 +3937,26 @@ body.poiesis-code-file-pointer-drag * {
     width: 100%;
 }
 
+.poiesis-customize-view__skill-row {
+    align-items: center;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.poiesis-customize-view__skill-row.has-error .poiesis-customize-view__skill-card {
+    border-color: #76504b;
+}
+
+.poiesis-customize-view__skill-enablement {
+    align-items: center;
+    color: var(--poiesis-chrome-muted);
+    display: inline-flex;
+    font-size: 12px;
+    gap: 8px;
+    min-width: 74px;
+}
+
 .poiesis-customize-view__skill-card:hover,
 .poiesis-customize-view__skill-card:focus-visible,
 .poiesis-customize-view__skill-card.selected {

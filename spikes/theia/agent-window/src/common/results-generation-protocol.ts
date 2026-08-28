@@ -19,6 +19,7 @@ export interface ResultsGenerationRequest {
     taskMetadata: ResultsGenerationTaskMetadata;
     changeSetSummary: string;
     diff: string;
+    workspaceSkillGuidance?: string;
 }
 
 export type ResultsGenerationErrorCode =

@@ -5,6 +5,7 @@ import { ExecutionTask, TaskChangeSet, TaskService } from './task-service';
 import { ResultsSkillBundle } from '../common/skill-bundle';
 import { ResultsGenerationServer } from '../common/results-generation-protocol';
 import { ResultsGenerationContext } from './results-generation-context';
+import { WorkspaceSkillService } from './workspace-skill-service';
 
 export const ResultsSkill = Symbol('ResultsSkill');
 
@@ -229,7 +230,8 @@ export class AiResultsSkill implements ResultsSkill {
         @inject(ResultsGenerationServer) protected readonly generationServer: ResultsGenerationServer,
         @inject(BundledResultsSkill) protected readonly fallbackSkill: BundledResultsSkill,
         @inject(ResultsGenerationContext) protected readonly context: ResultsGenerationContext,
-        @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService
+        @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
+        @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService
     ) { }
 
     async generate(input: ResultsSkillInput): Promise<string> {
@@ -241,6 +243,10 @@ export class AiResultsSkill implements ResultsSkill {
         }
 
         try {
+            const workspaceSkills = await this.workspaceSkillService.buildPrompt(workspace.resource.toString(), 'results');
+            for (const diagnostic of workspaceSkills.diagnostics) {
+                console.warn(`[Poiesis] ${diagnostic}`);
+            }
             const result = await this.generationServer.generate({
                 taskId: input.task.id,
                 providerId: this.context.providerId,
@@ -259,7 +265,8 @@ export class AiResultsSkill implements ResultsSkill {
                     capturedAt: input.changeSet.capturedAt,
                     error: input.changeSet.error
                 }, undefined, 2),
-                diff: input.changeSet.diff
+                diff: input.changeSet.diff,
+                workspaceSkillGuidance: workspaceSkills.content || undefined
             });
             if (result.status === 'cancelled') {
                 throw new ResultsGenerationCancelledError(result.error.message);
