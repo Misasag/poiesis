@@ -38,11 +38,14 @@ const workspaceSkillService = await read('agent-window/src/browser/workspace-ski
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
 const knownCliRegistry = await read('agent-window/src/node/known-cli-registry.ts');
+const hiddenProcess = await read('agent-window/src/node/hidden-process.ts');
 const skillBundleContract = await read('agent-window/src/common/skill-bundle.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
 const markdownSmoke = await read('scripts/smoke-markdown.mjs');
 const round15Smoke = await read('scripts/smoke-round15-browser.mjs');
+const round16Smoke = await read('scripts/smoke-round16-console.mjs');
+const round16Watcher = await read('scripts/watch-visible-console-windows.ps1');
 const electronFrontendModule = await read('agent-window/src/electron-browser/agent-window-electron-frontend-module.ts');
 const electronWindowControls = await read('agent-window/src/electron-browser/window-controls.tsx');
 const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
@@ -369,7 +372,8 @@ for (const marker of [
     'lastReport',
     "status: 'found'",
     "status: 'missing'",
-    'probeVersion(candidate.path, definition.versionProbe)'
+    'probeVersion(definition, candidate.path)',
+    'spawnHiddenCli(definition.id, command, definition.versionProbe)'
 ]) {
     assert.ok(cliDetector.includes(marker), `CliDetector is missing ${marker}`);
 }
@@ -408,12 +412,12 @@ for (const marker of [
     "'--sandbox', 'workspace-write'",
     "'-C', resolvedWorkspace",
     'prompt',
-    "cwd, windowsHide: true",
+    'spawnHiddenCli(providerId, command, args, { cwd, env })',
     "child.stdout.on('data'",
     "child.stderr.on('data'",
     "type: 'output'",
     "type: 'exit'",
-    "'taskkill'",
+    'killHiddenProcessTree(child)',
     "process.env.POIESIS_AGENT_FORCE_PRESPAWN_FAILURE === '1'",
     'const resolvedWorkspace = await this.resolveWorkspace(workspacePath)',
     "this.providerRegistry.resolve('agent', providerId, model)",
@@ -428,6 +432,30 @@ for (const marker of [
 ]) {
     assert.ok(runtimeServer.includes(marker), `Codex runtime is missing ${marker}`);
 }
+for (const source of [runtimeServer, resultsQuestionServer, resultsGenerationServer, cliDetector]) {
+    assert.ok(!source.includes('shell: true'), 'Product child-process sites must not use a shell fallback');
+    assert.ok(!source.includes('cmd.exe'), 'Product child-process sites must not launch cmd.exe');
+    assert.ok(!source.includes('ComSpec'), 'Product child-process sites must not launch a command interpreter');
+}
+for (const marker of [
+    'resolveKnownCliInvocation(providerId, command, args)',
+    "providerId === 'claude'",
+    "'@anthropic-ai', 'claude-code', 'bin', 'claude.exe'",
+    "providerId === 'codex'",
+    "'@openai', 'codex', 'bin', 'codex.js'",
+    'nodeExecutable(shimDirectory)',
+    'windowsHide: true',
+    'shell: false',
+    "spawn('taskkill.exe'",
+    "stdio: 'ignore'"
+]) {
+    assert.ok(hiddenProcess.includes(marker), `Hidden process boundary is missing ${marker}`);
+}
+for (const source of [runtimeServer, resultsQuestionServer, resultsGenerationServer]) {
+    assert.ok(source.includes('spawnHiddenCli(providerId, command, args, { cwd, env })'));
+    assert.ok(source.includes('return killHiddenProcessTree(child)'));
+}
+assert.ok(runtimeServer.includes('{ cwd, windowsHide: true, maxBuffer: 10 * 1024 * 1024 }'), 'Git calls must stay hidden');
 assert.ok(!runtimeServer.includes('resolveSampleWorkspace'), 'Codex must run in the open Workspace');
 assert.ok(!runtimeServer.includes('C:\\Users\\owner\\github\\poiesis'), 'Codex runtime must not hard-code the repository root');
 
@@ -744,6 +772,29 @@ for (const marker of [
     'layout.clipped.length === 0'
 ]) {
     assert.ok(round15Smoke.includes(marker), `Round 15 live regression is missing ${marker}`);
+}
+for (const marker of [
+    "{ id: 'codex', model: 'gpt-5.6-luna' }",
+    "{ id: 'claude', model: 'haiku' }",
+    "{ id: 'grok', model: '' }",
+    "spawn('powershell.exe'",
+    'windowsHide: true',
+    'shell: false',
+    "'-PollMilliseconds', '100'",
+    'visibleConsoleWindows: observations.length',
+    'assert(observations.length === 0'
+]) {
+    assert.ok(round16Smoke.includes(marker), `Round 16 console smoke is missing ${marker}`);
+}
+for (const marker of [
+    "@('powershell', 'pwsh', 'cmd', 'conhost')",
+    '[PoiesisWindowWatcher]::EnumWindows',
+    '[PoiesisWindowWatcher]::IsWindowVisible',
+    'Start-Sleep -Milliseconds $PollMilliseconds',
+    'ROUND16_WATCHER_READY',
+    'ROUND16_WATCHER_DONE'
+]) {
+    assert.ok(round16Watcher.includes(marker), `Round 16 visible-window watcher is missing ${marker}`);
 }
 for (const marker of [
     'html: false',
