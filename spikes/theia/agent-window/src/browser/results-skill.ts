@@ -1,7 +1,7 @@
 import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
-import { ExecutionTask, TaskChangeSet, TaskService } from './task-service';
+import { ExecutionTask, isEmptyTaskChangeSet, TaskChangeSet, TaskService } from './task-service';
 import { ResultsSkillBundle } from '../common/skill-bundle';
 import { ResultsGenerationServer } from '../common/results-generation-protocol';
 import { ResultsGenerationContext } from './results-generation-context';
@@ -353,7 +353,7 @@ export class ResultsService {
 
     async retry(taskId: string): Promise<void> {
         const task = this.taskService.get(taskId);
-        if (task?.status === 'completed' && task.changeSet) {
+        if (task?.status === 'completed' && task.changeSet && !isEmptyTaskChangeSet(task.changeSet)) {
             await this.generate(task);
         }
     }
@@ -369,7 +369,7 @@ export class ResultsService {
     }
 
     protected async generate(task: ExecutionTask): Promise<void> {
-        if (task.status !== 'completed' || !task.changeSet) {
+        if (task.status !== 'completed' || !task.changeSet || isEmptyTaskChangeSet(task.changeSet)) {
             return;
         }
         const generationToken = ++this.generationSequence;

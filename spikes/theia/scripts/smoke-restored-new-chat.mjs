@@ -167,8 +167,8 @@ try {
 
     await clickText(page, '.poiesis-agent-window__tabs button', 'Results');
     const expectedTaskCount = expectPreSpawnFailure ? 1 : 2;
-    await page.waitForFunction(count => document.querySelectorAll('.poiesis-results__task-list button').length === count, {}, expectedTaskCount);
-    const taskLabels = await page.$$eval('.poiesis-results__task-list button', nodes => nodes.map(node => node.textContent?.trim()));
+    await page.waitForFunction(count => document.querySelectorAll('.poiesis-results__task-select').length === count, {}, expectedTaskCount);
+    const taskLabels = await page.$$eval('.poiesis-results__task-select', nodes => nodes.map(node => node.textContent?.trim()));
     const taskLabel = taskLabels.find(label => expectPreSpawnFailure ? label?.includes('失敗') : label?.includes('完了'));
     if (expectPreSpawnFailure) {
         assert(agentState.error === 'Codex を開始できませんでした。', `Designed pre-spawn error is missing: ${agentState.error}`);
@@ -181,7 +181,7 @@ try {
         assert(taskLabels.some(label => label?.includes('キャンセル')), `Cancelled task is missing: ${taskLabels.join(' | ')}`);
         assert(readFileSync(fixture, 'utf8').includes(marker), 'Selected provider did not edit the fixture.');
         await page.evaluate(() => {
-            const completed = [...document.querySelectorAll('.poiesis-results__task-list button')]
+            const completed = [...document.querySelectorAll('.poiesis-results__task-select')]
                 .find(node => node.textContent?.includes('完了'));
             if (!(completed instanceof HTMLElement)) throw new Error('The completed task tab was not found.');
             completed.click();
@@ -223,8 +223,8 @@ try {
     await page.waitForSelector('.poiesis-agent-window__session-title');
     const restored = await page.evaluate(expectedTitle => ({
         titles: [...document.querySelectorAll('.poiesis-agent-window__session-title')].map(node => node.textContent?.trim()),
-        taskLabel: document.querySelector('.poiesis-results__task-list button[aria-selected="true"]')?.textContent?.trim()
-            ?? document.querySelector('.poiesis-results__task-list button')?.textContent?.trim(),
+        taskLabel: document.querySelector('.poiesis-results__task-select[aria-selected="true"]')?.textContent?.trim()
+            ?? document.querySelector('.poiesis-results__task-select')?.textContent?.trim(),
         questionHistoryCount: document.querySelectorAll('.poiesis-results__qa-entry').length
     }), agentState.title);
     assert(restored.titles.includes(agentState.title), 'New Chat session disappeared after reload.');

@@ -46,6 +46,7 @@ const markdownSmoke = await read('scripts/smoke-markdown.mjs');
 const round15Smoke = await read('scripts/smoke-round15-browser.mjs');
 const round16Smoke = await read('scripts/smoke-round16-console.mjs');
 const round16Watcher = await read('scripts/watch-visible-console-windows.ps1');
+const round17Smoke = await read('scripts/smoke-round17-browser.mjs');
 const electronFrontendModule = await read('agent-window/src/electron-browser/agent-window-electron-frontend-module.ts');
 const electronWindowControls = await read('agent-window/src/electron-browser/window-controls.tsx');
 const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
@@ -346,7 +347,9 @@ assert.ok(!taskService.includes("kind: 'placeholder'"), 'TaskService must captur
 for (const marker of [
     'restore(tasks: readonly ExecutionTask[])',
     "failure: { summary: 'アプリ終了により中断されました' }",
-    'remove(taskIds: Iterable<string>)'
+    'remove(taskIds: Iterable<string>)',
+    'export function isEmptyTaskChangeSet(changeSet: TaskChangeSet | undefined)',
+    "changeSet?.source === 'empty'"
 ]) {
     assert.ok(taskService.includes(marker), `Task persistence is missing ${marker}`);
 }
@@ -419,6 +422,8 @@ for (const marker of [
     "type: 'exit'",
     'killHiddenProcessTree(child)',
     "process.env.POIESIS_AGENT_FORCE_PRESPAWN_FAILURE === '1'",
+    'const testReply = process.env.POIESIS_AGENT_TEST_REPLY',
+    "item: { type: 'agent_message', text: testReply }",
     'const resolvedWorkspace = await this.resolveWorkspace(workspacePath)',
     "this.providerRegistry.resolve('agent', providerId, model)",
     "provider.id === 'claude'",
@@ -484,7 +489,9 @@ for (const marker of [
     'normalizeAndValidate',
     'AI_RESULTS_HTML_MAX_CHARS = 280_000',
     'this.resultsSkill.cancel?.(taskId)',
-    'this.generationTokens.get(task.id) !== generationToken'
+    'this.generationTokens.get(task.id) !== generationToken',
+    'isEmptyTaskChangeSet(task.changeSet)',
+    '!isEmptyTaskChangeSet(task.changeSet)'
 ]) {
     assert.ok(resultsSkill.includes(marker), `Bundled Results skill is missing ${marker}`);
 }
@@ -740,7 +747,12 @@ for (const marker of [
     'const PoiesisTextArea = (',
     'if (!composing.current && !nativeEvent.isComposing)',
     'onValueChange={value => this.setAgentDraft(session?.id, value)}',
-    'onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}'
+    'onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}',
+    'このタスクにファイル変更はありません。会話の返答は Agent タブにあります。',
+    'Results への質問は、成果文書があるタスクで利用できます。',
+    'protected async deleteResultsTask(taskId: string): Promise<void>',
+    'this.resultsService.remove([taskId])',
+    'this.taskService.remove([taskId])'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
@@ -785,6 +797,20 @@ for (const marker of [
     'assert(observations.length === 0'
 ]) {
     assert.ok(round16Smoke.includes(marker), `Round 16 console smoke is missing ${marker}`);
+}
+assert.equal(rootPackage.scripts['smoke:round17'], 'node scripts/smoke-round17-browser.mjs');
+for (const marker of [
+    'codexRolloutFiles()',
+    "document.querySelector('.poiesis-results__state.no-change')",
+    "assert(noChange.iframeCount === 0",
+    "assert(noChange.composerCount === 0",
+    "process.env.POIESIS_ROUND17_REAL_AGENT === '1'",
+    'const expectedCodexRollouts = realAgent ? 1 : 0',
+    'Document-bearing task deletion did not persist',
+    'No-change task deletion did not persist',
+    'width: 1024, height: 600'
+]) {
+    assert.ok(round17Smoke.includes(marker), `Round 17 live regression is missing ${marker}`);
 }
 for (const marker of [
     "@('powershell', 'pwsh', 'cmd', 'conhost')",

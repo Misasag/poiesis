@@ -22,6 +22,14 @@ export interface TaskChangeSet {
     error?: string;
 }
 
+/** A successfully captured Change Set with no changed files or diff content. */
+export function isEmptyTaskChangeSet(changeSet: TaskChangeSet | undefined): boolean {
+    return changeSet?.source === 'empty'
+        && !changeSet.error
+        && changeSet.files.length === 0
+        && !changeSet.diff.trim();
+}
+
 export interface TaskFailure {
     summary: string;
     details?: string;

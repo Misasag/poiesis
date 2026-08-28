@@ -29,6 +29,7 @@
     "smoke:round14": "node scripts/smoke-round14-browser.mjs",
     "smoke:round15": "node scripts/smoke-round15-browser.mjs",
     "smoke:round16": "node scripts/smoke-round16-console.mjs",
+    "smoke:round17": "node scripts/smoke-round17-browser.mjs",
     "smoke:ui": "node scripts/smoke-ui.mjs",
     "start": "npm run start --workspace=@poiesis/theia-browser-app",
     "start:background": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-background.ps1",

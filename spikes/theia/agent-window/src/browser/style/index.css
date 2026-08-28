@@ -627,6 +627,23 @@
     color: #d8aaa4;
 }
 
+.poiesis-results__state.no-change {
+    justify-items: center;
+    text-align: center;
+}
+
+.poiesis-results__state.no-change > .codicon {
+    color: #8f9588;
+    font-size: 18px;
+}
+
+.poiesis-results__no-change-question-note {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    margin: 8px 16px 12px;
+    text-align: center;
+}
+
 /* Agent Window chrome follows docs/ui/agent-window-spec.html. */
 .poiesis-agent-window {
     min-height: 320px;
@@ -2131,7 +2148,13 @@
     gap: 5px;
 }
 
-.poiesis-results__task-switcher button {
+.poiesis-results__task-row {
+    display: grid;
+    min-width: 0;
+    position: relative;
+}
+
+.poiesis-results__task-select {
     background: transparent;
     border: 1px solid transparent;
     border-radius: 7px;
@@ -2139,36 +2162,104 @@
     cursor: pointer;
     display: grid;
     gap: 3px;
-    padding: 9px;
+    padding: 9px 32px 9px 9px;
     text-align: left;
     width: 100%;
 }
 
-.poiesis-results__task-switcher button:hover,
-.poiesis-results__task-switcher button:focus-visible {
+.poiesis-results__task-select:hover,
+.poiesis-results__task-select:focus-visible {
     background: #272825;
     outline: none;
 }
 
-.poiesis-results__task-switcher button.active {
+.poiesis-results__task-select.active {
     background: #272d3d;
     border-color: #46516c;
     color: #eff2fa;
 }
 
-.poiesis-results__task-switcher button small,
+.poiesis-results__task-select small,
 .poiesis-results__task-switcher p {
     color: #777a73;
     font-size: 12px;
     margin: 0;
 }
 
-.poiesis-results__task-switcher button span {
+.poiesis-results__task-select > span {
     font-size: 12px;
     font-weight: 600;
     line-height: 1.35;
     overflow: visible;
     white-space: normal;
+}
+
+.poiesis-results__task-row.no-change .poiesis-results__task-select {
+    color: var(--poiesis-chrome-muted);
+    opacity: .78;
+    padding-block: 7px;
+}
+
+.poiesis-results__task-row.no-change .poiesis-results__task-select.active {
+    opacity: .92;
+}
+
+.poiesis-results__task-delete {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    color: var(--poiesis-chrome-muted);
+    cursor: pointer;
+    display: flex;
+    height: 25px;
+    justify-content: center;
+    opacity: 0;
+    padding: 0;
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    width: 25px;
+}
+
+.poiesis-results__task-row:hover .poiesis-results__task-delete,
+.poiesis-results__task-row:focus-within .poiesis-results__task-delete {
+    opacity: 1;
+}
+
+.poiesis-results__task-delete:hover,
+.poiesis-results__task-delete:focus-visible {
+    background: #383934;
+    color: var(--poiesis-chrome-text);
+}
+
+.poiesis-results__task-delete-confirm {
+    align-items: center;
+    background: #252622;
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 7px;
+    color: var(--poiesis-chrome-copy);
+    display: grid;
+    font-size: 12px;
+    gap: 5px;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    margin-top: 3px;
+    padding: 6px;
+}
+
+.poiesis-results__task-delete-confirm button {
+    background: transparent;
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 5px;
+    color: var(--poiesis-chrome-copy);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 3px 6px;
+}
+
+.poiesis-results__task-delete-confirm button.danger {
+    border-color: #8d5750;
+    color: #e7b2aa;
 }
 
 .poiesis-agent-window__code {
@@ -4345,7 +4436,7 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-agent-window__session-title,
-.poiesis-results__task-switcher button span,
+.poiesis-results__task-select > span,
 .poiesis-results__composer input {
     font-size: 13px;
 }
@@ -4365,12 +4456,12 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-agent-window__session-title,
-.poiesis-results__task-switcher button span {
+.poiesis-results__task-select > span {
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.poiesis-results__task-switcher button span {
+.poiesis-results__task-select > span {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -4422,7 +4513,7 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-agent-window__session-empty,
 .poiesis-agent-window__repository-group-label,
 .poiesis-results__task-switcher-header,
-.poiesis-results__task-switcher button small {
+.poiesis-results__task-select small {
     color: var(--poiesis-chrome-muted);
 }
 

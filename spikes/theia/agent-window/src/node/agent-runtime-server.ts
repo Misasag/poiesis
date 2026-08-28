@@ -166,6 +166,22 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         if (process.env.POIESIS_AGENT_FORCE_PRESPAWN_FAILURE === '1') {
             throw new Error('Agent pre-spawn failure requested by test hook.');
         }
+        const testReply = process.env.POIESIS_AGENT_TEST_REPLY;
+        if (testReply !== undefined) {
+            setTimeout(() => {
+                this.client?.notifyCodexEvent({
+                    type: 'output',
+                    executionId,
+                    stream: 'stdout',
+                    delta: `${JSON.stringify({
+                        type: 'item.completed',
+                        item: { type: 'agent_message', text: testReply }
+                    })}\n`
+                });
+                this.client?.notifyCodexEvent({ type: 'exit', executionId, code: 0, signal: null });
+            }, 0);
+            return;
+        }
 
         const provider = await this.providerRegistry.resolve('agent', providerId, model);
 

@@ -30,7 +30,7 @@ import {
     KnownCliId
 } from '../common/agent-runtime-protocol';
 import { ResultsService, TaskResultDocument } from './results-skill';
-import { ExecutionTask, TaskResultsQuestion, TaskService } from './task-service';
+import { ExecutionTask, isEmptyTaskChangeSet, TaskResultsQuestion, TaskService } from './task-service';
 import { getDesignVariant } from './design-variant';
 import { FolderExplorerService } from './folder-explorer-service';
 import { ResultsQuestionService } from './results-question-service';
@@ -484,6 +484,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected cliDetectionReport?: CliDetectionReport;
     protected cliDetectionLoading = false;
     protected deleteSessionConfirmationId?: string;
+    protected deleteTaskConfirmationId?: string;
     protected clearDataConfirmation = false;
     protected codeSidebarTab: CodeSidebarTab = 'files';
     protected codeFilesWidget?: Widget;
@@ -2596,6 +2597,9 @@ export class AgentWindowWidget extends ReactWidget {
         const draft = selectedTask ? session?.resultsDrafts.get(selectedTask.id) ?? '' : '';
         const notice = selectedTask ? session?.resultsNotices.get(selectedTask.id) : undefined;
         const questionSending = notice?.status === 'sending';
+        const selectedTaskHasNoChanges = selectedTask?.status === 'completed'
+            && isEmptyTaskChangeSet(selectedTask.changeSet);
+        const showNoChangeState = selectedTaskHasNoChanges && !document;
         const questionHistory = (selectedTask?.resultsQuestions ?? []).filter(entry =>
             notice?.status !== 'failed' || entry.timestamp !== notice.historyTimestamp
         );
@@ -2636,7 +2640,14 @@ export class AgentWindowWidget extends ReactWidget {
                                 <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error
+                        {showNoChangeState && (
+                            <div className='poiesis-results__state no-change' role='status'>
+                                <span className='codicon codicon-check' aria-hidden='true' />
+                                <strong>変更なし</strong>
+                                <p>このタスクにファイル変更はありません。会話の返答は Agent タブにあります。</p>
+                            </div>
+                        )}
+                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error && !selectedTaskHasNoChanges
                             && (!document || document.status === 'generating') && (
                             <div className='poiesis-results__empty' role='status'>成果を作成しています…</div>
                         )}
@@ -2661,7 +2672,7 @@ export class AgentWindowWidget extends ReactWidget {
                             </div>
                         )}
                     </div>
-                    {notice && (
+                    {notice && !showNoChangeState && (
                         <div
                             className={`poiesis-results__answer ${notice.status}`}
                             role={notice.status === 'failed' ? 'alert' : 'status'}
@@ -2674,31 +2685,37 @@ export class AgentWindowWidget extends ReactWidget {
                             )}
                         </div>
                     )}
-                    <section className='poiesis-results__composer' aria-label='Results の入力欄'>
-                        <PoiesisTextInput
-                            key={selectedTask?.id ?? 'no-results-task'}
-                            value={draft}
-                            placeholder='この結果について質問…'
-                            aria-label='表示中の成果について質問'
-                            maxLength={4_000}
-                            disabled={!selectedTask || document?.status !== 'ready' || questionSending}
-                            onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}
-                            onKeyDown={event => {
-                                if (event.key === 'Enter' && selectedTask && !questionSending) {
-                                    event.preventDefault();
-                                    void this.submitResultsQuestion(selectedTask.id);
-                                }
-                            }}
-                        />
-                        <button
-                            type='button'
-                            aria-label='Results 内へ送信'
-                            disabled={!selectedTask || document?.status !== 'ready' || questionSending || !draft.trim()}
-                            onClick={() => selectedTask && void this.submitResultsQuestion(selectedTask.id)}
-                        >
-                            <span className='codicon codicon-arrow-up' aria-hidden='true' />
-                        </button>
-                    </section>
+                    {showNoChangeState ? (
+                        <p className='poiesis-results__no-change-question-note'>
+                            Results への質問は、成果文書があるタスクで利用できます。
+                        </p>
+                    ) : (
+                        <section className='poiesis-results__composer' aria-label='Results の入力欄'>
+                            <PoiesisTextInput
+                                key={selectedTask?.id ?? 'no-results-task'}
+                                value={draft}
+                                placeholder='この結果について質問…'
+                                aria-label='表示中の成果について質問'
+                                maxLength={4_000}
+                                disabled={!selectedTask || document?.status !== 'ready' || questionSending}
+                                onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}
+                                onKeyDown={event => {
+                                    if (event.key === 'Enter' && selectedTask && !questionSending) {
+                                        event.preventDefault();
+                                        void this.submitResultsQuestion(selectedTask.id);
+                                    }
+                                }}
+                            />
+                            <button
+                                type='button'
+                                aria-label='Results 内へ送信'
+                                disabled={!selectedTask || document?.status !== 'ready' || questionSending || !draft.trim()}
+                                onClick={() => selectedTask && void this.submitResultsQuestion(selectedTask.id)}
+                            >
+                                <span className='codicon codicon-arrow-up' aria-hidden='true' />
+                            </button>
+                        </section>
+                    )}
                 </div>
                 <aside className='poiesis-results__task-switcher' aria-label='同じセッションの実行タスク'>
                     <div className='poiesis-results__task-switcher-header'>
@@ -2706,26 +2723,55 @@ export class AgentWindowWidget extends ReactWidget {
                         <span>{finishedTasks.length}</span>
                     </div>
                     <div className='poiesis-results__task-list' role='tablist'>
-                        {finishedTasks.map((task, index) => (
-                            <button
-                                key={task.id}
-                                id={`poiesis-results-task-tab-${task.id}`}
-                                type='button'
-                                role='tab'
-                                aria-selected={selectedTask?.id === task.id}
-                                aria-controls='poiesis-results-task-panel'
-                                tabIndex={selectedTask?.id === task.id ? 0 : -1}
-                                className={selectedTask?.id === task.id ? 'active' : ''}
-                                onClick={() => this.selectResultsTask(task.id)}
-                            >
-                                <small>
-                                    {index === 0 ? '最新 · ' : ''}
-                                    {task.status === 'cancelled' ? 'キャンセル' : task.status === 'failed' ? '失敗' : '完了'}
-                                    {task.endedAt ? ` · ${this.taskFinishedTime(task)}` : ''}
-                                </small>
-                                <span title={task.title}>{task.title}</span>
-                            </button>
-                        ))}
+                        {finishedTasks.map((task, index) => {
+                            const noChanges = task.status === 'completed' && isEmptyTaskChangeSet(task.changeSet);
+                            const confirmingDelete = this.deleteTaskConfirmationId === task.id;
+                            const state = task.status === 'cancelled' ? 'キャンセル' : task.status === 'failed' ? '失敗' : '完了';
+                            const time = task.endedAt ? this.taskFinishedTime(task) : '';
+                            return (
+                                <div
+                                    key={task.id}
+                                    role='presentation'
+                                    className={`poiesis-results__task-row${noChanges ? ' no-change' : ''}`}
+                                >
+                                    <button
+                                        id={`poiesis-results-task-tab-${task.id}`}
+                                        type='button'
+                                        role='tab'
+                                        aria-label={noChanges ? `${task.title}、${state}、${time}、変更なし` : undefined}
+                                        aria-selected={selectedTask?.id === task.id}
+                                        aria-controls='poiesis-results-task-panel'
+                                        tabIndex={selectedTask?.id === task.id ? 0 : -1}
+                                        className={`poiesis-results__task-select${selectedTask?.id === task.id ? ' active' : ''}`}
+                                        onClick={() => this.selectResultsTask(task.id)}
+                                    >
+                                        <small>
+                                            {index === 0 ? '最新 · ' : ''}{state}
+                                            {time ? ` · ${time}` : ''}
+                                            {noChanges ? ' · 変更なし' : ''}
+                                        </small>
+                                        {!noChanges && <span title={task.title}>{task.title}</span>}
+                                    </button>
+                                    {confirmingDelete ? (
+                                        <div className='poiesis-results__task-delete-confirm' role='group' aria-label={`${task.title}の削除を確認`}>
+                                            <span>削除しますか？</span>
+                                            <button type='button' className='danger' onClick={() => void this.deleteResultsTask(task.id)}>削除</button>
+                                            <button type='button' onClick={() => this.cancelDeleteResultsTask()}>戻る</button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type='button'
+                                            className='poiesis-results__task-delete'
+                                            aria-label={`${task.title}を削除`}
+                                            title='タスクを削除'
+                                            onClick={() => this.beginDeleteResultsTask(task.id)}
+                                        >
+                                            <span className='codicon codicon-close' aria-hidden='true' />
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                     {!finishedTasks.length && <p>完了したタスクはありません。</p>}
                 </aside>
@@ -5294,8 +5340,51 @@ export class AgentWindowWidget extends ReactWidget {
         const session = this.selectedSession();
         if (session) {
             session.selectedResultsTaskId = taskId;
+            this.deleteTaskConfirmationId = undefined;
             this.persistWindowState();
         }
+        this.update();
+    }
+
+    protected beginDeleteResultsTask(taskId: string): void {
+        if (!this.finishedTasks().some(task => task.id === taskId)) {
+            return;
+        }
+        this.deleteTaskConfirmationId = taskId;
+        this.update();
+    }
+
+    protected cancelDeleteResultsTask(): void {
+        this.deleteTaskConfirmationId = undefined;
+        this.update();
+    }
+
+    protected async deleteResultsTask(taskId: string): Promise<void> {
+        const session = this.selectedSession();
+        if (!session
+            || this.deleteTaskConfirmationId !== taskId
+            || !this.finishedTasks(session).some(task => task.id === taskId)) {
+            return;
+        }
+        const deletedWasSelected = session.selectedResultsTaskId === taskId;
+        session.taskIds = session.taskIds.filter(candidate => candidate !== taskId);
+        session.resultsDrafts.delete(taskId);
+        session.resultsNotices.delete(taskId);
+        this.resultsService.remove([taskId]);
+        this.taskService.remove([taskId]);
+        const newestRemainingTask = this.finishedTasks(session).at(-1);
+        if (deletedWasSelected) {
+            session.selectedResultsTaskId = newestRemainingTask?.id;
+        }
+        session.lastTaskStatus = newestRemainingTask?.status === 'running'
+            ? undefined
+            : newestRemainingTask?.status;
+        if (!newestRemainingTask) {
+            session.unreadTaskCompletion = false;
+        }
+        session.updatedAt = Date.now();
+        this.deleteTaskConfirmationId = undefined;
+        await this.persistWindowState();
         this.update();
     }
 
