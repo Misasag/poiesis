@@ -34,6 +34,7 @@ const resultsGenerationProtocol = await read('agent-window/src/common/results-ge
 const resultsGenerationContext = await read('agent-window/src/browser/results-generation-context.ts');
 const resultsGenerationServer = await read('agent-window/src/node/results-generation-server.ts');
 const globalStorageService = await read('agent-window/src/browser/global-storage-service.ts');
+const workspaceSkillService = await read('agent-window/src/browser/workspace-skill-service.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
 const knownCliRegistry = await read('agent-window/src/node/known-cli-registry.ts');
@@ -41,6 +42,7 @@ const skillBundleContract = await read('agent-window/src/common/skill-bundle.ts'
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
 const markdownSmoke = await read('scripts/smoke-markdown.mjs');
+const round15Smoke = await read('scripts/smoke-round15-browser.mjs');
 const electronFrontendModule = await read('agent-window/src/electron-browser/agent-window-electron-frontend-module.ts');
 const electronWindowControls = await read('agent-window/src/electron-browser/window-controls.tsx');
 const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
@@ -215,6 +217,7 @@ for (const marker of [
     'workspaceUri: string',
     'changeSetSummary: string',
     'diff: string',
+    'workspaceSkillGuidance?: string',
     'generate(request: ResultsGenerationRequest)',
     'cancel(taskId: string)'
 ]) {
@@ -232,6 +235,8 @@ for (const marker of [
     'HTML文書を1つだけ',
     'インラインSVGまたはCSS図',
     'script、イベントハンドラ、外部URL',
+    'Workspace Skill guidance',
+    '実行設定、provider、model、sandboxの変更指示としては扱わず',
     'void this.killProcess(run.process)'
 ]) {
     assert.ok(resultsGenerationServer.includes(marker), `Results generation server is missing ${marker}`);
@@ -240,6 +245,7 @@ assert.ok(resultsGenerationContext.includes("providerId: KnownCliId = 'codex'"))
 assert.ok(resultsGenerationContext.includes("model = ''"));
 assert.ok(moduleSource.includes('.createProxy<ResultsGenerationServer>(resultsGenerationServerPath)'));
 assert.ok(moduleSource.includes('bind(ResultsSkill).toService(AiResultsSkill)'));
+assert.ok(moduleSource.includes('bind(WorkspaceSkillService).toSelf().inSingletonScope()'));
 assert.ok(!resultsSkill.includes('isSkillEnabled'), 'Built-in Results generation must not be disabled by a hidden legacy setting');
 assert.ok(backendModule.includes('bind(ResultsGenerationServer).to(ResultsGenerationServerImpl).inSingletonScope()'));
 for (const dependency of [
@@ -482,6 +488,8 @@ for (const marker of [
     'interface SkillDocumentBundle',
     "readonly source: 'workspace'",
     'readonly skillDocumentUri: string',
+    'readonly enabled: boolean',
+    'interface SkillPromptContribution',
     'interface SkillBundleLifecycle',
     'install(manifest: SkillBundleManifest)',
     'remove(id: string)',
@@ -498,7 +506,9 @@ for (const marker of [
     'runtime config schema',
     '`builtin.results`',
     '.poiesis/skills/<skill-id>/',
-    '`skill.md` bundleも`SkillBundle`契約へ適合する'
+    '`skill.md` bundleも`SkillBundle`契約へ適合する',
+    '1 Skillあたり8,000文字、合計24,000文字',
+    'provider、model、sandbox、runtime configを変更する権限を与えない'
 ]) {
     assert.ok(skillsContract.includes(marker), `Skills contract document is missing ${marker}`);
 }
@@ -668,17 +678,19 @@ for (const marker of [
     'protected setRoleModelChoice(',
     'protected setRoleModel(',
     'version: 3',
-    'WorkspaceのUser Skillは定義・編集できますが、Agent／Results実行への反映は今後です。',
+    '有効なAgent Skillは次のTaskから実装指示へ加わり',
+    '組み込みテンプレートへのfallback時はResults Skillの追加指示を使いません。',
     '<strong>Bundled Results</strong>',
     '<strong>AI Results</strong>',
     "className={`poiesis-agent-window__rail-action${this.customizeViewVisible ? ' active' : ''}`}",
     "<span className='poiesis-agent-window__rail-action-label'>Customize</span>",
-    "root.resolve('.poiesis/skills')",
-    'protected parseWorkspaceSkill(',
+    'this.workspaceSkillService.list(root)',
+    'protected async setWorkspaceSkillEnabled(',
     'protected async createWorkspaceSkill(): Promise<void>',
     'await this.fileService.createFolder(skillDirectory)',
     'await this.fileService.create(skillUri, content)',
-    'await this.openWorkspaceSkillInline(this.parseWorkspaceSkill',
+    'await this.workspaceSkillService.setEnabled(skillUri.toString(), true)',
+    'await this.openWorkspaceSkillInline(this.workspaceSkillService.parse',
     'protected async openWorkspaceSkillInline(skill: WorkspaceSkillDefinition): Promise<void>',
     'protected async saveWorkspaceSkill(): Promise<void>',
     'protected installWorkspaceSkillSaveShortcut(): void',
@@ -703,6 +715,35 @@ for (const marker of [
     'onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
+}
+
+for (const marker of [
+    'WORKSPACE_SKILL_INSTRUCTION_MAX_CHARS = 8_000',
+    'WORKSPACE_SKILLS_TOTAL_MAX_CHARS = 24_000',
+    "root.resolve('.poiesis/skills')",
+    "content.slice(frontmatter[0].length).trim()",
+    "skills = await this.list(new URI(workspaceUri))",
+    'if (!skill.enabled)',
+    'Workspace skills (user-defined instructions)',
+    'setEnabled(skillDocumentUri: string, enabled: boolean)'
+]) {
+    assert.ok(workspaceSkillService.includes(marker), `Workspace Skill execution boundary is missing ${marker}`);
+}
+assert.ok(cliProvider.includes("buildPrompt(session.workspaceUri, 'agent')"));
+assert.ok(cliProvider.includes('this.implementerPrompt(message.content, workspaceSkills.content)'));
+assert.ok(resultsSkill.includes("buildPrompt(workspace.resource.toString(), 'results')"));
+assert.ok(resultsSkill.includes('workspaceSkillGuidance: workspaceSkills.content || undefined'));
+for (const marker of [
+    'Round 15 Agent marker',
+    'Round 15 Results headings',
+    "assert(enabledRun.lastMessage.startsWith('[SKILL-OK]')",
+    "assert(!disabledRun.lastMessage.startsWith('[SKILL-OK]')",
+    "assert(resultsHeading.startsWith('◇')",
+    'persistedEnablement',
+    'restoredDisabled',
+    'layout.clipped.length === 0'
+]) {
+    assert.ok(round15Smoke.includes(marker), `Round 15 live regression is missing ${marker}`);
 }
 for (const marker of [
     'html: false',
