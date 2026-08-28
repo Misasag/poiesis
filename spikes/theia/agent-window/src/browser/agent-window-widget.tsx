@@ -57,12 +57,6 @@ const DEFAULT_CODE_PANEL_HEIGHT = 190;
 const MIN_CODE_PANEL_HEIGHT = 96;
 const MAX_PERSISTED_TASKS_PER_SESSION = 10;
 const MAX_PERSISTED_RESULTS_HTML_CHARS = 300_000;
-const EXAMPLE_AGENT_PROMPTS = [
-    'READMEに導入手順のセクションを追加して',
-    'このリポジトリの構成を調べて要約して',
-    '失敗しているテストを修正して'
-] as const;
-
 interface ChatMessage {
     id: string;
     role: 'user' | 'agent';
@@ -382,6 +376,81 @@ const PoiesisSelect = ({ value, options, ariaLabel, onChange, className = '', di
             )}
         </div>
     );
+};
+
+interface PoiesisImeValueProps<T extends HTMLInputElement | HTMLTextAreaElement> {
+    value: string;
+    onValueChange: (value: string) => void;
+    elementRef?: (element: T | null) => void;
+}
+
+type PoiesisImeInputProps = PoiesisImeValueProps<HTMLInputElement> & Omit<React.InputHTMLAttributes<HTMLInputElement>,
+'value' | 'defaultValue' | 'onChange' | 'onInput' | 'onCompositionStart' | 'onCompositionEnd'>;
+type PoiesisImeTextareaProps = PoiesisImeValueProps<HTMLTextAreaElement> & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+'value' | 'defaultValue' | 'onChange' | 'onInput' | 'onCompositionStart' | 'onCompositionEnd'>;
+
+/**
+ * Keeps the DOM's in-progress IME composition out of React's value reconciliation.
+ * Outside composition, `value` remains the canonical application state and external
+ * changes are copied back into the DOM without making the control React-controlled.
+ */
+const useImeSafeValue = <T extends HTMLInputElement | HTMLTextAreaElement>(
+    value: string,
+    onValueChange: (value: string) => void,
+    elementRef?: (element: T | null) => void
+): {
+    ref: (element: T | null) => void;
+    onInput: (event: React.FormEvent<T>) => void;
+    onCompositionStart: () => void;
+    onCompositionEnd: (event: React.CompositionEvent<T>) => void;
+} => {
+    const input = React.useRef<T | null>(null);
+    const composing = React.useRef(false);
+    const lastReportedValue = React.useRef(value);
+    React.useLayoutEffect(() => {
+        const element = input.current;
+        if (!composing.current && element && element.value !== value) {
+            element.value = value;
+        }
+        if (!composing.current) {
+            lastReportedValue.current = value;
+        }
+    }, [value]);
+    const report = (nextValue: string): void => {
+        if (nextValue !== lastReportedValue.current) {
+            lastReportedValue.current = nextValue;
+            onValueChange(nextValue);
+        }
+    };
+    return {
+        ref: element => {
+            input.current = element;
+            elementRef?.(element);
+        },
+        onInput: event => {
+            const nativeEvent = event.nativeEvent as InputEvent;
+            if (!composing.current && !nativeEvent.isComposing) {
+                report(event.currentTarget.value);
+            }
+        },
+        onCompositionStart: () => {
+            composing.current = true;
+        },
+        onCompositionEnd: event => {
+            composing.current = false;
+            report(event.currentTarget.value);
+        }
+    };
+};
+
+const PoiesisTextInput = ({ value, onValueChange, elementRef, ...props }: PoiesisImeInputProps): React.ReactElement => {
+    const ime = useImeSafeValue<HTMLInputElement>(value, onValueChange, elementRef);
+    return <input {...props} {...ime} defaultValue={value} />;
+};
+
+const PoiesisTextArea = ({ value, onValueChange, elementRef, ...props }: PoiesisImeTextareaProps): React.ReactElement => {
+    const ime = useImeSafeValue<HTMLTextAreaElement>(value, onValueChange, elementRef);
+    return <textarea {...props} {...ime} defaultValue={value} />;
 };
 
 @injectable()
@@ -812,13 +881,13 @@ export class AgentWindowWidget extends ReactWidget {
                     {this.sessionSearchVisible && !this.railCollapsed && (
                         <label className='poiesis-agent-window__session-search' id='poiesis-agent-window-session-search'>
                             <span className='codicon codicon-search' aria-hidden='true' />
-                            <input
-                                ref={this.setSessionSearchInput}
+                            <PoiesisTextInput
+                                elementRef={this.setSessionSearchInput}
                                 type='search'
                                 value={this.sessionSearchQuery}
                                 placeholder='Search conversations'
                                 aria-label='会話をタイトルで検索'
-                                onChange={event => this.setSessionSearchQuery(event.currentTarget.value)}
+                                onValueChange={value => this.setSessionSearchQuery(value)}
                                 onKeyDown={event => {
                                     if (event.key === 'Escape') {
                                         this.closeSessionSearch();
@@ -1008,13 +1077,13 @@ export class AgentWindowWidget extends ReactWidget {
                 data-session-pinned={session.pinned ? 'true' : 'false'}
             >
                 {renaming ? (
-                    <input
+                    <PoiesisTextInput
                         className='poiesis-agent-window__session-rename'
                         value={this.renameDraft}
                         aria-label='セッション名を変更'
                         autoFocus
-                        onChange={event => {
-                            this.renameDraft = event.currentTarget.value;
+                        onValueChange={value => {
+                            this.renameDraft = value;
                             this.update();
                         }}
                         onBlur={() => this.commitSessionRename(session.id)}
@@ -1405,12 +1474,12 @@ export class AgentWindowWidget extends ReactWidget {
                 <div className='poiesis-agent-window__workspace-picker-title'>Workspaceを開く</div>
                 <label className='poiesis-agent-window__workspace-picker-search'>
                     <span className='codicon codicon-search' aria-hidden='true' />
-                    <input
-                        ref={input => { this.workspaceSearchInput = input ?? undefined; }}
+                    <PoiesisTextInput
+                        elementRef={input => { this.workspaceSearchInput = input ?? undefined; }}
                         value={this.workspaceSearchQuery}
                         placeholder='Workspaceを検索'
                         aria-label='Workspaceを検索'
-                        onChange={event => this.setWorkspaceSearchQuery(event.currentTarget.value)}
+                        onValueChange={value => this.setWorkspaceSearchQuery(value)}
                         onKeyDown={event => {
                             if (event.key === 'Escape') {
                                 this.workspacePickerVisible = false;
@@ -1776,13 +1845,6 @@ export class AgentWindowWidget extends ReactWidget {
                                 <span className='codicon codicon-comment-add' aria-hidden='true' />
                                 <strong>What do you want to build?</strong>
                                 <small>Repository、branch、実行場所を選んでからAgentへ依頼します</small>
-                                <div className='poiesis-agent-window__example-prompts' aria-label='依頼の例'>
-                                    {EXAMPLE_AGENT_PROMPTS.map(prompt => (
-                                        <button type='button' key={prompt} onClick={() => this.useExamplePrompt(session.id, prompt)}>
-                                            {prompt}
-                                        </button>
-                                    ))}
-                                </div>
                             </div>
                         )}
                         {(session?.messages ?? []).map(message => (
@@ -1823,16 +1885,15 @@ export class AgentWindowWidget extends ReactWidget {
                     </div>
                 )}
                 <section className='poiesis-agent-window__composer' aria-label='Agent の入力欄'>
-                    <textarea
+                    <PoiesisTextArea
                         key={session?.id ?? 'no-session'}
-                        ref={input => { this.agentComposerInput = input ?? undefined; }}
+                        elementRef={input => { this.agentComposerInput = input ?? undefined; }}
                         value={session?.agentDraft ?? ''}
                         placeholder='次の変更内容や質問を入力…'
                         aria-label='Agent へのメッセージ'
                         rows={2}
                         disabled={!session || Boolean(runningTask)}
-                        onChange={event => this.setAgentDraft(session?.id, event.currentTarget.value)}
-                        onCompositionEnd={event => this.setAgentDraft(session?.id, event.currentTarget.value)}
+                        onValueChange={value => this.setAgentDraft(session?.id, value)}
                         onKeyDown={event => {
                             if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                                 event.preventDefault();
@@ -1882,11 +1943,11 @@ export class AgentWindowWidget extends ReactWidget {
                     </button>
                     <label>
                         <span className='codicon codicon-folder' aria-hidden='true' />
-                        <input
+                        <PoiesisTextInput
                             value={this.folderExplorerAddress}
                             aria-label='フォルダーパス'
-                            onChange={event => {
-                                this.folderExplorerAddress = event.currentTarget.value;
+                            onValueChange={value => {
+                                this.folderExplorerAddress = value;
                                 this.update();
                             }}
                             onKeyDown={event => {
@@ -1906,13 +1967,13 @@ export class AgentWindowWidget extends ReactWidget {
                     {this.creatingFolder && (
                         <div className='poiesis-folder-explorer__new-folder-row'>
                             <span className='codicon codicon-folder' aria-hidden='true' />
-                            <input
+                            <PoiesisTextInput
                                 autoFocus
                                 value={this.newFolderName}
                                 placeholder='New folder'
                                 aria-label='新しいフォルダー名'
-                                onChange={event => {
-                                    this.newFolderName = event.currentTarget.value;
+                                onValueChange={value => {
+                                    this.newFolderName = value;
                                     this.update();
                                 }}
                                 onKeyDown={event => {
@@ -2256,12 +2317,13 @@ export class AgentWindowWidget extends ReactWidget {
                                                     {editorDirty ? '未保存' : '保存済み'}
                                                 </span>
                                             </header>
-                                            <textarea
+                                            <PoiesisTextArea
+                                                key={editor.uri}
                                                 className='poiesis-customize-view__editor-input'
                                                 aria-label={`${editor.path}を編集`}
                                                 spellCheck={false}
                                                 value={editor.content}
-                                                onChange={event => this.setWorkspaceSkillEditorContent(event.currentTarget.value)}
+                                                onValueChange={value => this.setWorkspaceSkillEditorContent(value)}
                                                 onKeyDown={event => {
                                                     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
                                                         event.preventDefault();
@@ -2304,13 +2366,13 @@ export class AgentWindowWidget extends ReactWidget {
                                 }}>
                                     <label>
                                         <span>Skill ID</span>
-                                        <input
+                                        <PoiesisTextInput
                                             autoFocus
                                             value={this.newSkillId}
                                             placeholder='my-skill'
                                             aria-label='新しいSkill ID'
                                             disabled={this.newSkillCreating}
-                                            onChange={event => this.setNewSkillId(event.currentTarget.value)}
+                                            onValueChange={value => this.setNewSkillId(value)}
                                         />
                                     </label>
                                     <label>
@@ -2409,12 +2471,12 @@ export class AgentWindowWidget extends ReactWidget {
                         {customModel && (
                             <label>
                                 <span>カスタムモデルID</span>
-                                <input
+                                <PoiesisTextInput
                                     value={model}
                                     maxLength={160}
                                     placeholder='モデルIDを入力'
                                     aria-label={`${label} カスタムモデルID`}
-                                    onChange={event => this.setRoleModel(role, event.currentTarget.value)}
+                                    onValueChange={value => this.setRoleModel(role, value)}
                                 />
                             </label>
                         )}
@@ -2467,12 +2529,12 @@ export class AgentWindowWidget extends ReactWidget {
             >
                 <label className='poiesis-agent-window__repository-search'>
                     <span className='codicon codicon-search' aria-hidden='true' />
-                    <input
-                        ref={input => { this.repositorySearchInput = input ?? undefined; }}
+                    <PoiesisTextInput
+                        elementRef={input => { this.repositorySearchInput = input ?? undefined; }}
                         value={this.repositorySearchQuery}
                         placeholder='Repositoryを検索'
                         aria-label='Repositoryを検索'
-                        onChange={event => this.setRepositorySearchQuery(event.currentTarget.value)}
+                        onValueChange={value => this.setRepositorySearchQuery(value)}
                     />
                 </label>
                 {repositoryChoices.length > 0 && (
@@ -2607,13 +2669,14 @@ export class AgentWindowWidget extends ReactWidget {
                         </div>
                     )}
                     <section className='poiesis-results__composer' aria-label='Results の入力欄'>
-                        <input
+                        <PoiesisTextInput
+                            key={selectedTask?.id ?? 'no-results-task'}
                             value={draft}
                             placeholder='この結果について質問…'
                             aria-label='表示中の成果について質問'
                             maxLength={4_000}
                             disabled={!selectedTask || document?.status !== 'ready' || questionSending}
-                            onChange={event => selectedTask && this.setResultsDraft(selectedTask.id, event.currentTarget.value)}
+                            onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}
                             onKeyDown={event => {
                                 if (event.key === 'Enter' && selectedTask && !questionSending) {
                                     event.preventDefault();
@@ -5263,14 +5326,6 @@ export class AgentWindowWidget extends ReactWidget {
         session.agentDraft = value;
         this.persistWindowState();
         this.update();
-    }
-
-    protected useExamplePrompt(sessionId: string, prompt: string): void {
-        this.setAgentDraft(sessionId, prompt);
-        requestAnimationFrame(() => {
-            this.agentComposerInput?.focus();
-            this.agentComposerInput?.setSelectionRange(prompt.length, prompt.length);
-        });
     }
 
     protected selectResultsTask(taskId: string): void {

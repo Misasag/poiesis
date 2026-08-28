@@ -188,6 +188,35 @@ try {
             '.poiesis-agent-window__code-header', 'Code header'));
     }
     if (lightweightElectron) {
+        let binaryDialogCheck;
+        if (settingsWindowOnly) {
+            await expandExplorerDirectory(page, 'spikes');
+            await expandExplorerDirectory(page, 'theia');
+            await expandExplorerDirectory(page, 'electron-app');
+            await expandExplorerDirectory(page, 'resources');
+            await revealExplorerFile(page, 'poiesis.png', 'end');
+            await clickExplorerFile(page, 'poiesis.png');
+            await page.waitForSelector('.lm-Widget.dialogOverlay .dialogBlock');
+            binaryDialogCheck = await page.evaluate(() => {
+                const overlay = document.querySelector('.lm-Widget.dialogOverlay');
+                const block = overlay?.querySelector('.dialogBlock');
+                if (!(overlay instanceof HTMLElement) || !(block instanceof HTMLElement)) return undefined;
+                const blockStyle = getComputedStyle(block);
+                return {
+                    title: overlay.querySelector('.dialogTitle')?.textContent?.trim(),
+                    content: overlay.querySelector('.dialogContent')?.textContent?.trim(),
+                    buttons: [...overlay.querySelectorAll('.dialogControl button')].map(button => button.textContent?.trim()),
+                    background: blockStyle.backgroundColor,
+                    borderRadius: blockStyle.borderRadius
+                };
+            });
+            assert(binaryDialogCheck?.content.includes('このファイルはバイナリ、または未対応のエンコーディングです。開きますか？')
+                && binaryDialogCheck.buttons.includes('開く') && binaryDialogCheck.buttons.includes('キャンセル')
+                && binaryDialogCheck.background === 'rgb(29, 30, 28)' && binaryDialogCheck.borderRadius === '12px',
+            `Binary-file dialog is not Poiesis-localized and themed: ${JSON.stringify(binaryDialogCheck)}`);
+            await clickByText(page, '.lm-Widget.dialogOverlay .dialogControl button', 'キャンセル');
+            await page.waitForFunction(() => !document.querySelector('.lm-Widget.dialogOverlay'));
+        }
         await clickByText(page, '.poiesis-agent-window__code-control', 'Code');
         await page.waitForSelector('.poiesis-agent-window__agent');
         const surfaceSelector = settingsWindowOnly ? '.poiesis-settings-modal' : '.poiesis-customize-view';
@@ -197,6 +226,9 @@ try {
             await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
         }
         await page.waitForSelector(surfaceSelector);
+        const settingsToggleCheck = settingsWindowOnly
+            ? await assertSettingsToggleKeepsLayout(page)
+            : undefined;
         if (customizeWindowOnly) {
             await clickByText(page, '.poiesis-customize-view__text-button', '新しいSkill');
             await page.click('[aria-label="新しいSkillの種類"]');
@@ -238,6 +270,8 @@ try {
             minimumSizeCheck,
             minimumSurfaceChecks,
             headerInteractionChecks,
+            settingsToggleCheck,
+            binaryDialogCheck,
             modal: settingsWindowOnly ? 'settings' : 'customize',
             modalWindowChecks,
             code
@@ -924,6 +958,63 @@ async function assertPoiesisSelectUnclipped(page, label) {
         && snapshot.right <= snapshot.viewport.width && snapshot.bottom <= snapshot.viewport.height,
     `${label} clipped: ${JSON.stringify(snapshot)}`);
     return snapshot;
+}
+
+async function assertSettingsToggleKeepsLayout(page) {
+    const snapshot = () => page.evaluate(() => {
+        const read = selector => {
+            const element = document.querySelector(selector);
+            if (!(element instanceof HTMLElement)) return undefined;
+            const rect = element.getBoundingClientRect();
+            return {
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                width: rect.width,
+                height: rect.height,
+                scrollLeft: element.scrollLeft,
+                scrollTop: element.scrollTop
+            };
+        };
+        return {
+            viewport: { width: innerWidth, height: innerHeight },
+            widget: read('.poiesis-agent-window'),
+            content: read('.poiesis-agent-window__content'),
+            workspace: read('.poiesis-agent-window__workspace'),
+            panelViewport: read('.poiesis-agent-window__viewport'),
+            backdrop: read('.poiesis-settings-modal__backdrop'),
+            modal: read('.poiesis-settings-modal')
+        };
+    });
+    const switchPoint = await page.evaluate(() => {
+        const body = document.querySelector('.poiesis-settings-modal__body');
+        const toggle = document.querySelector('.poiesis-agent-window__switch > span');
+        if (!(body instanceof HTMLElement) || !(toggle instanceof HTMLElement)) {
+            throw new Error('Results resource switch is missing');
+        }
+        body.scrollTop = Math.max(0, toggle.offsetTop - body.clientHeight / 2);
+        const rect = toggle.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+    const before = await snapshot();
+    await page.mouse.click(switchPoint.x, switchPoint.y);
+    await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+    const after = await snapshot();
+    for (const key of ['widget', 'content', 'workspace', 'panelViewport', 'backdrop']) {
+        const oldRect = before[key];
+        const newRect = after[key];
+        assert(oldRect && newRect
+            && Math.abs(oldRect.width - newRect.width) <= 1
+            && Math.abs(oldRect.height - newRect.height) <= 1
+            && Math.abs(oldRect.left - newRect.left) <= 1
+            && Math.abs(oldRect.top - newRect.top) <= 1,
+        `Settings toggle shifted ${key}: ${JSON.stringify({ before, after })}`);
+    }
+    assert(after.content.bottom <= after.viewport.height + 1 && after.workspace.bottom <= after.viewport.height + 1,
+        `Settings toggle clipped the application: ${JSON.stringify({ before, after })}`);
+    return { before, after };
 }
 
 function readPoiesisState() {

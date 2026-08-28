@@ -16,6 +16,7 @@ const safeMarkdown = await read('agent-window/src/browser/safe-markdown.ts');
 const moduleSource = await read('agent-window/src/browser/agent-window-frontend-module.ts');
 const poiesisFrontendApplication = await read('agent-window/src/browser/poiesis-frontend-application.ts');
 const poiesisWorkspaceTrustService = await read('agent-window/src/browser/poiesis-workspace-trust-service.ts');
+const poiesisFileResourceResolver = await read('agent-window/src/browser/poiesis-file-resource-resolver.ts');
 const designShotContribution = await read('agent-window/src/browser/design-shot-contribution.ts');
 const backendModule = await read('agent-window/src/node/agent-window-backend-module.ts');
 const agentContribution = await read('agent-window/src/browser/agent-window-contribution.ts');
@@ -83,6 +84,7 @@ for (const marker of [
     'session rail top',
     'headerInteractionChecks',
     'modalWindowChecks',
+    'assertSettingsToggleKeepsLayout',
     'assertNativeMinimumWindowSize',
     'Electron allowed an OS resize below 1024x600',
     'POIESIS_SETTINGS_WINDOW_ONLY',
@@ -694,8 +696,11 @@ for (const marker of [
     'POIESIS_FILE_LINK_ATTRIBUTE',
     'open(this.openerService, new URI(externalUri))',
     "value={session?.agentDraft ?? ''}",
-    'onChange={event => this.setAgentDraft(session?.id, event.currentTarget.value)}',
-    'onCompositionEnd={event => this.setAgentDraft(session?.id, event.currentTarget.value)}'
+    'const PoiesisTextInput = (',
+    'const PoiesisTextArea = (',
+    'if (!composing.current && !nativeEvent.isComposing)',
+    'onValueChange={value => this.setAgentDraft(session?.id, value)}',
+    'onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
@@ -712,6 +717,29 @@ for (const marker of [
 }
 assert.equal(rootPackage.scripts['smoke:markdown'], 'node scripts/smoke-markdown.mjs');
 assert.equal(rootPackage.scripts['smoke:round13'], 'node scripts/smoke-round13-browser.mjs');
+assert.equal(rootPackage.scripts['smoke:round14'], 'node scripts/smoke-round14-browser.mjs');
+for (const marker of [
+    'rebind(FileResourceResolver).toService(PoiesisFileResourceResolver)',
+    "import { PoiesisFileResourceResolver } from './poiesis-file-resource-resolver'"
+]) {
+    assert.ok(moduleSource.includes(marker), `Poiesis file dialog binding is missing ${marker}`);
+}
+for (const marker of [
+    'class PoiesisFileResourceResolver extends FileResourceResolver',
+    'このファイルはバイナリ、または未対応のエンコーディングです。開きますか？',
+    "ok: '開く'",
+    "cancel: 'キャンセル'",
+    '外部で変更されたファイル'
+]) {
+    assert.ok(poiesisFileResourceResolver.includes(marker), `Poiesis file dialog policy is missing ${marker}`);
+}
+for (const marker of [
+    'body .lm-Widget.dialogOverlay',
+    'body .lm-Widget.dialogOverlay .dialogBlock',
+    'body .lm-Widget.dialogOverlay .dialogControl .theia-button.main'
+]) {
+    assert.ok(agentStyles.includes(marker), `Poiesis stock-dialog safety-net style is missing ${marker}`);
+}
 for (const marker of [
     'userStayedPlain',
     'javascriptAnchorCount',
@@ -905,7 +933,9 @@ for (const marker of [
     'grid-template-columns: var(--poiesis-rail-width, 258px) minmax(0, 1fr)',
     '--poiesis-chrome-muted: #92948d',
     '--poiesis-results-muted: #9aa5bd',
-    ':is(button, input, textarea, select, [tabindex]):focus-visible',
+    ':is(button, [tabindex]):focus-visible',
+    '.poiesis-agent-window__content :is(input, textarea):focus-visible',
+    'overflow: clip',
     'outline: 2px solid var(--poiesis-focus-ring, #c28b60)',
     ".poiesis-agent-window__content[data-mode='code']",
     ".poiesis-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true']",
@@ -993,8 +1023,6 @@ assert.ok(!agentStyles.includes('.poiesis-agent-window__composer-tools'), 'Defer
 assert.match(agentStyles, /@media \(max-width: 1279px\)[\s\S]*?\.poiesis-agent-window__composer\s*\{[^}]*width:\s*min\(680px, calc\(100% - 32px\)\);/,
     'Agent composer must shrink fluidly between the native minimum and the design floor');
 for (const marker of [
-    'EXAMPLE_AGENT_PROMPTS',
-    'useExamplePrompt(session.id, prompt)',
     'renderShortcutsOverlay()',
     'shortcutsOverlayVisible',
     "event.key !== 'Escape'"
@@ -1007,11 +1035,12 @@ for (const marker of [
     '--motion-fast: 120ms cubic-bezier(.2, 0, 0, 1)',
     '@media (prefers-reduced-motion: reduce)',
     'animation-duration: 0ms !important',
-    '.poiesis-agent-window__example-prompts',
     '.poiesis-shortcuts__backdrop'
 ]) {
     assert.ok(agentStyles.includes(marker), `Round 10 UI styles are missing ${marker}`);
 }
+assert.ok(!agentWidget.includes('EXAMPLE_AGENT_PROMPTS'), 'Example prompt chips must stay removed');
+assert.ok(!agentStyles.includes('.poiesis-agent-window__example-prompts'), 'Example prompt chip styles must stay removed');
 assert.match(
     agentStyles,
     /\.poiesis-agent-window__send \.codicon,[\s\S]*?color:\s*#222320;/,
@@ -1108,8 +1137,9 @@ assert.ok(!agentWidget.includes('this.title.closable'), 'Poiesis outer content m
 assert.ok(!agentStyles.includes('theia-tabBar-tab-row'), 'Agent / Results must not hide Theia tab rows with CSS');
 assert.ok(!agentStyles.includes('.theia-tabBar'), 'Agent / Results styles must not target Theia tab bars');
 assert.ok(!agentStyles.includes('.lm-TabBar'), 'Agent / Results styles must not target Lumino tab bars');
+const agentStylesWithoutDialogSafetyNet = agentStyles.replaceAll('.lm-Widget.dialogOverlay', '.poiesis-stock-dialog');
 for (const forbidden of ['lm-Widget', 'lm-Panel', 'lm-BoxPanel', 'lm-SplitPanel-child', 'theia-mod-collapsed']) {
-    assert.ok(!agentStyles.includes(forbidden), `Code chrome must remove ${forbidden} nodes instead of hiding them with CSS`);
+    assert.ok(!agentStylesWithoutDialogSafetyNet.includes(forbidden), `Code chrome must remove ${forbidden} nodes instead of hiding them with CSS`);
 }
 for (const forbidden of ['theia-ApplicationShell', 'theia-tabBar-tab-row', '.theia-tabBar', '.lm-TabBar']) {
     assert.ok(!agentStyles.includes(forbidden), `Code chrome must not CSS-hide ${forbidden}`);

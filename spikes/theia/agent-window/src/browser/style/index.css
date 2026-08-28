@@ -1,7 +1,7 @@
 #poiesis-window-host {
     background: #181918;
     inset: 0;
-    overflow: hidden;
+    overflow: clip;
     position: absolute;
 }
 
@@ -654,7 +654,9 @@
     margin: 0;
     max-width: none;
     min-height: 0;
-    overflow: hidden;
+    /* `hidden` remains programmatically scrollable: focusing a deep modal control
+       used to set this grid's scrollTop and move the entire application offscreen. */
+    overflow: clip;
     padding: 0;
     position: relative;
     width: 100%;
@@ -1584,31 +1586,6 @@
 
 .poiesis-agent-window__new-agent-empty small {
     font-size: 12px;
-}
-
-.poiesis-agent-window__example-prompts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    justify-content: center;
-    margin-top: 7px;
-    max-width: 580px;
-}
-
-.poiesis-agent-window__example-prompts button {
-    background: #242522;
-    border: 1px solid var(--poiesis-control-border, #70726b);
-    border-radius: 999px;
-    color: var(--poiesis-chrome-copy);
-    cursor: pointer;
-    font: inherit;
-    font-size: 12px;
-    padding: 6px 10px;
-}
-
-.poiesis-agent-window__example-prompts button:hover {
-    background: var(--poiesis-chrome-hover);
-    color: var(--poiesis-chrome-text);
 }
 
 .poiesis-agent-window__message,
@@ -3568,8 +3545,6 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-settings-modal__model-field .poiesis-select__trigger:focus-visible,
 .poiesis-settings-modal__model-field input:focus-visible {
     border-color: #c28b60;
-    outline: 2px solid #c28b60;
-    outline-offset: 1px;
 }
 
 .poiesis-settings-modal__model-field .poiesis-select__trigger:disabled {
@@ -4628,20 +4603,36 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-agent-window__content
-:is(button, input, textarea, select, [tabindex]):focus-visible,
+:is(button, [tabindex]):focus-visible,
 .poiesis-folder-explorer
-:is(button, input, textarea, select, [tabindex]):focus-visible,
+:is(button, [tabindex]):focus-visible,
 .poiesis-changes__content
-:is(button, input, textarea, select, [tabindex]):focus-visible {
+:is(button, [tabindex]):focus-visible {
     outline: 2px solid var(--poiesis-focus-ring, #c28b60);
     outline-offset: -2px;
+}
+
+.poiesis-agent-window__content :is(input, textarea):focus-visible,
+.poiesis-folder-explorer :is(input, textarea):focus-visible,
+.poiesis-changes__content :is(input, textarea):focus-visible {
+    outline: none;
 }
 
 .poiesis-agent-window__composer:focus-within,
 .poiesis-results__composer:focus-within,
 .poiesis-agent-window__session-search:focus-within,
 .poiesis-agent-window__repository-search:focus-within,
-.poiesis-agent-window__workspace-picker-search:focus-within {
+.poiesis-agent-window__workspace-picker-search:focus-within,
+.poiesis-folder-explorer__toolbar label:focus-within {
+    border-color: var(--poiesis-focus-ring, #c28b60);
+    box-shadow: 0 0 0 1px var(--poiesis-focus-ring-soft, rgb(194 139 96 / 24%));
+}
+
+.poiesis-agent-window__session-rename:focus-visible,
+.poiesis-settings-modal__model-field input:focus-visible,
+.poiesis-customize-view__new-skill input:focus-visible,
+.poiesis-customize-view__editor-input:focus-visible,
+.poiesis-folder-explorer__new-folder-row input:focus-visible {
     border-color: var(--poiesis-focus-ring, #c28b60);
     box-shadow: 0 0 0 1px var(--poiesis-focus-ring-soft, rgb(194 139 96 / 24%));
 }
@@ -4669,4 +4660,100 @@ body.poiesis-code-file-pointer-drag * {
         animation-iteration-count: 1 !important;
         transition-duration: 0ms !important;
     }
+}
+
+/* Safety net for dialogs still owned by Theia services (save conflicts, file guards, etc.). */
+body .lm-Widget.dialogOverlay {
+    backdrop-filter: blur(2px);
+    background: rgb(0 0 0 / 62%);
+    color: #c8c9c3;
+    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+    font-size: 13px;
+    padding: 20px;
+}
+
+body .lm-Widget.dialogOverlay .dialogBlock {
+    background: #1d1e1c;
+    border: 1px solid #50524c;
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgb(0 0 0 / 58%);
+    color: #c8c9c3;
+    max-width: min(620px, calc(100vw - 40px));
+    min-width: min(420px, calc(100vw - 40px));
+}
+
+body .lm-Widget.dialogOverlay .dialogTitle {
+    background: #222320;
+    border-bottom: 1px solid #3c3e39;
+    color: #efeee9;
+    font-size: 14px;
+    font-weight: 650;
+    min-height: 50px;
+    padding: 10px 14px 10px 17px;
+    text-align: left;
+}
+
+body .lm-Widget.dialogOverlay .dialogTitle i.closeButton {
+    border-radius: 6px;
+    color: #92948d;
+    padding: 5px;
+}
+
+body .lm-Widget.dialogOverlay .dialogTitle i.closeButton:hover {
+    background: #2b2c29;
+    color: #efeee9;
+}
+
+body .lm-Widget.dialogOverlay .dialogContent {
+    background: #1d1e1c;
+    color: #c8c9c3;
+    line-height: 1.58;
+    padding: 18px;
+}
+
+body .lm-Widget.dialogOverlay .dialogControl {
+    background: #1d1e1c;
+    border-top: 1px solid #30312f;
+    gap: 8px;
+    padding: 11px 14px;
+}
+
+body .lm-Widget.dialogOverlay .dialogControl .theia-button {
+    background: #30322e;
+    border: 1px solid #555750;
+    border-radius: 6px;
+    color: #efeee9;
+    font: inherit;
+    min-height: 32px;
+    padding: 6px 12px;
+}
+
+body .lm-Widget.dialogOverlay .dialogControl .theia-button:hover {
+    background: #3a3c37;
+}
+
+body .lm-Widget.dialogOverlay .dialogControl .theia-button.main {
+    background: #93643d;
+    border-color: #b47b4e;
+    color: #fff9f2;
+}
+
+body .lm-Widget.dialogOverlay :is(button, .theia-button, .closeButton):focus-visible {
+    outline: 2px solid #c28b60;
+    outline-offset: 2px;
+}
+
+body .lm-Widget.dialogOverlay ::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+body .lm-Widget.dialogOverlay ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+body .lm-Widget.dialogOverlay ::-webkit-scrollbar-thumb {
+    background: #5c5f58;
+    border: 2px solid transparent;
+    border-radius: 999px;
 }
