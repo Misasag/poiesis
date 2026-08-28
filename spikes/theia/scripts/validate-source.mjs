@@ -41,6 +41,8 @@ const electronSmoke = await read('scripts/smoke-electron.mjs');
 const electronFrontendModule = await read('agent-window/src/electron-browser/agent-window-electron-frontend-module.ts');
 const electronWindowControls = await read('agent-window/src/electron-browser/window-controls.tsx');
 const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
+const iconBuildScript = await read('scripts/build-icon.mjs');
+const appIcon = await readFile(resolve(root, 'electron-app/resources/poiesis.ico'));
 const readme = await read('README.md');
 const firstCompletion = await read('../../docs/FIRST-COMPLETION.md');
 const skillsContract = await read('../../docs/SKILLS-CONTRACT.md');
@@ -52,6 +54,10 @@ assert.ok(rootPackage.workspaces.includes('electron-app'));
 assert.equal(electronPackage.theia.target, 'electron');
 assert.equal(electronPackage.dependencies['@theia/electron'], '1.73.1');
 assert.equal(electronPackage.devDependencies.electron, '39.8.7');
+assert.equal(electronPackage.theia.frontend.config.electron.windowOptions.icon, 'resources/poiesis.ico');
+assert.equal(appIcon.readUInt16LE(2), 1, 'Poiesis app icon must be an ICO image');
+assert.equal(appIcon.readUInt16LE(4), 7, 'Poiesis app icon must contain seven sizes');
+assert.ok(iconBuildScript.includes('const sizes = [16, 24, 32, 48, 64, 128, 256]'), 'App icon build sizes are missing');
 assert.equal(appPackage.theia.frontend.config.preferences['security.workspace.trust.enabled'], false);
 assert.equal(electronPackage.theia.frontend.config.preferences['security.workspace.trust.enabled'], false);
 assert.equal(appPackage.theia.frontend.config.preferences['extensions.ignoreRecommendations'], true);
@@ -156,6 +162,7 @@ assert.equal(extensionPackage.dependencies['@theia/search-in-workspace'], '1.73.
 assert.ok(resultsQuestionProtocol.includes('workspaceUri: string'), 'Results question scope must name its workspace');
 assert.ok(resultsQuestionProtocol.includes('providerId: KnownCliId'), 'Results question scope must name its AI provider');
 assert.ok(resultsQuestionProtocol.includes('model?: string'), 'Results question scope must carry its selected model');
+assert.ok(resultsQuestionProtocol.includes('history?: ResultsQuestionHistoryEntry[]'), 'Results question scope must carry recent Q&A history');
 assert.ok(resultsQuestionService.includes('return this.server.ask(question, scope)'), 'Results question browser proxy is missing');
 for (const marker of [
     'this.resultsQuestionService.ask(question, {',
@@ -189,6 +196,10 @@ for (const marker of [
     assert.ok(resultsQuestionServer.includes(marker), `Results question server is missing ${marker}`);
 }
 assert.ok(!resultsQuestionServer.includes('getMostRecentlyUsedWorkspace'), 'Results questions must not use an unrelated recent workspace');
+assert.ok(resultsQuestionServer.includes('HISTORY_MAX_ITEMS = 6'), 'Results question history context must stay bounded');
+assert.ok(taskService.includes('MAX_RESULTS_QUESTIONS_PER_TASK = 20'), 'Persisted Results Q&A history must stay bounded');
+assert.ok(agentWidget.includes('renderResultsQuestionHistory'), 'Results Q&A history UI is missing');
+assert.ok(agentWidget.includes('migrateLegacyCliErrorMessage'), 'Legacy CLI error migration is missing');
 for (const marker of [
     "resultsGenerationServerPath = '/services/poiesis/results-generation'",
     'providerId: KnownCliId',
@@ -926,6 +937,26 @@ assert.match(agentStyles, /\.poiesis-agent-window__message,[\s\S]*?font-size:\s*
     'Agent conversation text must be at least 14px');
 assert.ok(!/font-size:\s*(?:8|9|10|11)px;/.test(agentStyles), 'Poiesis chrome text must not fall below the 12px CSS floor');
 assert.ok(!agentStyles.includes('.poiesis-agent-window__composer-tools'), 'Deferred composer tool styles must not remain');
+for (const marker of [
+    'EXAMPLE_AGENT_PROMPTS',
+    'useExamplePrompt(session.id, prompt)',
+    'renderShortcutsOverlay()',
+    'shortcutsOverlayVisible',
+    "event.key !== 'Escape'"
+]) {
+    assert.ok(agentWidget.includes(marker), `Round 10 interaction wiring is missing ${marker}`);
+}
+for (const marker of [
+    '--poiesis-control-border: #70726b',
+    '--poiesis-results-accent: #6577a0',
+    '--motion-fast: 120ms cubic-bezier(.2, 0, 0, 1)',
+    '@media (prefers-reduced-motion: reduce)',
+    'animation-duration: 0ms !important',
+    '.poiesis-agent-window__example-prompts',
+    '.poiesis-shortcuts__backdrop'
+]) {
+    assert.ok(agentStyles.includes(marker), `Round 10 UI styles are missing ${marker}`);
+}
 assert.match(
     agentStyles,
     /\.poiesis-agent-window__send \.codicon,[\s\S]*?color:\s*#222320;/,

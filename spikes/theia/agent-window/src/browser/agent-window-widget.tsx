@@ -55,6 +55,11 @@ const DEFAULT_CODE_PANEL_HEIGHT = 190;
 const MIN_CODE_PANEL_HEIGHT = 96;
 const MAX_PERSISTED_TASKS_PER_SESSION = 10;
 const MAX_PERSISTED_RESULTS_HTML_CHARS = 300_000;
+const EXAMPLE_AGENT_PROMPTS = [
+    'READMEに導入手順のセクションを追加して',
+    'このリポジトリの構成を調べて要約して',
+    '失敗しているテストを修正して'
+] as const;
 
 interface ChatMessage {
     id: string;
@@ -166,6 +171,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected codeMode = false;
     protected settingsModalVisible = false;
     protected customizeModalVisible = false;
+    protected shortcutsOverlayVisible = false;
     protected workspaceSkills: WorkspaceSkillDefinition[] = [];
     protected workspaceSkillsLoading = false;
     protected workspaceSkillsError?: string;
@@ -332,7 +338,21 @@ export class AgentWindowWidget extends ReactWidget {
             if (event.key !== 'Escape') {
                 return;
             }
-            if (this.settingsModalVisible) {
+            if (this.shortcutsOverlayVisible) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.closeShortcutsOverlay();
+            } else if (this.folderExplorerVisible) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (this.creatingFolder) {
+                    this.creatingFolder = false;
+                    this.newFolderName = '';
+                    this.update();
+                } else {
+                    this.closeFolderExplorer();
+                }
+            } else if (this.settingsModalVisible) {
                 event.preventDefault();
                 event.stopPropagation();
                 this.closeSettings();
@@ -348,6 +368,11 @@ export class AgentWindowWidget extends ReactWidget {
                 this.repositoryPickerAnchor = undefined;
                 this.workspaceSearchQuery = '';
                 this.repositorySearchQuery = '';
+                this.update();
+            } else if (this.explorerMoreVisible || this.openSessionMenuId) {
+                event.preventDefault();
+                this.explorerMoreVisible = false;
+                this.openSessionMenuId = undefined;
                 this.update();
             }
         };
@@ -480,6 +505,7 @@ export class AgentWindowWidget extends ReactWidget {
                 {this.folderExplorerVisible && this.renderFolderExplorer()}
                 {this.settingsModalVisible && this.renderSettingsModal()}
                 {this.customizeModalVisible && this.renderCustomizeModal()}
+                {this.shortcutsOverlayVisible && this.renderShortcutsOverlay()}
             </div>
         );
     }
@@ -1490,6 +1516,13 @@ export class AgentWindowWidget extends ReactWidget {
                                 <span className='codicon codicon-comment-add' aria-hidden='true' />
                                 <strong>What do you want to build?</strong>
                                 <small>Repository、branch、実行場所を選んでからAgentへ依頼します</small>
+                                <div className='poiesis-agent-window__example-prompts' aria-label='依頼の例'>
+                                    {EXAMPLE_AGENT_PROMPTS.map(prompt => (
+                                        <button type='button' key={prompt} onClick={() => this.useExamplePrompt(session.id, prompt)}>
+                                            {prompt}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         )}
                         {(session?.messages ?? []).map(message => (
@@ -1716,6 +1749,10 @@ export class AgentWindowWidget extends ReactWidget {
                                     ))}
                                 </div>
                             </div>
+                            <div className='poiesis-settings-modal__row poiesis-settings-modal__shortcuts-row'>
+                                <div><strong>キーボードショートカット</strong><small>Poiesisで実際に使えるキー操作を確認します。</small></div>
+                                <button type='button' className='poiesis-settings-modal__text-button' aria-haspopup='dialog' onClick={() => this.openShortcutsOverlay()}>一覧を開く</button>
+                            </div>
                         </section>
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-cli'>
@@ -1777,6 +1814,45 @@ export class AgentWindowWidget extends ReactWidget {
                     <footer className='poiesis-settings-modal__footer'>
                         <button type='button' onClick={() => void this.openTheiaSettings()}>エディタとTerminalの設定は Theia Settings で</button>
                     </footer>
+                </section>
+            </div>
+        );
+    }
+
+    protected renderShortcutsOverlay(): React.ReactNode {
+        const shortcuts = [
+            { label: 'Agentへ送信', keys: ['Ctrl / ⌘', 'Enter'] },
+            { label: 'Resultsへ質問を送信', keys: ['Enter'] },
+            { label: 'Codeでファイルを保存', keys: ['Ctrl / ⌘', 'S'] },
+            { label: 'CodeでTerminalを開閉', keys: ['Ctrl / ⌘', '`'] },
+            { label: 'モーダル／ポップオーバーを閉じる', keys: ['Esc'] }
+        ];
+        return (
+            <div
+                className='poiesis-shortcuts__backdrop'
+                onMouseDown={event => {
+                    if (event.target === event.currentTarget) {
+                        this.closeShortcutsOverlay();
+                    }
+                }}
+            >
+                <section className='poiesis-shortcuts' role='dialog' aria-modal='true' aria-labelledby='poiesis-shortcuts-title'>
+                    <header>
+                        <div><span className='codicon codicon-keyboard' aria-hidden='true' /><h2 id='poiesis-shortcuts-title'>キーボードショートカット</h2></div>
+                        <button type='button' aria-label='キーボードショートカットを閉じる' onClick={() => this.closeShortcutsOverlay()} autoFocus>
+                            <span className='codicon codicon-close' aria-hidden='true' />
+                        </button>
+                    </header>
+                    <div className='poiesis-shortcuts__list'>
+                        {shortcuts.map(shortcut => (
+                            <div className='poiesis-shortcuts__row' key={shortcut.label}>
+                                <span>{shortcut.label}</span>
+                                <span className='poiesis-shortcuts__keys'>
+                                    {shortcut.keys.map(key => <kbd key={key}>{key}</kbd>)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
                 </section>
             </div>
         );
@@ -3632,6 +3708,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected openSettings(): void {
         this.closeCustomize(false);
         this.settingsModalVisible = true;
+        this.shortcutsOverlayVisible = false;
         this.deleteSessionConfirmationId = undefined;
         this.clearDataConfirmation = false;
         this.update();
@@ -3640,6 +3717,7 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected closeSettings(): void {
         this.settingsModalVisible = false;
+        this.shortcutsOverlayVisible = false;
         this.deleteSessionConfirmationId = undefined;
         this.clearDataConfirmation = false;
         this.update();
@@ -3647,6 +3725,7 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected openCustomize(): void {
         this.settingsModalVisible = false;
+        this.shortcutsOverlayVisible = false;
         this.customizeModalVisible = true;
         this.newSkillFormVisible = false;
         this.newSkillError = undefined;
@@ -3664,6 +3743,16 @@ export class AgentWindowWidget extends ReactWidget {
         if (update) {
             this.update();
         }
+    }
+
+    protected openShortcutsOverlay(): void {
+        this.shortcutsOverlayVisible = true;
+        this.update();
+    }
+
+    protected closeShortcutsOverlay(): void {
+        this.shortcutsOverlayVisible = false;
+        this.update();
     }
 
     protected showNewSkillForm(): void {
@@ -4640,6 +4729,14 @@ export class AgentWindowWidget extends ReactWidget {
         session.agentDraft = value;
         this.persistWindowState();
         this.update();
+    }
+
+    protected useExamplePrompt(sessionId: string, prompt: string): void {
+        this.setAgentDraft(sessionId, prompt);
+        requestAnimationFrame(() => {
+            this.agentComposerInput?.focus();
+            this.agentComposerInput?.setSelectionRange(prompt.length, prompt.length);
+        });
     }
 
     protected selectResultsTask(taskId: string): void {

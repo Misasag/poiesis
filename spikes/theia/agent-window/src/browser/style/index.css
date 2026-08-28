@@ -639,7 +639,7 @@
     --poiesis-chrome-text: #efeee9;
     --poiesis-chrome-copy: #c8c9c3;
     --poiesis-chrome-muted: #858780;
-    --poiesis-results-accent: #536182;
+    --poiesis-results-accent: #6577a0;
     background: var(--poiesis-chrome-bg);
     box-sizing: border-box;
     color: var(--poiesis-chrome-text);
@@ -1107,7 +1107,7 @@
 .poiesis-agent-window__session-meta {
     color: #7f817a;
     font-size: 12px;
-    transition: opacity 80ms ease;
+    transition: opacity var(--motion-fast);
 }
 
 .poiesis-agent-window__session-meta.running {
@@ -1291,7 +1291,7 @@
     left: 3px;
     position: absolute;
     top: 0;
-    transition: background 100ms ease;
+    transition: background var(--motion-fast);
     width: 1px;
 }
 
@@ -1569,6 +1569,31 @@
 
 .poiesis-agent-window__new-agent-empty small {
     font-size: 12px;
+}
+
+.poiesis-agent-window__example-prompts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    justify-content: center;
+    margin-top: 7px;
+    max-width: 580px;
+}
+
+.poiesis-agent-window__example-prompts button {
+    background: #242522;
+    border: 1px solid var(--poiesis-control-border, #70726b);
+    border-radius: 999px;
+    color: var(--poiesis-chrome-copy);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+
+.poiesis-agent-window__example-prompts button:hover {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
 }
 
 .poiesis-agent-window__message,
@@ -3152,7 +3177,7 @@ body.poiesis-code-file-pointer-drag * {
     display: block;
     height: 20px;
     position: relative;
-    transition: background 120ms ease;
+    transition: background var(--motion-fast);
     width: 36px;
 }
 
@@ -3164,7 +3189,7 @@ body.poiesis-code-file-pointer-drag * {
     left: 3px;
     position: absolute;
     top: 3px;
-    transition: transform 120ms ease;
+    transition: transform var(--motion-fast);
     width: 14px;
 }
 
@@ -3576,6 +3601,98 @@ body.poiesis-code-file-pointer-drag * {
     text-underline-offset: 3px;
 }
 
+.poiesis-shortcuts__backdrop {
+    align-items: center;
+    background: rgb(0 0 0 / 46%);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 20px;
+    position: absolute;
+    z-index: 340;
+}
+
+.poiesis-shortcuts {
+    background: var(--poiesis-chrome-panel);
+    border: 1px solid var(--poiesis-control-border, #70726b);
+    border-radius: 11px;
+    box-shadow: 0 18px 55px rgb(0 0 0 / 52%);
+    color: var(--poiesis-chrome-copy);
+    overflow: hidden;
+    width: min(500px, calc(100vw - 40px));
+}
+
+.poiesis-shortcuts > header {
+    align-items: center;
+    border-bottom: 1px solid var(--poiesis-chrome-line);
+    display: flex;
+    justify-content: space-between;
+    min-height: 50px;
+    padding: 9px 11px 9px 15px;
+}
+
+.poiesis-shortcuts > header > div {
+    align-items: center;
+    display: flex;
+    gap: 9px;
+}
+
+.poiesis-shortcuts h2 {
+    color: var(--poiesis-chrome-text);
+    font-size: 14px;
+    margin: 0;
+}
+
+.poiesis-shortcuts > header button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-muted);
+    cursor: pointer;
+    display: flex;
+    height: 28px;
+    justify-content: center;
+    width: 28px;
+}
+
+.poiesis-shortcuts__list {
+    display: grid;
+    padding: 8px 14px 12px;
+}
+
+.poiesis-shortcuts__row {
+    align-items: center;
+    border-bottom: 1px solid var(--poiesis-chrome-line);
+    display: flex;
+    font-size: 13px;
+    justify-content: space-between;
+    min-height: 45px;
+    padding: 6px 2px;
+}
+
+.poiesis-shortcuts__row:last-child {
+    border-bottom: 0;
+}
+
+.poiesis-shortcuts__keys {
+    align-items: center;
+    display: flex;
+    gap: 5px;
+}
+
+.poiesis-shortcuts kbd {
+    background: #292a27;
+    border: 1px solid var(--poiesis-control-border, #70726b);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    color: var(--poiesis-chrome-text);
+    font: 12px/1.2 var(--theia-ui-font-family, sans-serif);
+    min-width: 27px;
+    padding: 4px 6px;
+    text-align: center;
+}
+
 .poiesis-customize-modal {
     width: min(760px, calc(100vw - 40px));
 }
@@ -3792,8 +3909,10 @@ body.poiesis-code-file-pointer-drag * {
     --poiesis-results-muted: #9aa5bd;
     --poiesis-results-send: #dce4f7;
     --poiesis-results-send-text: #232938;
+    --poiesis-results-accent: #6577a0;
     --poiesis-shadow-composer: 0 10px 30px rgb(0 0 0 / 16%);
     --poiesis-shadow-results: 0 8px 24px rgb(0 0 0 / 18%);
+    --motion-fast: 120ms cubic-bezier(.2, 0, 0, 1);
     font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
     font-size: 13px;
     line-height: 1.48;
@@ -3803,6 +3922,7 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-agent-window__tabs {
     background: #20211f;
+    border-color: var(--poiesis-control-border);
     gap: 2px;
 }
 
@@ -3880,6 +4000,7 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-results__composer {
+    border-color: var(--poiesis-results-accent);
     box-shadow: var(--poiesis-shadow-results);
 }
 
@@ -3987,11 +4108,16 @@ body.poiesis-code-file-pointer-drag * {
     background-clip: padding-box;
 }
 
-.poiesis-agent-window__content button:not(:disabled),
-.poiesis-folder-explorer button:not(:disabled) {
-    transition: background-color 120ms cubic-bezier(.2, 0, 0, 1),
-        border-color 120ms cubic-bezier(.2, 0, 0, 1),
-        color 120ms cubic-bezier(.2, 0, 0, 1);
+.poiesis-agent-window__content button,
+.poiesis-agent-window__content input,
+.poiesis-agent-window__content textarea,
+.poiesis-agent-window__content select,
+.poiesis-folder-explorer button,
+.poiesis-folder-explorer input {
+    transition: background-color var(--motion-fast),
+        border-color var(--motion-fast),
+        color var(--motion-fast),
+        opacity var(--motion-fast);
 }
 
 .poiesis-agent-window__content button:disabled,
@@ -4022,6 +4148,8 @@ body.poiesis-code-file-pointer-drag * {
     .poiesis-agent-window__content *,
     .poiesis-folder-explorer * {
         scroll-behavior: auto !important;
-        transition-duration: .01ms !important;
+        animation-duration: 0ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0ms !important;
     }
 }
