@@ -14,6 +14,7 @@ export interface ResultsGenerationTaskMetadata {
 export interface ResultsGenerationRequest {
     taskId: string;
     providerId: KnownCliId;
+    model?: string;
     workspaceUri: string;
     taskMetadata: ResultsGenerationTaskMetadata;
     changeSetSummary: string;

@@ -3367,6 +3367,61 @@ body.poiesis-code-file-pointer-drag * {
     color: #9fc8a7;
 }
 
+.poiesis-settings-modal__cli-status.unsupported {
+    color: #d1ae75;
+}
+
+.poiesis-settings-modal__model-field {
+    background: #1e201d;
+    border: 1px solid #3c3e39;
+    border-radius: 9px;
+    display: grid;
+    gap: 9px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 10px 12px;
+}
+
+.poiesis-settings-modal__model-field label {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+}
+
+.poiesis-settings-modal__model-field label:only-child {
+    grid-column: 1 / -1;
+}
+
+.poiesis-settings-modal__model-field label > span {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.poiesis-settings-modal__model-field select,
+.poiesis-settings-modal__model-field input {
+    background: #181917;
+    border: 1px solid #555750;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    font: inherit;
+    min-height: 33px;
+    min-width: 0;
+    padding: 5px 8px;
+    width: 100%;
+}
+
+.poiesis-settings-modal__model-field select:focus-visible,
+.poiesis-settings-modal__model-field input:focus-visible {
+    border-color: #c28b60;
+    outline: 2px solid #c28b60;
+    outline-offset: 1px;
+}
+
+.poiesis-settings-modal__model-field select:disabled {
+    cursor: default;
+    opacity: .58;
+}
+
 .poiesis-settings-modal__text-button,
 .poiesis-settings-modal__confirm button,
 .poiesis-settings-modal__danger-zone > button,

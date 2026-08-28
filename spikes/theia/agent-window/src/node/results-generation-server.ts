@@ -4,7 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import URI from '@theia/core/lib/common/uri';
 import { inject, injectable } from '@theia/core/shared/inversify';
-import { KnownCliId } from '../common/agent-runtime-protocol';
+import { isKnownCliId, KnownCliId } from '../common/agent-runtime-protocol';
 import {
     ResultsGenerationError,
     ResultsGenerationRequest,
@@ -12,6 +12,7 @@ import {
     ResultsGenerationServer
 } from '../common/results-generation-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { grokExecutionEnvironment } from './known-cli-registry';
 
 type ResultsProcess = ChildProcessByStdio<null, Readable, Readable>;
 
@@ -51,7 +52,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
         }
 
         try {
-            const provider = await this.providerRegistry.resolve('results', request.providerId);
+            const provider = await this.providerRegistry.resolve('results', request.providerId, request.model);
             const workspace = await this.resolveWorkspace(request.workspaceUri);
             if (this.cancelledTaskIds.delete(request.taskId)) {
                 this.pendingTaskIds.delete(request.taskId);
@@ -61,6 +62,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             const args = provider.id === 'claude'
                 ? [
                     '-p', prompt,
+                    ...(provider.model ? ['--model', provider.model] : []),
                     '--output-format', 'text',
                     '--permission-mode', 'plan',
                     '--tools=',
@@ -70,8 +72,21 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                     '--strict-mcp-config',
                     '--mcp-config', '{"mcpServers":{}}'
                 ]
-                : [
+                : provider.id === 'grok'
+                    ? [
+                        '-p', prompt,
+                        '--cwd', workspace,
+                        ...(provider.model ? ['--model', provider.model] : []),
+                        '--output-format', 'plain',
+                        '--permission-mode', 'plan',
+                        '--sandbox', 'read-only',
+                        '--disable-web-search',
+                        '--no-subagents',
+                        '--max-turns', '1'
+                    ]
+                    : [
                     'exec',
+                    ...(provider.model ? ['-m', provider.model] : []),
                     '--sandbox', 'read-only',
                     '-C', workspace,
                     '--', prompt
@@ -201,7 +216,8 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
         if (!request
             || typeof request.taskId !== 'string'
             || !request.taskId.trim()
-            || !['codex', 'claude'].includes(request.providerId)
+            || !isKnownCliId(request.providerId)
+            || request.model !== undefined && typeof request.model !== 'string'
             || typeof request.workspaceUri !== 'string'
             || !request.workspaceUri.trim()
             || !request.taskMetadata
@@ -254,15 +270,19 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
     }
 
     protected spawnCli(providerId: KnownCliId, command: string, args: string[], cwd: string): ResultsProcess {
+        const env = providerId === 'grok' ? grokExecutionEnvironment() : process.env;
         if (!['.cmd', '.bat'].includes(extname(command).toLocaleLowerCase())) {
-            return spawn(command, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+            return spawn(command, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
         }
         if (providerId === 'claude') {
             const entryPoint = join(dirname(command), 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
             return spawn(entryPoint, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
         }
-        const entryPoint = join(dirname(command), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-        return spawn(process.execPath, [entryPoint, ...args], { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        if (providerId === 'codex') {
+            const entryPoint = join(dirname(command), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+            return spawn(process.execPath, [entryPoint, ...args], { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        }
+        return spawn(command, args, { cwd, env, windowsHide: true, shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
     }
 
     protected killProcess(child: ResultsProcess): Promise<void> {

@@ -6,12 +6,14 @@ export const AgentProvider = Symbol('AgentProvider');
 export interface CreateSessionInput {
     workspaceUri?: string;
     providerId?: KnownCliId;
+    model?: string;
 }
 
 export interface AgentSession {
     id: string;
     providerName: string;
     providerId?: KnownCliId;
+    model?: string;
     workspaceUri?: string;
 }
 

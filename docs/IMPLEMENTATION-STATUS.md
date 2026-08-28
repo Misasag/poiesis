@@ -30,7 +30,7 @@ Updated: 2026-08-23
 
 - 旧Changes中心のUX／ArchitectureをAgent／Results／Code仕様へ統合した。
 - Codexのworking directoryから固定`sample-src`を除き、開いているWorkspaceを使用するようにした。
-- Poiesisによるmodel／reasoning effort固定を除き、Codex設定を尊重するようにした。
+- Agent／Resultsごとにproviderとmodelを選択できる。CLI既定ではmodel flagを省略し、reasoning effortはCLI設定を尊重する。
 - CLIの非zero exitと起動失敗をTask failureとして分離した。
 - 共通Settings導線をTheia Settings Widgetへ接続した。
 - 動作しないComposer context操作をUIから除いた。

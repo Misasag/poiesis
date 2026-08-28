@@ -19,6 +19,7 @@ import { TaskService } from './task-service';
 
 interface CliSession extends AgentSession {
     providerId: KnownCliId;
+    model?: string;
     workspacePath?: string;
 }
 
@@ -27,6 +28,8 @@ interface CodexRun {
     taskId: string;
     executionId: string;
     providerId: KnownCliId;
+    providerName: string;
+    model?: string;
     stdoutBuffer: string;
     diagnostics: string;
     finalMessage?: string;
@@ -58,18 +61,19 @@ export class CliAgentProvider implements AgentProvider {
             const report = await this.runtimeServer.detectClis();
             const providerId = input.providerId ?? 'codex';
             const detection = report.detections.find(item => item.id === providerId);
-            if (detection?.status === 'found' && detection.path) {
+            if (detection?.status === 'found' && detection.path && detection.executableRoles.includes('agent')) {
                 const session: CliSession = {
                     id: `${providerId}-session-${Date.now()}-${++this.sequence}`,
                     providerId,
                     providerName: detection.name,
+                    model: input.model?.trim() || undefined,
                     workspaceUri: input.workspaceUri,
                     workspacePath: input.workspaceUri ? new URI(input.workspaceUri).path.fsPath() : undefined
                 };
                 this.sessions.set(session.id, session);
                 return session;
             }
-            if (report.detections.some(item => item.status === 'found')) {
+            if (report.detections.some(item => item.status === 'found' && item.executableRoles.includes('agent'))) {
                 throw new Error(`${detection?.name ?? providerId} CLI は現在利用できません。`);
             }
             return this.mockProvider.createSession(input);
@@ -94,6 +98,8 @@ export class CliAgentProvider implements AgentProvider {
             taskId: task.id,
             executionId: task.id,
             providerId: session.providerId,
+            providerName: session.providerName,
+            model: session.model,
             stdoutBuffer: '',
             diagnostics: '',
             state: 'starting'
@@ -110,11 +116,12 @@ export class CliAgentProvider implements AgentProvider {
             await this.runtimeServer.runCodex({
                 executionId: run.executionId,
                 providerId: session.providerId,
+                model: session.model,
                 workspacePath: session.workspacePath,
                 prompt: this.implementerPrompt(message.content)
             });
         } catch (error) {
-            await this.failRun(run, `${this.providerName(run.providerId)} を開始できませんでした。`, this.errorMessage(error));
+            await this.failRun(run, `${run.providerName} を開始できませんでした。`, this.errorMessage(error));
         }
     }
 
@@ -191,7 +198,7 @@ export class CliAgentProvider implements AgentProvider {
                 taskId: run.taskId
             });
         } else {
-            const name = this.providerName(run.providerId);
+            const name = run.providerName;
             const summary = event.signal
                 ? `${name} の実行が中断されました。`
                 : `${name} の実行に失敗しました（終了コード ${event.code ?? '不明'}）。`;
@@ -245,6 +252,10 @@ export class CliAgentProvider implements AgentProvider {
 
     protected consumeJsonLine(run: CodexRun, line: string): void {
         if (!line.trim()) {
+            return;
+        }
+        if (run.providerId === 'grok') {
+            run.finalMessage = `${run.finalMessage ? `${run.finalMessage}\n` : ''}${line}`;
             return;
         }
         try {
@@ -302,10 +313,6 @@ export class CliAgentProvider implements AgentProvider {
 
     protected implementerPrompt(request: string): string {
         return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}`;
-    }
-
-    protected providerName(providerId: KnownCliId): string {
-        return providerId === 'claude' ? 'Claude' : 'Codex';
     }
 
     protected errorMessage(error: unknown): string {

@@ -23,7 +23,9 @@ import {
     AgentRuntimeServer,
     AiRole,
     CliDetectionReport,
+    DEFAULT_CLI_ID,
     FolderBrowserResult,
+    isKnownCliId,
     KnownCliId
 } from '../common/agent-runtime-protocol';
 import { ResultsService, TaskResultDocument } from './results-skill';
@@ -106,17 +108,21 @@ interface PersistedAgentWindowState {
 }
 
 interface PersistedPoiesisSettings {
-    version: 2;
+    version: 3;
     uiFontScale: UiFontScale;
     agentCli: KnownCliId;
+    agentModel: string;
     resultsCli: KnownCliId;
+    resultsModel: string;
     allowExternalResultsResources: boolean;
 }
 
 interface LegacyPoiesisSettings {
-    version: 1;
+    version?: 1 | 2;
     uiFontScale?: UiFontScale;
     preferredCli?: KnownCliId;
+    agentCli?: KnownCliId;
+    resultsCli?: KnownCliId;
     allowExternalResultsResources?: boolean;
 }
 
@@ -169,8 +175,11 @@ export class AgentWindowWidget extends ReactWidget {
     protected newSkillError?: string;
     protected newSkillCreating = false;
     protected uiFontScale: UiFontScale = 'standard';
-    protected agentCli: KnownCliId = 'codex';
-    protected resultsCli: KnownCliId = 'codex';
+    protected agentCli: KnownCliId = DEFAULT_CLI_ID;
+    protected agentModel = '';
+    protected resultsCli: KnownCliId = DEFAULT_CLI_ID;
+    protected resultsModel = '';
+    protected readonly customModelRoles = new Set<AiRole>();
     protected allowExternalResultsResources = false;
     protected cliDetectionReport?: CliDetectionReport;
     protected cliDetectionLoading = false;
@@ -394,7 +403,9 @@ export class AgentWindowWidget extends ReactWidget {
             this.watchScmProvider(repository.provider);
         }
 
-        this.sessionsInitialization = this.restorePoiesisSettings().then(() => this.initializeSessions()).catch(error => {
+        this.sessionsInitialization = this.restorePoiesisSettings()
+            .then(() => this.refreshCliDetection())
+            .then(() => this.initializeSessions()).catch(error => {
             console.error('[Poiesis] Could not initialize Agent Window sessions.', error);
         }).finally(() => {
             this.sessionsInitialized = true;
@@ -1707,7 +1718,7 @@ export class AgentWindowWidget extends ReactWidget {
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-cli'>
                             <div className='poiesis-settings-modal__section-heading'>
-                                <h2 id='poiesis-settings-cli'>AI — CLI</h2>
+                                <h2 id='poiesis-settings-cli'>AI — Provider / Model</h2>
                                 <button type='button' className='poiesis-settings-modal__text-button' disabled={this.cliDetectionLoading} onClick={() => void this.refreshCliDetection()}>再検出</button>
                             </div>
                             {this.renderCliRoleSelector('agent', 'Agent の AI', this.agentCli)}
@@ -1931,36 +1942,70 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderCliRoleSelector(role: AiRole, label: string, selected: KnownCliId): React.ReactNode {
-        const cliIds: KnownCliId[] = ['codex', 'claude'];
+        const detections = this.cliDetectionReport?.detections ?? [];
+        const selectedDetection = detections.find(detection => detection.id === selected);
+        const model = this.roleModel(role);
+        const modelIds = selectedDetection?.models.map(option => option.id) ?? [];
+        const customModel = this.customModelRoles.has(role) || !modelIds.includes(model);
+        const modelSelection = customModel ? '__custom__' : model;
         return (
             <div className='poiesis-settings-modal__cli-role'>
                 <h3>{label}</h3>
                 <div className='poiesis-settings-modal__cli-list' role='radiogroup' aria-label={label}>
-                    {cliIds.map(id => {
-                        const detection = this.cliDetectionReport?.detections.find(item => item.id === id);
-                        const executable = detection?.status === 'found';
-                        const status = this.cliDetectionLoading && !detection
+                    {detections.map(detection => {
+                        const executable = detection.status === 'found' && detection.executableRoles.includes(role);
+                        const status = this.cliDetectionLoading && !detection.path
                             ? '検出中…'
-                            : detection?.status === 'found' ? '検出済み' : '未検出';
+                            : detection.status === 'missing'
+                                ? '未検出'
+                                : executable ? '検出済み（実行可）' : '検出済み（実行対応は今後）';
                         return (
-                            <label key={`${role}-${id}`} className={`poiesis-settings-modal__cli-row${executable ? '' : ' unavailable'}`}>
+                            <label key={`${role}-${detection.id}`} className={`poiesis-settings-modal__cli-row${executable ? '' : ' unavailable'}`}>
                                 <input
                                     type='radio'
                                     name={`poiesis-${role}-cli`}
-                                    value={id}
-                                    checked={selected === id}
+                                    value={detection.id}
+                                    checked={selected === detection.id}
                                     disabled={!executable}
-                                    onChange={() => this.setRoleCli(role, id)}
+                                    onChange={() => this.setRoleCli(role, detection.id)}
                                 />
                                 <span className='poiesis-settings-modal__cli-copy'>
-                                    <strong>{id === 'codex' ? 'Codex' : 'Claude'}</strong>
-                                    <small title={detection?.path}>{detection?.path ?? `${id} CLI`}</small>
+                                    <strong>{detection.name}</strong>
+                                    <small title={detection.path}>{detection.path ?? `${detection.id} CLI`}{detection.version ? ` · ${detection.version}` : ''}</small>
                                 </span>
-                                <span className={`poiesis-settings-modal__cli-status ${detection?.status ?? 'missing'}`}>{status}</span>
+                                <span className={`poiesis-settings-modal__cli-status ${executable ? 'found' : detection.status === 'found' ? 'unsupported' : 'missing'}`}>{status}</span>
                             </label>
                         );
                     })}
                 </div>
+                {selectedDetection && (
+                    <div className='poiesis-settings-modal__model-field'>
+                        <label>
+                            <span>モデル</span>
+                            <select
+                                aria-label={`${label} モデル`}
+                                value={modelSelection}
+                                disabled={selectedDetection.status !== 'found' || !selectedDetection.executableRoles.includes(role)}
+                                onChange={event => this.setRoleModelChoice(role, event.currentTarget.value)}
+                            >
+                                {selectedDetection.models.map(option => <option key={option.id || 'cli-default'} value={option.id}>{option.label}</option>)}
+                                <option value='__custom__'>カスタム…</option>
+                            </select>
+                        </label>
+                        {customModel && (
+                            <label>
+                                <span>カスタムモデルID</span>
+                                <input
+                                    value={model}
+                                    maxLength={160}
+                                    placeholder='モデルIDを入力'
+                                    aria-label={`${label} カスタムモデルID`}
+                                    onChange={event => this.setRoleModel(role, event.currentTarget.value)}
+                                />
+                            </label>
+                        )}
+                    </div>
+                )}
             </div>
         );
     }
@@ -3783,11 +3828,41 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected setRoleCli(role: AiRole, cli: KnownCliId): void {
+        const defaultModel = this.cliDetectionReport?.detections.find(detection => detection.id === cli)?.defaultModel ?? '';
         if (role === 'agent') {
             this.agentCli = cli;
+            this.agentModel = defaultModel;
         } else {
             this.resultsCli = cli;
+            this.resultsModel = defaultModel;
             this.resultsGenerationContext.providerId = cli;
+            this.resultsGenerationContext.model = defaultModel;
+        }
+        this.customModelRoles.delete(role);
+        this.persistPoiesisSettings();
+        this.update();
+    }
+
+    protected roleModel(role: AiRole): string {
+        return role === 'agent' ? this.agentModel : this.resultsModel;
+    }
+
+    protected setRoleModelChoice(role: AiRole, value: string): void {
+        if (value === '__custom__') {
+            this.customModelRoles.add(role);
+            this.setRoleModel(role, '');
+            return;
+        }
+        this.customModelRoles.delete(role);
+        this.setRoleModel(role, value);
+    }
+
+    protected setRoleModel(role: AiRole, model: string): void {
+        if (role === 'agent') {
+            this.agentModel = model;
+        } else {
+            this.resultsModel = model;
+            this.resultsGenerationContext.model = model.trim();
         }
         this.persistPoiesisSettings();
         this.update();
@@ -3807,6 +3882,24 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
         try {
             this.cliDetectionReport = await this.agentRuntimeServer.detectClis();
+            let settingsChanged = false;
+            for (const role of ['agent', 'results'] as const) {
+                const selected = role === 'agent' ? this.agentCli : this.resultsCli;
+                const currentModel = this.roleModel(role);
+                const detection = this.cliDetectionReport.detections.find(item => item.id === selected);
+                if (!currentModel && detection?.defaultModel) {
+                    if (role === 'agent') {
+                        this.agentModel = detection.defaultModel;
+                    } else {
+                        this.resultsModel = detection.defaultModel;
+                        this.resultsGenerationContext.model = detection.defaultModel;
+                    }
+                    settingsChanged = true;
+                }
+            }
+            if (settingsChanged) {
+                this.persistPoiesisSettings();
+            }
         } finally {
             this.cliDetectionLoading = false;
             this.update();
@@ -3816,34 +3909,39 @@ export class AgentWindowWidget extends ReactWidget {
     protected async restorePoiesisSettings(): Promise<void> {
         try {
             const state = await this.storageService.getData<Partial<PersistedPoiesisSettings> | LegacyPoiesisSettings>(SETTINGS_STORAGE_KEY);
-            if (state?.version === 1 || state?.version === 2) {
+            if (state?.version === 1 || state?.version === 2 || state?.version === 3) {
                 this.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
                     ? state.uiFontScale
                     : 'standard';
-                const legacyCli = state.version === 1 && (state.preferredCli === 'codex' || state.preferredCli === 'claude')
+                const legacyCli = state.version === 1 && isKnownCliId(state.preferredCli)
                     ? state.preferredCli
-                    : 'codex';
-                this.agentCli = state.version === 2 && (state.agentCli === 'codex' || state.agentCli === 'claude')
+                    : DEFAULT_CLI_ID;
+                this.agentCli = (state.version === 2 || state.version === 3) && isKnownCliId(state.agentCli)
                     ? state.agentCli
                     : legacyCli;
-                this.resultsCli = state.version === 2 && (state.resultsCli === 'codex' || state.resultsCli === 'claude')
+                this.resultsCli = (state.version === 2 || state.version === 3) && isKnownCliId(state.resultsCli)
                     ? state.resultsCli
                     : legacyCli;
+                this.agentModel = state.version === 3 && typeof state.agentModel === 'string' ? state.agentModel : '';
+                this.resultsModel = state.version === 3 && typeof state.resultsModel === 'string' ? state.resultsModel : '';
                 this.allowExternalResultsResources = state.allowExternalResultsResources === true;
             }
         } catch (error) {
             console.warn('[Poiesis] Could not restore settings.', error);
         }
         this.resultsGenerationContext.providerId = this.resultsCli;
+        this.resultsGenerationContext.model = this.resultsModel.trim();
         this.update();
     }
 
     protected persistPoiesisSettings(): void {
         void this.storageService.setData<PersistedPoiesisSettings>(SETTINGS_STORAGE_KEY, {
-            version: 2,
+            version: 3,
             uiFontScale: this.uiFontScale,
             agentCli: this.agentCli,
+            agentModel: this.agentModel,
             resultsCli: this.resultsCli,
+            resultsModel: this.resultsModel,
             allowExternalResultsResources: this.allowExternalResultsResources
         });
     }
@@ -4031,7 +4129,8 @@ export class AgentWindowWidget extends ReactWidget {
         try {
             session.agentSession = await this.agentProvider.createSession({
                 workspaceUri: session.workspaceUri,
-                providerId: this.agentCli
+                providerId: this.agentCli,
+                model: this.agentModel.trim() || undefined
             });
             this.providerPreparationErrors.delete(session.id);
             if (!silent && (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-')))) {
@@ -4299,7 +4398,8 @@ export class AgentWindowWidget extends ReactWidget {
         }
         this.update();
         await this.persistWindowState();
-        if (session.agentSession?.providerId && session.agentSession.providerId !== this.agentCli) {
+        if (session.agentSession?.providerId && (session.agentSession.providerId !== this.agentCli
+            || (session.agentSession.model ?? '') !== this.agentModel.trim())) {
             session.agentSession = undefined;
         }
         if (!session.agentSession && !await this.ensureProviderSession(session, false, true)) {
@@ -4515,6 +4615,7 @@ export class AgentWindowWidget extends ReactWidget {
             const result = await this.resultsQuestionService.ask(question, {
                 taskId,
                 providerId: this.resultsCli,
+                model: this.resultsModel.trim() || undefined,
                 workspaceUri: session.workspaceUri,
                 taskMetadata: {
                     title: task.title,

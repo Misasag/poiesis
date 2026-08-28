@@ -23,6 +23,7 @@ export interface ResultsQuestionTaskMetadata {
 export interface ResultsQuestionScope {
     taskId: string;
     providerId: KnownCliId;
+    model?: string;
     workspaceUri: string;
     taskMetadata: ResultsQuestionTaskMetadata;
     changeSetSummary: string;

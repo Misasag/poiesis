@@ -10,8 +10,9 @@ import {
     ResultsQuestionScope,
     ResultsQuestionServer
 } from '../common/results-question-protocol';
-import { KnownCliId } from '../common/agent-runtime-protocol';
+import { isKnownCliId, KnownCliId } from '../common/agent-runtime-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { grokExecutionEnvironment } from './known-cli-registry';
 
 type CodexProcess = ChildProcessByStdio<null, Readable, Readable>;
 
@@ -48,12 +49,13 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
         }
 
         try {
-            const provider = await this.providerRegistry.resolve('results', scope.providerId);
+            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model);
             const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const prompt = this.buildPrompt(question.trim(), scope);
             const args = provider.id === 'claude'
                 ? [
                     '-p', prompt,
+                    ...(provider.model ? ['--model', provider.model] : []),
                     '--output-format', 'text',
                     '--permission-mode', 'plan',
                     '--tools=',
@@ -63,8 +65,21 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                     '--strict-mcp-config',
                     '--mcp-config', '{"mcpServers":{}}'
                 ]
-                : [
+                : provider.id === 'grok'
+                    ? [
+                        '-p', prompt,
+                        '--cwd', workspace,
+                        ...(provider.model ? ['--model', provider.model] : []),
+                        '--output-format', 'plain',
+                        '--permission-mode', 'plan',
+                        '--sandbox', 'read-only',
+                        '--disable-web-search',
+                        '--no-subagents',
+                        '--max-turns', '1'
+                    ]
+                    : [
                     'exec',
+                    ...(provider.model ? ['-m', provider.model] : []),
                     '--sandbox', 'read-only',
                     '-C', workspace,
                     '--', prompt
@@ -181,7 +196,8 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
         if (!scope
             || typeof scope.taskId !== 'string'
             || !scope.taskId.trim()
-            || !['codex', 'claude'].includes(scope.providerId)
+            || !isKnownCliId(scope.providerId)
+            || scope.model !== undefined && typeof scope.model !== 'string'
             || typeof scope.workspaceUri !== 'string'
             || !scope.workspaceUri.trim()
             || !scope.taskMetadata
@@ -254,9 +270,10 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
     }
 
     protected spawnCli(providerId: KnownCliId, command: string, args: string[], cwd: string): CodexProcess {
+        const env = providerId === 'grok' ? grokExecutionEnvironment() : process.env;
         if (!['.cmd', '.bat'].includes(extname(command).toLocaleLowerCase())) {
             return spawn(command, args, {
-                cwd, windowsHide: true,
+                cwd, env, windowsHide: true,
                 stdio: ['ignore', 'pipe', 'pipe']
             });
         }
@@ -269,9 +286,15 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             });
         }
 
-        const entryPoint = join(dirname(command), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-        return spawn(process.execPath, [entryPoint, ...args], {
-            cwd, windowsHide: true,
+        if (providerId === 'codex') {
+            const entryPoint = join(dirname(command), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+            return spawn(process.execPath, [entryPoint, ...args], {
+                cwd, windowsHide: true,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+        }
+        return spawn(command, args, {
+            cwd, env, windowsHide: true, shell: true,
             stdio: ['ignore', 'pipe', 'pipe']
         });
     }

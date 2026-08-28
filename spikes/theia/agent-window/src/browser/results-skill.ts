@@ -244,6 +244,7 @@ export class AiResultsSkill implements ResultsSkill {
             const result = await this.generationServer.generate({
                 taskId: input.task.id,
                 providerId: this.context.providerId,
+                model: this.context.model || undefined,
                 workspaceUri: workspace.resource.toString(),
                 taskMetadata: {
                     status: 'completed',

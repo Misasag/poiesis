@@ -20,6 +20,7 @@ import {
 } from '../common/agent-runtime-protocol';
 import { CliDetector } from './cli-detector';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { grokExecutionEnvironment } from './known-cli-registry';
 
 interface SnapshotEntry {
     content: Buffer;
@@ -152,7 +153,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         }
     }
 
-    async runCodex({ executionId, providerId, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
+    async runCodex({ executionId, providerId, model, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
         if (process.platform !== 'win32') {
             throw new Error('This implementation slice runs Codex only on Windows.');
         }
@@ -166,12 +167,13 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
             throw new Error('Agent pre-spawn failure requested by test hook.');
         }
 
-        const provider = await this.providerRegistry.resolve('agent', providerId);
+        const provider = await this.providerRegistry.resolve('agent', providerId, model);
 
         const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
         const args = provider.id === 'claude'
             ? [
                 '-p', prompt,
+                ...(provider.model ? ['--model', provider.model] : []),
                 '--output-format', 'stream-json',
                 '--verbose',
                 '--permission-mode', 'acceptEdits',
@@ -181,8 +183,21 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
                 '--strict-mcp-config',
                 '--mcp-config', '{"mcpServers":{}}'
             ]
-            : [
+            : provider.id === 'grok'
+                ? [
+                    '-p', prompt,
+                    '--cwd', resolvedWorkspace,
+                    ...(provider.model ? ['--model', provider.model] : []),
+                    '--output-format', 'plain',
+                    '--permission-mode', 'acceptEdits',
+                    '--sandbox', 'workspace',
+                    '--disable-web-search',
+                    '--no-subagents',
+                    '--no-plan'
+                ]
+                : [
                 'exec',
+                ...(provider.model ? ['-m', provider.model] : []),
                 '--json',
                 '--color', 'never',
                 '--sandbox', 'workspace-write',
@@ -272,9 +287,10 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
     }
 
     protected spawnCli(providerId: KnownCliId, command: string, args: string[], cwd: string): CodexProcess {
+        const env = providerId === 'grok' ? grokExecutionEnvironment() : process.env;
         if (!['.cmd', '.bat'].includes(extname(command).toLocaleLowerCase())) {
             return spawn(command, args, {
-                cwd, windowsHide: true,
+                cwd, env, windowsHide: true,
                 stdio: ['ignore', 'pipe', 'pipe']
             });
         }
@@ -287,9 +303,15 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
             });
         }
 
-        const entryPoint = join(dirname(command), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
-        return spawn(process.execPath, [entryPoint, ...args], {
-            cwd, windowsHide: true,
+        if (providerId === 'codex') {
+            const entryPoint = join(dirname(command), 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+            return spawn(process.execPath, [entryPoint, ...args], {
+                cwd, windowsHide: true,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+        }
+        return spawn(command, args, {
+            cwd, env, windowsHide: true, shell: true,
             stdio: ['ignore', 'pipe', 'pipe']
         });
     }

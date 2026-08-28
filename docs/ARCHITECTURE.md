@@ -77,7 +77,7 @@ UIが依存するAgent境界。Session作成、message送信、cancel、stream e
 
 backend processでCLI起動、cancel、Workspace snapshot、Change Set取得を行う。CLIは開いているWorkspaceをworking directoryとして起動し、固定sample directoryへ置き換えない。
 
-CLI固有のmodelやreasoning effortはPoiesisから固定せず、ユーザーのCLI設定を尊重する。Poiesisが指定するのは、非対話実行、Workspace、sandboxなど実行境界に必要な項目だけとする。
+modelはAgent／Resultsのroleごとにユーザーが明示選択できる。CLI既定を選んだ場合はmodel flagを省略してCLI設定を尊重し、明示選択時だけprovider固有のmodel flagへ渡す。reasoning effortはPoiesisから固定しない。非対話実行、Workspace、sandboxなどの実行境界はprovider adapterが指定する。
 
 ### TaskService
 

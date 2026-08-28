@@ -5,4 +5,5 @@ import { KnownCliId } from '../common/agent-runtime-protocol';
 @injectable()
 export class ResultsGenerationContext {
     providerId: KnownCliId = 'codex';
+    model = '';
 }

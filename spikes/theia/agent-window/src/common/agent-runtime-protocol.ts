@@ -3,9 +3,20 @@ import { RpcServer } from '@theia/core/lib/common/messaging/proxy-factory';
 export const AgentRuntimeServer = Symbol('AgentRuntimeServer');
 export const agentRuntimeServerPath = '/services/poiesis/agent-runtime';
 
-export type KnownCliId = 'codex' | 'claude';
+export const KNOWN_CLI_IDS = ['codex', 'claude', 'grok', 'gemini'] as const;
+export type KnownCliId = typeof KNOWN_CLI_IDS[number];
+export const DEFAULT_CLI_ID: KnownCliId = 'codex';
 export type AiRole = 'agent' | 'results';
 export type CliLocationSource = 'PATH' | 'well-known';
+
+export function isKnownCliId(value: unknown): value is KnownCliId {
+    return typeof value === 'string' && (KNOWN_CLI_IDS as readonly string[]).includes(value);
+}
+
+export interface CliModelOption {
+    id: string;
+    label: string;
+}
 
 export interface CliDetection {
     id: KnownCliId;
@@ -13,6 +24,10 @@ export interface CliDetection {
     status: 'found' | 'missing';
     path?: string;
     source?: CliLocationSource;
+    version?: string;
+    executableRoles: AiRole[];
+    models: CliModelOption[];
+    defaultModel: string;
     checkedLocations: string[];
 }
 
@@ -46,6 +61,7 @@ export interface GitChangeSetCapture {
 export interface CodexExecutionRequest {
     executionId: string;
     providerId: KnownCliId;
+    model?: string;
     workspacePath?: string;
     prompt: string;
 }

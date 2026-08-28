@@ -1,33 +1,30 @@
 import { constants } from 'node:fs';
 import { access } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { delimiter, extname, join } from 'node:path';
 import { injectable } from '@theia/core/shared/inversify';
 import {
     CliDetection,
     CliDetectionReport,
-    CliLocationSource,
-    KnownCliId
+    CliLocationSource
 } from '../common/agent-runtime-protocol';
+import { KnownCliDefinition, knownCliDefinitions } from './known-cli-registry';
 
-interface CliDefinition {
-    id: KnownCliId;
-    name: string;
-    commandNames: string[];
-    wellKnownLocations: string[];
-}
-
-/** Windows detector only; it records PATH and well-known probes without running a CLI. */
+/** Registry-backed detector for PATH, well-known locations, and bounded version probes. */
 @injectable()
 export class CliDetector {
     protected lastReport?: CliDetectionReport;
 
     async detect(): Promise<CliDetectionReport> {
-        const definitions = this.definitions();
+        const definitions = knownCliDefinitions();
         const detections: CliDetection[] = process.env.POIESIS_DISABLE_CLI_DETECTION === '1'
             ? definitions.map(definition => ({
                 id: definition.id,
-                name: definition.name,
+                name: definition.displayName,
                 status: 'missing' as const,
+                executableRoles: [...definition.executableRoles],
+                models: [...definition.models],
+                defaultModel: definition.defaultModel,
                 checkedLocations: []
             }))
             : await Promise.all(definitions.map(definition => this.detectOne(definition)));
@@ -47,33 +44,42 @@ export class CliDetector {
         return this.lastReport;
     }
 
-    protected async detectOne(definition: CliDefinition): Promise<CliDetection> {
+    protected async detectOne(definition: KnownCliDefinition): Promise<CliDetection> {
         const candidates = this.candidates(definition);
         for (const candidate of candidates) {
             if (await this.exists(candidate.path)) {
                 return {
                     id: definition.id,
-                    name: definition.name,
+                    name: definition.displayName,
                     status: 'found',
                     path: candidate.path,
                     source: candidate.source,
+                    version: await this.probeVersion(candidate.path, definition.versionProbe),
+                    executableRoles: [...definition.executableRoles],
+                    models: [...definition.models],
+                    defaultModel: definition.defaultModel,
                     checkedLocations: candidates.map(item => item.path)
                 };
             }
         }
         return {
             id: definition.id,
-            name: definition.name,
+            name: definition.displayName,
             status: 'missing',
+            executableRoles: [...definition.executableRoles],
+            models: [...definition.models],
+            defaultModel: definition.defaultModel,
             checkedLocations: candidates.map(item => item.path)
         };
     }
 
-    protected candidates(definition: CliDefinition): Array<{ path: string; source: CliLocationSource }> {
+    protected candidates(definition: KnownCliDefinition): Array<{ path: string; source: CliLocationSource }> {
         const candidates: Array<{ path: string; source: CliLocationSource }> = [];
         for (const directory of (process.env.PATH ?? '').split(delimiter).filter(Boolean)) {
-            for (const commandName of definition.commandNames) {
-                candidates.push({ path: join(directory, commandName), source: 'PATH' });
+            for (const executableName of definition.executableNames) {
+                for (const commandName of this.commandNames(executableName)) {
+                    candidates.push({ path: join(directory, commandName), source: 'PATH' });
+                }
             }
         }
         for (const path of definition.wellKnownLocations) {
@@ -85,35 +91,6 @@ export class CliDetector {
             unique.set(candidate.path.toLocaleLowerCase(), candidate);
         }
         return [...unique.values()];
-    }
-
-    protected definitions(): CliDefinition[] {
-        const appData = process.env.APPDATA;
-        const localAppData = process.env.LOCALAPPDATA;
-        const userProfile = process.env.USERPROFILE;
-        return [
-            {
-                id: 'codex',
-                name: 'Codex',
-                commandNames: this.commandNames('codex'),
-                wellKnownLocations: this.compact([
-                    appData && join(appData, 'npm', 'codex.cmd'),
-                    localAppData && join(localAppData, 'Programs', 'codex', 'codex.exe'),
-                    userProfile && join(userProfile, '.codex', 'bin', 'codex.exe'),
-                    userProfile && join(userProfile, '.local', 'bin', 'codex.exe')
-                ])
-            },
-            {
-                id: 'claude',
-                name: 'Claude',
-                commandNames: this.commandNames('claude'),
-                wellKnownLocations: this.compact([
-                    appData && join(appData, 'npm', 'claude.cmd'),
-                    localAppData && join(localAppData, 'Programs', 'claude', 'claude.exe'),
-                    userProfile && join(userProfile, '.local', 'bin', 'claude.exe')
-                ])
-            }
-        ];
     }
 
     protected commandNames(command: string): string[] {
@@ -129,10 +106,6 @@ export class CliDetector {
             .filter(value => extname(value) !== '.' || value === command);
     }
 
-    protected compact(values: Array<string | undefined>): string[] {
-        return values.filter((value): value is string => Boolean(value));
-    }
-
     protected async exists(path: string): Promise<boolean> {
         try {
             await access(path, constants.F_OK);
@@ -140,5 +113,38 @@ export class CliDetector {
         } catch {
             return false;
         }
+    }
+
+    protected probeVersion(command: string, args: readonly string[]): Promise<string | undefined> {
+        return new Promise(resolveProbe => {
+            const useCommandInterpreter = ['.cmd', '.bat'].includes(extname(command).toLocaleLowerCase());
+            const executable = useCommandInterpreter ? (process.env.ComSpec ?? 'cmd.exe') : command;
+            const executableArgs = useCommandInterpreter
+                ? ['/d', '/c', command, ...args]
+                : [...args];
+            const child = spawn(executable, executableArgs, {
+                windowsHide: true,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+            let output = '';
+            let settled = false;
+            const finish = (): void => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timeout);
+                const version = output.trim().split(/\r?\n/).find(Boolean)?.trim();
+                resolveProbe(version || undefined);
+            };
+            const timeout = setTimeout(() => {
+                child.kill();
+                finish();
+            }, 8_000);
+            child.stdout.on('data', chunk => output = `${output}${chunk.toString()}`.slice(-4_000));
+            child.stderr.on('data', chunk => output = `${output}${chunk.toString()}`.slice(-4_000));
+            child.once('error', finish);
+            child.once('close', finish);
+        });
     }
 }
