@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-latest:
+    name: windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}\.electron-builder-cache
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      electron_config_cache: ${{ github.workspace }}\.electron-cache
+      npm_config_cache: ${{ github.workspace }}\.npm-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify tag matches application version
+        run: >-
+          node -e "const version = require('./electron-app/package.json').version;
+          if (process.env.GITHUB_REF_NAME !== 'v' + version) {
+          throw new Error('Tag ' + process.env.GITHUB_REF_NAME + ' does not match app version ' + version); }"
+
+      - name: Cache Electron and builder downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            .electron-cache
+            .electron-builder-cache
+            .electron-home
+          key: release-${{ runner.os }}-x64-electron-39.8.7-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            release-${{ runner.os }}-x64-electron-39.8.7-
+
+      - name: Cache built-in VS Code extensions
+        uses: actions/cache@v4
+        with:
+          path: plugins
+          key: release-plugins-${{ runner.os }}-x64-${{ hashFiles('package.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download built-in VS Code extensions
+        run: npm run download:plugins
+
+      - name: Rebuild native dependencies and build Electron target
+        run: npm run build:electron
+
+      - name: Build and publish Windows release artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          node node_modules/electron-builder/out/cli/cli.js
+          --projectDir electron-app
+          --win nsis
+          --x64
+          --publish always
+          --config electron-builder.yml
+
+  macos-latest:
+    name: macos-latest (${{ matrix.arch }})
+    needs: windows-latest
+    runs-on: macos-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - arm64
+          - x64
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.electron-builder-cache
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      electron_config_cache: ${{ github.workspace }}/.electron-cache
+      npm_config_cache: ${{ github.workspace }}/.npm-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rosetta for the x64 toolchain
+        if: matrix.arch == 'x64'
+        run: sudo softwareupdate --install-rosetta --agree-to-license
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          architecture: ${{ matrix.arch }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Verify tag matches application version
+        run: >-
+          node -e "const version = require('./electron-app/package.json').version;
+          if (process.env.GITHUB_REF_NAME !== 'v' + version) {
+          throw new Error('Tag ' + process.env.GITHUB_REF_NAME + ' does not match app version ' + version); }"
+
+      - name: Cache Electron and builder downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            .electron-cache
+            .electron-builder-cache
+            .electron-home
+          key: release-${{ runner.os }}-${{ matrix.arch }}-electron-39.8.7-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            release-${{ runner.os }}-${{ matrix.arch }}-electron-39.8.7-
+
+      - name: Cache built-in VS Code extensions
+        uses: actions/cache@v4
+        with:
+          path: plugins
+          key: release-plugins-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('package.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download built-in VS Code extensions
+        run: npm run download:plugins
+
+      - name: Rebuild native dependencies and build Electron target
+        run: npm run build:electron
+
+      - name: Build and publish macOS release artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          node node_modules/electron-builder/out/cli/cli.js
+          --projectDir electron-app
+          --mac dmg zip
+          --${{ matrix.arch }}
+          --publish always
+          --config electron-builder.yml
+          --config.publish.channel=mac-${{ matrix.arch }}
