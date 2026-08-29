@@ -3093,7 +3093,7 @@ export class AgentWindowWidget extends ReactWidget {
             <header className='poiesis-results__fixed-header' data-task-status={task.status}>
                 <div className='poiesis-results__fixed-title'>
                     <small>実行結果</small>
-                    <h1 data-task-title={task.title}>{task.title}</h1>
+                    <h1 data-task-title={task.title} title={task.title}>{task.title}</h1>
                 </div>
                 <div className='poiesis-results__fixed-meta' aria-label='タスクの状態と変更規模'>
                     <span className={`poiesis-results__status ${task.status}`}>{status}</span>
