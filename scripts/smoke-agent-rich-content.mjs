@@ -231,6 +231,13 @@ try {
         layouts.push(await assertLayout(page, `${size.width}x${size.height}`));
     }
     layouts.push(await maximizeAndAssert(page));
+    assert(layouts[0].conversationWidth > 680,
+        `Conversation width did not expand beyond the previous 680px limit: ${JSON.stringify(layouts)}`);
+    assert(layouts[1].conversationWidth >= layouts[0].conversationWidth,
+        `Conversation width shrank as the viewport grew: ${JSON.stringify(layouts)}`);
+    assert(Math.abs(layouts[1].conversationWidth - 960) <= 2
+        && Math.abs(layouts[2].conversationWidth - 960) <= 2,
+    `Conversation width cap did not hold at large sizes: ${JSON.stringify(layouts)}`);
 
     await page.click('.poiesis-markdown img[alt="workspace image"]');
     await waitForCodeTab(page, 'workspace-image.svg');
@@ -254,6 +261,8 @@ try {
         reload: true,
         imageOpen: 'workspace-image.svg',
         htmlOpen: 'preview.html',
+        previousConversationLimit: 680,
+        conversationWidthCap: 960,
         layouts
     })}`);
 } catch (error) {
@@ -310,6 +319,10 @@ async function installFixture(page, workspacePath) {
                         '',
                         'Secondary preview: secondary.htm',
                         '',
+                        '```ts',
+                        `const deliberatelyLongLine = '${'agent-width-smoke-'.repeat(18)}';`,
+                        '```',
+                        '',
                         '<article id="llm-raw-html"><h1>LLM raw HTML must stay text</h1></article>'
                     ].join('\n'),
                     complete: true
@@ -340,8 +353,12 @@ async function assertLayout(page, label) {
     await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
     const snapshot = await page.evaluate(currentLabel => {
         const messages = document.querySelector('.poiesis-agent-window__messages');
+        const messagesInner = document.querySelector('.poiesis-agent-window__messages-inner');
+        const composer = document.querySelector('.poiesis-agent-window__composer');
         const card = document.querySelector('.poiesis-agent-html-preview.expanded');
         const frame = document.querySelector('.poiesis-agent-html-preview__frame');
+        const image = document.querySelector('.poiesis-markdown img[alt="workspace image"]');
+        const codeBlock = document.querySelector('.poiesis-markdown pre');
         const bounds = element => {
             if (!(element instanceof HTMLElement)) return undefined;
             const rect = element.getBoundingClientRect();
@@ -351,16 +368,43 @@ async function assertLayout(page, label) {
             label: currentLabel,
             viewport: { width: innerWidth, height: innerHeight },
             messages: bounds(messages),
+            messagesInner: bounds(messagesInner),
+            composer: bounds(composer),
             card: bounds(card),
-            frame: bounds(frame)
+            frame: bounds(frame),
+            image: bounds(image),
+            codeBlock: bounds(codeBlock),
+            codeScrollWidth: codeBlock instanceof HTMLElement ? codeBlock.scrollWidth : 0,
+            codeClientWidth: codeBlock instanceof HTMLElement ? codeBlock.clientWidth : 0
         };
     }, label);
-    assert(snapshot.messages && snapshot.card && snapshot.frame, `Rich content layout is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
-    assert(snapshot.card.left >= snapshot.messages.left && snapshot.card.right <= snapshot.messages.right + 1,
+    assert(snapshot.messages && snapshot.messagesInner && snapshot.composer && snapshot.card && snapshot.frame
+        && snapshot.image && snapshot.codeBlock,
+    `Rich content layout is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.messagesInner.width > 680 && snapshot.messagesInner.width <= 961,
+        `Conversation width is outside the expanded bounded range at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(Math.abs(snapshot.messagesInner.width - snapshot.composer.width) <= 2,
+        `Conversation and composer widths diverged at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.card.left >= snapshot.messagesInner.left && snapshot.card.right <= snapshot.messagesInner.right + 1,
         `HTML preview escaped the conversation at ${label}: ${JSON.stringify(snapshot)}`);
     assert(Math.abs(snapshot.frame.height - 360) <= 1 && snapshot.frame.width <= snapshot.card.width + 1,
         `HTML preview dimensions changed at ${label}: ${JSON.stringify(snapshot)}`);
-    return { label, viewport: snapshot.viewport, frameHeight: Math.round(snapshot.frame.height) };
+    assert(snapshot.image.left >= snapshot.messagesInner.left && snapshot.image.right <= snapshot.messagesInner.right + 1,
+        `Inline image escaped the conversation at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.codeBlock.left >= snapshot.messagesInner.left && snapshot.codeBlock.right <= snapshot.messagesInner.right + 1
+        && snapshot.codeScrollWidth > snapshot.codeClientWidth,
+    `Code block did not remain bounded and horizontally scrollable at ${label}: ${JSON.stringify(snapshot)}`);
+    return {
+        label,
+        viewport: snapshot.viewport,
+        conversationWidth: Math.round(snapshot.messagesInner.width),
+        composerWidth: Math.round(snapshot.composer.width),
+        previewWidth: Math.round(snapshot.card.width),
+        imageWidth: Math.round(snapshot.image.width),
+        codeBlockWidth: Math.round(snapshot.codeBlock.width),
+        codeScrollWidth: snapshot.codeScrollWidth,
+        frameHeight: Math.round(snapshot.frame.height)
+    };
 }
 
 async function maximizeAndAssert(page) {

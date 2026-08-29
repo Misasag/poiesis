@@ -1547,7 +1547,7 @@
 
 .poiesis-agent-window__messages-inner {
     margin: 0 auto;
-    max-width: 680px;
+    max-width: var(--poiesis-agent-conversation-width);
     min-height: 100%;
     min-width: 0;
     width: 100%;
@@ -1667,7 +1667,7 @@
     gap: 8px;
     grid-template-columns: 1fr;
     margin: 10px auto 16px;
-    max-width: 680px;
+    max-width: var(--poiesis-agent-conversation-width);
     min-width: 0;
     padding: 10px 11px 9px 13px;
     width: calc(100% - clamp(40px, 14vw, 156px));
@@ -3178,6 +3178,19 @@ body.poiesis-code-file-pointer-drag * {
     width: 22px;
 }
 
+.poiesis-agent-window__code-status button.poiesis-agent-window__code-status-scm {
+    gap: 4px;
+    max-width: 240px;
+    padding-inline: 5px;
+    width: auto;
+}
+
+.poiesis-agent-window__code-status-scm-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .poiesis-agent-window__code-status button:hover,
 .poiesis-agent-window__code-status button:focus-visible,
 .poiesis-agent-window__code-status button.active {
@@ -4634,6 +4647,7 @@ body.poiesis-code-file-pointer-drag * {
 
 /* Accessibility and readability overrides from the product UI audit. */
 .poiesis-agent-window__content {
+    --poiesis-agent-conversation-width: min(78vw, 960px);
     --poiesis-chrome-muted: #92948d;
     --poiesis-control-border: #70726b;
     --poiesis-focus-ring: #c28b60;
@@ -5109,7 +5123,7 @@ body.poiesis-code-file-pointer-drag * {
     }
 
     .poiesis-agent-window__composer {
-        width: min(680px, calc(100% - 32px));
+        width: min(var(--poiesis-agent-conversation-width), calc(100% - 32px));
     }
 
     .poiesis-agent-window__task-state {
