@@ -4,7 +4,7 @@ import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import { FormatType, open, OpenerService, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser';
 import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
-import { CommandService, Disposable } from '@theia/core/lib/common';
+import { CommandService, Disposable, MessageService } from '@theia/core/lib/common';
 import { FileUri } from '@theia/core/lib/common/file-uri';
 import URI from '@theia/core/lib/common/uri';
 import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
@@ -74,6 +74,11 @@ interface ResultsNotice {
     status: 'sending' | 'answered' | 'failed';
     text: string;
     historyTimestamp?: string;
+}
+
+interface ResultsFrameMessage {
+    type: 'poiesis:open-citation' | 'poiesis:retry-ai-results';
+    citation?: string;
 }
 
 interface WindowAgentSession {
@@ -680,7 +685,8 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(AgentRuntimeServer) protected readonly agentRuntimeServer: AgentRuntimeServer,
         @inject(ResultsQuestionService) protected readonly resultsQuestionService: ResultsQuestionService,
         @inject(ResultsGenerationContext) protected readonly resultsGenerationContext: ResultsGenerationContext,
-        @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService
+        @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService,
+        @inject(MessageService) protected readonly messageService: MessageService
     ) {
         super();
     }
@@ -768,6 +774,9 @@ export class AgentWindowWidget extends ReactWidget {
         this.installCodeEditorSaveShortcut();
         this.installCodeTerminalShortcut();
         this.installCodeTabDropTarget();
+        const receiveResultsMessage = (event: MessageEvent): void => this.handleResultsFrameMessage(event);
+        window.addEventListener('message', receiveResultsMessage);
+        this.toDispose.push(Disposable.create(() => window.removeEventListener('message', receiveResultsMessage)));
 
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
         this.toDispose.push(this.taskService.onDidChangeTask(event => {
@@ -2881,7 +2890,7 @@ export class AgentWindowWidget extends ReactWidget {
                                     key={`${selectedTask?.id}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
                                     className='poiesis-results__document'
                                     title={`${selectedTask?.title}の成果`}
-                                    sandbox=''
+                                    sandbox='allow-scripts'
                                     srcDoc={this.resultsDocumentHtml(document.html)}
                                 />
                                 {questionHistory.length > 0 && this.renderResultsQuestionHistory(selectedTask, questionHistory)}
@@ -4883,13 +4892,126 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected resultsDocumentHtml(html: string): string {
-        if (this.allowExternalResultsResources) {
-            return html;
+        const sanitized = html
+            .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+            .replace(/<script\b[^>]*\/\s*>/gi, '')
+            .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+        const policy = this.allowExternalResultsResources
+            ? ''
+            : `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">`;
+        const bridge = `<script data-poiesis-results-bridge="v1">
+(function () {
+  function send(message) { window.parent.postMessage(message, '*'); }
+  document.addEventListener('click', function (event) {
+    var target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    var action = target.closest('[data-poiesis-action="retry-ai-results"]');
+    if (action) {
+      event.preventDefault();
+      send({ type: 'poiesis:retry-ai-results' });
+      return;
+    }
+    var citationNode = target.closest('[data-poiesis-citation]');
+    var citation = citationNode && citationNode.getAttribute('data-poiesis-citation');
+    if (!citation) {
+      var plainNode = target.closest('a, cite, code');
+      var match = plainNode && (plainNode.textContent || '').match(/((?:[^\\s:()]+[\\\\/])*[^\\s:()]+\\.[A-Za-z0-9_-]+):(\\d+)(?:\\s*[-–—]\\s*(\\d+))?/);
+      if (match) citation = match[1] + ':' + match[2] + (match[3] ? '-' + match[3] : '');
+    }
+    if (!citation) return;
+    event.preventDefault();
+    send({ type: 'poiesis:open-citation', citation: citation });
+  }, true);
+})();
+</script>`;
+        const withPolicy = policy && /<head(?:\s[^>]*)?>/i.test(sanitized)
+            ? sanitized.replace(/<head(?:\s[^>]*)?>/i, match => `${match}\n  ${policy}`)
+            : `${policy}\n${sanitized}`;
+        return /<\/body\s*>/i.test(withPolicy)
+            ? withPolicy.replace(/<\/body\s*>/i, `${bridge}\n</body>`)
+            : `${withPolicy}\n${bridge}`;
+    }
+
+    protected handleResultsFrameMessage(event: MessageEvent): void {
+        const frame = this.node.querySelector<HTMLIFrameElement>('.poiesis-results__document');
+        if (!frame?.contentWindow || event.source !== frame.contentWindow || !event.data || typeof event.data !== 'object') {
+            return;
         }
-        const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">`;
-        return /<head(?:\s[^>]*)?>/i.test(html)
-            ? html.replace(/<head(?:\s[^>]*)?>/i, match => `${match}\n  ${policy}`)
-            : `${policy}\n${html}`;
+        const message = event.data as Partial<ResultsFrameMessage>;
+        if (message.type === 'poiesis:retry-ai-results') {
+            const session = this.selectedSession();
+            const task = [...this.finishedTasks(session)].reverse().find(candidate => candidate.id === session?.selectedResultsTaskId)
+                ?? [...this.finishedTasks(session)].reverse()[0];
+            if (task) {
+                void this.retryResults(task.id);
+            }
+        } else if (message.type === 'poiesis:open-citation' && typeof message.citation === 'string') {
+            void this.openResultsCitation(message.citation);
+        }
+    }
+
+    protected async openResultsCitation(rawCitation: string): Promise<void> {
+        const match = rawCitation.trim().match(/^(.*):(\d+)(?:\s*[-–—]\s*(\d+))?$/);
+        const path = match?.[1].trim().replace(/^`|`$/g, '').replace(/\\/g, '/');
+        const startLine = Number(match?.[2]);
+        const endLine = Number(match?.[3] ?? match?.[2]);
+        const invalidPath = !path
+            || path.startsWith('/')
+            || /^[A-Za-z]:/.test(path)
+            || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(path)
+            || path.split('/').some(segment => !segment || segment === '.' || segment === '..');
+        if (invalidPath || !Number.isSafeInteger(startLine) || !Number.isSafeInteger(endLine)
+            || startLine < 1 || endLine < startLine || endLine > 10_000_000) {
+            this.messageService.error('引用先を開けません。Workspace 内のファイルと行番号を確認してください。');
+            return;
+        }
+        const workspace = this.workspaceRoot()?.resource.normalizePath();
+        const file = workspace?.resolve(path).normalizePath();
+        try {
+            if (!workspace || !file || !workspace.isEqualOrParent(file, false) || !await this.fileService.exists(file)) {
+                this.messageService.error('引用先のファイルが Workspace 内に見つかりません。');
+                return;
+            }
+            const stat = await this.fileService.resolve(file);
+            if (!stat.isFile) {
+                this.messageService.error('引用先はファイルではありません。');
+                return;
+            }
+            await this.openCodeCitation(file, startLine, endLine);
+        } catch (error) {
+            console.warn(`[Poiesis] Could not open Results citation: ${rawCitation}`, error);
+            this.messageService.error('引用先を Editor で開けませんでした。');
+        }
+    }
+
+    protected async openCodeCitation(file: URI, startLine: number, endLine: number): Promise<void> {
+        this.closeCustomize(false);
+        if (!this.codeMode) {
+            this.ensureCodeFileIcons();
+            this.codeMode = true;
+            this.update();
+            requestAnimationFrame(() => void this.ensureCodeTerminal());
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        }
+        const uriKey = file.toString();
+        this.pendingPinnedEditorUris.add(uriKey);
+        try {
+            await this.editorManager.open(file, {
+                mode: 'activate',
+                selection: {
+                    start: { line: startLine - 1, character: 0 },
+                    end: { line: endLine - 1, character: 0 }
+                }
+            });
+            const opened = this.codeCenterWidgets.find(candidate => candidate instanceof EditorWidget
+                && candidate.editor.uri.toString() === uriKey);
+            if (opened) {
+                this.pinCodeCenterWidget(opened);
+                this.selectCodeCenterWidget(opened);
+            }
+        } finally {
+            this.pendingPinnedEditorUris.delete(uriKey);
+        }
     }
 
     protected async clearSavedSessionData(): Promise<void> {

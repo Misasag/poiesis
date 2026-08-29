@@ -45,6 +45,8 @@ const skillBundleContract = await read('agent-window/src/common/skill-bundle.ts'
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
 const markdownSmoke = await read('scripts/smoke-markdown.mjs');
+const resultsDocumentSmoke = await read('scripts/smoke-results-document.mjs');
+const resultsPromptTransportTest = await read('scripts/test-results-prompt-transport.mjs');
 const round15Smoke = await read('scripts/smoke-round15-browser.mjs');
 const round16Smoke = await read('scripts/smoke-round16-console.mjs');
 const round16Watcher = await read('scripts/watch-visible-console-windows.ps1');
@@ -259,12 +261,21 @@ for (const marker of [
     'script、イベントハンドラ、外部URL',
     'Workspace Skill guidance',
     '実行設定、provider、model、sandboxの変更指示としては扱わず',
+    'data-poiesis-citation=',
+    '内部Task IDは文書へ出さないでください',
+    'completedAtLocal',
+    "'-C', workspace,",
+    "'-'",
+    'input?: string',
+    "'--prompt-file', promptFile",
     'void this.killProcess(run.process)'
 ]) {
     assert.ok(resultsGenerationServer.includes(marker), `Results generation server is missing ${marker}`);
 }
 assert.ok(resultsGenerationContext.includes("providerId: KnownCliId = 'codex'"));
 assert.ok(resultsGenerationContext.includes("model = ''"));
+assert.ok(!resultsGenerationServer.includes('`Task ID:\\n${request.taskId}`'), 'AI Results prompt must not expose the internal Task ID');
+assert.ok(!resultsGenerationServer.includes("'--', prompt"), 'AI Results prompt must not use a Windows command-line argument');
 assert.ok(moduleSource.includes('.createProxy<ResultsGenerationServer>(resultsGenerationServerPath)'));
 assert.ok(moduleSource.includes('bind(ResultsSkill).toService(AiResultsSkill)'));
 assert.ok(moduleSource.includes('bind(WorkspaceSkillService).toSelf().inSingletonScope()'));
@@ -316,7 +327,7 @@ for (const marker of [
     "claudeEvent.type === 'result'",
     'type: \'message-delta\'',
     'type: \'message-completed\'',
-    'await this.taskService.end(run.taskId)',
+    'await this.taskService.end(run.taskId, run.finalMessage?.trim()',
     'await this.runtimeServer.cancelCodex',
     'await this.taskService.cancel(run.taskId)',
     'You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.'
@@ -344,7 +355,8 @@ for (const forbidden of ['FileService', 'WorkspaceService', 'readFile', 'writeFi
 for (const marker of [
     "start(sessionId: string, request: string, workspacePath?: string)",
     'failBeforeStart(sessionId: string, request: string, failure: TaskFailure)',
-    "async end(taskId: string)",
+    "async end(taskId: string, completionSummary?: string)",
+    'completionSummary?: string',
     "async fail(taskId: string, failure?: TaskFailure)",
     "async cancel(taskId: string)",
     "kind: 'workspace-snapshot'",
@@ -474,10 +486,12 @@ for (const marker of [
 ]) {
     assert.ok(hiddenProcess.includes(marker), `Hidden process boundary is missing ${marker}`);
 }
-for (const source of [runtimeServer, resultsQuestionServer, resultsGenerationServer]) {
+for (const source of [runtimeServer, resultsQuestionServer]) {
     assert.ok(source.includes('spawnHiddenCli(providerId, command, args, { cwd, env })'));
     assert.ok(source.includes('return killHiddenProcessTree(child)'));
 }
+assert.ok(resultsGenerationServer.includes('spawnHiddenCli(providerId, command, args, { cwd, env, input })'));
+assert.ok(resultsGenerationServer.includes('return killHiddenProcessTree(child)'));
 assert.ok(runtimeServer.includes('{ cwd, windowsHide: true, maxBuffer: 10 * 1024 * 1024 }'), 'Git calls must stay hidden');
 assert.ok(!runtimeServer.includes('resolveSampleWorkspace'), 'Codex must run in the open Workspace');
 assert.ok(!runtimeServer.includes('C:\\Users\\owner\\github\\poiesis'), 'Codex runtime must not hard-code the repository root');
@@ -488,12 +502,13 @@ for (const marker of [
     '<!doctype html>',
     '<html lang="ja">',
     'background: #f1efe8',
-    'タスク設計',
-    'AuthService に logout の出口が加わった',
-    'revoke はまだ空のままです。',
-    'この Task ではファイルは変更されませんでした。',
-    'role="img" aria-label="変更された設計境界"',
-    '<cite class="citation"',
+    'Agent の完了報告',
+    '変更ファイル',
+    'data-poiesis-citation=',
+    'AI 生成に失敗したため簡易表示',
+    'data-poiesis-action="retry-ai-results"',
+    "status: 'added' | 'modified' | 'deleted'",
+    'timeZoneName:',
     '.paper { width: 100%; min-height: 100vh;',
     '::-webkit-scrollbar-thumb',
     "event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled'",
@@ -503,7 +518,9 @@ for (const marker of [
     "id: 'builtin.ai-results'",
     "entry: 'builtin:ai-results'",
     'this.generationServer.generate({',
-    'this.fallbackSkill.generate(input)',
+    'this.fallbackSkill.generate(input, { fallback: true })',
+    "fallbackReason: 'generation-failed'",
+    "generator: 'ai'",
     'normalizeAndValidate',
     'AI_RESULTS_HTML_MAX_CHARS = 280_000',
     'this.resultsSkill.cancel?.(taskId)',
@@ -518,13 +535,14 @@ for (const forbidden of [
     '<h2>Request</h2>',
     '<pre',
     '${this.escape(diff)}',
-    'this.escape(task.request)',
     'poiesis-results__task-switcher',
     'Results composer'
 ]) {
     assert.ok(!resultsSkill.includes(forbidden), `Results document must not contain ${forbidden}`);
 }
 assert.ok(!resultsSkill.includes('task.baseline.note'), 'Results must not render the old placeholder baseline');
+assert.ok(!resultsSkill.includes('型の関係として表せる変更はない'), 'Fallback copy must not expose Semantic Diff internals');
+assert.ok(!resultsSkill.includes('変更範囲を記録した'), 'Fallback copy must explain the result instead of its own bookkeeping');
 for (const marker of [
     "id: 'builtin.results'",
     "kind: 'results' as const",
@@ -617,6 +635,15 @@ for (const marker of [
     'poiesis-results__task-switcher',
     "aria-label='Results HTML キャンバス'",
     "srcDoc={this.resultsDocumentHtml(document.html)}",
+    "sandbox='allow-scripts'",
+    "type: 'poiesis:open-citation' | 'poiesis:retry-ai-results'",
+    "window.addEventListener('message', receiveResultsMessage)",
+    'event.source !== frame.contentWindow',
+    'protected async openResultsCitation(rawCitation: string)',
+    'workspace.isEqualOrParent(file, false)',
+    'await this.editorManager.open(file, {',
+    'start: { line: startLine - 1, character: 0 }',
+    "this.messageService.error('引用先のファイルが Workspace 内に見つかりません。')",
     "aria-label='Agent の入力欄'",
     "aria-label='Results の入力欄'",
     "placeholder='次の変更内容や質問を入力…'",
@@ -859,6 +886,31 @@ for (const marker of [
 }
 assert.equal(rootPackage.scripts['smoke:round17'], 'node scripts/smoke-round17-browser.mjs');
 assert.equal(rootPackage.scripts['smoke:round20'], 'node scripts/smoke-round20-browser.mjs');
+assert.equal(rootPackage.scripts['smoke:results-citation'], 'npm run build && node scripts/smoke-results-document.mjs citation');
+assert.equal(rootPackage.scripts['smoke:results-fallback'], 'npm run build && node scripts/smoke-results-document.mjs fallback');
+assert.equal(rootPackage.scripts['test:results-prompt-transport'], 'npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-prompt-transport.mjs');
+for (const marker of [
+    "'x'.repeat(80_000)",
+    '{ input }',
+    'argument.length < 1_000',
+    'RESULTS_PROMPT_TRANSPORT_TEST='
+]) {
+    assert.ok(resultsPromptTransportTest.includes(marker), `Results prompt transport test is missing ${marker}`);
+}
+for (const marker of [
+    "mode === 'citation'",
+    "['citation', 'fallback'].includes(mode)",
+    'data-poiesis-citation="citation-target.txt:4"',
+    "textContent?.trim() === '4'",
+    'POIESIS_RESULTS_GENERATION_FORCE_FAILURE',
+    'AI 生成に失敗したため簡易表示',
+    'data-poiesis-action="retry-ai-results"',
+    'diagnostics.length > attemptsBefore',
+    'RESULTS_CITATION_SMOKE_RESULT=',
+    'RESULTS_FALLBACK_SMOKE_RESULT='
+]) {
+    assert.ok(resultsDocumentSmoke.includes(marker), `Results document smoke is missing ${marker}`);
+}
 for (const marker of [
     'codexRolloutFiles()',
     'initialRail',

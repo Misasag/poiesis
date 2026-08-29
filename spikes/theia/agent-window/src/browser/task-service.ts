@@ -51,6 +51,7 @@ export interface ExecutionTask {
     status: ExecutionTaskStatus;
     startedAt: string;
     endedAt?: string;
+    completionSummary?: string;
     baseline: TaskBaseline;
     changeSet?: TaskChangeSet;
     failure?: TaskFailure;
@@ -156,8 +157,8 @@ export class TaskService {
         return task;
     }
 
-    async end(taskId: string): Promise<ExecutionTask | undefined> {
-        return this.finish(taskId, 'completed', 'ended');
+    async end(taskId: string, completionSummary?: string): Promise<ExecutionTask | undefined> {
+        return this.finish(taskId, 'completed', 'ended', undefined, completionSummary);
     }
 
     async cancel(taskId: string): Promise<ExecutionTask | undefined> {
@@ -255,7 +256,8 @@ export class TaskService {
         taskId: string,
         status: Exclude<ExecutionTaskStatus, 'running'>,
         eventType: Extract<TaskEvent['type'], 'ended' | 'failed' | 'cancelled'>,
-        failure?: TaskFailure
+        failure?: TaskFailure,
+        completionSummary?: string
     ): Promise<ExecutionTask | undefined> {
         const current = this.tasks.get(taskId);
         if (!current || current.status !== 'running') {
@@ -271,6 +273,7 @@ export class TaskService {
                 ...capture,
                 capturedAt: new Date().toISOString()
             },
+            completionSummary: completionSummary?.trim().slice(0, 12_000) || undefined,
             failure
         };
         this.tasks.set(task.id, task);

@@ -7,8 +7,8 @@ export interface ResultsGenerationTaskMetadata {
     status: 'completed';
     title: string;
     request: string;
-    startedAt: string;
-    endedAt?: string;
+    completionSummary?: string;
+    completedAtLocal?: string;
 }
 
 export interface ResultsGenerationRequest {

@@ -1,7 +1,5 @@
-import { ChildProcessByStdio } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { Readable } from 'node:stream';
 import URI from '@theia/core/lib/common/uri';
 import { inject, injectable } from '@theia/core/shared/inversify';
 import {
@@ -13,9 +11,9 @@ import {
 import { isKnownCliId, KnownCliId } from '../common/agent-runtime-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
 import { grokExecutionEnvironment } from './known-cli-registry';
-import { killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
+import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 
-type CodexProcess = ChildProcessByStdio<null, Readable, Readable>;
+type CodexProcess = HiddenCliProcess;
 
 interface ResultsQuestionRun {
     process: CodexProcess;

@@ -106,6 +106,10 @@ Agent skillは成果の正本を自己申告しない。Task、Baseline、Change
 
 Results skillは終了済みTaskと確定済みChange Setを入力に、一つの完成HTML文書を生成する。Agent会話の途中では起動せず、不完全なHTML断片をcanvasへstreamしない。Results内の質問応答は文書生成とは別のResults AI境界であり、Skill HTMLを変更しない。
 
+根拠コードを示す引用はWorkspace相対の`file:line`または`file:start-end`とし、`<a href="#" data-poiesis-citation="file:start-end">…</a>`でクリック可能にする。Applicationはsandboxed canvasからの引用操作だけを受け取り、Workspace内に実在するファイルを検証してからCodeモードのEditorで該当行を開く。旧文書や契約に従わないAI出力のため、`cite`／`code`／`a`内のプレーンな`file:line[-range]`も互換入力として扱える。
+
+成果文書へApplication内部のTask IDを表示しない。完了時刻を載せる場合はApplicationが渡すローカルタイムゾーン表記だけを使い、UTCまたはISO時刻を生表示しない。
+
 有効なWorkspace Results skillも生成開始時に毎回読み直し、同じ区切り・順序・文字数上限でAI Resultsのpromptへ成果文書の追加ガイダンスとして加える。静的な`builtin.results` templateはUser Skillを解釈しないため、AI生成からtemplateへfallbackした場合はこの追加ガイダンスを反映しない。
 
 ## Conforming bundles
@@ -123,6 +127,8 @@ Results skillは終了済みTaskと確定済みChange Setを入力に、一つ�
 ```
 
 `builtin.ai-results`は2番目の適合bundleである。選択されたResults roleのAIへ、終了済みTask metadataと確定済みChange Setをread-only境界で渡し、一つの完成HTML文書を生成する。AIを実行できない場合、または生成結果が契約を満たさない場合は`builtin.results`へfallbackする。
+
+fallback文書は、AI生成に失敗したため簡易表示であることを内部エラー詳細なしで明示し、同じTaskのAI生成を再試行できる操作を持つ。失敗理由の詳細はApplication diagnosticsへ記録する。
 
 ```ts
 {

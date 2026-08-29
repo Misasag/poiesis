@@ -1,14 +1,15 @@
-import { ChildProcess, ChildProcessByStdio, spawn } from 'node:child_process';
+import { ChildProcess, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { delimiter, dirname, extname, basename, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { KnownCliId } from '../common/agent-runtime-protocol';
 
-export type HiddenCliProcess = ChildProcessByStdio<null, Readable, Readable>;
+export type HiddenCliProcess = ChildProcess & { readonly stdout: Readable; readonly stderr: Readable };
 
 export interface HiddenCliSpawnOptions {
     cwd?: string;
     env?: NodeJS.ProcessEnv;
+    input?: string;
 }
 
 interface CliInvocation {
@@ -27,13 +28,17 @@ export function spawnHiddenCli(
     options: HiddenCliSpawnOptions = {}
 ): HiddenCliProcess {
     const invocation = resolveKnownCliInvocation(providerId, command, args);
-    return spawn(invocation.executable, invocation.args, {
+    const child = spawn(invocation.executable, invocation.args, {
         cwd: options.cwd,
         env: options.env,
         windowsHide: true,
         shell: false,
-        stdio: ['ignore', 'pipe', 'pipe']
-    });
+        stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe']
+    }) as HiddenCliProcess;
+    if (options.input !== undefined) {
+        child.stdin?.end(options.input, 'utf8');
+    }
+    return child;
 }
 
 export function resolveKnownCliInvocation(

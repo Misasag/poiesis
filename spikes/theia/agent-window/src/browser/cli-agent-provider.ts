@@ -198,7 +198,7 @@ export class CliAgentProvider implements AgentProvider {
         });
         this.runs.delete(run.sessionId);
         if (successful) {
-            await this.taskService.end(run.taskId);
+            await this.taskService.end(run.taskId, run.finalMessage?.trim() || 'タスクを完了しました。');
             this.eventEmitter.fire({
                 type: 'task-completed',
                 sessionId: run.sessionId,

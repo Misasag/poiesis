@@ -30,6 +30,8 @@
     "smoke:markdown": "node scripts/smoke-markdown.mjs",
     "smoke:resize": "node scripts/smoke-resize.mjs",
     "smoke:results-question": "npm run build && node scripts/smoke-results-question.mjs",
+    "smoke:results-citation": "npm run build && node scripts/smoke-results-document.mjs citation",
+    "smoke:results-fallback": "npm run build && node scripts/smoke-results-document.mjs fallback",
     "smoke:restored-new-chat": "node scripts/smoke-restored-new-chat.mjs",
     "smoke:round10": "node scripts/smoke-round10-browser.mjs",
     "smoke:round13": "node scripts/smoke-round13-browser.mjs",
@@ -45,6 +47,7 @@
     "stop:background": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-background.ps1",
     "start:electron": "npm run start --workspace=@poiesis/theia-electron-app --",
     "test:composer": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-composer-behavior.mjs",
+    "test:results-prompt-transport": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-prompt-transport.mjs",
     "validate:source": "node scripts/validate-source.mjs"
   },
   "devDependencies": {
