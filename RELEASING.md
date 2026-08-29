@@ -1,6 +1,36 @@
-# Windows local release and update
+# Release guide
+
+## GitHub Releases への公開
+
+公開リリースは `v*` タグの push で `.github/workflows/release.yml` を起動して作成する。タグ名は `electron-app/package.json` の version に `v` を付けた値と一致させる。CI でも不一致を検査し、一致しなければ成果物を公開しない。
+
+リリース前に version と lockfile を更新し、必要なローカル検証を終えて commit する。
+
+```powershell
+npm version patch --workspace=@poiesis/theia-electron-app --no-git-tag-version
+npm run validate:source
+npm run build:electron
+npm run dist:win
+```
+
+オーナー確認後、commit を push し、リポジトリを public にしてからタグを push する。
+
+```powershell
+git push origin main
+$version = node -p "require('./electron-app/package.json').version"
+git tag "v$version"
+git push origin "v$version"
+```
+
+CI は Windows x64 の NSIS installer、blockmap、`latest.yml` と、macOS の dmg、zip を同じ GitHub Release へ publish する。macOS は arm64 と x64 を別々に生成する。universal 化すると native addon の 2 architecture を同一 app bundle へ安全に統合する追加検証が必要になるため、署名なし・実機検証中の現段階では採用しない。
+
+macOS ジョブは `macos-latest` の arm64 runner を使い、x64 側は Rosetta と x64 Node.js toolchain で native rebuild する。証明書の自動検出は無効で、`identity: null`、notarize なしで package する。Windows と macOS のいずれも未署名である。
+
+## Windows local release and update
 
 この手順はWindows distribution Phase A用である。固定feed URLは`http://127.0.0.1:43827/win`、feed directoryは`.dist-feed/win/`である。新設Node scriptのconsole出力はASCIIに限定している。
+
+`dist:win` 単体は既定の GitHub publish 設定を app に焼くが、`--publish never` のため upload しない。`release:local` は内部で `dist:win -- --local-feed` を呼び、Windows の publish 設定だけを generic local feed に上書きする。
 
 ## Build and local release
 
