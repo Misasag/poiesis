@@ -168,6 +168,8 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         }
         const testReply = process.env.POIESIS_AGENT_TEST_REPLY;
         if (testReply !== undefined) {
+            const configuredDelay = Number(process.env.POIESIS_AGENT_TEST_DELAY_MS);
+            const testDelay = Number.isFinite(configuredDelay) ? Math.max(0, Math.min(configuredDelay, 10_000)) : 0;
             setTimeout(() => {
                 this.client?.notifyCodexEvent({
                     type: 'output',
@@ -179,7 +181,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
                     })}\n`
                 });
                 this.client?.notifyCodexEvent({ type: 'exit', executionId, code: 0, signal: null });
-            }, 0);
+            }, testDelay);
             return;
         }
 

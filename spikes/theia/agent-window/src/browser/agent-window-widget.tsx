@@ -39,6 +39,7 @@ import { ResultsGenerationContext } from './results-generation-context';
 import { SkillBundleKind } from '../common/skill-bundle';
 import { POIESIS_EXTERNAL_LINK_ATTRIBUTE, POIESIS_FILE_LINK_ATTRIBUTE, renderSafeMarkdown } from './safe-markdown';
 import { WorkspaceSkillDefinition, WorkspaceSkillService } from './workspace-skill-service';
+import { formatTaskElapsedTime, shouldSubmitComposer } from './composer-behavior';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
@@ -415,6 +416,10 @@ type PoiesisImeInputProps = PoiesisImeValueProps<HTMLInputElement> & Omit<React.
 'value' | 'defaultValue' | 'onChange' | 'onInput' | 'onCompositionStart' | 'onCompositionEnd'>;
 type PoiesisImeTextareaProps = PoiesisImeValueProps<HTMLTextAreaElement> & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>,
 'value' | 'defaultValue' | 'onChange' | 'onInput' | 'onCompositionStart' | 'onCompositionEnd'>;
+type PoiesisComposerProps = PoiesisImeValueProps<HTMLTextAreaElement>
+    & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+    'value' | 'defaultValue' | 'onChange' | 'onInput' | 'onCompositionStart' | 'onCompositionEnd' | 'onSubmit'>
+    & { onSubmit: () => void };
 
 /**
  * Keeps the DOM's in-progress IME composition out of React's value reconciliation.
@@ -478,6 +483,54 @@ const PoiesisTextInput = ({ value, onValueChange, elementRef, ...props }: Poiesi
 const PoiesisTextArea = ({ value, onValueChange, elementRef, ...props }: PoiesisImeTextareaProps): React.ReactElement => {
     const ime = useImeSafeValue<HTMLTextAreaElement>(value, onValueChange, elementRef);
     return <textarea {...props} {...ime} defaultValue={value} />;
+};
+
+const PoiesisComposer = ({
+    value,
+    onValueChange,
+    elementRef,
+    onSubmit,
+    onKeyDown,
+    ...props
+}: PoiesisComposerProps): React.ReactElement => {
+    const ime = useImeSafeValue<HTMLTextAreaElement>(value, onValueChange, elementRef);
+    return (
+        <textarea
+            {...props}
+            {...ime}
+            defaultValue={value}
+            onKeyDown={event => {
+                onKeyDown?.(event);
+                if (event.defaultPrevented) {
+                    return;
+                }
+                const nativeEvent = event.nativeEvent as KeyboardEvent;
+                if (shouldSubmitComposer({
+                    key: event.key,
+                    shiftKey: event.shiftKey,
+                    isComposing: nativeEvent.isComposing,
+                    keyCode: nativeEvent.keyCode
+                }, event.currentTarget.value)) {
+                    event.preventDefault();
+                    onSubmit();
+                }
+            }}
+        />
+    );
+};
+
+const PoiesisTaskElapsed = ({ startedAt }: { startedAt: string }): React.ReactElement => {
+    const [now, setNow] = React.useState(Date.now());
+    React.useEffect(() => {
+        setNow(Date.now());
+        const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+        return () => window.clearInterval(interval);
+    }, [startedAt]);
+    return (
+        <span role='timer' aria-live='off' aria-atomic='true'>
+            作業中 · {formatTaskElapsedTime(startedAt, now)}
+        </span>
+    );
 };
 
 @injectable()
@@ -877,38 +930,38 @@ export class AgentWindowWidget extends ReactWidget {
                     <button
                         type='button'
                         className='poiesis-agent-window__rail-action'
-                        title='New Chat'
+                        title='新しいチャット'
                         onClick={() => void this.newChat()}
                     >
                         <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
                             <span className='codicon codicon-comment-add' />
                         </span>
-                        <span className='poiesis-agent-window__rail-action-label'>New Chat</span>
+                        <span className='poiesis-agent-window__rail-action-label'>新しいチャット</span>
                     </button>
                     <button
                         type='button'
                         className={`poiesis-agent-window__rail-action${this.sessionSearchVisible ? ' active' : ''}`}
                         aria-expanded={this.sessionSearchVisible && !this.railCollapsed}
                         aria-controls='poiesis-agent-window-session-search'
-                        title='Search'
+                        title='検索'
                         onClick={() => this.showSessionSearch()}
                     >
                         <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
                             <span className='codicon codicon-search' />
                         </span>
-                        <span className='poiesis-agent-window__rail-action-label'>Search</span>
+                        <span className='poiesis-agent-window__rail-action-label'>検索</span>
                     </button>
                     <button
                         type='button'
                         className={`poiesis-agent-window__rail-action${this.customizeViewVisible ? ' active' : ''}`}
-                        title='Customize'
+                        title='カスタマイズ'
                         aria-current={this.customizeViewVisible ? 'page' : undefined}
                         onClick={() => this.openCustomize()}
                     >
                         <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
                             <span className='codicon codicon-tools' />
                         </span>
-                        <span className='poiesis-agent-window__rail-action-label'>Customize</span>
+                        <span className='poiesis-agent-window__rail-action-label'>カスタマイズ</span>
                     </button>
                     {this.sessionSearchVisible && !this.railCollapsed && (
                         <label className='poiesis-agent-window__session-search' id='poiesis-agent-window-session-search'>
@@ -1878,7 +1931,7 @@ export class AgentWindowWidget extends ReactWidget {
                         {newAgent && session?.messages.length === 0 && (
                             <div className='poiesis-agent-window__new-agent-empty'>
                                 <span className='codicon codicon-comment-add' aria-hidden='true' />
-                                <strong>What do you want to build?</strong>
+                                <strong>何を作りますか?</strong>
                                 <small>Repository、branch、実行場所を選んでからAgentへ依頼します</small>
                             </div>
                         )}
@@ -1906,7 +1959,11 @@ export class AgentWindowWidget extends ReactWidget {
                                 ) : message.role === 'agent'
                                     ? this.renderMarkdown(message.content)
                                     : <p>{message.content || '…'}</p>}
-                                {!message.complete && <small className='poiesis-agent-window__message-state'>作業中…</small>}
+                                {!message.complete && runningTask && runningTask.id === message.taskId && (
+                                    <small className='poiesis-agent-window__message-state'>
+                                        <PoiesisTaskElapsed startedAt={runningTask.startedAt} />
+                                    </small>
+                                )}
                             </section>
                         ))}
                     </div>
@@ -1920,7 +1977,7 @@ export class AgentWindowWidget extends ReactWidget {
                     </div>
                 )}
                 <section className='poiesis-agent-window__composer' aria-label='Agent の入力欄'>
-                    <PoiesisTextArea
+                    <PoiesisComposer
                         key={session?.id ?? 'no-session'}
                         elementRef={input => { this.agentComposerInput = input ?? undefined; }}
                         value={session?.agentDraft ?? ''}
@@ -1929,12 +1986,7 @@ export class AgentWindowWidget extends ReactWidget {
                         rows={2}
                         disabled={!session || Boolean(runningTask)}
                         onValueChange={value => this.setAgentDraft(session?.id, value)}
-                        onKeyDown={event => {
-                            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-                                event.preventDefault();
-                                void this.sendAgentMessage();
-                            }
-                        }}
+                        onSubmit={() => void this.sendAgentMessage()}
                     />
                     <div className='poiesis-agent-window__composer-footer'>
                         {session && newAgent && this.renderNewAgentContext(session)}
@@ -2850,20 +2902,16 @@ export class AgentWindowWidget extends ReactWidget {
                         </div>
                     )}
                     <section className='poiesis-results__composer' aria-label='Results の入力欄'>
-                        <PoiesisTextInput
+                        <PoiesisComposer
                             key={selectedTask?.id ?? 'no-results-task'}
                             value={draft}
                             placeholder='この結果について質問…'
                             aria-label='表示中の成果について質問'
+                            rows={2}
                             maxLength={4_000}
                             disabled={!selectedTask || document?.status !== 'ready' || questionSending}
                             onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}
-                            onKeyDown={event => {
-                                if (event.key === 'Enter' && selectedTask && !questionSending) {
-                                    event.preventDefault();
-                                    void this.submitResultsQuestion(selectedTask.id);
-                                }
-                            }}
+                            onSubmit={() => selectedTask && void this.submitResultsQuestion(selectedTask.id)}
                         />
                         <button
                             type='button'
@@ -5611,7 +5659,11 @@ export class AgentWindowWidget extends ReactWidget {
                     answer: result.answer,
                     timestamp: new Date().toISOString()
                 });
-                session.resultsNotices.delete(taskId);
+                session.resultsNotices.set(taskId, {
+                    question,
+                    status: 'answered',
+                    text: result.answer
+                });
             } else if (result.status === 'failed') {
                 const history = this.taskService.recordResultsQuestion(taskId, {
                     question,

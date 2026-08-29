@@ -44,7 +44,7 @@ try {
             await selectRoleProvider(page, 'agent', provider.id, provider.model);
             await selectRoleProvider(page, 'results', provider.id, provider.model);
             await closeSettings(page);
-            await clickText(page, '.poiesis-agent-window__rail-action', 'New Chat');
+            await clickText(page, '.poiesis-agent-window__rail-action', '新しいチャット');
             const prompt = `ファイルを変更せず、追加のコマンドも実行せず、「${provider.id} の非表示起動確認が完了しました」と短く返してください。`;
             const agent = await runAgentTask(page, prompt);
             await clickText(page, '.poiesis-agent-window__tabs button', 'Results');

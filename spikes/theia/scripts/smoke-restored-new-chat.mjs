@@ -135,7 +135,7 @@ try {
         await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
     }
     await clickText(page, '.poiesis-agent-window__tabs button', 'Agent');
-    await clickText(page, '.poiesis-agent-window__rail-action', 'New Chat');
+    await clickText(page, '.poiesis-agent-window__rail-action', '新しいチャット');
     await page.waitForSelector('.poiesis-agent-window__new-agent-empty');
     if (useComposerPill) {
         pillChecks.newAgent = await composerPillSnapshot(page, 'agent');
@@ -150,9 +150,7 @@ try {
         ? waitForProcessModelArg(provider, provider === 'codex' ? '-m' : '--model', agentModel, timeout)
         : Promise.resolve(undefined);
     await page.focus('[aria-label="Agent へのメッセージ"]');
-    await page.keyboard.down('Control');
     await page.keyboard.press('Enter');
-    await page.keyboard.up('Control');
     await page.waitForSelector('.poiesis-agent-window__task-state');
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
     const agentModelArgs = await agentModelArgsPromise;
@@ -178,9 +176,7 @@ try {
     if (!expectPreSpawnFailure) {
         await fill(page, 'キャンセル動作の確認です。ファイルを変更せず、作業を始めてください。');
         await page.focus('[aria-label="Agent へのメッセージ"]');
-        await page.keyboard.down('Control');
         await page.keyboard.press('Enter');
-        await page.keyboard.up('Control');
         await page.waitForSelector('.poiesis-agent-window__task-state');
         await new Promise(resolve => setTimeout(resolve, 750));
         await clickText(page, '.poiesis-agent-window__task-state button', 'キャンセル');

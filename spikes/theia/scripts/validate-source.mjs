@@ -11,6 +11,8 @@ const appPackage = JSON.parse(await read('browser-app/package.json'));
 const electronPackage = JSON.parse(await read('electron-app/package.json'));
 const extensionPackage = JSON.parse(await read('agent-window/package.json'));
 const agentWidget = await read('agent-window/src/browser/agent-window-widget.tsx');
+const composerBehavior = await read('agent-window/src/browser/composer-behavior.ts');
+const composerBehaviorTest = await read('scripts/test-composer-behavior.mjs');
 const agentStyles = await read('agent-window/src/browser/style/index.css');
 const safeMarkdown = await read('agent-window/src/browser/safe-markdown.ts');
 const moduleSource = await read('agent-window/src/browser/agent-window-frontend-module.ts');
@@ -604,7 +606,7 @@ for (const marker of [
     'aria-pressed={this.codeMode}',
     '{!this.codeMode && session?.hasUserMessage && (',
     "aria-label='Agent と Results の切り替え'",
-    "<span className='poiesis-agent-window__rail-action-label'>New Chat</span>",
+    "<span className='poiesis-agent-window__rail-action-label'>新しいチャット</span>",
     "id='poiesis-results-panel'",
     "role='tabpanel'",
     "role='tablist'",
@@ -734,7 +736,7 @@ for (const marker of [
     '<strong>Bundled Results</strong>',
     '<strong>AI Results</strong>',
     "className={`poiesis-agent-window__rail-action${this.customizeViewVisible ? ' active' : ''}`}",
-    "<span className='poiesis-agent-window__rail-action-label'>Customize</span>",
+    "<span className='poiesis-agent-window__rail-action-label'>カスタマイズ</span>",
     'this.workspaceSkillService.list(root)',
     'protected async setWorkspaceSkillEnabled(',
     'protected async createWorkspaceSkill(): Promise<void>',
@@ -770,6 +772,7 @@ for (const marker of [
     "value={session?.agentDraft ?? ''}",
     'const PoiesisTextInput = (',
     'const PoiesisTextArea = (',
+    'const PoiesisComposer = ({',
     'if (!composing.current && !nativeEvent.isComposing)',
     'onValueChange={value => this.setAgentDraft(session?.id, value)}',
     'onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}',
@@ -782,6 +785,35 @@ for (const marker of [
     'this.taskService.remove([taskId])'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
+}
+
+for (const marker of [
+    "event.key === 'Enter'",
+    '!event.shiftKey',
+    '!event.isComposing',
+    'event.keyCode !== 229',
+    'Boolean(value.trim())'
+]) {
+    assert.ok(composerBehavior.includes(marker), `Shared Composer submit policy is missing ${marker}`);
+}
+for (const marker of [
+    'isComposing: nativeEvent.isComposing',
+    'keyCode: nativeEvent.keyCode',
+    'event.currentTarget.value',
+    '<PoiesisTaskElapsed startedAt={runningTask.startedAt} />',
+    '<strong>何を作りますか?</strong>'
+]) {
+    assert.ok(agentWidget.includes(marker), `Composer UX wiring is missing ${marker}`);
+}
+assert.equal((agentWidget.match(/<PoiesisComposer/g) ?? []).length, 2,
+    'Agent and Results must both use the shared Composer');
+for (const marker of [
+    'isComposing: true',
+    'keyCode: 229',
+    'Whitespace-only text must not submit.',
+    'shiftKey: true'
+]) {
+    assert.ok(composerBehaviorTest.includes(marker), `Composer behavior test is missing ${marker}`);
 }
 
 for (const marker of [
@@ -962,10 +994,10 @@ const railSource = agentWidget.match(
     /protected renderRail\(\): React\.ReactNode \{[\s\S]*?\n    protected readonly setSessionSearchInput/
 )?.[0];
 assert.ok(railSource, 'Agent rail render source is missing');
-const newChatPosition = railSource.indexOf("<span className='poiesis-agent-window__rail-action-label'>New Chat</span>");
-const searchPosition = railSource.indexOf("<span className='poiesis-agent-window__rail-action-label'>Search</span>");
-assert.ok(newChatPosition !== -1, 'Agent rail must contain New Chat');
-assert.ok(searchPosition > newChatPosition, 'Conversation Search must sit directly under New Chat');
+const newChatPosition = railSource.indexOf("<span className='poiesis-agent-window__rail-action-label'>新しいチャット</span>");
+const searchPosition = railSource.indexOf("<span className='poiesis-agent-window__rail-action-label'>検索</span>");
+assert.ok(newChatPosition !== -1, 'Agent rail must contain the localized New Chat action');
+assert.ok(searchPosition > newChatPosition, 'Localized conversation Search must sit directly under New Chat');
 for (const marker of [
     'protected railCollapsed = false',
     'protected toggleRail(): void',
@@ -1174,7 +1206,7 @@ assert.match(
 assert.match(
     agentStyles,
     /\.poiesis-agent-window__rail-action\s*\{[^}]*font-size:\s*12px;/,
-    'New Chat and Search text must match the sidebar spec'
+    'New Chat and Search text must match the localized sidebar spec'
 );
 assert.match(
     agentStyles,

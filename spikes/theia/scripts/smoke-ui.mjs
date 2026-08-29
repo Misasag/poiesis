@@ -75,7 +75,7 @@ try {
     assert(!initial.sessionRemoveVisible, 'Deferred Session removal is visible');
 
     const blankSessionCount = await page.$$eval('.poiesis-agent-window__session-row[data-session-archived="false"]', rows => rows.length);
-    await click(page, '.poiesis-agent-window__rail-action', 'New Chat');
+    await click(page, '.poiesis-agent-window__rail-action', '新しいチャット');
     await page.waitForFunction(expected =>
         document.querySelectorAll('.poiesis-agent-window__session-row[data-session-archived="false"]').length === expected
         && document.activeElement?.getAttribute('aria-label') === 'Agent へのメッセージ', {}, blankSessionCount);
@@ -162,7 +162,7 @@ try {
     await page.waitForFunction(() => !document.querySelector('[data-session-id="smoke-alpha"]'));
 
     const activeCountBeforeNewChat = await page.$$eval('.poiesis-agent-window__session-row[data-session-archived="false"]', rows => rows.length);
-    await click(page, '.poiesis-agent-window__rail-action', 'New Chat');
+    await click(page, '.poiesis-agent-window__rail-action', '新しいチャット');
     await page.waitForFunction(expected =>
         document.querySelectorAll('.poiesis-agent-window__session-row[data-session-archived="false"]').length === expected,
     {}, activeCountBeforeNewChat);
@@ -222,7 +222,7 @@ try {
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('[aria-label="Workspaceを開く"]'));
 
-    await click(page, '.poiesis-agent-window__rail-action', 'Search');
+    await click(page, '.poiesis-agent-window__rail-action', '検索');
     await page.waitForSelector('[aria-label="会話をタイトルで検索"]');
     await page.type('[aria-label="会話をタイトルで検索"]', '__no_matching_session__');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__session-empty')?.textContent?.includes('一致する会話'));
@@ -742,7 +742,7 @@ try {
     await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
     await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
 
-    await click(page, '.poiesis-agent-window__rail-action', 'Customize');
+    await click(page, '.poiesis-agent-window__rail-action', 'カスタマイズ');
     await page.waitForSelector('.poiesis-customize-view');
     await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
         .some(card => card.textContent?.includes('Existing smoke skill')));
@@ -790,7 +790,7 @@ try {
 
     await page.click('.poiesis-agent-window__rail-toggle');
     await page.waitForSelector('.poiesis-agent-window__rail[data-collapsed="true"]');
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
     await page.setViewport({ width: 1024, height: 600, deviceScaleFactor: 1 });
     await page.waitForFunction(() => {

@@ -31,6 +31,7 @@ const TASK_METADATA_MAX_CHARS = 20_000;
 const HISTORY_MAX_ITEMS = 6;
 const HISTORY_MAX_CHARS = 12_000;
 const STDERR_MAX_CHARS = 8_000;
+const MOCK_DELAY_MAX_MS = 5_000;
 
 /** Runs every Results question in a new, read-only CLI process. */
 @injectable()
@@ -49,6 +50,18 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                 code: 'already-running',
                 message: 'このタスクへの質問はすでに送信中です。'
             });
+        }
+
+        const mockReply = process.env.POIESIS_RESULTS_QUESTION_MOCK_REPLY;
+        if (mockReply !== undefined) {
+            const requestedDelay = Number(process.env.POIESIS_RESULTS_QUESTION_MOCK_DELAY_MS ?? 0);
+            const delay = Number.isFinite(requestedDelay)
+                ? Math.min(MOCK_DELAY_MAX_MS, Math.max(0, requestedDelay))
+                : 0;
+            if (delay > 0) {
+                await new Promise(resolveDelay => setTimeout(resolveDelay, delay));
+            }
+            return { status: 'answered', answer: mockReply.slice(0, 12_000) };
         }
 
         try {

@@ -60,7 +60,7 @@ try {
     await page.keyboard.press('Escape');
     await page.waitForSelector('.poiesis-settings-modal', { hidden: true });
 
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-modal');
     await page.keyboard.press('Escape');
     await page.waitForSelector('.poiesis-customize-modal', { hidden: true });

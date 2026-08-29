@@ -12,8 +12,11 @@ const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
 const windowDragOnly = process.env.POIESIS_WINDOW_DRAG_ONLY === '1';
 const customizeWindowOnly = process.env.POIESIS_CUSTOMIZE_WINDOW_ONLY === '1';
 const settingsWindowOnly = process.env.POIESIS_SETTINGS_WINDOW_ONLY === '1';
-const modalWindowOnly = customizeWindowOnly || settingsWindowOnly;
+const composerOnly = process.env.POIESIS_COMPOSER_ONLY === '1';
+const taskFeedbackOnly = process.env.POIESIS_TASK_FEEDBACK_ONLY === '1';
+const modalWindowOnly = customizeWindowOnly || settingsWindowOnly || composerOnly;
 const lightweightElectron = windowDragOnly || modalWindowOnly;
+const interactionOnly = modalWindowOnly || taskFeedbackOnly;
 mkdirSync(runtimeDir, { recursive: true });
 const emptyPluginsDir = resolve(runtimeDir, 'empty-plugins');
 if (lightweightElectron) mkdirSync(emptyPluginsDir, { recursive: true });
@@ -108,7 +111,7 @@ try {
         `Electron allowed an OS resize below 1024x600: ${JSON.stringify(minimumSizeCheck)}`);
     moveElectronWindow(startProcess.pid, 1280, 720);
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
-    if (!modalWindowOnly) {
+    if (!interactionOnly) {
         nativeWindowChecks.push(await assertNativeWindowDrag(page, startProcess.pid,
             '.poiesis-agent-window__header', 'Agent header'));
         if (!windowDragOnly) {
@@ -166,13 +169,64 @@ try {
     resizeChecks.push(await assertElectronLayout(page, 'agent'));
 
     const minimumSurfaceChecks = {};
-    if (settingsWindowOnly) {
+    if (taskFeedbackOnly) {
+        await page.type('.poiesis-agent-window__composer textarea', 'Show elapsed task feedback.');
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('.poiesis-agent-window__message-state [role="timer"]');
+        const initialElapsed = await page.$eval('.poiesis-agent-window__message-state [role="timer"]', node => node.textContent?.trim());
+        await new Promise(resolveDelay => setTimeout(resolveDelay, 1_200));
+        const updatedElapsed = await page.$eval('.poiesis-agent-window__message-state [role="timer"]', node => node.textContent?.trim());
+        assert(initialElapsed?.startsWith('作業中 · '), `Initial elapsed feedback is missing: ${initialElapsed}`);
+        assert(updatedElapsed?.startsWith('作業中 · ') && updatedElapsed !== initialElapsed,
+            `Elapsed feedback did not update every second: ${JSON.stringify({ initialElapsed, updatedElapsed })}`);
+        await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state [role="timer"]'));
+        console.log(`ELECTRON_TASK_FEEDBACK_SMOKE_RESULT=${JSON.stringify({
+            elapsedVisible: true,
+            elapsedUpdated: true
+        })}`);
+        break smokeRun;
+    }
+    if (settingsWindowOnly || composerOnly) {
         await page.type('.poiesis-agent-window__composer textarea',
             'Keep this deliberately long Electron smoke message inside the fluid conversation column at 1024 by 600.');
-        await page.click('.poiesis-agent-window__send');
+        const messageCountBeforeCompositionEnter = await page.$$eval('.poiesis-agent-window__user-message', nodes => nodes.length);
+        const dispatchComposerEnter = async ({ isComposing, keyCode }) => {
+            await page.$eval('.poiesis-agent-window__composer textarea', (input, eventInit) => {
+                const event = new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    bubbles: true,
+                    cancelable: true
+                });
+                Object.defineProperty(event, 'isComposing', { value: eventInit.isComposing });
+                Object.defineProperty(event, 'keyCode', { value: eventInit.keyCode });
+                input.dispatchEvent(event);
+            }, { isComposing, keyCode });
+            await new Promise(resolveDelay => setTimeout(resolveDelay, 100));
+        };
+        await dispatchComposerEnter({ isComposing: true, keyCode: 13 });
+        await dispatchComposerEnter({ isComposing: false, keyCode: 229 });
+        assert(await page.$$eval('.poiesis-agent-window__user-message', nodes => nodes.length) === messageCountBeforeCompositionEnter,
+            'IME confirmation Enter submitted the Agent Composer');
+        await page.focus('.poiesis-agent-window__composer textarea');
+        await page.keyboard.down('Shift');
+        await page.keyboard.press('Enter');
+        await page.keyboard.up('Shift');
+        assert((await page.$eval('.poiesis-agent-window__composer textarea', input => input.value)).endsWith('\n'),
+            'Shift+Enter did not insert an Agent Composer newline');
+        await page.keyboard.press('Enter');
         await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__user-message').length === 1
             && document.querySelectorAll('.poiesis-agent-window__message').length >= 1
             && !document.querySelector('.poiesis-agent-window__message-state'));
+        minimumSurfaceChecks.composerKeyboard = {
+            enterSubmitted: true,
+            shiftEnterInsertedNewline: true,
+            composingEnterBlocked: true,
+            keyCode229Blocked: true
+        };
+        if (composerOnly) {
+            console.log(`ELECTRON_COMPOSER_SMOKE_RESULT=${JSON.stringify(minimumSurfaceChecks.composerKeyboard)}`);
+            break smokeRun;
+        }
         await settleElectronWindowSize(page, startProcess.pid, 1024, 600);
         minimumSurfaceChecks.agentWithMessages = await assertElectronLayout(page, 'agent');
         await page.click('#poiesis-results-tab');
@@ -262,7 +316,7 @@ try {
         if (settingsWindowOnly) {
             await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
         } else {
-            await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+            await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
         }
         await page.waitForSelector(surfaceSelector);
         const settingsToggleCheck = settingsWindowOnly
@@ -297,7 +351,7 @@ try {
             modalWindowChecks.dropdownRestored = await assertPoiesisSelectUnclipped(page, 'Customize dropdown after restore');
             await page.keyboard.press('Escape');
             await page.waitForFunction(() => !document.querySelector('.poiesis-select__listbox'));
-            await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+            await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
         } else {
             await page.keyboard.press('Escape');
         }

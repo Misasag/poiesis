@@ -2100,7 +2100,7 @@
     padding: 7px 8px;
 }
 
-.poiesis-results__composer input {
+.poiesis-results__composer textarea {
     background: #252b3a;
     border: 0;
     border-radius: 7px;
@@ -2108,9 +2108,10 @@
     min-width: 0;
     outline: none;
     padding: 8px;
+    resize: none;
 }
 
-.poiesis-results__composer input::placeholder {
+.poiesis-results__composer textarea::placeholder {
     color: #778198;
 }
 
@@ -4496,7 +4497,7 @@ body.poiesis-code-file-pointer-drag * {
     font-size: 12px;
 }
 
-.poiesis-results__composer input {
+.poiesis-results__composer textarea {
     font-size: 13px;
 }
 
@@ -4508,7 +4509,7 @@ body.poiesis-code-file-pointer-drag * {
 
 .poiesis-agent-window__session-title,
 .poiesis-results__task-select > span,
-.poiesis-results__composer input {
+.poiesis-results__composer textarea {
     font-size: 13px;
 }
 
@@ -4588,7 +4589,7 @@ body.poiesis-code-file-pointer-drag * {
     color: var(--poiesis-chrome-muted);
 }
 
-.poiesis-results__composer input::placeholder {
+.poiesis-results__composer textarea::placeholder {
     color: var(--poiesis-results-muted);
 }
 

@@ -33,9 +33,9 @@ try {
     const page = await browser.newPage();
     page.setDefaultTimeout(timeout);
     await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout });
-    await page.waitForSelector('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.waitForSelector('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     const previousMode = await page.$eval('.poiesis-agent-window__content', element => element.dataset.mode);
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
     await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
         .some(card => card.textContent?.includes('Round 13 existing')));
@@ -43,7 +43,7 @@ try {
         mode: document.querySelector('.poiesis-agent-window__content')?.dataset.mode,
         rail: Boolean(document.querySelector('.poiesis-agent-window__rail')),
         modal: Boolean(document.querySelector('.poiesis-customize-modal, .poiesis-customize-modal__backdrop')),
-        active: document.querySelector('.poiesis-agent-window__rail-action[title="Customize"]')?.getAttribute('aria-current')
+        active: document.querySelector('.poiesis-agent-window__rail-action[title="カスタマイズ"]')?.getAttribute('aria-current')
     }));
     assert(inlineView.mode === 'customize' && inlineView.rail && !inlineView.modal && inlineView.active === 'page',
         `Customize is not an active central view: ${JSON.stringify(inlineView)}`);
@@ -108,11 +108,11 @@ try {
         && customizeLayout.view.right <= 1024 && customizeLayout.view.bottom <= 600,
     `Customize clipped at 1024x600: ${JSON.stringify(customizeLayout)}`);
 
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForFunction(mode => document.querySelector('.poiesis-agent-window__content')?.dataset.mode === mode, {}, previousMode);
     await page.click('.poiesis-agent-window__rail-toggle');
     await page.waitForSelector('.poiesis-agent-window__rail[data-collapsed="true"]');
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
     await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
     await page.waitForSelector('.poiesis-settings-modal');
@@ -129,7 +129,7 @@ try {
     await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
     assert(await page.$eval('body', () => document.querySelectorAll('select').length === 0), 'A native select remains in the rendered app.');
 
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
     await clickByText(page, '.poiesis-agent-window__customize-header-actions button', 'Code');
     await page.waitForSelector('.poiesis-agent-window__code');

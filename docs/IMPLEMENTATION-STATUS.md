@@ -14,7 +14,7 @@ Updated: 2026-08-29
 | Runtime selection | partial | Codex／Claudeを検出する | 実行adapterはCodexのみ。provider registryが必要 |
 | Task lifecycle | partial | start／complete／failure／cancelとsnapshot差分がある | 実CLIで各終了状態を検証し、再起動後の復元を追加する |
 | Results generation | partial | 完成済みHTML一つをsandboxed iframeへ表示 | 汎用的な成果生成とエラー回復を検証する |
-| Results question | missing | Composerの見た目だけ存在 | Task＋HTML scopeの独立質問・回答serviceを実装する |
+| Results question | done | Task＋Change Set＋HTML scopeの独立service、送信中／回答／失敗表示、Theia StorageService復元を専用mock smokeで確認 | 現行smokeを継続する |
 | Code mode | partial | 現行UI smokeでFiles／Git切替、Settings表示、Resultsへの復帰を確認 | file openと実Git diffを追加検証する |
 | Cursor Agents sidebar parity | partial | New Chat再利用、本文検索、pin、inline rename、archive／restore／完全削除、実行中表示、196〜420px resizeをUI smokeで操作 | multi-repo、Local target picker、unread、side chat、parallel agent、tile連携が未実装。Worktree／Cloud／Remote SSHはdeferred。`CURSOR-AGENTS-SIDEBAR-PARITY.md`を正とする |
 | Session persistence | partial | Theia StorageServiceで一覧、会話、下書き、pin／archive、rail幅を復元 | Agent runtime context、Task metadata、Result documentを保存・復元する |
@@ -23,7 +23,6 @@ Updated: 2026-08-29
 
 ## P0: completion blockers
 
-- Results質問をAgent会話やExecution Taskと分離して実装する。
 - 開いている実Workspaceで、Codex実行、Change Set取得、Results生成までのE2Eを通す。
 
 ## Completed in the 2026-08-23 convergence pass
@@ -37,6 +36,7 @@ Updated: 2026-08-29
 - 旧Changes Widgetを製品compositionから除いた。
 - 透明なTheia preloadが画面下部の操作を妨げる問題を修正した。
 - 現行UI smokeをAgent／Results／Code導線へ更新し、1280×720で通した。
+- Results質問をAgent会話とExecution Taskから分離し、表示中のTask／Change Set／HTMLだけをscopeにするread-only回答、可視状態、Session永続化を追加した。
 - Cursor Agents Windowへの第一段階として、Sessionのpin／rename／archive／restore／完全削除、New Chatの空Session再利用、サイドバーresizeとUI状態保存を追加した。Sidebar全体のparityは未達である。
 
 ## P1: completion trial blockers

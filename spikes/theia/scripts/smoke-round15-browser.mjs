@@ -57,7 +57,7 @@ try {
     await waitForApp(page);
     await selectFastRealProviders(page);
 
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
     await page.waitForFunction(() => document.querySelector('.poiesis-customize-view')?.textContent?.includes('Round 15 Agent marker'));
     const customize = await page.evaluate(() => ({
@@ -74,7 +74,7 @@ try {
     assert(customize.switches.length === 2 && customize.switches.every(item => item.checked),
         `New skills were not enabled by default: ${JSON.stringify(customize.switches)}`);
 
-    await clickText(page, '.poiesis-agent-window__rail-action', 'New Chat');
+    await clickText(page, '.poiesis-agent-window__rail-action', '新しいチャット');
     const enabledRun = await runAgentTask(page, 'ファイルを変更せず、README.mdが存在するかだけを確認し、短い完了メッセージを返してください。');
     assert(enabledRun.lastMessage.startsWith('[SKILL-OK]'), `Enabled Agent Skill was not applied: ${enabledRun.lastMessage}`);
 
@@ -83,7 +83,7 @@ try {
     const resultsHeading = await waitForResultsHeading(page);
     assert(resultsHeading.startsWith('◇'), `Results Skill guidance was not applied to the h1: ${resultsHeading}`);
 
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
     await page.waitForFunction(() => document.querySelector('.poiesis-customize-view')?.textContent?.includes('Round 15 Agent marker'));
     await setSkillEnabled(page, 'Round 15 Agent marker', false);
@@ -95,18 +95,18 @@ try {
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
     await page.waitForFunction(() => document.querySelector('.poiesis-customize-view')?.textContent?.includes('Round 15 Agent marker'));
     const restoredDisabled = await skillChecked(page, 'Round 15 Agent marker');
     assert(restoredDisabled === false, 'Agent Skill disabled state did not survive reload.');
 
-    await clickText(page, '.poiesis-agent-window__rail-action', 'New Chat');
+    await clickText(page, '.poiesis-agent-window__rail-action', '新しいチャット');
     const disabledRun = await runAgentTask(page, 'ファイルを変更せず、README.mdが存在するかだけを確認し、短い完了メッセージを返してください。');
     assert(!disabledRun.lastMessage.startsWith('[SKILL-OK]'), `Disabled Agent Skill still affected execution: ${disabledRun.lastMessage}`);
 
     await page.setViewport({ width: 1024, height: 600, deviceScaleFactor: 1 });
-    await page.click('.poiesis-agent-window__rail-action[title="Customize"]');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
     const layout = await page.evaluate(() => {
         const viewportWidth = document.documentElement.clientWidth;

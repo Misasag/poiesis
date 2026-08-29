@@ -24,9 +24,12 @@
     "serve:updates": "node scripts/serve-updates.mjs",
     "shots:design": "node scripts/capture-design-shots.mjs",
     "smoke:electron": "node scripts/smoke-electron.mjs",
+    "smoke:composer": "set \"POIESIS_COMPOSER_ONLY=1\" && node scripts/smoke-electron.mjs",
+    "smoke:task-feedback": "set \"POIESIS_TASK_FEEDBACK_ONLY=1\" && set \"POIESIS_AGENT_TEST_REPLY=Task completed.\" && set \"POIESIS_AGENT_TEST_DELAY_MS=2500\" && node scripts/smoke-electron.mjs",
     "smoke:installed": "node scripts/smoke-installed.mjs",
     "smoke:markdown": "node scripts/smoke-markdown.mjs",
     "smoke:resize": "node scripts/smoke-resize.mjs",
+    "smoke:results-question": "npm run build && node scripts/smoke-results-question.mjs",
     "smoke:restored-new-chat": "node scripts/smoke-restored-new-chat.mjs",
     "smoke:round10": "node scripts/smoke-round10-browser.mjs",
     "smoke:round13": "node scripts/smoke-round13-browser.mjs",
@@ -41,6 +44,7 @@
     "start:background": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-background.ps1",
     "stop:background": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-background.ps1",
     "start:electron": "npm run start --workspace=@poiesis/theia-electron-app --",
+    "test:composer": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-composer-behavior.mjs",
     "validate:source": "node scripts/validate-source.mjs"
   },
   "devDependencies": {

@@ -44,7 +44,7 @@ try {
     const mixedComposer = await controlValue(page, composerSelector);
     assert(mixedComposer === 'あああ確定-ascii混在', `Mixed composer input failed: ${mixedComposer}`);
 
-    await page.click('.poiesis-agent-window__rail-action[title="Search"]');
+    await page.click('.poiesis-agent-window__rail-action[title="検索"]');
     const searchSelector = '.poiesis-agent-window__session-search input';
     await clearControl(page, searchSelector);
     await commitIme(page, cdp, searchSelector, '会話');
@@ -64,7 +64,7 @@ try {
 
     await page.click('#poiesis-results-tab');
     await page.waitForSelector('.poiesis-results__document');
-    const resultsSelector = '.poiesis-results__composer input';
+    const resultsSelector = '.poiesis-results__composer textarea';
     await clearControl(page, resultsSelector);
     await commitIme(page, cdp, resultsSelector, '質問');
     await commitIme(page, cdp, resultsSelector, 'です');
@@ -172,7 +172,12 @@ async function installFixture(page) {
                     id: taskId, sessionId: 'round14-runtime', title: 'IME Results fixture', request: 'IME test', status: 'completed',
                     startedAt: new Date(now - 30_000).toISOString(), endedAt: new Date(now - 20_000).toISOString(),
                     baseline: { kind: 'workspace-snapshot', capturedAt: new Date(now - 30_000).toISOString() },
-                    changeSet: { source: 'empty', diff: '', files: [], capturedAt: new Date(now - 20_000).toISOString() }
+                    changeSet: {
+                        source: 'task-diff',
+                        diff: 'diff --git a/docs/UX.md b/docs/UX.md\n+IME fixture',
+                        files: ['docs/UX.md'],
+                        capturedAt: new Date(now - 20_000).toISOString()
+                    }
                 }],
                 resultsDocuments: [{ taskId, status: 'ready', html: '<!doctype html><html><body><main><h1>IME fixture</h1></main></body></html>' }]
             }]
