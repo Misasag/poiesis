@@ -10,7 +10,7 @@ import URI from '@theia/core/lib/common/uri';
 import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { Widget } from '@theia/core/shared/@lumino/widgets';
 import { EditorManager, EditorWidget } from '@theia/editor/lib/browser';
-import { ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-provider';
+import { ScmCommand, ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-provider';
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
@@ -3916,8 +3916,7 @@ export class AgentWindowWidget extends ReactWidget {
                     </div>
                 </main>
                 <footer className='poiesis-agent-window__code-status' aria-label='Status Bar'>
-                    <span><span className='codicon codicon-source-control' aria-hidden='true' /> {this.currentGitBranch() ?? 'main'}</span>
-                    <span><span className='codicon codicon-sync' aria-hidden='true' /></span>
+                    {this.renderCodeScmStatusCommands()}
                     <span><span className='codicon codicon-error' aria-hidden='true' /> 0</span>
                     <span><span className='codicon codicon-warning' aria-hidden='true' /> 0</span>
                     <span className='poiesis-agent-window__code-status-spacer' />
@@ -3939,6 +3938,61 @@ export class AgentWindowWidget extends ReactWidget {
                 {this.renderCodeCenterCloseDialog()}
             </section>
         );
+    }
+
+    protected renderCodeScmStatusCommands(): React.ReactNode {
+        const commands = this.scmService.statusBarCommands;
+        if (commands.length === 0) {
+            return <span><span className='codicon codicon-source-control' aria-hidden='true' /> {this.currentGitBranch() ?? 'main'}</span>;
+        }
+        return commands.map((command, index) => {
+            const label = this.scmStatusCommandLabel(command.title);
+            return (
+                <button
+                    key={`${command.command ?? 'scm-status'}-${index}`}
+                    type='button'
+                    className='poiesis-agent-window__code-status-scm'
+                    data-scm-status-index={index}
+                    title={command.tooltip ?? label}
+                    aria-label={command.tooltip ?? label}
+                    disabled={!command.command}
+                    onClick={() => void this.executeScmStatusCommand(command)}
+                >
+                    {this.renderScmStatusCommandTitle(command.title)}
+                </button>
+            );
+        });
+    }
+
+    protected renderScmStatusCommandTitle(title: string): React.ReactNode {
+        const match = /^\$\(([^)]+)\)\s*(.*)$/.exec(title);
+        if (!match) {
+            return <span className='poiesis-agent-window__code-status-scm-label'>{title}</span>;
+        }
+        const [icon, modifier] = match[1].split('~', 2);
+        const iconClass = `codicon codicon-${icon}${modifier ? ` codicon-modifier-${modifier}` : ''}`;
+        return (
+            <>
+                <span className={iconClass} aria-hidden='true' />
+                {match[2] && <span className='poiesis-agent-window__code-status-scm-label'>{match[2]}</span>}
+            </>
+        );
+    }
+
+    protected scmStatusCommandLabel(title: string): string {
+        return title.replace(/\$\([^)]+\)\s*/g, '').trim() || 'Source Control action';
+    }
+
+    protected async executeScmStatusCommand(command: ScmCommand): Promise<void> {
+        if (!command.command) {
+            return;
+        }
+        try {
+            await this.commandService.executeCommand(command.command, ...(command.arguments ?? []));
+        } catch (error) {
+            console.error('[Poiesis] Could not execute an SCM status bar command.', error);
+            await this.messageService.error(`Source Control action failed: ${this.scmStatusCommandLabel(command.title)}`);
+        }
     }
 
     protected renderCodeCenterCloseDialog(): React.ReactNode {

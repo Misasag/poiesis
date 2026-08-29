@@ -730,6 +730,11 @@ for (const marker of [
     "aria-label='Close Panel'",
     "aria-label='Toggle Panel'",
     "className='poiesis-agent-window__code-status'",
+    'protected renderCodeScmStatusCommands(): React.ReactNode',
+    'const commands = this.scmService.statusBarCommands',
+    'data-scm-status-index={index}',
+    'protected async executeScmStatusCommand(command: ScmCommand): Promise<void>',
+    'this.commandService.executeCommand(command.command, ...(command.arguments ?? []))',
     "this.renderCodeActivity('files', 'files', 'Explorer')",
     "this.renderCodeActivity('search', 'search', 'Search')",
     "this.renderSearchAction('refresh', 'Refresh Search Results', SearchInWorkspaceCommands.REFRESH_RESULTS.id)",
@@ -1391,9 +1396,15 @@ assert.match(agentStyles, /\.poiesis-agent-window__content\s*\{[\s\S]*?font-size
     'Poiesis chrome must use the raised default scale');
 assert.match(agentStyles, /\.poiesis-agent-window__message,[\s\S]*?font-size:\s*14px;/,
     'Agent conversation text must be at least 14px');
+assert.ok(agentStyles.includes('--poiesis-agent-conversation-width: min(78vw, 960px)'),
+    'Agent conversation must use the responsive 960px width cap');
+assert.match(agentStyles, /\.poiesis-agent-window__messages-inner\s*\{[^}]*max-width:\s*var\(--poiesis-agent-conversation-width\);/,
+    'Agent messages must use the expanded conversation width');
+assert.match(agentStyles, /\.poiesis-agent-window__composer\s*\{[^}]*max-width:\s*var\(--poiesis-agent-conversation-width\);/,
+    'Agent composer must stay aligned with the expanded conversation width');
 assert.ok(!/font-size:\s*(?:8|9|10|11)px;/.test(agentStyles), 'Poiesis chrome text must not fall below the 12px CSS floor');
 assert.ok(!agentStyles.includes('.poiesis-agent-window__composer-tools'), 'Deferred composer tool styles must not remain');
-assert.match(agentStyles, /@media \(max-width: 1279px\)[\s\S]*?\.poiesis-agent-window__composer\s*\{[^}]*width:\s*min\(680px, calc\(100% - 32px\)\);/,
+assert.match(agentStyles, /@media \(max-width: 1279px\)[\s\S]*?\.poiesis-agent-window__composer\s*\{[^}]*width:\s*min\(var\(--poiesis-agent-conversation-width\), calc\(100% - 32px\)\);/,
     'Agent composer must shrink fluidly between the native minimum and the design floor');
 for (const marker of [
     'renderShortcutsOverlay()',
