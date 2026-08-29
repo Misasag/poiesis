@@ -250,7 +250,7 @@ export class ChangesWidget extends ReactWidget {
         if (await this.fileService.exists(direct)) {
             return direct;
         }
-        return root.resolve(`spikes/theia/sample-src/${name}`);
+        return root.resolve(`sample-src/${name}`);
     }
 
     protected setStatus(status: string): void {

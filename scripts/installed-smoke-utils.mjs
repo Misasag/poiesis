@@ -153,7 +153,7 @@ export async function readInstalledVersion(executable) {
 }
 
 export async function recordSacEvidence(candidatePath, reason) {
-    const evidencePath = resolve(root, '..', '..', '_codex', 'sac-code-integrity.txt');
+    const evidencePath = resolve(root, '_codex', 'sac-code-integrity.txt');
     mkdirSync(dirname(evidencePath), { recursive: true });
     const args = [
         'qe',

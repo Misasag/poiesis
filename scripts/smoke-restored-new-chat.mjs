@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
 
-const root = resolve(process.cwd(), '..', '..');
+const root = process.cwd();
 const fixture = process.env.POIESIS_SMOKE_FIXTURE
     ? resolve(process.env.POIESIS_SMOKE_FIXTURE)
     : resolve(root, 'docs', 'UX.md');

@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import puppeteer from 'puppeteer-core';
 
 const root = process.cwd();
-const repositoryRoot = resolve(root, '..', '..');
+const repositoryRoot = root;
 const timeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
 const executablePath = [
     process.env.CHROME_PATH,
@@ -38,7 +38,7 @@ const uiUrl = `http://127.0.0.1:${port}`;
 const serverProcess = spawn(process.execPath, [
     theiaCli,
     'start',
-    '../../..',
+    '..',
     `--plugins=local-dir:${emptyPlugins.replaceAll('\\', '/')}`,
     '--hostname', '127.0.0.1',
     '--port', String(port)

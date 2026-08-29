@@ -11,7 +11,7 @@ const executablePath = [
 ].filter(Boolean).find(candidate => existsSync(candidate));
 if (!executablePath) throw new Error('Chrome or Edge was not found.');
 
-const root = resolve(process.cwd(), '..', '..');
+const root = process.cwd();
 const skillsRoot = resolve(root, '.poiesis', 'skills');
 const agentSkillDirectory = resolve(skillsRoot, 'round15-agent-test');
 const resultsSkillDirectory = resolve(skillsRoot, 'round15-results-test');

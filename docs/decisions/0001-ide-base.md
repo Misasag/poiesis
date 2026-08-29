@@ -46,7 +46,7 @@ IDE基盤にEclipse Theiaを採用する。初期実装はSpikeで確認した1.
 
 ### 製品固有UIをcore forkなしで所有できる
 
-[Theia Spike](../../spikes/theia/SPIKE-REPORT.md)では、Agent Windowをright area、Changesをbottom areaの別Widgetとして登録できた。Changesだけを起動時に閉じ、明示commandで開くlifecycleもContribution側で所有できた。main / left / right / bottomへの配置を製品側で選べる。
+[Theia Spike](../SPIKE-REPORT.md)では、Agent Windowをright area、Changesをbottom areaの別Widgetとして登録できた。Changesだけを起動時に閉じ、明示commandで開くlifecycleもContribution側で所有できた。main / left / right / bottomへの配置を製品側で選べる。
 
 [Code-OSS Spike](../../spikes/code-oss/SPIKE-REPORT.md)でも、ChangesはActivity Barの独自View ContainerとWebview Viewで成立した。Webview Panelだけが選択肢ではない。一方、Agent WindowはEditor groupのWebview Panelであり、既定container以外の恒久領域やAgent-firstの固定layoutにはCode-OSS source forkが必要である。
 

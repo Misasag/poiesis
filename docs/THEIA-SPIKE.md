@@ -1,14 +1,14 @@
 # Poiesis Theia application
 
-This directory contains the current Poiesis first-completion implementation on Eclipse Theia.
+This repository contains the current Poiesis first-completion implementation on Eclipse Theia.
 
 The product contract is defined by:
 
-- `../../docs/FIRST-COMPLETION.md`
-- `../../docs/UX.md`
-- `../../docs/ARCHITECTURE.md`
-- `../../docs/ui/agent-window-spec.html`
-- `../../docs/IMPLEMENTATION-STATUS.md`
+- `FIRST-COMPLETION.md`
+- `UX.md`
+- `ARCHITECTURE.md`
+- `ui/agent-window-spec.html`
+- `IMPLEMENTATION-STATUS.md`
 
 ## Current structure
 
@@ -28,7 +28,7 @@ The old `ChangesWidget` source and the older Spike Reports are retained only as 
 - Only Codex has an execution adapter; Claude is detected but is not selected as an implementer.
 - The current Electron shell still needs a fresh end-to-end verification.
 
-See `../../docs/IMPLEMENTATION-STATUS.md` for the maintained status matrix.
+See `IMPLEMENTATION-STATUS.md` for the maintained status matrix.
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ See `../../docs/IMPLEMENTATION-STATUS.md` for the maintained status matrix.
 ## Install and build
 
 ```powershell
-cd C:\Users\owner\github\poiesis\spikes\theia
+cd C:\path\to\poiesis
 $env:PUPPETEER_SKIP_DOWNLOAD = 'true'
 npm install
 npm run download:plugins

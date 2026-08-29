@@ -21,7 +21,7 @@ mkdirSync(runtimeDir, { recursive: true });
 const emptyPluginsDir = resolve(runtimeDir, 'empty-plugins');
 if (lightweightElectron) mkdirSync(emptyPluginsDir, { recursive: true });
 
-const repositoryRoot = resolve(root, '..', '..');
+const repositoryRoot = root;
 const scmFixtureGitPath = 'docs/UX.md';
 const scmFixturePath = resolve(repositoryRoot, scmFixtureGitPath);
 const scmFixtureOriginal = readFileSync(scmFixturePath, 'utf8');
@@ -35,7 +35,7 @@ removeTerminalFixture();
 const electronExecutable = resolve(root, 'node_modules/electron/dist/electron.exe');
 const startProcess = spawn(electronExecutable, [
     resolve(root, 'electron-app'),
-    '../../..',
+    '..',
     lightweightElectron
         ? `--plugins=local-dir:${emptyPluginsDir.replaceAll('\\', '/')}`
         : '--plugins=local-dir:../plugins',

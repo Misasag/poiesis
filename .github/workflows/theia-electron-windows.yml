@@ -5,22 +5,35 @@ on:
   push:
     paths:
       - ".github/workflows/theia-electron-windows.yml"
-      - "spikes/theia/**"
+      - "agent-window/**"
+      - "browser-app/**"
+      - "electron-app/**"
+      - "scripts/**"
+      - "sample-src/**"
+      - "docs/**"
+      - ".npmrc"
+      - "package.json"
+      - "package-lock.json"
   pull_request:
     paths:
       - ".github/workflows/theia-electron-windows.yml"
-      - "spikes/theia/**"
+      - "agent-window/**"
+      - "browser-app/**"
+      - "electron-app/**"
+      - "scripts/**"
+      - "sample-src/**"
+      - "docs/**"
+      - ".npmrc"
+      - "package.json"
+      - "package-lock.json"
 
 jobs:
   build-and-smoke:
     runs-on: windows-latest
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: spikes/theia
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
-      electron_config_cache: ${{ github.workspace }}\spikes\theia\.electron-cache
+      electron_config_cache: ${{ github.workspace }}\.electron-cache
 
     steps:
       - uses: actions/checkout@v4
@@ -29,12 +42,12 @@ jobs:
         with:
           node-version: 24.5.0
           cache: npm
-          cache-dependency-path: spikes/theia/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Cache Electron downloads
         uses: actions/cache@v4
         with:
-          path: spikes/theia/.electron-cache
+          path: .electron-cache
           key: ${{ runner.os }}-electron-39.8.7
 
       - name: Install dependencies

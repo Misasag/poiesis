@@ -14,7 +14,7 @@ Agent Windowは右側の独立`ReactWidget`としてChat / Task result /「質�
 
 | # | 項目 | 判定 | 根拠 |
 |---:|---|---|---|
-| 1 | Repositoryを開ける | **達成** | `browser-app/package.json`のstart commandが`spikes/theia/`をWorkspaceとして開く。HTTP 200とWorkspace内ファイルのEditor表示を再確認した。使用API: `WorkspaceService.tryGetRoots()`、`WorkspaceService.workspace`。 |
+| 1 | Repositoryを開ける | **達成** | `browser-app/package.json`のstart commandがリポジトリルートをWorkspaceとして開く。HTTP 200とWorkspace内ファイルのEditor表示を再確認した。使用API: `WorkspaceService.tryGetRoots()`、`WorkspaceService.workspace`。 |
 | 2 | Editorを表示する | **達成** | `sample-src/auth-service.ts`と既存Diff Editorを表示し、Evidence操作後に`auth-service.ts` tabとMonacoのactive line `12`をCDPで確認した。使用API: `EditorManager.open()`。 |
 | 3 |独自Agent Windowを表示する | **達成** | `agent-window-widget.tsx`を右areaへ起動時表示。初期actionは`質問`の1件だけで、Agent Window sourceとDOMにChange Set / Semantic Diff表示がないことを検証した。使用API: `ReactWidget`、`AbstractViewContribution`、`FrontendApplicationContribution`。 |
 | 4 | 独自Changes領域をユーザー操作で開ける | **達成** | `changes-widget.tsx`をAgent Windowとは別の底部`ReactWidget`として登録。起動直後はDOMに存在せず、Command Paletteの`Poiesis: Open IDE Changes`を実行後に表示された。使用API: `AbstractViewContribution.openView()`、`CommandRegistry`、ApplicationShell bottom area。 |
@@ -128,7 +128,7 @@ TheiaはbrowserとElectron targetを持ち、今回のfrontend Widgetは概ね�
 ## 再現手順
 
 ```powershell
-cd C:\Users\owner\github\poiesis\spikes\theia
+cd C:\path\to\poiesis
 $env:PUPPETEER_SKIP_DOWNLOAD = 'true'
 npm install
 npm run download:plugins

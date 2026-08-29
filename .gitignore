@@ -2,4 +2,25 @@
 _codex/
 
 node_modules/
+.npm-cache/
+.node-gyp/
+.puppeteer-cache/
+.theia-config/
+.chrome-profile/
+.electron-runtime/
+.electron-cache/
+.electron-builder-cache/
+.electron-home/
+.theia-config-electron/
+.browser_modules/
+.run/
+lib/
+src-gen/
+gen-webpack.config.js
+gen-webpack.node.config.js
+gen-esbuild.*.mjs
+esbuild.mjs
+plugins/
+.dist-feed/
+electron-app/dist/
 *.log

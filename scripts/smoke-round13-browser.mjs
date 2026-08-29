@@ -11,7 +11,7 @@ const executablePath = [
 ].filter(Boolean).find(candidate => existsSync(candidate));
 if (!executablePath) throw new Error('Chrome or Edge was not found.');
 
-const repositoryRoot = resolve(process.cwd(), '..', '..');
+const repositoryRoot = process.cwd();
 const existingDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'round13-existing-smoke');
 const existingPath = resolve(existingDirectory, 'skill.md');
 const createdDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'round13-created-smoke');

@@ -27,7 +27,7 @@ CI は要求環境に合わせて Node.js 24.5.0 に固定した。ローカル�
 | Electron build | 達成 | `npm run build:electron` が exit code 0。frontend、Monaco worker、secondary window、preload、backend の webpack build がすべて成功した。`electron-app/package.json` の `theia.target` は `electron`。 |
 | native dependency rebuild | 達成 | `npm run rebuild:electron` が exit code 0。`native-keymap`、`keytar`、`drivelist`、`node-pty` を Electron ABI 向けに処理し、`drivelist`、`keytar`、`native-keymap` の build が完了した。最終 build でも rebuild 済み判定と native assets の bundle を確認した。 |
 | Electron 起動 | 達成 | `npm run smoke:electron` が exit code 0。user agent に `Poiesis/0.0.0` と `Electron/39.8.7`、window title に `{workspace} - Poiesis` を取得した。終了後は CDP を閉じ、process tree を停止した。 |
-| Repository open | 達成 | Electron にリポジトリルートを Workspace 引数として渡した。window title が Workspace 名と `Poiesis` を示し、Workspace 相対の `spikes/theia/sample-src/auth-service.ts` と before file を開けた。 |
+| Repository open | 達成 | Electron にリポジトリルートを Workspace 引数として渡した。window title が Workspace 名と `Poiesis` を示し、Workspace 相対の `sample-src/auth-service.ts` と before file を開けた。 |
 | Agent Window | 達成 | 起動時に独立 Widget を表示した。アクションは「質問」1個だけで、クリック後にモック質問欄を確認した。Change Set 表示責務は持たない。実装は `agent-window/src/browser/agent-window-contribution.ts` と `agent-window-widget.tsx`。 |
 | Changes の手動 open | 達成 | 起動直後に `.poiesis-changes` が存在しないことを確認した。Status Bar の `IDE Changes` をユーザー操作相当でクリックし、bottom area の `ChangesWidget` を開いた。Agent 完了時の自動表示はない。実装は `changes-contribution.ts`。 |
 | Code Diff / Semantic Diff | 達成 | Change Set ID `task-auth-redis-001` の Code Diff 表現を確認し、`DiffUris.encode` と `EditorManager.open` による Theia 既存 Monaco Diff Editor を開いた。その後 Semantic Diff へ切り替え、同一 Change Set の意味表現を確認した。実装は `changes-widget.tsx`。 |

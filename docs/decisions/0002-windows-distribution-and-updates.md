@@ -18,8 +18,8 @@ PoiesisのTheia/Electron targetはdevelopment buildと直接起動まで実証�
 
 - `electron-builder` 26.xと`electron-updater`を採用し、Windows targetをNSISにする。
 - NSISはone-clickではないper-user installとし、既定先を`%LOCALAPPDATA%\Programs\Poiesis`、Start Menu登録ありとする。
-- application packageの正本versionは`spikes/theia/electron-app/package.json`とする。`release:local`はpatch bump、Electron build、NSIS build、feed更新を直列実行する。
-- Phase Aのpublish providerは`generic`、feedは`http://127.0.0.1:43827/win`、実体はgitignoreした`spikes/theia/.dist-feed/win/`とする。builder自身はuploadしない。
+- application packageの正本versionは`electron-app/package.json`とする。`release:local`はpatch bump、Electron build、NSIS build、feed更新を直列実行する。
+- Phase Aのpublish providerは`generic`、feedは`http://127.0.0.1:43827/win`、実体はgitignoreした`.dist-feed/win/`とする。builder自身はuploadしない。
 - updaterはTheiaのelectron-main contributionとして組み込む。packaged起動時にcheckとdownloadを開始し、`autoInstallOnAppQuit`で終了時に適用する。download完了時は即時再起動を選べるnative dialogを表示する。
 - `asar:true`を維持し、native bindings、shell integrations、prebuildsをunpackする。VS Code builtin pluginsは`extraResources`で`resources/app/plugins`へ同梱し、packaged main wrapperが`THEIA_DEFAULT_PLUGINS`を設定する。
 - 配布物には開発用`--electronUserData`や`THEIA_CONFIG_DIR`を設定しない。installed appはElectronの既定userDataを使う。

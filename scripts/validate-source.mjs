@@ -59,13 +59,13 @@ const electronWindowControls = await read('agent-window/src/electron-browser/win
 const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
 const iconBuildScript = await read('scripts/build-icon.mjs');
 const appIcon = await readFile(resolve(root, 'electron-app/resources/poiesis.ico'));
-const readme = await read('README.md');
-const firstCompletion = await read('../../docs/FIRST-COMPLETION.md');
-const skillsContract = await read('../../docs/SKILLS-CONTRACT.md');
+const readme = await read('docs/THEIA-SPIKE.md');
+const firstCompletion = await read('docs/FIRST-COMPLETION.md');
+const skillsContract = await read('docs/SKILLS-CONTRACT.md');
 
 assert.equal(rootPackage.devDependencies['@theia/cli'], '1.73.1');
 assert.equal(appPackage.theia.target, 'browser');
-assert.ok(appPackage.scripts.start.includes('theia start ../../..'), 'Browser app must open the Poiesis repository root');
+assert.ok(appPackage.scripts.start.includes('theia start ..'), 'Browser app must open the Poiesis repository root');
 assert.ok(rootPackage.workspaces.includes('electron-app'));
 assert.equal(electronPackage.theia.target, 'electron');
 assert.equal(electronPackage.dependencies['@theia/electron'], '1.73.1');

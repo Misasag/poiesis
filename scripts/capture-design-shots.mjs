@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer-core';
 
 const baseURL = process.env.THEIA_DESIGN_SHOTS_URL ?? 'http://127.0.0.1:3000';
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
-const outputDirectory = resolve(process.cwd(), '..', '..', '_codex', 'design-shots');
+const outputDirectory = resolve(process.cwd(), '_codex', 'design-shots');
 
 const browserCandidates = [
     process.env.CHROME_PATH,

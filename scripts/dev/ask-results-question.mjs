@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const workspace = resolve(scriptDirectory, '../../../..');
+const workspace = resolve(scriptDirectory, '../..');
 const require = createRequire(import.meta.url);
 const { CliDetector } = require('../../agent-window/lib/node/cli-detector');
 const { ResultsQuestionServerImpl } = require('../../agent-window/lib/node/results-question-server');

@@ -1,5 +1,8 @@
 import { existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import puppeteer from 'puppeteer-core';
+
+const workspaceUri = pathToFileURL(process.cwd()).toString();
 
 const executablePath = [
     process.env.CHROME_PATH,
@@ -73,7 +76,7 @@ try {
     const controlBorder = await page.$eval('.poiesis-agent-window__composer', element => getComputedStyle(element).borderColor);
     assert(controlBorder === 'rgb(112, 114, 107)', `Composer control border is ${controlBorder}.`);
 
-    await page.evaluate(() => {
+    await page.evaluate(workspaceUri => {
         const now = new Date().toISOString();
         const taskId = 'round10-results-task';
         const rawFailure = "error: the argument '--sandbox <SANDBOX_MODE>' cannot be used here. Usage: codex exec [OPTIONS]. Codex exited with code 2. 実行に失敗しました。";
@@ -86,7 +89,7 @@ try {
                 id: 'round10-session',
                 createdAt: Date.now() - 60_000,
                 updatedAt: Date.now(),
-                workspaceUri: 'file:///C:/Users/owner/github/poiesis',
+                workspaceUri,
                 branch: 'main',
                 runTarget: 'local',
                 title: 'Round 10 verification',
@@ -124,7 +127,7 @@ try {
             }]
         }));
         localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.migrated.v1', 'true');
-    });
+    }, workspaceUri);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.poiesis-results__document');
     await page.click('#poiesis-agent-tab');

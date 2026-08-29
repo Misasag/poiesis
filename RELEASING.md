@@ -1,13 +1,13 @@
 # Windows local release and update
 
-この手順はWindows distribution Phase A用である。固定feed URLは`http://127.0.0.1:43827/win`、feed directoryは`spikes/theia/.dist-feed/win/`である。新設Node scriptのconsole出力はASCIIに限定している。
+この手順はWindows distribution Phase A用である。固定feed URLは`http://127.0.0.1:43827/win`、feed directoryは`.dist-feed/win/`である。新設Node scriptのconsole出力はASCIIに限定している。
 
 ## Build and local release
 
-PowerShell 5.1で`spikes/theia`へ移動する。
+PowerShell 5.1でリポジトリルートへ移動する。
 
 ```powershell
-Set-Location -LiteralPath 'C:\Users\owner\github\poiesis\spikes\theia'
+Set-Location -LiteralPath 'C:\path\to\poiesis'
 $env:ELECTRON_BUILDER_CACHE = Join-Path (Get-Location) '.electron-builder-cache'
 $env:npm_config_cache = Join-Path (Get-Location) '.npm-cache'
 npm run build:electron
@@ -35,7 +35,7 @@ npm run serve:updates
 以下はworkspace外への書き込みとinstaller実行を伴うため、Codex sandbox外のorchestratorが実行する。開始前に起動中のPoiesisをすべて終了する。
 
 ```powershell
-Set-Location -LiteralPath 'C:\Users\owner\github\poiesis\spikes\theia'
+Set-Location -LiteralPath 'C:\path\to\poiesis'
 $version = (Get-Content -LiteralPath '.\electron-app\package.json' -Raw -Encoding UTF8 | ConvertFrom-Json).version
 $installer = Join-Path (Get-Location) "electron-app\dist\PoiesisSetup-$version.exe"
 $exe = Join-Path $env:LOCALAPPDATA 'Programs\Poiesis\Poiesis.exe'
@@ -65,7 +65,7 @@ $shortcut | Select-Object -ExpandProperty FullName
 このsmokeは現在のsource versionと同じversion Aのinstallerを必要とする。先に`build:electron`と`dist:win`を成功させ、起動中のPoiesisを終了してから実行する。script自身がAをsilent installし、`release:local`でBへpatch bumpし、feed serverを起動し、downloadと終了時適用を検証する。
 
 ```powershell
-Set-Location -LiteralPath 'C:\Users\owner\github\poiesis\spikes\theia'
+Set-Location -LiteralPath 'C:\path\to\poiesis'
 $versionA = (Get-Content -LiteralPath '.\electron-app\package.json' -Raw -Encoding UTF8 | ConvertFrom-Json).version
 $installerA = Join-Path (Get-Location) "electron-app\dist\PoiesisSetup-$versionA.exe"
 $exe = Join-Path $env:LOCALAPPDATA 'Programs\Poiesis\Poiesis.exe'
