@@ -45,7 +45,13 @@ import { ResultsQuestionService } from './results-question-service';
 import { GlobalStorageService } from './global-storage-service';
 import { ResultsGenerationContext } from './results-generation-context';
 import { SkillBundleKind } from '../common/skill-bundle';
-import { POIESIS_EXTERNAL_LINK_ATTRIBUTE, POIESIS_FILE_LINK_ATTRIBUTE, renderSafeMarkdown } from './safe-markdown';
+import {
+    collectWorkspaceRichContentReferences,
+    POIESIS_EXTERNAL_LINK_ATTRIBUTE,
+    POIESIS_FILE_LINK_ATTRIBUTE,
+    POIESIS_INLINE_IMAGE_ATTRIBUTE,
+    renderSafeMarkdown
+} from './safe-markdown';
 import { WorkspaceSkillDefinition, WorkspaceSkillService } from './workspace-skill-service';
 import { formatTaskElapsedTime, shouldSubmitComposer } from './composer-behavior';
 
@@ -76,6 +82,20 @@ interface ChatMessage {
     taskId?: string;
     error?: boolean;
     errorDetails?: string;
+}
+
+interface AgentHtmlPreview {
+    uri: string;
+    fileName: string;
+    html: string;
+    revision: number;
+}
+
+interface AgentRichContentState {
+    signature: string;
+    workspaceUri: string;
+    imageSources: Map<string, string>;
+    htmlPreviews: AgentHtmlPreview[];
 }
 
 interface ResultsNotice {
@@ -649,6 +669,9 @@ export class AgentWindowWidget extends ReactWidget {
     protected resultsQaPanelStatePersistence: Promise<void> = Promise.resolve();
     protected legacyErrorMessagesMigrated = false;
     protected readonly providerPreparationErrors = new Map<string, string>();
+    protected readonly agentRichContent = new Map<string, AgentRichContentState>();
+    protected readonly agentRichContentPending = new Map<string, string>();
+    protected readonly agentHtmlPreviewExpanded = new Map<string, boolean>();
     protected selectedSessionId?: string;
     protected sessionSequence = 0;
     protected railCollapsed = false;
@@ -715,6 +738,13 @@ export class AgentWindowWidget extends ReactWidget {
         getDesignVariant();
         this.id = AgentWindowWidget.ID;
         this.addClass('poiesis-agent-window');
+        this.toDispose.push(Disposable.create(() => {
+            for (const content of this.agentRichContent.values()) {
+                this.revokeAgentImageSources(content.imageSources);
+            }
+            this.agentRichContent.clear();
+            this.agentRichContentPending.clear();
+        }));
 
         const closeSessionMenu = (event: PointerEvent): void => {
             if (this.openSessionMenuId && !(event.target as Element | null)?.closest('.poiesis-agent-window__session-actions')) {
@@ -1411,6 +1441,7 @@ export class AgentWindowWidget extends ReactWidget {
         }
         this.taskService.remove(session.taskIds);
         this.resultsService.remove(session.taskIds);
+        this.disposeAgentRichContentForSession(session.id);
         const index = this.sessions.indexOf(session);
         if (index !== -1) {
             this.sessions.splice(index, 1);
@@ -1989,7 +2020,7 @@ export class AgentWindowWidget extends ReactWidget {
                                         )}
                                     </div>
                                 ) : message.role === 'agent'
-                                    ? this.renderMarkdown(message.content)
+                                    ? this.renderAgentMessage(session, message)
                                     : <p>{message.content || '…'}</p>}
                                 {!message.complete && runningTask && runningTask.id === message.taskId && (
                                     <small className='poiesis-agent-window__message-state'>
@@ -3119,15 +3150,234 @@ export class AgentWindowWidget extends ReactWidget {
         return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
     }
 
-    protected renderMarkdown(content: string): React.ReactNode {
-        const workspaceUri = this.workspaceRoot()?.resource.toString();
+    protected renderAgentMessage(session: WindowAgentSession | undefined, message: ChatMessage): React.ReactNode {
+        const workspaceUri = session?.workspaceUri ?? this.workspaceRoot()?.resource.toString();
+        const messageKey = `${session?.id ?? 'workspace'}:${message.id}`;
+        const signature = `${workspaceUri ?? ''}\0${message.content}`;
+        const richContent = this.agentRichContent.get(messageKey);
+        if (message.complete && workspaceUri && richContent?.signature !== signature
+            && this.agentRichContentPending.get(messageKey) !== signature) {
+            this.agentRichContentPending.set(messageKey, signature);
+            queueMicrotask(() => void this.prepareAgentRichContent(messageKey, signature, message.content, workspaceUri));
+        }
+        const current = richContent?.signature === signature ? richContent : undefined;
+        return (
+            <>
+                {this.renderMarkdown(message.content, current?.imageSources, workspaceUri)}
+                {current?.htmlPreviews.map((preview, index) => this.renderAgentHtmlPreview(messageKey, preview, index))}
+            </>
+        );
+    }
+
+    protected renderMarkdown(
+        content: string,
+        workspaceImageSources?: ReadonlyMap<string, string>,
+        explicitWorkspaceUri?: string
+    ): React.ReactNode {
+        const workspaceUri = explicitWorkspaceUri ?? this.workspaceRoot()?.resource.toString();
         return (
             <div
                 className='poiesis-markdown'
                 onClick={event => this.handleMarkdownClick(event)}
-                dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(content, workspaceUri) }}
+                onErrorCapture={event => this.handleMarkdownImageError(event)}
+                dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(content, workspaceUri, workspaceImageSources) }}
             />
         );
+    }
+
+    protected renderAgentHtmlPreview(messageKey: string, preview: AgentHtmlPreview, index: number): React.ReactNode {
+        const previewKey = `${messageKey}:${preview.uri}`;
+        const expanded = this.agentHtmlPreviewExpanded.get(previewKey) ?? index === 0;
+        return (
+            <section className={`poiesis-agent-html-preview${expanded ? ' expanded' : ' collapsed'}`} key={preview.uri}>
+                <header className='poiesis-agent-html-preview__header'>
+                    <button
+                        type='button'
+                        className='poiesis-agent-html-preview__toggle'
+                        aria-expanded={expanded}
+                        aria-label={`${preview.fileName} のプレビューを${expanded ? 'たたむ' : '展開'}`}
+                        onClick={() => {
+                            this.agentHtmlPreviewExpanded.set(previewKey, !expanded);
+                            this.update();
+                        }}
+                    >
+                        <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
+                        <strong>{preview.fileName}</strong>
+                    </button>
+                    <div className='poiesis-agent-html-preview__actions'>
+                        <button
+                            type='button'
+                            title='プレビューを再読み込み'
+                            aria-label={`${preview.fileName} のプレビューを再読み込み`}
+                            onClick={() => void this.reloadAgentHtmlPreview(messageKey, preview.uri)}
+                        >
+                            <span className='codicon codicon-refresh' aria-hidden='true' />
+                        </button>
+                        <button
+                            type='button'
+                            className='poiesis-agent-html-preview__open-code'
+                            aria-label={`${preview.fileName} を Code で開く`}
+                            onClick={() => void this.openMarkdownFile(preview.uri)}
+                        >
+                            Code で開く
+                        </button>
+                    </div>
+                </header>
+                {expanded && (
+                    <iframe
+                        key={`${preview.uri}:${preview.revision}`}
+                        className='poiesis-agent-html-preview__frame'
+                        title={`${preview.fileName} のHTMLプレビュー`}
+                        sandbox='allow-scripts'
+                        referrerPolicy='no-referrer'
+                        srcDoc={this.agentHtmlPreviewDocument(preview.html)}
+                    />
+                )}
+            </section>
+        );
+    }
+
+    protected async prepareAgentRichContent(
+        messageKey: string,
+        signature: string,
+        content: string,
+        workspaceUri: string
+    ): Promise<void> {
+        const references = collectWorkspaceRichContentReferences(content, workspaceUri);
+        const workspace = new URI(workspaceUri).normalizePath();
+        const imageSources = new Map<string, string>();
+        const htmlPreviews: AgentHtmlPreview[] = [];
+        await Promise.all(references.imageUris.map(async file => {
+            try {
+                const stat = await this.fileService.resolve(file);
+                if (!stat.isFile || !workspace.isEqualOrParent(file, false)) {
+                    return;
+                }
+                const contentResult = await this.fileService.readFile(file);
+                const blob = new Blob([contentResult.value.buffer as BlobPart], { type: this.agentImageMimeType(file) });
+                imageSources.set(file.toString(), URL.createObjectURL(blob));
+            } catch {
+                // Missing and unreadable image targets stay as ordinary file links.
+            }
+        }));
+        for (const file of references.htmlUris) {
+            const preview = await this.readAgentHtmlPreview(file, workspace);
+            if (preview) {
+                htmlPreviews.push(preview);
+            }
+        }
+        if (this.agentRichContentPending.get(messageKey) !== signature) {
+            this.revokeAgentImageSources(imageSources);
+            return;
+        }
+        const previous = this.agentRichContent.get(messageKey);
+        if (previous) {
+            this.revokeAgentImageSources(previous.imageSources);
+        }
+        this.agentRichContent.set(messageKey, { signature, workspaceUri, imageSources, htmlPreviews });
+        this.agentRichContentPending.delete(messageKey);
+        this.update();
+    }
+
+    protected async readAgentHtmlPreview(file: URI, workspace: URI): Promise<AgentHtmlPreview | undefined> {
+        try {
+            const normalized = file.withQuery('').withFragment('').normalizePath();
+            if (!workspace.isEqualOrParent(normalized, false) || !/\.html?$/i.test(normalized.path.base)) {
+                return undefined;
+            }
+            const stat = await this.fileService.resolve(normalized);
+            if (!stat.isFile) {
+                return undefined;
+            }
+            const content = await this.fileService.readFile(normalized);
+            return {
+                uri: normalized.toString(),
+                fileName: normalized.path.base,
+                html: content.value.toString(),
+                revision: Date.now()
+            };
+        } catch {
+            return undefined;
+        }
+    }
+
+    protected async reloadAgentHtmlPreview(messageKey: string, rawUri: string): Promise<void> {
+        const current = this.agentRichContent.get(messageKey);
+        if (!current) {
+            return;
+        }
+        const workspace = new URI(current.workspaceUri).normalizePath();
+        const preview = await this.readAgentHtmlPreview(new URI(rawUri), workspace);
+        if (!preview || this.agentRichContent.get(messageKey) !== current) {
+            this.messageService.error('HTMLプレビューを再読み込みできませんでした。');
+            return;
+        }
+        current.htmlPreviews = current.htmlPreviews.map(item => item.uri === preview.uri ? preview : item);
+        this.update();
+    }
+
+    protected agentHtmlPreviewDocument(html: string): string {
+        const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">`;
+        if (/<head(?:\s[^>]*)?>/i.test(html)) {
+            return html.replace(/<head(?:\s[^>]*)?>/i, match => `${match}\n  ${policy}`);
+        }
+        if (/<html(?:\s[^>]*)?>/i.test(html)) {
+            return html.replace(/<html(?:\s[^>]*)?>/i, match => `${match}\n<head>${policy}</head>`);
+        }
+        return `${policy}\n${html}`;
+    }
+
+    protected agentImageMimeType(file: URI): string {
+        const extension = file.path.ext.toLocaleLowerCase();
+        switch (extension) {
+            case '.jpg':
+            case '.jpeg': return 'image/jpeg';
+            case '.gif': return 'image/gif';
+            case '.webp': return 'image/webp';
+            case '.svg': return 'image/svg+xml';
+            default: return 'image/png';
+        }
+    }
+
+    protected revokeAgentImageSources(sources: ReadonlyMap<string, string>): void {
+        for (const source of sources.values()) {
+            URL.revokeObjectURL(source);
+        }
+    }
+
+    protected disposeAgentRichContentForSession(sessionId: string): void {
+        const prefix = `${sessionId}:`;
+        for (const [messageKey, content] of this.agentRichContent) {
+            if (messageKey.startsWith(prefix)) {
+                this.revokeAgentImageSources(content.imageSources);
+                this.agentRichContent.delete(messageKey);
+            }
+        }
+        for (const messageKey of this.agentRichContentPending.keys()) {
+            if (messageKey.startsWith(prefix)) {
+                this.agentRichContentPending.delete(messageKey);
+            }
+        }
+        for (const previewKey of this.agentHtmlPreviewExpanded.keys()) {
+            if (previewKey.startsWith(prefix)) {
+                this.agentHtmlPreviewExpanded.delete(previewKey);
+            }
+        }
+    }
+
+    protected handleMarkdownImageError(event: React.SyntheticEvent<HTMLElement>): void {
+        const image = event.target;
+        if (!(image instanceof HTMLImageElement) || !image.hasAttribute(POIESIS_INLINE_IMAGE_ATTRIBUTE)) {
+            return;
+        }
+        const anchor = image.closest(`a[${POIESIS_FILE_LINK_ATTRIBUTE}]`);
+        if (!anchor) {
+            image.remove();
+            return;
+        }
+        const code = document.createElement('code');
+        code.textContent = image.alt || anchor.getAttribute('title') || 'image';
+        image.replaceWith(code);
     }
 
     protected handleMarkdownClick(event: React.MouseEvent<HTMLElement>): void {
@@ -5133,6 +5383,7 @@ export class AgentWindowWidget extends ReactWidget {
             }
             this.taskService.remove(session.taskIds);
             this.resultsService.remove(session.taskIds);
+            this.disposeAgentRichContentForSession(session.id);
         }
         this.sessions.splice(0, this.sessions.length);
         this.selectedSessionId = undefined;

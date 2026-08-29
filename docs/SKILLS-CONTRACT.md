@@ -151,5 +151,6 @@ Customizeは組み込みbundleを説明し、WorkspaceのUser Skillを走査・s
 - ApplicationはTask終了時（完了／失敗／キャンセル）にResults生成を開始し、生成済み文書を所有Taskへ保存してから外部向け完了イベントを確定する。生成中にResultsを開いた場合だけ進捗を表示する。
 - Agent会話の完了報告はApplication所有の変更不能なprompt契約と表示整形により1〜2行の要約と変更ファイル名に限定し、詳細はResultsへ誘導する。Workspace Agent skillはこの契約を上書きできない。
 - ApplicationはTask lifecycle、Change Set、生成タイミング、sandboxed canvasを所有する。
+- Agent会話の画像とHTMLプレビューはApplicationが検証したWorkspace内の実在ファイルだけを表示し、外部URLは既定ブロック、生HTML本文は描画しない。この境界をSkillから緩和することはできない。
 - bundleはWorkspace外の権限や、選択されたAI providerを暗黙に拡張しない。
 - Workspace file bundleの編集権限は、現在開いているWorkspace内の`.poiesis/skills`に限定する。

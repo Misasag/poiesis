@@ -44,6 +44,7 @@ const hiddenProcess = await read('agent-window/src/node/hidden-process.ts');
 const skillBundleContract = await read('agent-window/src/common/skill-bundle.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
+const agentRichContentSmoke = await read('scripts/smoke-agent-rich-content.mjs');
 const markdownSmoke = await read('scripts/smoke-markdown.mjs');
 const resultsDocumentSmoke = await read('scripts/smoke-results-document.mjs');
 const resultsPromptTransportTest = await read('scripts/test-results-prompt-transport.mjs');
@@ -818,7 +819,7 @@ for (const marker of [
     'protected async openCodeFile(rawUri: string): Promise<void>',
     "message.role === 'agent'",
     'this.renderMarkdown(entry.answer ?? \'\')',
-    'renderSafeMarkdown(content, workspaceUri)',
+    'renderSafeMarkdown(content, workspaceUri, workspaceImageSources)',
     'POIESIS_FILE_LINK_ATTRIBUTE',
     'open(this.openerService, new URI(externalUri))',
     "value={session?.agentDraft ?? ''}",
@@ -996,13 +997,52 @@ for (const marker of [
     'linkify: false',
     'DOMPurify.sanitize',
     "ALLOWED_TAGS: ['a', 'blockquote', 'br', 'code'",
+    "'hr', 'img', 'li'",
     "workspace.isEqualOrParent(candidate, false)",
     "replaceWithCode(anchor, decodedHref(href))",
-    'linkBareWorkspacePaths(host, workspace)'
+    'linkBareWorkspacePaths(host, workspace)',
+    'collectWorkspaceRichContentReferences',
+    'workspaceImageSources.get(fileUri)',
+    "image.setAttribute('src', source)"
 ]) {
     assert.ok(safeMarkdown.includes(marker), `Safe Agent markdown is missing ${marker}`);
 }
+for (const marker of [
+    'prepareAgentRichContent',
+    'this.fileService.readFile(file)',
+    "sandbox='allow-scripts'",
+    'srcDoc={this.agentHtmlPreviewDocument(preview.html)}',
+    "default-src 'none'; img-src data: blob:",
+    'reloadAgentHtmlPreview',
+    'POIESIS_INLINE_IMAGE_ATTRIBUTE'
+]) {
+    assert.ok(agentWidget.includes(marker), `Agent rich content wiring is missing ${marker}`);
+}
+for (const marker of [
+    '.poiesis-markdown img',
+    'max-height: 320px;',
+    'object-fit: contain;',
+    '.poiesis-agent-html-preview__frame',
+    'height: 360px;'
+]) {
+    assert.ok(agentStyles.includes(marker), `Agent rich content style is missing ${marker}`);
+}
 assert.equal(rootPackage.scripts['smoke:markdown'], 'node scripts/smoke-markdown.mjs');
+assert.equal(rootPackage.scripts['smoke:agent-rich-content'], 'npm run build && node scripts/smoke-agent-rich-content.mjs');
+for (const marker of [
+    'workspaceImage: true',
+    'externalImageBlocked: true',
+    'rawHtmlEscaped: true',
+    "waitForCodeTab(page, 'workspace-image.svg')",
+    "waitForCodeTab(page, 'preview.html')",
+    "{ width: 1280, height: 720 }",
+    "{ width: 1600, height: 900 }",
+    'maximizeAndAssert(page)'
+]) {
+    assert.ok(agentRichContentSmoke.includes(marker), `Agent rich content smoke is missing ${marker}`);
+}
+assert.ok(skillsContract.includes('Agent会話の画像とHTMLプレビューはApplicationが検証したWorkspace内の実在ファイルだけを表示し'),
+    'Skills boundary must keep Agent rich content under Application control');
 assert.equal(rootPackage.scripts['smoke:round13'], 'node scripts/smoke-round13-browser.mjs');
 assert.equal(rootPackage.scripts['smoke:round14'], 'node scripts/smoke-round14-browser.mjs');
 for (const marker of [

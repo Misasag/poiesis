@@ -208,7 +208,9 @@ async function smokeFallback(page, diagnostics) {
             activeResults: document.querySelector('#poiesis-results-tab')?.getAttribute('aria-selected') === 'true',
             iframeCount: document.querySelectorAll('.poiesis-results__document').length,
             task,
-            conversation: agentMessages.at(-1)?.textContent?.trim() ?? ''
+            // Application-owned rich-content cards sit below the completion
+            // markdown and are not part of the Agent's 1-2 line report.
+            conversation: agentMessages.at(-1)?.querySelector('.poiesis-markdown')?.textContent?.trim() ?? ''
         };
     });
     assert(!beforeOpen.activeResults && beforeOpen.iframeCount === 0,

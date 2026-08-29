@@ -15,7 +15,9 @@ if (!executablePath) {
     throw new Error('Chrome or Edge was not found. Set CHROME_PATH to run this smoke test.');
 }
 
-const repositoryRoot = resolve(process.cwd(), '..', '..');
+const repositoryRoot = process.env.POIESIS_SMOKE_REPOSITORY_ROOT
+    ? resolve(process.env.POIESIS_SMOKE_REPOSITORY_ROOT)
+    : resolve(process.cwd(), '..', '..');
 const scmFixtureGitPath = 'docs/UX.md';
 const scmFixturePath = resolve(repositoryRoot, scmFixtureGitPath);
 const scmFixtureOriginal = readFileSync(scmFixturePath, 'utf8');

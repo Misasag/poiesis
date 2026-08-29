@@ -4795,6 +4795,105 @@ body.poiesis-code-file-pointer-drag * {
     outline-offset: 2px;
 }
 
+.poiesis-markdown a:has(> img) {
+    display: block;
+    max-width: 100%;
+    width: fit-content;
+}
+
+.poiesis-markdown img {
+    background: #131412;
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 8px;
+    cursor: pointer;
+    display: block;
+    max-height: 320px;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+.poiesis-agent-html-preview {
+    background: #171816;
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 8px;
+    margin-top: 10px;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.poiesis-agent-html-preview__header {
+    align-items: center;
+    background: #222320;
+    border-bottom: 1px solid var(--poiesis-chrome-line);
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    min-height: 38px;
+    padding: 5px 7px;
+}
+
+.poiesis-agent-html-preview.collapsed .poiesis-agent-html-preview__header {
+    border-bottom: 0;
+}
+
+.poiesis-agent-html-preview__toggle,
+.poiesis-agent-html-preview__actions button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--poiesis-chrome-copy);
+    display: inline-flex;
+    font-size: 12px;
+    min-height: 28px;
+}
+
+.poiesis-agent-html-preview__toggle {
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+    padding: 3px 5px;
+}
+
+.poiesis-agent-html-preview__toggle strong {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-agent-html-preview__actions {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 3px;
+}
+
+.poiesis-agent-html-preview__actions button {
+    border-radius: 5px;
+    cursor: pointer;
+    justify-content: center;
+    padding: 3px 7px;
+}
+
+.poiesis-agent-html-preview__actions button:hover {
+    background: #30312d;
+    color: var(--poiesis-chrome-text);
+}
+
+.poiesis-agent-html-preview__actions .poiesis-agent-html-preview__open-code {
+    border: 1px solid var(--poiesis-control-border);
+}
+
+.poiesis-agent-html-preview__frame {
+    background: #fff;
+    border: 0;
+    display: block;
+    height: 360px;
+    max-width: 100%;
+    width: 100%;
+}
+
 .poiesis-markdown code {
     background: #292a27;
     border: 1px solid var(--poiesis-chrome-line);
