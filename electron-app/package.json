@@ -1,8 +1,9 @@
 {
   "name": "@poiesis/theia-electron-app",
   "productName": "Poiesis",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Poiesis desktop application",
   "author": "Poiesis Contributors",
   "main": "scripts/theia-electron-main.js",
