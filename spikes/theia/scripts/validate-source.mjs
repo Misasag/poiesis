@@ -47,6 +47,7 @@ const electronSmoke = await read('scripts/smoke-electron.mjs');
 const agentRichContentSmoke = await read('scripts/smoke-agent-rich-content.mjs');
 const markdownSmoke = await read('scripts/smoke-markdown.mjs');
 const resultsDocumentSmoke = await read('scripts/smoke-results-document.mjs');
+const resultsQuestionSmoke = await read('scripts/smoke-results-question.mjs');
 const resultsPromptTransportTest = await read('scripts/test-results-prompt-transport.mjs');
 const round15Smoke = await read('scripts/smoke-round15-browser.mjs');
 const round16Smoke = await read('scripts/smoke-round16-console.mjs');
@@ -239,6 +240,29 @@ assert.ok(!agentWidget.includes("className='poiesis-results__canvas-scroll'"),
     'Results Q&A must not share the document scroll flow');
 assert.match(agentStyles, /\.poiesis-results__qa-panel\s*\{[^}]*max-height:\s*calc\(\(100vh - 70px\) \* \.4\)/,
     'Results Q&A panel must stay within about 40% of the canvas area');
+for (const marker of [
+    'resultsTaskRailCollapsed',
+    'taskRailCollapsed: this.resultsTaskRailCollapsed',
+    "aria-label='タスクレールを折りたたむ'",
+    "aria-label='タスクレールを展開'",
+    "data-task-rail-collapsed={this.resultsTaskRailCollapsed ? 'true' : 'false'}"
+]) {
+    assert.ok(agentWidget.includes(marker), `Collapsible Results task rail is missing ${marker}`);
+}
+assert.match(agentStyles, /\.poiesis-results\[data-task-rail-collapsed='true'\]\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 42px/,
+    'Collapsed Results task rail must release its width to the document column');
+for (const marker of [
+    'taskRailCanvasGain',
+    'taskRailCollapsedRestored',
+    'taskRailExpandedRestored',
+    '{ width: 1280, height: 720 }',
+    '{ width: 1600, height: 900 }',
+    'collapsed-maximized',
+    'expanded-maximized',
+    'taskCountAfterUpdate'
+]) {
+    assert.ok(resultsQuestionSmoke.includes(marker), `Results task rail smoke is missing ${marker}`);
+}
 assert.ok(agentWidget.includes('migrateLegacyCliErrorMessage'), 'Legacy CLI error migration is missing');
 for (const marker of [
     "resultsGenerationServerPath = '/services/poiesis/results-generation'",

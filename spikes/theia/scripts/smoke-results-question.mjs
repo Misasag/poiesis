@@ -277,13 +277,86 @@ try {
         && restored.documentHtml?.includes('<h1>Stored result document</h1>'),
     'Results Skill HTML was modified by the question flow.');
 
-    const layouts = [];
+    const expandedBaseline = await assertTaskRailLayout(page, 'expanded-baseline', false, 1);
+    await page.click('[aria-label="タスクレールを折りたたむ"]');
+    await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="true"] .poiesis-results__task-switcher[data-collapsed="true"]');
+    const collapsedBaseline = await assertTaskRailLayout(page, 'collapsed-baseline', true, 1);
+    assert(collapsedBaseline.canvasWidth >= expandedBaseline.canvasWidth + 100,
+        `The Results canvas did not gain the task rail width: ${JSON.stringify({ expandedBaseline, collapsedBaseline })}`);
+    await page.waitForFunction(key => {
+        const storageEntry = Object.keys(localStorage).find(candidate => candidate.endsWith(`:${key}`));
+        const state = storageEntry ? JSON.parse(localStorage.getItem(storageEntry) ?? '{}') : {};
+        return state.taskRailCollapsed === true;
+    }, {}, panelStorageKey);
+
+    const collapsedLayouts = [];
     for (const size of [{ width: 1280, height: 720 }, { width: 1600, height: 900 }]) {
         await page.setViewport({ ...size, deviceScaleFactor: 1 });
-        layouts.push(await assertDockedLayout(page, `${size.width}x${size.height}`));
+        const label = `collapsed-${size.width}x${size.height}`;
+        collapsedLayouts.push({
+            ...await assertDockedLayout(page, label),
+            ...await assertTaskRailLayout(page, label, true, 1)
+        });
+    }
+    const collapsedMaximized = await maximizeAndAssert(page);
+    collapsedLayouts.push({
+        ...collapsedMaximized.layout,
+        ...await assertTaskRailLayout(page, 'collapsed-maximized', true, 1)
+    });
+
+    await page.evaluate((key, newTaskId) => {
+        const state = JSON.parse(localStorage.getItem(key) ?? '{}');
+        const session = state.sessions?.[0];
+        const source = session?.tasks?.[0];
+        if (!session || !source) throw new Error('The stored smoke Task was unavailable.');
+        session.tasks.push({
+            ...source,
+            id: newTaskId,
+            title: 'Updated task while rail collapsed',
+            request: 'Verify collapsed task count updates.',
+            status: 'failed',
+            failure: { summary: 'Expected smoke fixture failure.' },
+            resultsDocument: undefined
+        });
+        localStorage.setItem(key, JSON.stringify(state));
+    }, sessionStorageKey, 'results-question-smoke-task-updated');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForApp(page);
+    stage = 'task-rail-collapsed-restore';
+    await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="true"] .poiesis-results__task-switcher[data-collapsed="true"]');
+    const restoredCollapsedRail = await assertTaskRailLayout(page, 'collapsed-after-restart-and-task-update', true, 2);
+
+    await page.click('[aria-label="タスクレールを展開"]');
+    await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="false"] .poiesis-results__task-list');
+    const expandedAfterRestore = await assertTaskRailLayout(page, 'expanded-after-restore', false, 2);
+    assert(restoredCollapsedRail.canvasWidth >= expandedAfterRestore.canvasWidth + 100,
+        `The expanded task rail did not reclaim its width: ${JSON.stringify({ restoredCollapsedRail, expandedAfterRestore })}`);
+    await page.waitForFunction(key => {
+        const storageEntry = Object.keys(localStorage).find(candidate => candidate.endsWith(`:${key}`));
+        const state = storageEntry ? JSON.parse(localStorage.getItem(storageEntry) ?? '{}') : {};
+        return state.taskRailCollapsed === false;
+    }, {}, panelStorageKey);
+
+    const expandedLayouts = [];
+    for (const size of [{ width: 1280, height: 720 }, { width: 1600, height: 900 }]) {
+        await page.setViewport({ ...size, deviceScaleFactor: 1 });
+        const label = `expanded-${size.width}x${size.height}`;
+        expandedLayouts.push({
+            ...await assertDockedLayout(page, label),
+            ...await assertTaskRailLayout(page, label, false, 2)
+        });
     }
     const maximized = await maximizeAndAssert(page);
-    layouts.push(maximized.layout);
+    expandedLayouts.push({
+        ...maximized.layout,
+        ...await assertTaskRailLayout(page, 'expanded-maximized', false, 2)
+    });
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForApp(page);
+    stage = 'task-rail-expanded-restore';
+    await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="false"] .poiesis-results__task-list');
+    const restoredExpandedRail = await assertTaskRailLayout(page, 'expanded-after-restart', false, 2);
 
     await page.click('#poiesis-agent-tab');
     await page.waitForSelector('.poiesis-agent-window__agent');
@@ -309,7 +382,11 @@ try {
         panelStateRestored: restored.expanded,
         restoredQuestions: restored.count,
         citationLine: 12,
-        resizeLayouts: layouts,
+        taskRailCanvasGain: collapsedBaseline.canvasWidth - expandedBaseline.canvasWidth,
+        taskRailCollapsedRestored: restoredCollapsedRail.collapsed,
+        taskRailExpandedRestored: !restoredExpandedRail.collapsed,
+        taskCountAfterUpdate: restoredCollapsedRail.taskCount,
+        resizeLayouts: { collapsed: collapsedLayouts, expanded: expandedLayouts },
         nativeMaximize: maximized.nativeMaximize,
         agentMessageCount: agentIsolation.messageCount,
         skillHtmlUnchanged: true
@@ -379,6 +456,66 @@ async function assertDockedLayout(page, label) {
         panelHeight: snapshot.panel.height,
         mainHeight: snapshot.main.height,
         historyOverflow: snapshot.historyOverflow
+    };
+}
+
+async function assertTaskRailLayout(page, label, expectedCollapsed, expectedCount) {
+    await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+    const snapshot = await page.evaluate(currentLabel => {
+        const rect = selector => {
+            const element = document.querySelector(selector);
+            if (!(element instanceof HTMLElement)) return undefined;
+            const bounds = element.getBoundingClientRect();
+            return {
+                left: Math.round(bounds.left),
+                right: Math.round(bounds.right),
+                width: Math.round(bounds.width)
+            };
+        };
+        const results = document.querySelector('.poiesis-results');
+        const rail = document.querySelector('.poiesis-results__task-switcher');
+        const count = document.querySelector('.poiesis-results__task-count');
+        return {
+            label: currentLabel,
+            collapsed: results?.getAttribute('data-task-rail-collapsed') === 'true'
+                && rail?.getAttribute('data-collapsed') === 'true',
+            results: rect('.poiesis-results'),
+            main: rect('.poiesis-results__main'),
+            canvas: rect('.poiesis-results__canvas'),
+            panel: rect('.poiesis-results__qa-panel'),
+            composer: rect('.poiesis-results__composer'),
+            rail: rect('.poiesis-results__task-switcher'),
+            taskCount: Number(count?.textContent?.trim()),
+            collapseButton: Boolean(document.querySelector('[aria-label="タスクレールを折りたたむ"]')),
+            expandButton: Boolean(document.querySelector('[aria-label="タスクレールを展開"]')),
+            horizontalOverflow: document.documentElement.scrollWidth > innerWidth
+        };
+    }, label);
+    assert(snapshot.results && snapshot.main && snapshot.canvas && snapshot.panel && snapshot.composer && snapshot.rail,
+        `The Results task rail layout is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.collapsed === expectedCollapsed,
+        `The Results task rail state is wrong at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.taskCount === expectedCount,
+        `The Results task badge is wrong at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(expectedCollapsed ? snapshot.expandButton && !snapshot.collapseButton : snapshot.collapseButton && !snapshot.expandButton,
+        `The Results task rail toggle is wrong at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(expectedCollapsed ? snapshot.rail.width >= 40 && snapshot.rail.width <= 44 : snapshot.rail.width >= 190,
+        `The Results task rail width is wrong at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.main.right <= snapshot.rail.left + 1
+        && snapshot.canvas.right <= snapshot.main.right
+        && snapshot.panel.right <= snapshot.main.right
+        && snapshot.composer.right <= snapshot.main.right,
+    `Results content escaped its responsive column at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(!snapshot.horizontalOverflow,
+        `The Results layout overflowed horizontally at ${label}: ${JSON.stringify(snapshot)}`);
+    return {
+        label,
+        collapsed: snapshot.collapsed,
+        taskCount: snapshot.taskCount,
+        railWidth: snapshot.rail.width,
+        canvasWidth: snapshot.canvas.width,
+        composerWidth: snapshot.composer.width,
+        panelWidth: snapshot.panel.width
     };
 }
 

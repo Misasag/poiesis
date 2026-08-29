@@ -148,6 +148,7 @@ interface PersistedAgentWindowState {
 
 interface PersistedResultsQaPanelState {
     version: 1;
+    taskRailCollapsed?: boolean;
     sessions: Record<string, {
         selectedTaskId?: string;
         expandedTaskIds: string[];
@@ -667,6 +668,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected sessionsInitialization: Promise<void> = Promise.resolve();
     protected windowStatePersistence: Promise<void> = Promise.resolve();
     protected resultsQaPanelStatePersistence: Promise<void> = Promise.resolve();
+    protected resultsTaskRailCollapsed = false;
     protected legacyErrorMessagesMigrated = false;
     protected readonly providerPreparationErrors = new Map<string, string>();
     protected readonly agentRichContent = new Map<string, AgentRichContentState>();
@@ -1517,6 +1519,12 @@ export class AgentWindowWidget extends ReactWidget {
         if (!this.railCollapsed && this.sessionSearchVisible) {
             requestAnimationFrame(() => this.sessionSearchInput?.focus());
         }
+    }
+
+    protected toggleResultsTaskRail(): void {
+        this.resultsTaskRailCollapsed = !this.resultsTaskRailCollapsed;
+        this.persistResultsQaPanelState();
+        this.update();
     }
 
     protected showSessionSearch(): void {
@@ -2897,6 +2905,7 @@ export class AgentWindowWidget extends ReactWidget {
             <section
                 id='poiesis-results-panel'
                 className='poiesis-results'
+                data-task-rail-collapsed={this.resultsTaskRailCollapsed ? 'true' : 'false'}
                 role='tabpanel'
                 aria-labelledby='poiesis-results-tab'
             >
@@ -2982,12 +2991,45 @@ export class AgentWindowWidget extends ReactWidget {
                         {selectedTask && document?.status === 'ready' && this.renderAiRolePill('results', true)}
                     </section>
                 </div>
-                <aside className='poiesis-results__task-switcher' aria-label='同じセッションの実行タスク'>
-                    <div className='poiesis-results__task-switcher-header'>
-                        <strong>タスク</strong>
-                        <span>{resultsTasks.length}</span>
-                    </div>
-                    <div className='poiesis-results__task-list' role='tablist'>
+                <aside
+                    className='poiesis-results__task-switcher'
+                    data-collapsed={this.resultsTaskRailCollapsed ? 'true' : 'false'}
+                    aria-label='同じセッションの実行タスク'
+                >
+                    {this.resultsTaskRailCollapsed ? (
+                        <button
+                            type='button'
+                            className='poiesis-agent-window__rail-toggle poiesis-results__task-switcher-collapsed-button'
+                            title='タスクレールを展開'
+                            aria-label='タスクレールを展開'
+                            aria-expanded='false'
+                            aria-controls='poiesis-results-task-list'
+                            onClick={() => this.toggleResultsTaskRail()}
+                        >
+                            <span className='poiesis-results__task-count' aria-label={`タスク ${resultsTasks.length}件`}>
+                                {resultsTasks.length}
+                            </span>
+                            <span className='codicon codicon-layout-sidebar-right' aria-hidden='true' />
+                        </button>
+                    ) : <>
+                        <div className='poiesis-results__task-switcher-header'>
+                            <strong>タスク</strong>
+                            <div className='poiesis-results__task-switcher-header-actions'>
+                                <span className='poiesis-results__task-count'>{resultsTasks.length}</span>
+                                <button
+                                    type='button'
+                                    className='poiesis-agent-window__rail-toggle poiesis-results__task-switcher-toggle'
+                                    title='タスクレールを折りたたむ'
+                                    aria-label='タスクレールを折りたたむ'
+                                    aria-expanded='true'
+                                    aria-controls='poiesis-results-task-list'
+                                    onClick={() => this.toggleResultsTaskRail()}
+                                >
+                                    <span className='codicon codicon-layout-sidebar-right-off' aria-hidden='true' />
+                                </button>
+                            </div>
+                        </div>
+                        <div id='poiesis-results-task-list' className='poiesis-results__task-list' role='tablist'>
                         {resultsTasks.map((task, index) => {
                             const confirmingDelete = this.deleteTaskConfirmationId === task.id;
                             const finalizing = this.taskService.isFinalizing(task.id);
@@ -3036,7 +3078,8 @@ export class AgentWindowWidget extends ReactWidget {
                             );
                         })}
                     </div>
-                    {!resultsTasks.length && <p>完了したタスクはありません。</p>}
+                        {!resultsTasks.length && <p>完了したタスクはありません。</p>}
+                    </>}
                 </aside>
             </section>
         );
@@ -5757,6 +5800,7 @@ export class AgentWindowWidget extends ReactWidget {
             if (state?.version !== 1 || !state.sessions || typeof state.sessions !== 'object') {
                 return;
             }
+            this.resultsTaskRailCollapsed = state.taskRailCollapsed === true;
             for (const session of this.sessions) {
                 const persisted = state.sessions[session.id];
                 if (!persisted) {
@@ -5784,6 +5828,7 @@ export class AgentWindowWidget extends ReactWidget {
         try {
             const state: PersistedResultsQaPanelState = {
                 version: 1,
+                taskRailCollapsed: this.resultsTaskRailCollapsed,
                 sessions: Object.fromEntries(this.sessions.map(session => {
                     const resultsTaskIds = new Set(this.finishedTasks(session).map(task => task.id));
                     return [session.id, {
