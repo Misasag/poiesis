@@ -1037,6 +1037,12 @@ for (const marker of [
     "sandbox='allow-scripts'",
     'srcDoc={this.agentHtmlPreviewDocument(preview.html)}',
     "default-src 'none'; img-src data: blob:",
+    'inlineAgentHtmlPreviewAssets',
+    'resolveAgentHtmlPreviewAsset',
+    'isAgentHtmlPreviewWorkspaceFile',
+    'fileStat.isSymbolicLink',
+    'data-poiesis-preview-asset',
+    "element.removeAttribute('srcset')",
     'reloadAgentHtmlPreview',
     'POIESIS_INLINE_IMAGE_ATTRIBUTE'
 ]) {
@@ -1056,6 +1062,11 @@ assert.equal(rootPackage.scripts['smoke:agent-rich-content'], 'npm run build && 
 for (const marker of [
     'workspaceImage: true',
     'externalImageBlocked: true',
+    'relativeImageLoaded: true',
+    'relativeCssApplied: true',
+    'workspaceEscapeBlocked: true',
+    'externalPreviewResourcesBlocked: true',
+    'allowSameOrigin: false',
     'rawHtmlEscaped: true',
     "waitForCodeTab(page, 'workspace-image.svg')",
     "waitForCodeTab(page, 'preview.html')",

@@ -3328,15 +3328,14 @@ export class AgentWindowWidget extends ReactWidget {
             if (!workspace.isEqualOrParent(normalized, false) || !/\.html?$/i.test(normalized.path.base)) {
                 return undefined;
             }
-            const stat = await this.fileService.resolve(normalized);
-            if (!stat.isFile) {
+            if (!await this.isAgentHtmlPreviewWorkspaceFile(normalized, workspace)) {
                 return undefined;
             }
             const content = await this.fileService.readFile(normalized);
             return {
                 uri: normalized.toString(),
                 fileName: normalized.path.base,
-                html: content.value.toString(),
+                html: await this.inlineAgentHtmlPreviewAssets(content.value.toString(), normalized, workspace),
                 revision: Date.now()
             };
         } catch {
@@ -3357,6 +3356,196 @@ export class AgentWindowWidget extends ReactWidget {
         }
         current.htmlPreviews = current.htmlPreviews.map(item => item.uri === preview.uri ? preview : item);
         this.update();
+    }
+
+    protected async inlineAgentHtmlPreviewAssets(html: string, sourceFile: URI, workspace: URI): Promise<string> {
+        const document = new DOMParser().parseFromString(html, 'text/html');
+        const baseDirectory = sourceFile.parent;
+        const verifiedFiles = new Map<string, Promise<boolean>>();
+        const imageSources = new Map<string, Promise<string | undefined>>();
+
+        const verifyFile = (file: URI): Promise<boolean> => {
+            const key = file.toString();
+            const existing = verifiedFiles.get(key);
+            if (existing) {
+                return existing;
+            }
+            const pending = this.isAgentHtmlPreviewWorkspaceFile(file, workspace);
+            verifiedFiles.set(key, pending);
+            return pending;
+        };
+        const imageSource = async (rawReference: string, relativeTo: URI): Promise<string | undefined> => {
+            const trimmed = rawReference.trim();
+            if (/^data:image\//i.test(trimmed)) {
+                return trimmed;
+            }
+            const file = this.resolveAgentHtmlPreviewAsset(trimmed, relativeTo, workspace);
+            const mimeType = file && this.agentHtmlPreviewImageMimeType(file);
+            if (!file || !mimeType) {
+                return undefined;
+            }
+            const key = file.toString();
+            const existing = imageSources.get(key);
+            if (existing) {
+                return existing;
+            }
+            const pending = (async () => {
+                if (!await verifyFile(file)) {
+                    return undefined;
+                }
+                const content = await this.fileService.readFile(file);
+                return this.agentHtmlPreviewDataUrl(content.value.buffer as BlobPart, mimeType);
+            })().catch(() => undefined);
+            imageSources.set(key, pending);
+            return pending;
+        };
+        const rewriteCss = async (css: string, relativeTo: URI): Promise<string> => {
+            const withoutImports = css.replace(
+                /@import\s+(?:url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)|"[^"]*"|'[^']*')[^;]*;/gi,
+                ''
+            );
+            const pattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi;
+            const matches = [...withoutImports.matchAll(pattern)];
+            let rewritten = '';
+            let offset = 0;
+            for (const match of matches) {
+                const index = match.index ?? offset;
+                const reference = match[1] ?? match[2] ?? match[3] ?? '';
+                rewritten += withoutImports.slice(offset, index);
+                if (reference.trim().startsWith('#')) {
+                    rewritten += match[0];
+                } else {
+                    const source = await imageSource(reference, relativeTo);
+                    rewritten += source ? `url("${source}")` : 'none';
+                }
+                offset = index + match[0].length;
+            }
+            return `${rewritten}${withoutImports.slice(offset)}`;
+        };
+        const safeStyleText = (css: string): string => css.replace(/<\/style/gi, '<\\/style');
+
+        for (const base of Array.from(document.querySelectorAll('base'))) {
+            base.remove();
+        }
+        for (const style of Array.from(document.querySelectorAll('style'))) {
+            style.textContent = safeStyleText(await rewriteCss(style.textContent ?? '', baseDirectory));
+        }
+        for (const element of Array.from(document.querySelectorAll<HTMLElement>('[style]'))) {
+            element.setAttribute('style', await rewriteCss(element.getAttribute('style') ?? '', baseDirectory));
+        }
+        for (const link of Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]'))) {
+            const file = this.resolveAgentHtmlPreviewAsset(link.getAttribute('href') ?? '', baseDirectory, workspace);
+            if (!file || file.path.ext.toLocaleLowerCase() !== '.css' || !await verifyFile(file)) {
+                link.remove();
+                continue;
+            }
+            try {
+                const content = await this.fileService.readFile(file);
+                const style = document.createElement('style');
+                style.setAttribute('data-poiesis-preview-asset', file.path.base);
+                if (link.media) {
+                    style.media = link.media;
+                }
+                style.textContent = safeStyleText(await rewriteCss(content.value.toString(), file.parent));
+                link.replaceWith(style);
+            } catch {
+                link.remove();
+            }
+        }
+        for (const element of Array.from(document.querySelectorAll('img[src], input[type="image"][src], picture source[src], image[href]'))) {
+            const source = await imageSource(element.getAttribute('src') ?? element.getAttribute('href') ?? '', baseDirectory);
+            const attribute = element.hasAttribute('src') ? 'src' : 'href';
+            if (source) {
+                element.setAttribute(attribute, source);
+                element.setAttribute('data-poiesis-preview-asset', 'inlined');
+            } else {
+                element.removeAttribute(attribute);
+                element.setAttribute('data-poiesis-preview-asset', 'blocked');
+            }
+        }
+        for (const element of Array.from(document.querySelectorAll('[srcset]'))) {
+            element.removeAttribute('srcset');
+        }
+
+        return `<!doctype html>\n${document.documentElement.outerHTML}`;
+    }
+
+    protected resolveAgentHtmlPreviewAsset(rawReference: string, baseDirectory: URI, workspace: URI): URI | undefined {
+        const encodedPath = rawReference.trim().split(/[?#]/, 1)[0];
+        if (!encodedPath) {
+            return undefined;
+        }
+        let decodedPath: string;
+        try {
+            decodedPath = decodeURIComponent(encodedPath);
+        } catch {
+            return undefined;
+        }
+        if (!decodedPath
+            || decodedPath.includes('\0')
+            || /^[\\/]/.test(decodedPath)
+            || /^[A-Za-z]:[\\/]/.test(decodedPath)
+            || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(decodedPath)) {
+            return undefined;
+        }
+        const candidate = baseDirectory.resolve(decodedPath.replaceAll('\\', '/')).normalizePath();
+        return workspace.isEqualOrParent(candidate, false) ? candidate : undefined;
+    }
+
+    protected async isAgentHtmlPreviewWorkspaceFile(file: URI, workspace: URI): Promise<boolean> {
+        if (!workspace.isEqualOrParent(file, false)) {
+            return false;
+        }
+        try {
+            const fileStat = await this.fileService.resolve(file);
+            if (!fileStat.isFile || fileStat.isSymbolicLink) {
+                return false;
+            }
+            let directory = file.parent;
+            while (!directory.isEqual(workspace, false)) {
+                if (!workspace.isEqualOrParent(directory, false)) {
+                    return false;
+                }
+                const directoryStat = await this.fileService.resolve(directory);
+                if (!directoryStat.isDirectory || directoryStat.isSymbolicLink) {
+                    return false;
+                }
+                const parent = directory.parent;
+                if (parent.isEqual(directory, false)) {
+                    return false;
+                }
+                directory = parent;
+            }
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    protected agentHtmlPreviewImageMimeType(file: URI): string | undefined {
+        switch (file.path.ext.toLocaleLowerCase()) {
+            case '.png': return 'image/png';
+            case '.jpg':
+            case '.jpeg': return 'image/jpeg';
+            case '.gif': return 'image/gif';
+            case '.webp': return 'image/webp';
+            case '.svg': return 'image/svg+xml';
+            case '.avif': return 'image/avif';
+            case '.bmp': return 'image/bmp';
+            case '.ico': return 'image/x-icon';
+            default: return undefined;
+        }
+    }
+
+    protected agentHtmlPreviewDataUrl(content: BlobPart, mimeType: string): Promise<string> {
+        return new Promise((resolveDataUrl, rejectDataUrl) => {
+            const reader = new FileReader();
+            reader.addEventListener('load', () => typeof reader.result === 'string'
+                ? resolveDataUrl(reader.result)
+                : rejectDataUrl(new Error('Preview asset did not produce a data URL.')));
+            reader.addEventListener('error', () => rejectDataUrl(reader.error ?? new Error('Preview asset could not be read.')));
+            reader.readAsDataURL(new Blob([content], { type: mimeType }));
+        });
     }
 
     protected agentHtmlPreviewDocument(html: string): string {

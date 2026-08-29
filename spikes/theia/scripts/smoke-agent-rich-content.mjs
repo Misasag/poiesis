@@ -16,21 +16,52 @@ if (!executablePath) throw new Error('Chrome or Edge was not found.');
 
 const runDirectory = resolve(root, '.run', `agent-rich-content-${Date.now()}`);
 const workspace = resolve(runDirectory, 'workspace');
+const previewDirectory = resolve(workspace, 'site');
+const previewAssets = resolve(previewDirectory, 'assets');
 const browserProfile = resolve(runDirectory, 'browser-profile');
 const emptyPlugins = resolve(runDirectory, 'empty-plugins');
 const theiaConfig = resolve(runDirectory, 'theia-config');
 const theiaCli = resolve(root, 'node_modules', '@theia', 'cli', 'bin', 'theia.js');
 mkdirSync(workspace, { recursive: true });
+mkdirSync(previewAssets, { recursive: true });
 mkdirSync(emptyPlugins, { recursive: true });
 
 const workspaceSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120" viewBox="0 0 240 120"><rect width="240" height="120" fill="#c28b60"/><circle cx="60" cy="60" r="32" fill="#20211f"/><text x="108" y="68" font-size="20" fill="#20211f">workspace</text></svg>';
 const bareSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="90"><rect width="180" height="90" fill="#6577a0"/><text x="25" y="53" font-size="20" fill="white">bare path</text></svg>';
-const previewHtml = '<!doctype html><html><head><title>Workspace preview</title></head><body data-preview-source="workspace-file"><h1 id="workspace-file-marker">Workspace file HTML</h1><script>document.documentElement.dataset.inlineScript = "ran";</script></body></html>';
+const previewLogoSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="48"><rect width="96" height="48" fill="#b85c3b"/><text x="18" y="31" font-size="18" fill="white">logo</text></svg>';
+const previewBackgroundSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><rect width="12" height="12" fill="#8ba88e"/></svg>';
+const outsideSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><rect width="80" height="40" fill="red"/></svg>';
+const previewCss = [
+    '@import url("https://example.com/preview-blocked-import.css");',
+    '#styled-by-relative-css { color: rgb(17, 34, 51); background-image: url("./css-background.svg"); }',
+    '#external-css-resource { background-image: url("https://example.com/preview-blocked-background.svg"); }'
+].join('\n');
+const previewHtml = [
+    '<!doctype html><html><head><title>Workspace preview</title>',
+    '<link rel="stylesheet" href="assets/preview.css">',
+    '<link rel="stylesheet" href="../../outside.css">',
+    '<link rel="stylesheet" href="https://example.com/preview-blocked.css">',
+    '</head><body data-preview-source="workspace-file">',
+    '<h1 id="workspace-file-marker">Workspace file HTML</h1>',
+    '<div id="styled-by-relative-css">Relative stylesheet marker</div>',
+    '<div id="external-css-resource">Blocked CSS resource marker</div>',
+    '<img id="relative-preview-image" src="assets/logo.svg" alt="relative preview image">',
+    '<img id="parent-preview-image" src="../workspace-image.svg" alt="workspace parent image">',
+    '<img id="outside-preview-image" src="../../outside-image.svg" alt="outside image">',
+    '<img id="external-preview-image" src="https://example.com/preview-blocked.svg" alt="external image">',
+    '<script>document.documentElement.dataset.inlineScript = "ran";</script>',
+    '</body></html>'
+].join('');
 const secondaryHtml = '<!doctype html><html><body><main id="secondary-file-marker">Secondary workspace file</main></body></html>';
 writeFileSync(resolve(workspace, 'workspace-image.svg'), workspaceSvg, 'utf8');
 writeFileSync(resolve(workspace, 'bare-image.svg'), bareSvg, 'utf8');
 writeFileSync(resolve(workspace, 'broken.svg'), 'not an svg image', 'utf8');
-writeFileSync(resolve(workspace, 'preview.html'), previewHtml, 'utf8');
+writeFileSync(resolve(previewAssets, 'logo.svg'), previewLogoSvg, 'utf8');
+writeFileSync(resolve(previewAssets, 'css-background.svg'), previewBackgroundSvg, 'utf8');
+writeFileSync(resolve(previewAssets, 'preview.css'), previewCss, 'utf8');
+writeFileSync(resolve(runDirectory, 'outside-image.svg'), outsideSvg, 'utf8');
+writeFileSync(resolve(runDirectory, 'outside.css'), 'body { outline: 20px solid red; }', 'utf8');
+writeFileSync(resolve(previewDirectory, 'preview.html'), previewHtml, 'utf8');
 writeFileSync(resolve(workspace, 'secondary.htm'), secondaryHtml, 'utf8');
 
 const port = await freePort();
@@ -69,9 +100,15 @@ try {
     const page = await browser.newPage();
     page.setDefaultTimeout(timeout);
     const browserErrors = [];
+    const forbiddenPreviewRequests = [];
     page.on('pageerror', error => browserErrors.push(error.message));
     page.on('console', message => {
         if (message.type() === 'error') browserErrors.push(message.text());
+    });
+    page.on('request', request => {
+        if (request.url().includes('preview-blocked') || request.url().includes('outside-image.svg')) {
+            forbiddenPreviewRequests.push(request.url());
+        }
     });
     await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout });
     await waitForApp(page);
@@ -116,7 +153,8 @@ try {
             collapsedCount: previews.filter(card => card.classList.contains('collapsed')).length,
             iframeCount: document.querySelectorAll('.poiesis-agent-html-preview__frame').length,
             iframeSandbox: frame?.getAttribute('sandbox'),
-            iframeSource: frame?.getAttribute('srcdoc')
+            iframeSource: frame?.getAttribute('srcdoc'),
+            sameOriginEnabled: frame?.getAttribute('sandbox')?.split(/\s+/).includes('allow-same-origin') === true
         };
     });
     assert(initial.imageLoaded && initial.imageSource?.startsWith('blob:') && initial.imageFileUri,
@@ -128,23 +166,59 @@ try {
         `Image fallback or raw HTML escaping failed: ${JSON.stringify(initial)}`);
     assert(initial.previewCount === 2 && initial.expandedCount === 1 && initial.collapsedCount === 1
         && initial.iframeCount === 1 && initial.iframeSandbox === 'allow-scripts'
+        && !initial.sameOriginEnabled
         && initial.iframeSource?.includes('workspace-file-marker')
-        && initial.iframeSource?.includes("default-src 'none'"),
+        && initial.iframeSource?.includes("default-src 'none'")
+        && initial.iframeSource?.includes('data-poiesis-preview-asset="preview.css"')
+        && !initial.iframeSource?.includes('preview-blocked')
+        && !initial.iframeSource?.includes('../../outside'),
     `HTML preview card boundary failed: ${JSON.stringify(initial)}`);
 
     let frame = await previewFrame(page, 0);
     await frame.waitForSelector('#workspace-file-marker');
+    await frame.waitForFunction(() => {
+        const image = document.querySelector('#relative-preview-image');
+        const parentImage = document.querySelector('#parent-preview-image');
+        const styled = document.querySelector('#styled-by-relative-css');
+        return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0
+            && parentImage instanceof HTMLImageElement && parentImage.complete && parentImage.naturalWidth > 0
+            && styled instanceof HTMLElement && getComputedStyle(styled).color === 'rgb(17, 34, 51)';
+    });
     const frameState = await frame.evaluate(() => ({
         source: document.body.dataset.previewSource,
         script: document.documentElement.dataset.inlineScript,
-        marker: document.querySelector('#workspace-file-marker')?.textContent
+        marker: document.querySelector('#workspace-file-marker')?.textContent,
+        relativeImageLoaded: document.querySelector('#relative-preview-image')?.naturalWidth > 0,
+        relativeImageSource: document.querySelector('#relative-preview-image')?.getAttribute('src'),
+        parentImageLoaded: document.querySelector('#parent-preview-image')?.naturalWidth > 0,
+        relativeCssApplied: getComputedStyle(document.querySelector('#styled-by-relative-css')).color,
+        cssBackground: getComputedStyle(document.querySelector('#styled-by-relative-css')).backgroundImage,
+        externalCssBackground: getComputedStyle(document.querySelector('#external-css-resource')).backgroundImage,
+        outsideImageSource: document.querySelector('#outside-preview-image')?.getAttribute('src'),
+        outsideImageWidth: document.querySelector('#outside-preview-image')?.naturalWidth,
+        externalImageSource: document.querySelector('#external-preview-image')?.getAttribute('src'),
+        externalImageWidth: document.querySelector('#external-preview-image')?.naturalWidth,
+        blockedResourceCount: document.querySelectorAll('[data-poiesis-preview-asset="blocked"]').length,
+        stylesheetLinkCount: document.querySelectorAll('link[rel~="stylesheet"]').length
     }));
     assert(frameState.source === 'workspace-file' && frameState.script === 'ran'
         && frameState.marker === 'Workspace file HTML',
     `The iframe did not receive the workspace file content: ${JSON.stringify(frameState)}`);
+    assert(frameState.relativeImageLoaded && frameState.relativeImageSource?.startsWith('data:image/svg+xml;base64,')
+        && frameState.parentImageLoaded,
+    `Relative preview images did not load: ${JSON.stringify(frameState)}`);
+    assert(frameState.relativeCssApplied === 'rgb(17, 34, 51)'
+        && frameState.cssBackground.startsWith('url("data:image/svg+xml;base64,')
+        && frameState.externalCssBackground === 'none'
+        && frameState.stylesheetLinkCount === 0,
+    `Relative preview CSS did not render safely: ${JSON.stringify(frameState)}`);
+    assert(frameState.outsideImageSource === null && frameState.outsideImageWidth === 0
+        && frameState.externalImageSource === null && frameState.externalImageWidth === 0
+        && frameState.blockedResourceCount === 2 && forbiddenPreviewRequests.length === 0,
+    `Preview resources escaped the workspace boundary: ${JSON.stringify({ frameState, forbiddenPreviewRequests })}`);
 
     const updatedHtml = previewHtml.replace('Workspace file HTML', 'Reloaded workspace HTML');
-    writeFileSync(resolve(workspace, 'preview.html'), updatedHtml, 'utf8');
+    writeFileSync(resolve(previewDirectory, 'preview.html'), updatedHtml, 'utf8');
     await page.click('[aria-label="preview.html のプレビューを再読み込み"]');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-html-preview__frame')
         ?.getAttribute('srcdoc')?.includes('Reloaded workspace HTML'));
@@ -171,6 +245,11 @@ try {
         externalImageBlocked: true,
         brokenImageFallback: true,
         htmlPreview: true,
+        relativeImageLoaded: true,
+        relativeCssApplied: true,
+        workspaceEscapeBlocked: true,
+        externalPreviewResourcesBlocked: true,
+        allowSameOrigin: false,
         rawHtmlEscaped: true,
         reload: true,
         imageOpen: 'workspace-image.svg',
@@ -227,7 +306,7 @@ async function installFixture(page, workspacePath) {
                         '',
                         '![data image](data:image/png;base64,AAAA)',
                         '',
-                        '[preview.html](preview.html)',
+                        '[preview.html](site/preview.html)',
                         '',
                         'Secondary preview: secondary.htm',
                         '',
