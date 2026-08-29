@@ -169,7 +169,8 @@ async function askResults(page, question, expectedCount) {
     await page.waitForSelector('[aria-label="表示中の成果について質問"]:not([disabled])');
     await page.type('[aria-label="表示中の成果について質問"]', question);
     await page.click('[aria-label="Results 内へ送信"]');
-    await page.waitForFunction(count => document.querySelectorAll('.poiesis-results__qa-entry').length === count, {}, expectedCount);
+    await page.waitForFunction(count => !document.querySelector('.poiesis-results__qa-entry.sending')
+        && document.querySelectorAll('.poiesis-results__qa-entry').length === count, {}, expectedCount);
 }
 
 function assert(condition, message) {

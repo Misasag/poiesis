@@ -214,12 +214,12 @@ try {
             ? waitForProcessModelArg(resultsProvider, resultsProvider === 'codex' ? '-m' : '--model', resultsModel, timeout)
             : Promise.resolve(undefined);
         await page.click('[aria-label="Results 内へ送信"]');
-        await page.waitForSelector('.poiesis-results__answer.sending');
+        await page.waitForSelector('.poiesis-results__qa-entry.sending');
         await page.waitForFunction(() => Boolean(
-            document.querySelector('.poiesis-results__qa-entry')
-            || document.querySelector('.poiesis-results__answer.failed')
+            !document.querySelector('.poiesis-results__qa-entry.sending')
+            && document.querySelector('.poiesis-results__qa-entry')
         ));
-        const failure = await page.$eval('.poiesis-results__answer.failed', node => node.textContent?.trim()).catch(() => undefined);
+        const failure = await page.$eval('.poiesis-results__qa-entry.failed', node => node.textContent?.trim()).catch(() => undefined);
         assert(!failure, `Results question failed: ${failure}`);
         assert(await page.$('.poiesis-results__qa-entry:not(.failed)'), 'Results answer was not added to Q&A history.');
         resultsModelArgs = await resultsModelArgsPromise;

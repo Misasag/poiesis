@@ -57,6 +57,7 @@ const SESSION_STORAGE_KEY = 'poiesis.agent-window.sessions.v1';
 const GLOBAL_SESSION_STORAGE_KEY = 'poiesis.agent-window.sessions.global.v1';
 const SESSION_MIGRATION_MARKER_KEY = 'poiesis.agent-window.sessions.migrated.v1';
 const SETTINGS_STORAGE_KEY = 'poiesis.settings.v1';
+const RESULTS_QA_PANEL_STORAGE_KEY = 'poiesis.results-qa-panel.sessions.v1';
 const DEFAULT_RAIL_WIDTH = 258;
 const MIN_RAIL_WIDTH = 196;
 const MAX_RAIL_WIDTH = 420;
@@ -110,6 +111,7 @@ interface WindowAgentSession {
     selectedResultsTaskId?: string;
     readonly resultsDrafts: Map<string, string>;
     readonly resultsNotices: Map<string, ResultsNotice>;
+    readonly resultsQaExpanded: Map<string, boolean>;
 }
 
 interface PersistedAgentWindowState {
@@ -117,10 +119,18 @@ interface PersistedAgentWindowState {
     selectedSessionId?: string;
     railWidth: number;
     railCollapsed: boolean;
-    sessions: Array<Omit<WindowAgentSession, 'agentSession' | 'taskIds' | 'resultsDrafts' | 'resultsNotices'> & {
+    sessions: Array<Omit<WindowAgentSession, 'agentSession' | 'taskIds' | 'resultsDrafts' | 'resultsNotices' | 'resultsQaExpanded'> & {
         resultsDrafts: Array<[string, string]>;
         tasks?: ExecutionTask[];
         resultsDocuments?: TaskResultDocument[];
+    }>;
+}
+
+interface PersistedResultsQaPanelState {
+    version: 1;
+    sessions: Record<string, {
+        selectedTaskId?: string;
+        expandedTaskIds: string[];
     }>;
 }
 
@@ -636,6 +646,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected sessionsInitialized = false;
     protected sessionsInitialization: Promise<void> = Promise.resolve();
     protected windowStatePersistence: Promise<void> = Promise.resolve();
+    protected resultsQaPanelStatePersistence: Promise<void> = Promise.resolve();
     protected legacyErrorMessagesMigrated = false;
     protected readonly providerPreparationErrors = new Map<string, string>();
     protected selectedSessionId?: string;
@@ -804,6 +815,7 @@ export class AgentWindowWidget extends ReactWidget {
                 || event.type === 'cancelled';
             if (shouldSelectResultsTask && session) {
                 session.selectedResultsTaskId = event.task.id;
+                this.persistResultsQaPanelState();
             }
             this.persistWindowState();
             this.update();
@@ -1406,6 +1418,7 @@ export class AgentWindowWidget extends ReactWidget {
         this.openSessionMenuId = undefined;
         this.deleteSessionConfirmationId = undefined;
         this.persistWindowState();
+        this.persistResultsQaPanelState();
         this.update();
     }
 
@@ -2844,9 +2857,10 @@ export class AgentWindowWidget extends ReactWidget {
         const draft = selectedTask ? session?.resultsDrafts.get(selectedTask.id) ?? '' : '';
         const notice = selectedTask ? session?.resultsNotices.get(selectedTask.id) : undefined;
         const questionSending = notice?.status === 'sending';
-        const questionHistory = (selectedTask?.resultsQuestions ?? []).filter(entry =>
-            notice?.status !== 'failed' || entry.timestamp !== notice.historyTimestamp
-        );
+        const questionHistory = selectedTask?.resultsQuestions ?? [];
+        const questionPanelExpanded = selectedTask
+            ? session?.resultsQaExpanded.get(selectedTask.id) === true
+            : false;
 
         return (
             <section
@@ -2897,31 +2911,22 @@ export class AgentWindowWidget extends ReactWidget {
                             </div>
                         )}
                         {selectedTask && document?.status === 'ready' && document.html && (
-                            <div className='poiesis-results__canvas-scroll'>
-                                <iframe
-                                    key={`${selectedTask?.id}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
-                                    className='poiesis-results__document'
-                                    title={`${selectedTask?.title}の成果`}
-                                    sandbox='allow-scripts'
-                                    srcDoc={this.resultsDocumentHtml(document.html)}
-                                />
-                                {questionHistory.length > 0 && this.renderResultsQuestionHistory(selectedTask, questionHistory)}
-                            </div>
+                            <iframe
+                                key={`${selectedTask?.id}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
+                                className='poiesis-results__document'
+                                title={`${selectedTask?.title}の成果`}
+                                sandbox='allow-scripts'
+                                srcDoc={this.resultsDocumentHtml(document.html)}
+                            />
                         )}
                     </div>
-                    {notice && (
-                        <div
-                            className={`poiesis-results__answer ${notice.status}`}
-                            role={notice.status === 'failed' ? 'alert' : 'status'}
-                        >
-                            <strong>{notice.status === 'sending' ? '回答を作成しています…' : notice.question}</strong>
-                            {notice.status === 'answered' && this.renderMarkdown(notice.text)}
-                            {notice.status === 'failed' && <p>{notice.text}</p>}
-                            {notice.status === 'failed' && (
-                                <button type='button' onClick={() => void this.submitResultsQuestion(selectedTask!.id, notice.question)}>再試行</button>
-                            )}
-                        </div>
-                    )}
+                    {selectedTask && (questionHistory.length > 0 || questionSending)
+                        && this.renderResultsQuestionPanel(
+                            selectedTask,
+                            questionHistory,
+                            questionSending ? notice : undefined,
+                            questionPanelExpanded
+                        )}
                     <section className='poiesis-results__composer' aria-label='Results の入力欄'>
                         <PoiesisComposer
                             key={selectedTask?.id ?? 'no-results-task'}
@@ -3029,28 +3034,79 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
-    protected renderResultsQuestionHistory(task: ExecutionTask, history: readonly TaskResultsQuestion[]): React.ReactNode {
+    protected renderResultsQuestionPanel(
+        task: ExecutionTask,
+        history: readonly TaskResultsQuestion[],
+        pending: ResultsNotice | undefined,
+        expanded: boolean
+    ): React.ReactNode {
+        const questionCount = history.length + (pending ? 1 : 0);
+        const panelBodyId = `poiesis-results-qa-panel-${task.id}`;
         return (
-            <section className='poiesis-results__qa-history' aria-label={`${task.title}への質問履歴`}>
-                <header><strong>この成果への質問</strong><span>{history.length}</span></header>
-                {history.map((entry, index) => (
-                    <article className={`poiesis-results__qa-entry${entry.error ? ' failed' : ''}`} key={`${entry.timestamp}-${index}`}>
-                        <div className='poiesis-results__qa-meta'>
-                            <strong>質問</strong>
-                            <time dateTime={entry.timestamp}>{this.questionTime(entry.timestamp)}</time>
-                        </div>
-                        <p>{entry.question}</p>
-                        <div className='poiesis-results__qa-response'>
-                            <strong>{entry.error ? '回答に失敗' : '回答'}</strong>
-                            {entry.error
-                                ? <p>{entry.error}</p>
-                                : this.renderMarkdown(entry.answer ?? '')}
-                            {entry.error && (
-                                <button type='button' onClick={() => void this.submitResultsQuestion(task.id, entry.question)}>再試行</button>
-                            )}
-                        </div>
-                    </article>
-                ))}
+            <section
+                className={`poiesis-results__qa-panel${expanded ? ' expanded' : ' collapsed'}`}
+                aria-label={`${task.title}への質問パネル`}
+                data-results-task-id={task.id}
+            >
+                <button
+                    type='button'
+                    className='poiesis-results__qa-toggle'
+                    aria-controls={panelBodyId}
+                    aria-expanded={expanded}
+                    aria-label={expanded ? '質問パネルをたたむ' : '質問パネルを展開'}
+                    onClick={() => this.setResultsQuestionPanelExpanded(task.id, !expanded)}
+                >
+                    <span className='poiesis-results__qa-toggle-title'>
+                        <span className='codicon codicon-comment-discussion' aria-hidden='true' />
+                        <strong>質問 {questionCount}件</strong>
+                    </span>
+                    <span className='poiesis-results__qa-toggle-action'>
+                        {expanded ? 'たたむ' : '表示'}
+                        <span className={`codicon codicon-chevron-${expanded ? 'down' : 'up'}`} aria-hidden='true' />
+                    </span>
+                </button>
+                {expanded && (
+                    <div
+                        id={panelBodyId}
+                        className='poiesis-results__qa-history'
+                        aria-label={`${task.title}への質問履歴`}
+                    >
+                        {history.map((entry, index) => (
+                            <article className={`poiesis-results__qa-entry${entry.error ? ' failed' : ''}`} key={`${entry.timestamp}-${index}`}>
+                                <div className='poiesis-results__qa-meta'>
+                                    <strong>質問</strong>
+                                    <time dateTime={entry.timestamp}>{this.questionTime(entry.timestamp)}</time>
+                                </div>
+                                <p>{entry.question}</p>
+                                <div className='poiesis-results__qa-response'>
+                                    <strong>{entry.error ? '回答に失敗' : '回答'}</strong>
+                                    {entry.error
+                                        ? <p>{entry.error}</p>
+                                        : this.renderMarkdown(entry.answer ?? '')}
+                                    {entry.error && (
+                                        <button type='button' onClick={() => void this.submitResultsQuestion(task.id, entry.question)}>再試行</button>
+                                    )}
+                                </div>
+                            </article>
+                        ))}
+                        {pending && (
+                            <article className='poiesis-results__qa-entry sending' role='status' aria-live='polite'>
+                                <div className='poiesis-results__qa-meta'>
+                                    <strong>質問</strong>
+                                    <span>送信中</span>
+                                </div>
+                                <p>{pending.question}</p>
+                                <div className='poiesis-results__qa-response'>
+                                    <strong>回答</strong>
+                                    <p className='poiesis-results__qa-sending'>
+                                        <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
+                                        回答を作成しています…
+                                    </p>
+                                </div>
+                            </article>
+                        )}
+                    </div>
+                )}
             </section>
         );
     }
@@ -3088,7 +3144,15 @@ export class AgentWindowWidget extends ReactWidget {
         event.stopPropagation();
         if (fileUri) {
             try {
-                void this.openMarkdownFile(decodeURIComponent(fileUri));
+                const citationSuffix = target.nextSibling?.textContent?.match(/^:(\d+)(?:\s*[-–—]\s*(\d+))?/);
+                const citationPath = target.textContent?.trim().replace(/\\/g, '/');
+                if (citationSuffix && citationPath && !citationPath.startsWith('/') && !/^[A-Za-z]:/.test(citationPath)) {
+                    void this.openResultsCitation(
+                        `${citationPath}:${citationSuffix[1]}${citationSuffix[2] ? `-${citationSuffix[2]}` : ''}`
+                    );
+                } else {
+                    void this.openMarkdownFile(decodeURIComponent(fileUri));
+                }
             } catch {
                 return;
             }
@@ -5204,12 +5268,14 @@ export class AgentWindowWidget extends ReactWidget {
             messages: [],
             taskIds: [],
             resultsDrafts: new Map<string, string>(),
-            resultsNotices: new Map<string, ResultsNotice>()
+            resultsNotices: new Map<string, ResultsNotice>(),
+            resultsQaExpanded: new Map<string, boolean>()
         };
         this.sessions.push(session);
         this.selectedSessionId = session.id;
         this.openSessionMenuId = undefined;
         this.persistWindowState();
+        this.persistResultsQaPanelState();
         this.update();
     }
 
@@ -5338,7 +5404,8 @@ export class AgentWindowWidget extends ReactWidget {
                         ? candidate.selectedResultsTaskId
                         : undefined,
                     resultsDrafts: new Map(Array.isArray(candidate.resultsDrafts) ? candidate.resultsDrafts : []),
-                    resultsNotices: new Map<string, ResultsNotice>()
+                    resultsNotices: new Map<string, ResultsNotice>(),
+                    resultsQaExpanded: new Map<string, boolean>()
                 };
                 return [restored];
             }));
@@ -5430,6 +5497,66 @@ export class AgentWindowWidget extends ReactWidget {
         };
     }
 
+    protected async restoreResultsQaPanelState(): Promise<void> {
+        try {
+            const state = await this.storageService.getData<Partial<PersistedResultsQaPanelState>>(
+                RESULTS_QA_PANEL_STORAGE_KEY,
+                {}
+            );
+            if (state?.version !== 1 || !state.sessions || typeof state.sessions !== 'object') {
+                return;
+            }
+            for (const session of this.sessions) {
+                const persisted = state.sessions[session.id];
+                if (!persisted) {
+                    continue;
+                }
+                const resultsTaskIds = new Set(this.finishedTasks(session).map(task => task.id));
+                if (typeof persisted.selectedTaskId === 'string' && resultsTaskIds.has(persisted.selectedTaskId)) {
+                    session.selectedResultsTaskId = persisted.selectedTaskId;
+                }
+                session.resultsQaExpanded.clear();
+                if (Array.isArray(persisted.expandedTaskIds)) {
+                    for (const taskId of persisted.expandedTaskIds) {
+                        if (typeof taskId === 'string' && resultsTaskIds.has(taskId)) {
+                            session.resultsQaExpanded.set(taskId, true);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('[Poiesis] Could not restore Results Q&A panel state.', error);
+        }
+    }
+
+    protected persistResultsQaPanelState(): Promise<void> {
+        try {
+            const state: PersistedResultsQaPanelState = {
+                version: 1,
+                sessions: Object.fromEntries(this.sessions.map(session => {
+                    const resultsTaskIds = new Set(this.finishedTasks(session).map(task => task.id));
+                    return [session.id, {
+                        selectedTaskId: session.selectedResultsTaskId && resultsTaskIds.has(session.selectedResultsTaskId)
+                            ? session.selectedResultsTaskId
+                            : undefined,
+                        expandedTaskIds: [...session.resultsQaExpanded]
+                            .filter(([taskId, expanded]) => expanded && resultsTaskIds.has(taskId))
+                            .map(([taskId]) => taskId)
+                    }];
+                }))
+            };
+            this.resultsQaPanelStatePersistence = this.resultsQaPanelStatePersistence
+                .catch(() => undefined)
+                .then(() => this.storageService.setData(RESULTS_QA_PANEL_STORAGE_KEY, state))
+                .catch(error => {
+                    console.warn('[Poiesis] Could not persist Results Q&A panel state.', error);
+                });
+        } catch (error) {
+            console.warn('[Poiesis] Could not persist Results Q&A panel state.', error);
+        }
+        return this.resultsQaPanelStatePersistence;
+    }
+
     protected persistWindowState(): Promise<void> {
         try {
             const state: PersistedAgentWindowState = {
@@ -5444,6 +5571,7 @@ export class AgentWindowWidget extends ReactWidget {
                         taskIds: _taskIds,
                         resultsDrafts,
                         resultsNotices: _resultsNotices,
+                        resultsQaExpanded: _resultsQaExpanded,
                         ...persisted
                     } = session;
                     return {
@@ -5495,6 +5623,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected async initializeSessions(): Promise<void> {
         await this.workspaceService.roots;
         const restored = await this.restoreWindowState();
+        await this.restoreResultsQaPanelState();
         const currentWorkspaceKey = this.workspaceGroupKey(this.workspaceRoot()?.resource.toString());
         this.expandedWorkspaceGroups.add(currentWorkspaceKey);
         if (!restored) {
@@ -5676,6 +5805,11 @@ export class AgentWindowWidget extends ReactWidget {
         const session = this.selectedSession();
         if (session) {
             session.activeTab = tab;
+            if (tab === 'results' && !this.finishedTasks(session)
+                .some(task => task.id === session.selectedResultsTaskId)) {
+                session.selectedResultsTaskId = this.finishedTasks(session).at(-1)?.id;
+                this.persistResultsQaPanelState();
+            }
             this.persistWindowState();
         }
         this.update();
@@ -5721,8 +5855,35 @@ export class AgentWindowWidget extends ReactWidget {
             session.selectedResultsTaskId = taskId;
             this.deleteTaskConfirmationId = undefined;
             this.persistWindowState();
+            this.persistResultsQaPanelState();
         }
         this.update();
+    }
+
+    protected setResultsQuestionPanelExpanded(taskId: string, expanded: boolean, revealLatest = false): void {
+        const session = this.selectedSession();
+        if (!session || session.selectedResultsTaskId !== taskId
+            || !this.finishedTasks(session).some(task => task.id === taskId)) {
+            return;
+        }
+        if (expanded) {
+            session.resultsQaExpanded.set(taskId, true);
+        } else {
+            session.resultsQaExpanded.delete(taskId);
+        }
+        this.persistResultsQaPanelState();
+        this.update();
+        if (expanded && revealLatest) {
+            requestAnimationFrame(() => {
+                if (this.selectedSessionId !== session.id || this.selectedSession()?.selectedResultsTaskId !== taskId) {
+                    return;
+                }
+                const history = this.node.querySelector<HTMLElement>('.poiesis-results__qa-history');
+                if (history) {
+                    history.scrollTop = history.scrollHeight;
+                }
+            });
+        }
     }
 
     protected beginDeleteResultsTask(taskId: string): void {
@@ -5749,6 +5910,7 @@ export class AgentWindowWidget extends ReactWidget {
         session.taskIds = session.taskIds.filter(candidate => candidate !== taskId);
         session.resultsDrafts.delete(taskId);
         session.resultsNotices.delete(taskId);
+        session.resultsQaExpanded.delete(taskId);
         this.resultsService.remove([taskId]);
         this.taskService.remove([taskId]);
         const newestRemainingTask = this.finishedTasks(session).at(-1);
@@ -5763,7 +5925,7 @@ export class AgentWindowWidget extends ReactWidget {
         }
         session.updatedAt = Date.now();
         this.deleteTaskConfirmationId = undefined;
-        await this.persistWindowState();
+        await Promise.all([this.persistWindowState(), this.persistResultsQaPanelState()]);
         this.update();
     }
 
@@ -5793,10 +5955,19 @@ export class AgentWindowWidget extends ReactWidget {
             || currentNotice?.status === 'sending') {
             return;
         }
+        session.selectedResultsTaskId = taskId;
         session.resultsDrafts.set(taskId, '');
         session.resultsNotices.set(taskId, { question, status: 'sending', text: '' });
+        session.resultsQaExpanded.set(taskId, true);
         this.persistWindowState();
+        this.persistResultsQaPanelState();
         this.update();
+        requestAnimationFrame(() => {
+            const history = this.node.querySelector<HTMLElement>('.poiesis-results__qa-history');
+            if (this.selectedSessionId === session.id && session.selectedResultsTaskId === taskId && history) {
+                history.scrollTop = history.scrollHeight;
+            }
+        });
         try {
             const result = await this.resultsQuestionService.ask(question, {
                 taskId,
@@ -5827,6 +5998,7 @@ export class AgentWindowWidget extends ReactWidget {
                     status: 'answered',
                     text: result.answer
                 });
+                session.resultsQaExpanded.set(taskId, true);
             } else if (result.status === 'failed') {
                 const history = this.taskService.recordResultsQuestion(taskId, {
                     question,
@@ -5839,6 +6011,7 @@ export class AgentWindowWidget extends ReactWidget {
                     text: result.error.message,
                     historyTimestamp: history?.timestamp
                 });
+                session.resultsQaExpanded.set(taskId, true);
             } else {
                 session.resultsDrafts.set(taskId, question);
                 session.resultsNotices.delete(taskId);
@@ -5856,9 +6029,17 @@ export class AgentWindowWidget extends ReactWidget {
                 text,
                 historyTimestamp: history?.timestamp
             });
+            session.resultsQaExpanded.set(taskId, true);
         }
         this.persistWindowState();
+        this.persistResultsQaPanelState();
         this.update();
+        requestAnimationFrame(() => {
+            const history = this.node.querySelector<HTMLElement>('.poiesis-results__qa-history');
+            if (this.selectedSessionId === session.id && session.selectedResultsTaskId === taskId && history) {
+                history.scrollTop = history.scrollHeight;
+            }
+        });
     }
 
     protected async retryResults(taskId: string): Promise<void> {
@@ -5877,6 +6058,7 @@ export class AgentWindowWidget extends ReactWidget {
         this.selectedSessionId = session.id;
         session.activeTab = 'agent';
         session.selectedResultsTaskId = undefined;
+        this.persistResultsQaPanelState();
         session.agentDraft = task.request;
         this.persistWindowState();
         this.update();

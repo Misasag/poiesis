@@ -232,7 +232,12 @@ for (const marker of [
 assert.ok(!resultsQuestionServer.includes('getMostRecentlyUsedWorkspace'), 'Results questions must not use an unrelated recent workspace');
 assert.ok(resultsQuestionServer.includes('HISTORY_MAX_ITEMS = 6'), 'Results question history context must stay bounded');
 assert.ok(taskService.includes('MAX_RESULTS_QUESTIONS_PER_TASK = 20'), 'Persisted Results Q&A history must stay bounded');
-assert.ok(agentWidget.includes('renderResultsQuestionHistory'), 'Results Q&A history UI is missing');
+assert.ok(agentWidget.includes('renderResultsQuestionPanel'), 'Docked Results Q&A panel UI is missing');
+assert.ok(agentWidget.includes('RESULTS_QA_PANEL_STORAGE_KEY'), 'Results Q&A panel state persistence is missing');
+assert.ok(!agentWidget.includes("className='poiesis-results__canvas-scroll'"),
+    'Results Q&A must not share the document scroll flow');
+assert.match(agentStyles, /\.poiesis-results__qa-panel\s*\{[^}]*max-height:\s*calc\(\(100vh - 70px\) \* \.4\)/,
+    'Results Q&A panel must stay within about 40% of the canvas area');
 assert.ok(agentWidget.includes('migrateLegacyCliErrorMessage'), 'Legacy CLI error migration is missing');
 for (const marker of [
     "resultsGenerationServerPath = '/services/poiesis/results-generation'",

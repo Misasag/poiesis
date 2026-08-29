@@ -591,7 +591,7 @@
 
 .poiesis-agent-window__message-error button,
 .poiesis-results__state button,
-.poiesis-results__answer button {
+.poiesis-results__qa-response button {
     background: transparent;
     border: 1px solid currentColor;
     border-radius: 5px;
@@ -2054,13 +2054,6 @@
     text-decoration: none;
 }
 
-.poiesis-results__canvas-scroll {
-    flex: 1;
-    min-height: 0;
-    min-width: 0;
-    overflow: auto;
-}
-
 .poiesis-results__empty {
     align-self: center;
     color: var(--poiesis-chrome-muted);
@@ -2075,15 +2068,67 @@
     background: #1b1c1a;
     border: 0;
     flex: 1;
-    height: 100%;
     min-height: 180px;
+    min-width: 0;
     width: 100%;
 }
 
-.poiesis-results__canvas-scroll > .poiesis-results__document {
-    display: block;
-    height: 100%;
-    min-height: 100%;
+.poiesis-results__qa-panel {
+    background: #20211f;
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    margin: 0 16px;
+    max-height: calc((100vh - 70px) * .4);
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.poiesis-results__qa-toggle {
+    align-items: center;
+    background: #232522;
+    border: 0;
+    color: var(--poiesis-chrome-copy);
+    cursor: pointer;
+    display: flex;
+    flex: 0 0 auto;
+    justify-content: space-between;
+    min-height: 36px;
+    padding: 7px 10px;
+    text-align: left;
+    width: 100%;
+}
+
+.poiesis-results__qa-toggle:hover {
+    background: #292b28;
+}
+
+.poiesis-results__qa-toggle:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--poiesis-focus-ring);
+    outline: none;
+}
+
+.poiesis-results__qa-toggle-title,
+.poiesis-results__qa-toggle-action,
+.poiesis-results__qa-sending {
+    align-items: center;
+    display: inline-flex;
+}
+
+.poiesis-results__qa-toggle-title {
+    gap: 7px;
+}
+
+.poiesis-results__qa-toggle-title strong {
+    font-size: 12px;
+}
+
+.poiesis-results__qa-toggle-action {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    gap: 4px;
 }
 
 .poiesis-results__qa-history {
@@ -2092,20 +2137,11 @@
     display: grid;
     gap: 10px;
     grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
     min-width: 0;
-    padding: 14px 16px 18px;
-}
-
-.poiesis-results__qa-history > header,
-.poiesis-results__qa-meta {
-    align-items: center;
-    display: flex;
-    justify-content: space-between;
-}
-
-.poiesis-results__qa-history > header {
-    color: var(--poiesis-chrome-muted);
-    font-size: 12px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 10px;
 }
 
 .poiesis-results__qa-entry {
@@ -2122,6 +2158,16 @@
 
 .poiesis-results__qa-entry.failed {
     border-left-color: #b8645b;
+}
+
+.poiesis-results__qa-entry.sending {
+    border-left-color: #7d8fb9;
+}
+
+.poiesis-results__qa-meta {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
 }
 
 .poiesis-results__qa-entry p,
@@ -2158,29 +2204,9 @@
     justify-self: start;
 }
 
-.poiesis-results__answer {
-    border-left: 2px solid var(--poiesis-results-accent);
-    color: #c8ccd7;
-    font-size: 12px;
-    line-height: 1.45;
-    margin: 2px 16px 0;
-    min-width: 0;
-    padding: 4px 9px;
-}
-
-.poiesis-results__answer strong,
-.poiesis-results__answer p {
-    display: block;
-    margin: 0;
-}
-
-.poiesis-results__answer p {
-    margin-top: 3px;
-}
-
-.poiesis-results__answer.failed {
-    border-left-color: #b8645b;
-    color: #e1b4ae;
+.poiesis-results__qa-sending {
+    color: var(--poiesis-results-muted);
+    gap: 6px;
 }
 
 .poiesis-results__composer {
@@ -4515,6 +4541,7 @@ body.poiesis-code-file-pointer-drag * {
     }
 
     .poiesis-results__canvas,
+    .poiesis-results__qa-panel,
     .poiesis-results__composer {
         margin-inline: 10px;
     }
@@ -4599,10 +4626,6 @@ body.poiesis-code-file-pointer-drag * {
     font-size: 12px;
 }
 
-.poiesis-results__answer {
-    font-size: 12px;
-}
-
 .poiesis-results__composer textarea {
     font-size: 13px;
 }
@@ -4629,7 +4652,7 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-agent-window__message p,
 .poiesis-agent-window__user-message p,
 .poiesis-agent-window__message-error pre,
-.poiesis-results__answer p {
+.poiesis-results__qa-entry p {
     overflow-wrap: anywhere;
 }
 
@@ -4720,8 +4743,7 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-markdown p,
-.poiesis-results__qa-response .poiesis-markdown p,
-.poiesis-results__answer .poiesis-markdown p {
+.poiesis-results__qa-response .poiesis-markdown p {
     margin: 0 0 8px;
     white-space: normal;
 }
@@ -4843,6 +4865,7 @@ body.poiesis-code-file-pointer-drag * {
 .poiesis-settings-modal__body,
 .poiesis-results__task-switcher,
 .poiesis-results__task-list,
+.poiesis-results__qa-history,
 .poiesis-agent-window__workspace-picker,
 .poiesis-agent-window__repository-picker {
     scrollbar-color: #5c5f58 transparent;

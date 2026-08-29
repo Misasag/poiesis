@@ -61,6 +61,8 @@ try {
         `Unsafe or outside-workspace content was interactive: ${JSON.stringify(agent)}`);
 
     await page.click('#poiesis-results-tab');
+    await page.waitForSelector('.poiesis-results__qa-panel.collapsed');
+    await page.click('[aria-label="質問パネルを展開"]');
     await page.waitForSelector('.poiesis-results__qa-history .poiesis-markdown');
     const results = await page.evaluate(() => ({
         bold: document.querySelector('.poiesis-results__qa-history .poiesis-markdown strong')?.textContent,
