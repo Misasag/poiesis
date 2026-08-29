@@ -24,6 +24,15 @@ class PoiesisUpdaterContribution implements ElectronMainApplicationContribution 
             : join(app.getPath('userData'), 'logs', 'updater.log');
         mkdirSync(dirname(this.logPath), { recursive: true });
 
+        if (process.platform === 'darwin') {
+            this.writeLog('INFO', [
+                'POIESIS_UPDATER_DISABLED',
+                'platform=darwin',
+                'reason=unsigned-and-unnotarized-build'
+            ]);
+            return;
+        }
+
         autoUpdater.logger = {
             debug: (...args: unknown[]) => this.writeLog('DEBUG', args),
             info: (...args: unknown[]) => this.writeLog('INFO', args),

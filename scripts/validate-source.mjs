@@ -59,6 +59,7 @@ const electronWindowControls = await read('agent-window/src/electron-browser/win
 const electronWindowStyles = await read('agent-window/src/electron-browser/window-controls.css');
 const iconBuildScript = await read('scripts/build-icon.mjs');
 const appIcon = await readFile(resolve(root, 'electron-app/resources/poiesis.ico'));
+const macAppIcon = await readFile(resolve(root, 'electron-app/resources/poiesis.icns'));
 const readme = await read('docs/THEIA-SPIKE.md');
 const firstCompletion = await read('docs/FIRST-COMPLETION.md');
 const skillsContract = await read('docs/SKILLS-CONTRACT.md');
@@ -75,7 +76,9 @@ assert.equal(electronPackage.theia.frontend.config.electron.windowOptions.minWid
 assert.equal(electronPackage.theia.frontend.config.electron.windowOptions.minHeight, 600);
 assert.equal(appIcon.readUInt16LE(2), 1, 'Poiesis app icon must be an ICO image');
 assert.equal(appIcon.readUInt16LE(4), 7, 'Poiesis app icon must contain seven sizes');
-assert.ok(iconBuildScript.includes('const sizes = [16, 24, 32, 48, 64, 128, 256]'), 'App icon build sizes are missing');
+assert.ok(iconBuildScript.includes('const icoSizes = [16, 24, 32, 48, 64, 128, 256]'), 'Windows app icon build sizes are missing');
+assert.equal(macAppIcon.subarray(0, 4).toString('ascii'), 'icns', 'Poiesis macOS app icon must be an ICNS image');
+assert.equal(macAppIcon.readUInt32BE(4), macAppIcon.length, 'Poiesis macOS app icon length is invalid');
 assert.equal(appPackage.theia.frontend.config.preferences['security.workspace.trust.enabled'], false);
 assert.equal(electronPackage.theia.frontend.config.preferences['security.workspace.trust.enabled'], false);
 assert.equal(appPackage.theia.frontend.config.preferences['extensions.ignoreRecommendations'], true);

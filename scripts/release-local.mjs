@@ -18,7 +18,7 @@ assertPatchIncrement(previousVersion, version);
 
 console.log(`RELEASE_LOCAL_VERSION=${previousVersion}->${version}`);
 runNpm(['run', 'build:electron']);
-runNpm(['run', 'dist:win']);
+runNpm(['run', 'dist:win', '--', '--local-feed']);
 
 const installer = resolve(distDir, `PoiesisSetup-${version}.exe`);
 const latest = resolve(distDir, 'latest.yml');

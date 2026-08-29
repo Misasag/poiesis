@@ -12,6 +12,11 @@ npmRebuild: false
 directories:
   buildResources: resources
   output: dist
+publish:
+  provider: github
+  owner: Misasag
+  repo: poiesis
+  releaseType: release
 files:
   - src-gen
   - lib
@@ -25,10 +30,14 @@ win:
     - nsis
   icon: resources/poiesis.ico
   signExecutable: false
-  publish:
-    provider: generic
-    url: "http://127.0.0.1:43827/win"
-    useMultipleRangeRequest: false
+mac:
+  target:
+    - dmg
+    - zip
+  icon: resources/poiesis.icns
+  identity: null
+  notarize: false
+  artifactName: ${productName}-${version}-${arch}.${ext}
 nsis:
   menuCategory: true
   oneClick: false

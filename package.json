@@ -2,6 +2,7 @@
   "name": "poiesis-theia-spike",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "description": "A focused Eclipse Theia technical spike for the Poiesis core UX.",
   "engines": {
     "node": ">=20 <25",

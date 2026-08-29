@@ -7,14 +7,16 @@ import {
     electronApp,
     npmCacheDir,
     root,
+    updateFeedUrl,
     writeAsciiChildOutput
 } from './distribution-config.mjs';
 
 mkdirSync(builderCacheDir, { recursive: true });
 mkdirSync(npmCacheDir, { recursive: true });
 
+const useLocalFeed = process.argv.slice(2).includes('--local-feed');
 const builderCli = resolve(root, 'node_modules', 'electron-builder', 'out', 'cli', 'cli.js');
-const result = spawnSync(process.execPath, [
+const builderArgs = [
     builderCli,
     '--win',
     'nsis',
@@ -22,7 +24,21 @@ const result = spawnSync(process.execPath, [
     'never',
     '--config',
     'electron-builder.yml'
-], {
+];
+
+if (useLocalFeed) {
+    builderArgs.push(
+        '--config.win.publish.provider=generic',
+        `--config.win.publish.url=${updateFeedUrl}`,
+        '--config.win.publish.useMultipleRangeRequest=false'
+    );
+}
+
+console.log(useLocalFeed
+    ? `DIST_WIN_PUBLISH_CONFIG=generic url=${updateFeedUrl}`
+    : 'DIST_WIN_PUBLISH_CONFIG=github owner=Misasag repo=poiesis');
+
+const result = spawnSync(process.execPath, builderArgs, {
     cwd: electronApp,
     env: distributionEnvironment(),
     encoding: 'utf8',

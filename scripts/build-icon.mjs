@@ -7,30 +7,31 @@ import { fileURLToPath } from 'node:url';
 const scriptsDir = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const resourcesDir = resolve(scriptsDir, '..', 'electron-app', 'resources');
 const source = join(resourcesDir, 'poiesis.png');
-const destination = join(resourcesDir, 'poiesis.ico');
-const sizes = [16, 24, 32, 48, 64, 128, 256];
+const icoDestination = join(resourcesDir, 'poiesis.ico');
+const icnsDestination = join(resourcesDir, 'poiesis.icns');
+const icoSizes = [16, 24, 32, 48, 64, 128, 256];
+const icnsEntries = [
+    { type: 'icp4', size: 16 },
+    { type: 'icp5', size: 32 },
+    { type: 'icp6', size: 64 },
+    { type: 'ic07', size: 128 },
+    { type: 'ic08', size: 256 },
+    { type: 'ic09', size: 512 },
+    { type: 'ic10', size: 1024 }
+];
 const workingDirectory = await mkdtemp(join(tmpdir(), 'poiesis-icon-'));
 
 try {
-    const images = [];
-    for (const size of sizes) {
-        const output = join(workingDirectory, `poiesis-${size}.png`);
-        const result = spawnSync('ffmpeg', [
-            '-hide_banner', '-loglevel', 'error', '-y',
-            '-i', source,
-            '-vf', `scale=${size}:${size}:flags=lanczos`,
-            '-frames:v', '1',
-            output
-        ], { stdio: 'inherit' });
-        if (result.error) {
-            throw result.error;
-        }
-        if (result.status !== 0) {
-            throw new Error(`ffmpeg failed while producing the ${size}px icon.`);
-        }
-        images.push({ size, data: await readFile(output) });
+    const requestedSizes = [...new Set([
+        ...icoSizes,
+        ...icnsEntries.map(entry => entry.size)
+    ])];
+    const imagesBySize = new Map();
+    for (const size of requestedSizes) {
+        imagesBySize.set(size, await renderPng(size));
     }
 
+    const images = icoSizes.map(size => ({ size, data: imagesBySize.get(size) }));
     const headerSize = 6 + images.length * 16;
     let offset = headerSize;
     const header = Buffer.alloc(headerSize);
@@ -49,8 +50,40 @@ try {
         header.writeUInt32LE(offset, entry + 12);
         offset += data.length;
     });
-    await writeFile(destination, Buffer.concat([header, ...images.map(image => image.data)]));
-    console.log(`Wrote ${destination} with ${sizes.join(', ')}px images.`);
+    await writeFile(icoDestination, Buffer.concat([header, ...images.map(image => image.data)]));
+    console.log(`Wrote ${icoDestination} with ${icoSizes.join(', ')}px images.`);
+
+    const icnsBlocks = icnsEntries.map(({ type, size }) => {
+        const data = imagesBySize.get(size);
+        const block = Buffer.alloc(8 + data.length);
+        block.write(type, 0, 4, 'ascii');
+        block.writeUInt32BE(block.length, 4);
+        data.copy(block, 8);
+        return block;
+    });
+    const icnsHeader = Buffer.alloc(8);
+    icnsHeader.write('icns', 0, 4, 'ascii');
+    icnsHeader.writeUInt32BE(8 + icnsBlocks.reduce((total, block) => total + block.length, 0), 4);
+    await writeFile(icnsDestination, Buffer.concat([icnsHeader, ...icnsBlocks]));
+    console.log(`Wrote ${icnsDestination} with ${icnsEntries.map(entry => entry.size).join(', ')}px images.`);
+
+    async function renderPng(size) {
+        const output = join(workingDirectory, `poiesis-${size}.png`);
+        const result = spawnSync('ffmpeg', [
+            '-hide_banner', '-loglevel', 'error', '-y',
+            '-i', source,
+            '-vf', `scale=${size}:${size}:flags=lanczos`,
+            '-frames:v', '1',
+            output
+        ], { stdio: 'inherit' });
+        if (result.error) {
+            throw result.error;
+        }
+        if (result.status !== 0) {
+            throw new Error(`ffmpeg failed while producing the ${size}px icon.`);
+        }
+        return readFile(output);
+    }
 } finally {
     const tempRelative = relative(tmpdir(), workingDirectory);
     if (tempRelative && !tempRelative.startsWith('..') && !isAbsolute(tempRelative)) {

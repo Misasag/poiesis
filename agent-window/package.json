@@ -2,7 +2,7 @@
   "name": "@poiesis/theia-agent-window",
   "version": "0.0.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "files": [
     "lib",
     "src"
