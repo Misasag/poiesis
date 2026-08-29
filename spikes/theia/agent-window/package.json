@@ -14,7 +14,8 @@
     "@theia/scm": "1.73.1",
     "@theia/search-in-workspace": "1.73.1",
     "@theia/vsx-registry": "1.73.1",
-    "@theia/workspace": "1.73.1"
+    "@theia/workspace": "1.73.1",
+    "electron-updater": "6.8.9"
   },
   "devDependencies": {
     "typescript": "~5.9.3"
@@ -29,7 +30,8 @@
       "backend": "lib/node/agent-window-backend-module"
     },
     {
-      "frontendElectron": "lib/electron-browser/agent-window-electron-frontend-module"
+      "frontendElectron": "lib/electron-browser/agent-window-electron-frontend-module",
+      "electronMain": "lib/electron-main/poiesis-updater-main-module"
     }
   ]
 }

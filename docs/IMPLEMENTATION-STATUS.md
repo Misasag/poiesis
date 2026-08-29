@@ -1,6 +1,6 @@
 # First Completion implementation status
 
-Updated: 2026-08-23
+Updated: 2026-08-29
 
 この文書は [`FIRST-COMPLETION.md`](FIRST-COMPLETION.md) の完成契約に対する実装状況を記録する。仕様はこの文書では変更しない。
 
@@ -19,7 +19,7 @@ Updated: 2026-08-23
 | Cursor Agents sidebar parity | partial | New Chat再利用、本文検索、pin、inline rename、archive／restore／完全削除、実行中表示、196〜420px resizeをUI smokeで操作 | multi-repo、Local target picker、unread、side chat、parallel agent、tile連携が未実装。Worktree／Cloud／Remote SSHはdeferred。`CURSOR-AGENTS-SIDEBAR-PARITY.md`を正とする |
 | Session persistence | partial | Theia StorageServiceで一覧、会話、下書き、pin／archive、rail幅を復元 | Agent runtime context、Task metadata、Result documentを保存・復元する |
 | Accessibility | partial | ARIA labelとnative controlsを一部利用 | keyboard、focus、screen reader、1280×720を検証する |
-| Distribution | partial | Electron development buildの過去実績あり | 現行shellで再検証し、installer／updateを確認する |
+| Distribution | done | NSIS distとlocal feedをexit 0で実測。owner機(SAC有効)で未署名installerのsilent install、Start Menu shortcut、`smoke:installed`、A→B `smoke:update`(0.0.2→0.0.3のdownloadと終了時適用)がすべて合格。ADR 0002に実測記録 | public化時にpublishをGitHub Releasesへ切り替え、他機での起動を検証する |
 
 ## P0: completion blockers
 

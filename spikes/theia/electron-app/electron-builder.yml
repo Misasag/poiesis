@@ -1,0 +1,41 @@
+appId: dev.poiesis.desktop
+productName: Poiesis
+electronDist: ../node_modules/electron/dist
+electronVersion: 39.8.7
+asar: true
+asarUnpack:
+  - "**/lib/backend/native/**"
+  - "**/lib/backend/shell-integrations/**"
+  - "**/lib/prebuilds/**"
+nodeGypRebuild: false
+npmRebuild: false
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - src-gen
+  - lib
+  - scripts
+  - "!**node_modules/**"
+extraResources:
+  - from: ../plugins
+    to: app/plugins
+win:
+  target:
+    - nsis
+  icon: resources/poiesis.ico
+  signExecutable: false
+  publish:
+    provider: generic
+    url: "http://127.0.0.1:43827/win"
+    useMultipleRangeRequest: false
+nsis:
+  menuCategory: true
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  runAfterFinish: false
+  installerIcon: resources/poiesis.ico
+  uninstallerIcon: resources/poiesis.ico
+  installerHeaderIcon: resources/poiesis.ico
+  artifactName: ${productName}Setup-${version}.${ext}

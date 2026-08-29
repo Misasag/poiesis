@@ -1,9 +1,11 @@
 {
   "name": "@poiesis/theia-electron-app",
   "productName": "Poiesis",
-  "version": "0.0.0",
+  "version": "0.0.4",
   "private": true,
-  "main": "lib/backend/electron-main.js",
+  "description": "Poiesis desktop application",
+  "author": "Poiesis Contributors",
+  "main": "scripts/theia-electron-main.js",
   "dependencies": {
     "@poiesis/theia-agent-window": "0.0.0",
     "@theia/bulk-edit": "1.73.1",
