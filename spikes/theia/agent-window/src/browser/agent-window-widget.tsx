@@ -29,8 +29,16 @@ import {
     isKnownCliId,
     KnownCliId
 } from '../common/agent-runtime-protocol';
-import { ResultsService, TaskResultDocument } from './results-skill';
-import { ExecutionTask, isEmptyTaskChangeSet, TaskResultsQuestion, TaskService } from './task-service';
+import { ResultsService } from './results-skill';
+import {
+    ExecutionTask,
+    formatTaskEndedAtJst,
+    summarizeTaskChangeSet,
+    TaskResultDocument,
+    TaskResultsQuestion,
+    TaskService,
+    taskTitleForRequest
+} from './task-service';
 import { getDesignVariant } from './design-variant';
 import { FolderExplorerService } from './folder-explorer-service';
 import { ResultsQuestionService } from './results-question-service';
@@ -791,17 +799,19 @@ export class AgentWindowWidget extends ReactWidget {
                     : event.type === 'ended' ? 'completed' : event.type;
                 session.updatedAt = Date.now();
             }
-            const shouldSelectResultsTask = event.type === 'failed'
-                || event.type === 'cancelled'
-                || event.type === 'ended' && !isEmptyTaskChangeSet(event.task.changeSet);
+            const shouldSelectResultsTask = event.type === 'ended'
+                || event.type === 'failed'
+                || event.type === 'cancelled';
             if (shouldSelectResultsTask && session) {
                 session.selectedResultsTaskId = event.task.id;
             }
             this.persistWindowState();
             this.update();
         }));
-        this.toDispose.push(this.resultsService.onDidChange(() => {
-            this.persistWindowState();
+        this.toDispose.push(this.resultsService.onDidChange(document => {
+            if (!this.taskService.isFinalizing(document.taskId)) {
+                this.persistWindowState();
+            }
             this.update();
         }));
         this.toDispose.push(this.workspaceService.onWorkspaceChanged(() => {
@@ -1979,10 +1989,12 @@ export class AgentWindowWidget extends ReactWidget {
                 </div>
                 {runningTask && (
                     <div className='poiesis-agent-window__task-state' role='status'>
-                        <span>タスクを実行中 · {runningTask.title}</span>
-                        <button type='button' onClick={() => void this.cancelRun()}>
-                            キャンセル
-                        </button>
+                        <span>{this.taskService.isFinalizing(runningTask.id) ? '成果を作成中' : 'タスクを実行中'} · {runningTask.title}</span>
+                        {!this.taskService.isFinalizing(runningTask.id) && (
+                            <button type='button' onClick={() => void this.cancelRun()}>
+                                キャンセル
+                            </button>
+                        )}
                     </div>
                 )}
                 <section className='poiesis-agent-window__composer' aria-label='Agent の入力欄'>
@@ -2851,40 +2863,40 @@ export class AgentWindowWidget extends ReactWidget {
                 >
                     <div className='poiesis-results__canvas' aria-label='Results HTML キャンバス'>
                         {!selectedTask && <div className='poiesis-results__empty'>Agent でタスクを完了すると、ここに成果が表示されます。</div>}
-                        {selectedTask?.status === 'failed' && (
+                        {selectedTask && this.renderResultsHeader(selectedTask)}
+                        {selectedTask?.status === 'failed' && !document && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>タスクに失敗しました</strong>
                                 <p>{selectedTask.failure?.summary ?? 'Codex がタスクを完了できませんでした。'}</p>
                                 <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedTask?.status === 'cancelled' && (
+                        {selectedTask?.status === 'cancelled' && !document && (
                             <div className='poiesis-results__state cancelled' role='status'>
                                 <strong>タスクはキャンセルされました</strong>
                                 <p>成果は確定していません。必要なら同じ依頼を再試行できます。</p>
                                 <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedTask?.status === 'completed' && selectedTask.changeSet?.error && (
+                        {selectedTask?.status === 'completed' && selectedTask.changeSet?.error && !document && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>変更内容を取得できませんでした</strong>
                                 <p>Repository の状態を確認して、タスクを再試行してください。</p>
                                 <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error
-                            && (!document || document.status === 'generating') && (
+                        {selectedTask && (document?.status === 'generating'
+                                || selectedTask.status === 'completed' && !document) && (
                             <div className='poiesis-results__empty' role='status'>成果を作成しています…</div>
                         )}
-                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error && document?.status === 'failed' && (
+                        {selectedTask && document?.status === 'failed' && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>成果を作成できませんでした</strong>
                                 <p>Results skill の処理に失敗しました。</p>
                                 <button type='button' onClick={() => void this.retryResults(selectedTask.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedTask?.status === 'completed' && !selectedTask.changeSet?.error
-                            && document?.status === 'ready' && document.html && (
+                        {selectedTask && document?.status === 'ready' && document.html && (
                             <div className='poiesis-results__canvas-scroll'>
                                 <iframe
                                     key={`${selectedTask?.id}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
@@ -2942,6 +2954,7 @@ export class AgentWindowWidget extends ReactWidget {
                     <div className='poiesis-results__task-list' role='tablist'>
                         {resultsTasks.map((task, index) => {
                             const confirmingDelete = this.deleteTaskConfirmationId === task.id;
+                            const finalizing = this.taskService.isFinalizing(task.id);
                             const state = task.status === 'cancelled' ? 'キャンセル' : task.status === 'failed' ? '失敗' : '完了';
                             const time = task.endedAt ? this.taskFinishedTime(task) : '';
                             return (
@@ -2966,7 +2979,7 @@ export class AgentWindowWidget extends ReactWidget {
                                         </small>
                                         <span title={task.title}>{task.title}</span>
                                     </button>
-                                    {confirmingDelete ? (
+                                    {finalizing ? null : confirmingDelete ? (
                                         <div className='poiesis-results__task-delete-confirm' role='group' aria-label={`${task.title}の削除を確認`}>
                                             <span>削除しますか？</span>
                                             <button type='button' className='danger' onClick={() => void this.deleteResultsTask(task.id)}>削除</button>
@@ -2990,6 +3003,29 @@ export class AgentWindowWidget extends ReactWidget {
                     {!resultsTasks.length && <p>完了したタスクはありません。</p>}
                 </aside>
             </section>
+        );
+    }
+
+    protected renderResultsHeader(task: ExecutionTask): React.ReactNode {
+        const diffstat = summarizeTaskChangeSet(task.changeSet);
+        const status = task.status === 'completed' ? '完了' : task.status === 'failed' ? '失敗' : 'キャンセル';
+        const completedAtJst = formatTaskEndedAtJst(task.endedAt);
+        return (
+            <header className='poiesis-results__fixed-header' data-task-status={task.status}>
+                <div className='poiesis-results__fixed-title'>
+                    <small>実行結果</small>
+                    <h1 data-task-title={task.title}>{task.title}</h1>
+                </div>
+                <div className='poiesis-results__fixed-meta' aria-label='タスクの状態と変更規模'>
+                    <span className={`poiesis-results__status ${task.status}`}>{status}</span>
+                    {completedAtJst && <time dateTime={task.endedAt}>{completedAtJst}</time>}
+                    <span className='poiesis-results__diffstat'>
+                        <b>{diffstat.fileCount}ファイル</b>
+                        <ins>+{diffstat.additions}</ins>
+                        <del>−{diffstat.deletions}</del>
+                    </span>
+                </div>
+            </header>
         );
     }
 
@@ -5238,8 +5274,14 @@ export class AgentWindowWidget extends ReactWidget {
                 const resultsTaskIds = new Set(restoredTasks
                     .filter(task => this.isResultsTask(task))
                     .map(task => task.id));
+                const embeddedResultsDocuments = restoredTasks.flatMap(task =>
+                    task.resultsDocument ? [task.resultsDocument] : []
+                );
                 this.resultsService.restore(
-                    Array.isArray(candidate.resultsDocuments) ? candidate.resultsDocuments : [],
+                    [
+                        ...(Array.isArray(candidate.resultsDocuments) ? candidate.resultsDocuments : []),
+                        ...embeddedResultsDocuments
+                    ],
                     resultsTaskIds
                 );
                 const taskById = new Map(restoredTasks.map(task => [task.id, task]));
@@ -5397,13 +5439,6 @@ export class AgentWindowWidget extends ReactWidget {
                 railCollapsed: this.railCollapsed,
                 sessions: this.sessions.map(session => {
                     const tasks = this.persistedTasks(session);
-                    const resultsTaskIds = new Set(tasks
-                        .filter(task => this.isResultsTask(task))
-                        .map(task => task.id));
-                    const resultsDocuments = this.resultsService.list(resultsTaskIds).map(document => ({
-                        ...document,
-                        html: document.html?.slice(0, MAX_PERSISTED_RESULTS_HTML_CHARS)
-                    }));
                     const {
                         agentSession: _agentSession,
                         taskIds: _taskIds,
@@ -5414,8 +5449,7 @@ export class AgentWindowWidget extends ReactWidget {
                     return {
                         ...persisted,
                         resultsDrafts: [...resultsDrafts.entries()],
-                        tasks,
-                        resultsDocuments
+                        tasks
                     };
                 })
             };
@@ -5432,8 +5466,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected titleForSession(message: string): string {
-        const compact = message.replace(/\s+/g, ' ').trim();
-        return compact.length > 46 ? `${compact.slice(0, 43)}…` : compact;
+        return taskTitleForRequest(message);
     }
 
     protected persistedTasks(session: WindowAgentSession): ExecutionTask[] {
@@ -5442,12 +5475,21 @@ export class AgentWindowWidget extends ReactWidget {
             .filter((task): task is ExecutionTask => Boolean(task))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
             .slice(-MAX_PERSISTED_TASKS_PER_SESSION)
-            .map(task => task.status === 'running' ? {
-                ...task,
-                status: 'failed',
-                endedAt: new Date().toISOString(),
-                failure: { summary: 'アプリ終了により中断されました' }
-            } : task);
+            .map(task => {
+                const persistedTask: ExecutionTask = task.status === 'running' ? {
+                    ...task,
+                    status: 'failed',
+                    endedAt: new Date().toISOString(),
+                    failure: { summary: 'アプリ終了により中断されました' }
+                } : task;
+                return persistedTask.resultsDocument ? {
+                    ...persistedTask,
+                    resultsDocument: {
+                        ...persistedTask.resultsDocument,
+                        html: persistedTask.resultsDocument.html?.slice(0, MAX_PERSISTED_RESULTS_HTML_CHARS)
+                    }
+                } : persistedTask;
+            });
     }
 
     protected async initializeSessions(): Promise<void> {
@@ -5532,7 +5574,7 @@ export class AgentWindowWidget extends ReactWidget {
         summary: string,
         details?: string
     ): Promise<void> {
-        const task = this.taskService.failBeforeStart(session.id, request, { summary, details });
+        const task = await this.taskService.failBeforeStart(session.id, request, { summary, details });
         session.messages.push({
             id: `agent-${task.id}`,
             role: 'agent',
@@ -5593,7 +5635,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected runningTask(session = this.selectedSession()): ExecutionTask | undefined {
         return session?.taskIds
             .map(taskId => this.taskService.get(taskId))
-            .find(task => task?.status === 'running');
+            .find(task => task?.status === 'running' || task && this.taskService.isFinalizing(task.id));
     }
 
     protected finishedTasks(session = this.selectedSession()): ExecutionTask[] {
@@ -5604,8 +5646,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected isResultsTask(task: ExecutionTask): boolean {
-        return task.status !== 'running'
-            && !(task.status === 'completed' && isEmptyTaskChangeSet(task.changeSet));
+        return task.status !== 'running';
     }
 
     protected taskFinishedTime(task: ExecutionTask): string {

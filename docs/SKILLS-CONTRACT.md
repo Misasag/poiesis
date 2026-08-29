@@ -104,11 +104,11 @@ Agent skillは成果の正本を自己申告しない。Task、Baseline、Change
 
 ### Results skill
 
-Results skillは終了済みTaskと確定済みChange Setを入力に、一つの完成HTML文書を生成する。Agent会話の途中では起動せず、不完全なHTML断片をcanvasへstreamしない。Results内の質問応答は文書生成とは別のResults AI境界であり、Skill HTMLを変更しない。
+Results skillは終了済みTaskと確定済みChange Setを入力に、一つの完成HTML本文を生成する。本文の見出し構成、語り口、言語、図解、動作確認手順の粒度はResults skillが所有する。`builtin.ai-results`は既定で番号付きの動作確認手順を求め、有効なWorkspace Results skillは従来どおり追加ガイダンスとして後から本文構成を上書きできる。Agent会話の途中では起動せず、不完全なHTML断片をcanvasへstreamしない。Results内の質問応答は文書生成とは別のResults AI境界であり、Skill HTMLを変更しない。
 
 根拠コードを示す引用はWorkspace相対の`file:line`または`file:start-end`とし、`<a href="#" data-poiesis-citation="file:start-end">…</a>`でクリック可能にする。Applicationはsandboxed canvasからの引用操作だけを受け取り、Workspace内に実在するファイルを検証してからCodeモードのEditorで該当行を開く。旧文書や契約に従わないAI出力のため、`cite`／`code`／`a`内のプレーンな`file:line[-range]`も互換入力として扱える。
 
-成果文書へApplication内部のTask IDを表示しない。完了時刻を載せる場合はApplicationが渡すローカルタイムゾーン表記だけを使い、UTCまたはISO時刻を生表示しない。
+Skill HTMLへApplication内部のTask ID、Taskタイトル、状態、完了時刻、集計diffstatを表示しない。これらはApplicationがSkill HTML外の固定ヘッダーへ表示する。
 
 有効なWorkspace Results skillも生成開始時に毎回読み直し、同じ区切り・順序・文字数上限でAI Resultsのpromptへ成果文書の追加ガイダンスとして加える。静的な`builtin.results` templateはUser Skillを解釈しないため、AI生成からtemplateへfallbackした場合はこの追加ガイダンスを反映しない。
 
@@ -146,7 +146,10 @@ Customizeは組み込みbundleを説明し、WorkspaceのUser Skillを走査・s
 
 - runtime設定が選ぶのは、Agent／Resultsの各roleを支えるAI providerだけである。
 - orchestration、delegation、作業手順はAgent skillが所有する。
-- 完成HTMLの内部構成はResults skillが所有する。
-- ApplicationはTask lifecycle、Change Set、Skill起動時点、sandboxed canvasを所有する。
+- Results本文の見出し構成、語り口、言語、図解、動作確認手順の粒度はResults skillが所有する。
+- Taskタイトル、状態、JST完了時刻、変更ファイル数と追加／削除行数はApplicationがSkill HTML外の固定ヘッダーとして所有する。
+- ApplicationはTask終了時（完了／失敗／キャンセル）にResults生成を開始し、生成済み文書を所有Taskへ保存してから外部向け完了イベントを確定する。生成中にResultsを開いた場合だけ進捗を表示する。
+- Agent会話の完了報告はApplication所有の変更不能なprompt契約と表示整形により1〜2行の要約と変更ファイル名に限定し、詳細はResultsへ誘導する。Workspace Agent skillはこの契約を上書きできない。
+- ApplicationはTask lifecycle、Change Set、生成タイミング、sandboxed canvasを所有する。
 - bundleはWorkspace外の権限や、選択されたAI providerを暗黙に拡張しない。
 - Workspace file bundleの編集権限は、現在開いているWorkspace内の`.poiesis/skills`に限定する。

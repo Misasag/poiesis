@@ -1,7 +1,14 @@
 import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
-import { ExecutionTask, isEmptyTaskChangeSet, TaskChangeSet, TaskService } from './task-service';
+import {
+    ExecutionTask,
+    summarizeTaskChangeSet,
+    TaskChangeSet,
+    TaskChangedFileSummary,
+    TaskResultDocument,
+    TaskService
+} from './task-service';
 import { ResultsSkillBundle } from '../common/skill-bundle';
 import { ResultsGenerationServer } from '../common/results-generation-protocol';
 import { ResultsGenerationContext } from './results-generation-context';
@@ -25,20 +32,6 @@ export interface ResultsSkillDocument {
     fallbackReason?: string;
 }
 
-export interface TaskResultDocument extends Partial<Pick<ResultsSkillDocument, 'generator' | 'fallbackReason'>> {
-    taskId: string;
-    status: 'generating' | 'ready' | 'failed';
-    html?: string;
-    error?: string;
-}
-
-interface ResultFileSummary {
-    path: string;
-    status: 'added' | 'modified' | 'deleted';
-    additions: number;
-    deletions: number;
-}
-
 /** The built-in document generator for this slice. */
 @injectable()
 export class BundledResultsSkill implements ResultsSkill {
@@ -54,10 +47,7 @@ export class BundledResultsSkill implements ResultsSkill {
         { task, changeSet }: ResultsSkillInput,
         options: { fallback?: boolean } = {}
     ): Promise<ResultsSkillDocument> {
-        const files = this.describeFiles(changeSet);
-        const additions = files.reduce((total, file) => total + file.additions, 0);
-        const deletions = files.reduce((total, file) => total + file.deletions, 0);
-        const completedAt = this.localTime(task.endedAt);
+        const files = summarizeTaskChangeSet(changeSet).files;
         const fallbackNotice = options.fallback ? `
     <aside class="fallback" role="status">
       <div><strong>AI 生成に失敗したため簡易表示</strong><span>変更内容から確認できる情報を表示しています。</span></div>
@@ -69,12 +59,18 @@ export class BundledResultsSkill implements ResultsSkill {
           <a href="#" data-poiesis-citation="${this.escape(`${file.path}:1`)}">${this.escape(file.path)}</a>
           <span class="lines"><b>+${file.additions}</b><i>−${file.deletions}</i></span>
         </li>`).join('');
+        const changedFiles = files.length > 0
+            ? `<ul aria-label="変更ファイル一覧">${fileRows}
+      </ul>`
+            : `<p class="no-changes">${changeSet.error
+                ? '変更ファイルを取得できませんでした。Repository の状態を確認してください。'
+                : '変更ファイルはありません。'}</p>`;
         const html = `<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${this.escape(task.title)} · 成果</title>
+  <title>成果本文</title>
   <style>
     :root { font: 14px/1.55 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif; background: #f1efe8; color: #262721; }
     * { box-sizing: border-box; }
@@ -85,9 +81,6 @@ export class BundledResultsSkill implements ResultsSkill {
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9a9183; background-clip: padding-box; }
     ::-webkit-scrollbar-thumb:hover { background: #766d61; background-clip: padding-box; }
-    header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 24px; padding-bottom: 20px; border-bottom: 1px solid #d6d3c9; }
-    .kicker, .meta { color: #686b62; font-size: 11px; font-weight: 750; letter-spacing: .1em; }
-    h1 { max-width: 28ch; margin: 7px 0 0; color: #1f211c; font-size: clamp(24px, 4vw, 38px); line-height: 1.15; letter-spacing: -.025em; }
     .fallback { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; border: 1px solid #c6a56e; border-radius: 8px; background: #eee3cd; }
     .fallback div { display: grid; gap: 2px; }
     .fallback span { color: #665c4d; font-size: 12px; }
@@ -98,9 +91,9 @@ export class BundledResultsSkill implements ResultsSkill {
     h2 { margin: 0 0 10px; color: #33352e; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
     p { margin: 0; color: #53564e; overflow-wrap: anywhere; }
     .changes { padding-top: 2px; }
-    .changes-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; margin-bottom: 9px; }
+    .changes-heading { display: flex; align-items: baseline; gap: 20px; margin-bottom: 9px; }
     .changes-heading h2 { margin: 0; color: #24261f; font-size: 18px; letter-spacing: 0; text-transform: none; }
-    .changes-heading span { color: #666960; font-size: 12px; }
+    .no-changes { padding: 14px 0; border-block: 1px solid #d6d3c9; }
     ul { margin: 0; padding: 0; border-block: 1px solid #d6d3c9; list-style: none; }
     li { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 48px; padding: 8px 4px; border-bottom: 1px solid #d6d3c9; }
     li:last-child { border-bottom: 0; }
@@ -113,7 +106,6 @@ export class BundledResultsSkill implements ResultsSkill {
     .lines i { color: #98645e; font-style: normal; }
     @media (max-width: 640px) {
       .paper { gap: 16px; padding: 22px 18px; }
-      header { grid-template-columns: 1fr; gap: 9px; }
       .overview { grid-template-columns: 1fr; }
       .fallback { align-items: stretch; flex-direction: column; }
       li { grid-template-columns: 64px minmax(0, 1fr); }
@@ -123,19 +115,14 @@ export class BundledResultsSkill implements ResultsSkill {
 </head>
 <body>
   <main class="paper">
-    <header>
-      <div><div class="kicker">完了した成果</div><h1>${this.escape(task.title)}</h1></div>
-      ${completedAt ? `<time class="meta" datetime="${this.escape(task.endedAt ?? '')}">${this.escape(completedAt)}</time>` : ''}
-    </header>
     ${fallbackNotice}
     <section class="overview">
       <article><h2>依頼</h2><p>${this.escape(this.compact(task.request, 420))}</p></article>
-      <article><h2>Agent の完了報告</h2><p>${this.escape(this.compact(task.completionSummary ?? 'タスクを完了しました。', 720))}</p></article>
+      <article><h2>実行結果</h2><p>${this.escape(this.compact(this.executionSummary(task), 720))}</p></article>
     </section>
     <section class="changes">
-      <div class="changes-heading"><h2>変更ファイル</h2><span>${files.length} 件 · +${additions} −${deletions}</span></div>
-      <ul aria-label="変更ファイル一覧">${fileRows}
-      </ul>
+      <div class="changes-heading"><h2>変更ファイル</h2></div>
+      ${changedFiles}
     </section>
   </main>
 </body>
@@ -143,43 +130,21 @@ export class BundledResultsSkill implements ResultsSkill {
         return { html, generator: options.fallback ? 'fallback' : 'template' };
     }
 
-    describeFiles(changeSet: TaskChangeSet): ResultFileSummary[] {
-        const chunks = changeSet.diff.split(/(?=^diff --git )/m).filter(chunk => chunk.startsWith('diff --git '));
-        return changeSet.files.map((path, index) => {
-            const normalizedPath = path.replace(/\\/g, '/');
-            const chunk = chunks.find(candidate => candidate.includes(` a/${normalizedPath} b/${normalizedPath}`))
-                ?? chunks[index]
-                ?? '';
-            const additions = chunk.split(/\r?\n/).filter(line => line.startsWith('+') && !line.startsWith('+++')).length;
-            const deletions = chunk.split(/\r?\n/).filter(line => line.startsWith('-') && !line.startsWith('---')).length;
-            const status = /^new file mode\b/m.test(chunk) || /^--- \/dev\/null$/m.test(chunk)
-                ? 'added'
-                : /^deleted file mode\b/m.test(chunk) || /^\+\+\+ \/dev\/null$/m.test(chunk)
-                    ? 'deleted'
-                    : 'modified';
-            return { path: normalizedPath, status, additions, deletions };
-        });
+    protected statusLabel(status: TaskChangedFileSummary['status']): string {
+        return status === 'added' ? '追加' : status === 'deleted' ? '削除' : '変更';
     }
 
-    protected statusLabel(status: ResultFileSummary['status']): string {
-        return status === 'added' ? '追加' : status === 'deleted' ? '削除' : '変更';
+    protected executionSummary(task: ExecutionTask): string {
+        return task.status === 'completed'
+            ? task.implementerReport ?? task.completionSummary ?? 'タスクを完了しました。'
+            : task.status === 'failed'
+                ? task.failure?.summary ?? 'タスクを完了できませんでした。'
+                : 'タスクはキャンセルされました。';
     }
 
     protected compact(value: string, maxLength: number): string {
         const compact = value.replace(/\s+/g, ' ').trim();
         return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
-    }
-
-    protected localTime(value: string | undefined): string {
-        const date = value ? new Date(value) : undefined;
-        if (!date || Number.isNaN(date.getTime())) {
-            return '';
-        }
-        return new Intl.DateTimeFormat('ja-JP', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', hour12: false,
-            timeZoneName: 'short'
-        }).format(date);
     }
 
     protected escape(value: string): string {
@@ -216,6 +181,9 @@ export class AiResultsSkill implements ResultsSkill {
     ) { }
 
     async generate(input: ResultsSkillInput): Promise<ResultsSkillDocument> {
+        if (input.task.status === 'running') {
+            throw new Error('Results generation requires a finished Task.');
+        }
         const workspace = this.workspaceService.tryGetRoots()[0]
             ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
         if (!workspace) {
@@ -235,13 +203,16 @@ export class AiResultsSkill implements ResultsSkill {
                 model: this.context.model || undefined,
                 workspaceUri: workspace.resource.toString(),
                 taskMetadata: {
-                    status: 'completed',
-                    title: input.task.title,
+                    status: input.task.status,
                     request: input.task.request,
                     completionSummary: input.task.completionSummary,
-                    completedAtLocal: this.localTime(input.task.endedAt)
+                    implementerReport: input.task.implementerReport,
+                    failureSummary: input.task.failure?.summary
                 },
-                changeSetSummary: JSON.stringify(this.fallbackSkill.describeFiles(input.changeSet), undefined, 2),
+                changeSetSummary: JSON.stringify({
+                    files: summarizeTaskChangeSet(input.changeSet).files,
+                    captureError: input.changeSet.error
+                }, undefined, 2),
                 diff: input.changeSet.diff,
                 workspaceSkillGuidance: workspaceSkills.content || undefined
             });
@@ -281,23 +252,15 @@ export class AiResultsSkill implements ResultsSkill {
         if (!/^(?:<!doctype\s+html[^>]*>\s*)?<html(?:\s|>)/i.test(html)) {
             throw new Error('AI Results did not return one complete HTML document.');
         }
+        if (/<h1\b/i.test(html)) {
+            throw new Error('AI Results HTML repeated the Application-owned document title.');
+        }
         if (/<script\b|<link\b|\son\w+\s*=|(?:src|href)\s*=\s*["']\s*(?:https?:)?\/\/|url\(\s*["']?\s*(?:https?:)?\/\//i.test(html)) {
             throw new Error('AI Results HTML contained scripts or external resources.');
         }
         return html.replace(/\bTASK-\d+(?:-\d+)+\b/gi, '完了したタスク');
     }
 
-    protected localTime(value: string | undefined): string | undefined {
-        const date = value ? new Date(value) : undefined;
-        if (!date || Number.isNaN(date.getTime())) {
-            return undefined;
-        }
-        return new Intl.DateTimeFormat('ja-JP', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', hour12: false,
-            timeZoneName: 'short'
-        }).format(date);
-    }
 }
 
 /** App-owned trigger: skills run only after a Task ends or is cancelled. */
@@ -307,6 +270,7 @@ export class ResultsService {
     protected readonly onDidChangeEmitter = new Emitter<TaskResultDocument>();
     readonly onDidChange: Event<TaskResultDocument> = this.onDidChangeEmitter.event;
     protected readonly generationTokens = new Map<string, number>();
+    protected readonly generationPromises = new Map<string, Promise<void>>();
     protected generationSequence = 0;
 
     constructor(
@@ -316,15 +280,11 @@ export class ResultsService {
 
     @postConstruct()
     protected init(): void {
-        this.taskService.onDidChangeTask(event => {
-            if (event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled') {
-                void this.generate(event.task);
-            }
-        });
+        this.taskService.registerTerminalFinalizer(task => this.startGeneration(task));
     }
 
     get(taskId: string): TaskResultDocument | undefined {
-        return this.documents.get(taskId);
+        return this.documents.get(taskId) ?? this.taskService.get(taskId)?.resultsDocument;
     }
 
     list(taskIds?: Iterable<string>): TaskResultDocument[] {
@@ -341,42 +301,64 @@ export class ResultsService {
                 continue;
             }
             this.documents.set(document.taskId, document);
+            this.taskService.setResultsDocument(document.taskId, document);
+        }
+        for (const taskId of taskIds) {
+            const task = this.taskService.get(taskId);
+            if (task && !this.get(taskId)) {
+                this.startGeneration(task);
+            }
         }
     }
 
     async retry(taskId: string): Promise<void> {
         const task = this.taskService.get(taskId);
-        if (task?.status === 'completed' && task.changeSet && !isEmptyTaskChangeSet(task.changeSet)) {
-            await this.generate(task);
+        if (task && task.status !== 'running' && this.shouldGenerate(task)) {
+            await this.startGeneration(task);
         }
+    }
+
+    /** Resolves only after the terminal Task's Results document has been attached to that Task. */
+    async whenFinished(taskId: string): Promise<TaskResultDocument | undefined> {
+        await this.generationPromises.get(taskId);
+        return this.get(taskId);
     }
 
     remove(taskIds: Iterable<string>): void {
         for (const taskId of [...taskIds]) {
             this.generationTokens.delete(taskId);
+            this.generationPromises.delete(taskId);
             void this.resultsSkill.cancel?.(taskId).catch(error =>
                 console.warn('[Poiesis] Could not cancel Results generation.', error)
             );
             this.documents.delete(taskId);
+            this.taskService.setResultsDocument(taskId, undefined);
         }
     }
 
+    protected startGeneration(task: ExecutionTask): Promise<void> {
+        const generation = this.generate(task);
+        this.generationPromises.set(task.id, generation);
+        return generation;
+    }
+
     protected async generate(task: ExecutionTask): Promise<void> {
-        if (task.status !== 'completed' || !task.changeSet || isEmptyTaskChangeSet(task.changeSet)) {
+        if (!this.shouldGenerate(task)) {
             return;
         }
+        const changeSet = task.changeSet!;
         const generationToken = ++this.generationSequence;
         this.generationTokens.set(task.id, generationToken);
-        this.set({ taskId: task.id, status: 'generating' });
+        this.set({ taskId: task.id, status: 'generating' }, task);
         try {
-            const generated = await this.resultsSkill.generate({ task, changeSet: task.changeSet });
+            const generated = await this.resultsSkill.generate({ task, changeSet });
             if (this.generationTokens.get(task.id) !== generationToken) {
                 return;
             }
             if (!/^(?:<!doctype\s+html[^>]*>\s*)?<html[\s>]/i.test(generated.html.trim())) {
                 throw new Error('Results skill did not return one complete HTML document.');
             }
-            this.set({ taskId: task.id, status: 'ready', ...generated });
+            this.set({ taskId: task.id, status: 'ready', ...generated }, task);
         } catch (error) {
             if (this.generationTokens.get(task.id) !== generationToken) {
                 return;
@@ -385,7 +367,7 @@ export class ResultsService {
                 taskId: task.id,
                 status: 'failed',
                 error: error instanceof Error ? error.message : String(error)
-            });
+            }, task);
         } finally {
             if (this.generationTokens.get(task.id) === generationToken) {
                 this.generationTokens.delete(task.id);
@@ -393,8 +375,19 @@ export class ResultsService {
         }
     }
 
-    protected set(document: TaskResultDocument): void {
+    protected set(document: TaskResultDocument, task?: ExecutionTask): void {
         this.documents.set(document.taskId, document);
+        if (task) {
+            task.resultsDocument = document;
+        }
+        if (this.taskService.get(document.taskId)?.status !== 'running') {
+            this.taskService.setResultsDocument(document.taskId, document);
+        }
         this.onDidChangeEmitter.fire(document);
+    }
+
+    protected shouldGenerate(task: ExecutionTask): boolean {
+        return task.status !== 'running'
+            && Boolean(task.changeSet);
     }
 }

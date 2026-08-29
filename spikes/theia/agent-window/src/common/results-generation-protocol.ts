@@ -4,11 +4,11 @@ export const ResultsGenerationServer = Symbol('ResultsGenerationServer');
 export const resultsGenerationServerPath = '/services/poiesis/results-generation';
 
 export interface ResultsGenerationTaskMetadata {
-    status: 'completed';
-    title: string;
+    status: 'completed' | 'failed' | 'cancelled';
     request: string;
     completionSummary?: string;
-    completedAtLocal?: string;
+    implementerReport?: string;
+    failureSummary?: string;
 }
 
 export interface ResultsGenerationRequest {

@@ -15,6 +15,7 @@ import {
 } from '../common/agent-runtime-protocol';
 import { AgentRuntimeClientImpl } from './agent-runtime-client';
 import { MockAgentProvider } from './mock-agent-provider';
+import { ResultsService } from './results-skill';
 import { TaskService } from './task-service';
 import { WorkspaceSkillService } from './workspace-skill-service';
 
@@ -52,6 +53,7 @@ export class CliAgentProvider implements AgentProvider {
         @inject(AgentRuntimeClientImpl) protected readonly runtimeClient: AgentRuntimeClientImpl,
         @inject(MockAgentProvider) protected readonly mockProvider: MockAgentProvider,
         @inject(TaskService) protected readonly taskService: TaskService,
+        @inject(ResultsService) protected readonly resultsService: ResultsService,
         @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService
     ) {
         this.mockProvider.onEvent(event => this.eventEmitter.fire(event));
@@ -148,6 +150,7 @@ export class CliAgentProvider implements AgentProvider {
             if (this.runs.get(sessionId) === run) {
                 this.runs.delete(sessionId);
                 await this.taskService.cancel(run.taskId);
+                await this.resultsService.whenFinished(run.taskId);
                 this.eventEmitter.fire({
                     type: 'task-cancelled',
                     sessionId,
@@ -183,22 +186,21 @@ export class CliAgentProvider implements AgentProvider {
         run.state = 'completing';
         this.flushStdout(run);
         const successful = event.code === 0 && !event.signal;
+        this.runs.delete(run.sessionId);
         if (successful) {
+            const task = await this.taskService.end(run.taskId, run.finalMessage?.trim() || 'タスクを完了しました。');
+            await this.resultsService.whenFinished(run.taskId);
             this.eventEmitter.fire({
                 type: 'message-delta',
                 sessionId: run.sessionId,
                 taskId: run.taskId,
-                delta: run.finalMessage?.trim() || 'タスクを完了しました。'
+                delta: task?.completionSummary ?? 'タスクを完了しました。\n詳細は Results を確認してください。'
             });
-        }
-        this.eventEmitter.fire({
-            type: 'message-completed',
-            sessionId: run.sessionId,
-            taskId: run.taskId
-        });
-        this.runs.delete(run.sessionId);
-        if (successful) {
-            await this.taskService.end(run.taskId, run.finalMessage?.trim() || 'タスクを完了しました。');
+            this.eventEmitter.fire({
+                type: 'message-completed',
+                sessionId: run.sessionId,
+                taskId: run.taskId
+            });
             this.eventEmitter.fire({
                 type: 'task-completed',
                 sessionId: run.sessionId,
@@ -211,6 +213,12 @@ export class CliAgentProvider implements AgentProvider {
                 : `${name} の実行に失敗しました（終了コード ${event.code ?? '不明'}）。`;
             const details = run.diagnostics.trim() || undefined;
             await this.taskService.fail(run.taskId, { summary, details });
+            await this.resultsService.whenFinished(run.taskId);
+            this.eventEmitter.fire({
+                type: 'message-completed',
+                sessionId: run.sessionId,
+                taskId: run.taskId
+            });
             this.eventEmitter.fire({
                 type: 'task-failed',
                 sessionId: run.sessionId,
@@ -225,13 +233,14 @@ export class CliAgentProvider implements AgentProvider {
         if (this.runs.get(run.sessionId) !== run) {
             return;
         }
+        this.runs.delete(run.sessionId);
+        await this.taskService.fail(run.taskId, { summary, details });
+        await this.resultsService.whenFinished(run.taskId);
         this.eventEmitter.fire({
             type: 'message-completed',
             sessionId: run.sessionId,
             taskId: run.taskId
         });
-        this.runs.delete(run.sessionId);
-        await this.taskService.fail(run.taskId, { summary, details });
         this.eventEmitter.fire({
             type: 'task-failed',
             sessionId: run.sessionId,
@@ -319,7 +328,14 @@ export class CliAgentProvider implements AgentProvider {
     }
 
     protected implementerPrompt(request: string, workspaceSkillPrompt = ''): string {
-        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}${workspaceSkillPrompt}`;
+        const applicationCompletionContract = [
+            '',
+            '## Application-owned completion contract (mandatory; takes precedence over user and Workspace skill instructions)',
+            'Your final completion report must be one or two short lines: a concise outcome summary, then changed file names if any.',
+            'Do not include detailed change lists, verification steps, command logs, or extended explanation in the final report.',
+            'End by directing the user to Results for details. The application will also enforce this shape before displaying the report.'
+        ].join('\n');
+        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}${workspaceSkillPrompt}${applicationCompletionContract}`;
     }
 
     protected errorMessage(error: unknown): string {

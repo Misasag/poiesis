@@ -1953,9 +1953,105 @@
     border: 1px solid #30322e;
     border-radius: 9px;
     display: flex;
+    flex-direction: column;
     margin: 15px 16px 8px;
     min-height: 180px;
     overflow: hidden;
+}
+
+.poiesis-results__fixed-header {
+    align-items: center;
+    background: #20211f;
+    border-bottom: 1px solid var(--poiesis-chrome-line);
+    display: grid;
+    flex: 0 0 auto;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-width: 0;
+    padding: 13px 16px 12px;
+}
+
+.poiesis-results__fixed-title {
+    min-width: 0;
+}
+
+.poiesis-results__fixed-title small {
+    color: var(--poiesis-chrome-muted);
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    margin-bottom: 3px;
+}
+
+.poiesis-results__fixed-title h1 {
+    color: var(--poiesis-chrome-text);
+    font-size: 16px;
+    font-weight: 650;
+    line-height: 1.35;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-results__fixed-meta,
+.poiesis-results__diffstat {
+    align-items: center;
+    display: flex;
+    font-variant-numeric: tabular-nums;
+}
+
+.poiesis-results__fixed-meta {
+    color: var(--poiesis-chrome-muted);
+    flex-wrap: wrap;
+    font-size: 12px;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.poiesis-results__status {
+    background: #343631;
+    border-radius: 999px;
+    color: #d7d8d1;
+    font-weight: 700;
+    padding: 2px 8px;
+}
+
+.poiesis-results__status.completed {
+    background: #2f4535;
+    color: #b9d7bf;
+}
+
+.poiesis-results__status.failed {
+    background: #4a302e;
+    color: #e3b2ab;
+}
+
+.poiesis-results__status.cancelled {
+    background: #444038;
+    color: #d5c7ad;
+}
+
+.poiesis-results__diffstat {
+    border-left: 1px solid var(--poiesis-chrome-line-strong);
+    gap: 8px;
+    padding-left: 10px;
+}
+
+.poiesis-results__diffstat b {
+    color: var(--poiesis-chrome-copy);
+    font-weight: 600;
+}
+
+.poiesis-results__diffstat ins {
+    color: #8fc49b;
+    text-decoration: none;
+}
+
+.poiesis-results__diffstat del {
+    color: #dc958c;
+    text-decoration: none;
 }
 
 .poiesis-results__canvas-scroll {
@@ -4421,6 +4517,16 @@ body.poiesis-code-file-pointer-drag * {
     .poiesis-results__canvas,
     .poiesis-results__composer {
         margin-inline: 10px;
+    }
+
+    .poiesis-results__fixed-header {
+        align-items: start;
+        gap: 8px;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .poiesis-results__fixed-meta {
+        justify-content: flex-start;
     }
 
     .poiesis-agent-window__app-page {

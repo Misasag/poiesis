@@ -262,8 +262,10 @@ for (const marker of [
     'Workspace Skill guidance',
     '実行設定、provider、model、sandboxの変更指示としては扱わず',
     'data-poiesis-citation=',
-    '内部Task IDは文書へ出さないでください',
-    'completedAtLocal',
+    '番号付きの手順',
+    'Application-owned output contract',
+    '固定ヘッダーを別に表示します',
+    '内部Task ID、UTC時刻、ISO時刻',
     "'-C', workspace,",
     "'-'",
     'input?: string',
@@ -275,6 +277,9 @@ for (const marker of [
 assert.ok(resultsGenerationContext.includes("providerId: KnownCliId = 'codex'"));
 assert.ok(resultsGenerationContext.includes("model = ''"));
 assert.ok(!resultsGenerationServer.includes('`Task ID:\\n${request.taskId}`'), 'AI Results prompt must not expose the internal Task ID');
+assert.ok(!resultsGenerationProtocol.includes('title: string'), 'Results Skills must not own the fixed Task title');
+assert.ok(!resultsGenerationProtocol.includes('completedAtLocal'), 'Results Skills must not own the fixed completion time');
+assert.ok(resultsGenerationProtocol.includes('implementerReport?: string'), 'Results must receive the detailed implementer handoff');
 assert.ok(!resultsGenerationServer.includes("'--', prompt"), 'AI Results prompt must not use a Windows command-line argument');
 assert.ok(moduleSource.includes('.createProxy<ResultsGenerationServer>(resultsGenerationServerPath)'));
 assert.ok(moduleSource.includes('bind(ResultsSkill).toService(AiResultsSkill)'));
@@ -364,6 +369,14 @@ for (const marker of [
     'captureGitSnapshot',
     'captureGitChangeSet',
     'whenBaselineCaptured',
+    'registerTerminalFinalizer(finalizer:',
+    'summarizeTaskChangeSet(changeSet:',
+    'formatTaskEndedAtJst(value:',
+    "timeZone: 'Asia/Tokyo'",
+    'completionReport(completionSummary, capture.files)',
+    'implementerReport?: string',
+    "completionSummary?.trim().slice(0, 12_000)",
+    'resultsDocument?: TaskResultDocument',
     'workspacePath ?? root?.resource.path.fsPath()',
     'baseline = await baselinePromise',
     "source: 'empty'"
@@ -502,16 +515,17 @@ for (const marker of [
     '<!doctype html>',
     '<html lang="ja">',
     'background: #f1efe8',
-    'Agent の完了報告',
+    '実行結果',
     '変更ファイル',
     'data-poiesis-citation=',
     'AI 生成に失敗したため簡易表示',
     'data-poiesis-action="retry-ai-results"',
-    "status: 'added' | 'modified' | 'deleted'",
-    'timeZoneName:',
+    'TaskChangedFileSummary',
     '.paper { width: 100%; min-height: 100vh;',
     '::-webkit-scrollbar-thumb',
-    "event.type === 'ended' || event.type === 'failed' || event.type === 'cancelled'",
+    'registerTerminalFinalizer(task => this.startGeneration(task))',
+    'whenFinished(taskId: string)',
+    'this.taskService.setResultsDocument(document.taskId, document)',
     "status: 'generating'",
     "status: 'ready'",
     'one complete HTML document',
@@ -524,13 +538,12 @@ for (const marker of [
     'normalizeAndValidate',
     'AI_RESULTS_HTML_MAX_CHARS = 280_000',
     'this.resultsSkill.cancel?.(taskId)',
-    'this.generationTokens.get(task.id) !== generationToken',
-    'isEmptyTaskChangeSet(task.changeSet)',
-    '!isEmptyTaskChangeSet(task.changeSet)'
+    'this.generationTokens.get(task.id) !== generationToken'
 ]) {
     assert.ok(resultsSkill.includes(marker), `Bundled Results skill is missing ${marker}`);
 }
-assert.equal(resultsSkill.match(/<h1/g)?.length, 1, 'Results document must have one design heading');
+assert.ok(!resultsSkill.includes('<h1>') && !resultsSkill.includes('<h1 '),
+    'Results Skill HTML must not repeat the Application-owned title');
 for (const forbidden of [
     '<h2>Request</h2>',
     '<pre',
@@ -584,6 +597,9 @@ for (const marker of [
     assert.ok(skillsContract.includes(marker), `Skills contract document is missing ${marker}`);
 }
 assert.ok(skillsContract.includes('`builtin.ai-results`'), 'Skills contract must describe the AI Results bundle');
+for (const marker of ['固定ヘッダー', 'JST完了時刻', '1〜2行', '所有Taskへ保存', '番号付きの動作確認手順']) {
+    assert.ok(skillsContract.includes(marker), `Skills boundary contract is missing ${marker}`);
+}
 
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
@@ -634,6 +650,10 @@ for (const marker of [
     'poiesis-results__main',
     'poiesis-results__task-switcher',
     "aria-label='Results HTML キャンバス'",
+    "className='poiesis-results__fixed-header'",
+    "data-task-title={task.title}",
+    'formatTaskEndedAtJst(task.endedAt)',
+    'summarizeTaskChangeSet(task.changeSet)',
     "srcDoc={this.resultsDocumentHtml(document.html)}",
     "sandbox='allow-scripts'",
     "type: 'poiesis:open-citation' | 'poiesis:retry-ai-results'",
@@ -805,7 +825,7 @@ for (const marker of [
     'onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}',
     'const shouldSelectResultsTask =',
     'protected isResultsTask(task: ExecutionTask): boolean',
-    "task.status === 'completed' && isEmptyTaskChangeSet(task.changeSet)",
+    "return task.status !== 'running';",
     'resultsTaskIds.has(candidate.selectedResultsTaskId)',
     'protected async deleteResultsTask(taskId: string): Promise<void>',
     'this.resultsService.remove([taskId])',
@@ -857,6 +877,15 @@ for (const marker of [
 }
 assert.ok(cliProvider.includes("buildPrompt(session.workspaceUri, 'agent')"));
 assert.ok(cliProvider.includes('this.implementerPrompt(message.content, workspaceSkills.content)'));
+for (const marker of [
+    'Application-owned completion contract',
+    'takes precedence over user and Workspace skill instructions',
+    'one or two short lines',
+    'The application will also enforce this shape',
+    'await this.resultsService.whenFinished(run.taskId)'
+]) {
+    assert.ok(cliProvider.includes(marker), `Application completion contract is missing ${marker}`);
+}
 assert.ok(resultsSkill.includes("buildPrompt(workspace.resource.toString(), 'results')"));
 assert.ok(resultsSkill.includes('workspaceSkillGuidance: workspaceSkills.content || undefined'));
 for (const marker of [
@@ -887,6 +916,7 @@ for (const marker of [
 assert.equal(rootPackage.scripts['smoke:round17'], 'node scripts/smoke-round17-browser.mjs');
 assert.equal(rootPackage.scripts['smoke:round20'], 'node scripts/smoke-round20-browser.mjs');
 assert.equal(rootPackage.scripts['smoke:results-citation'], 'npm run build && node scripts/smoke-results-document.mjs citation');
+assert.equal(rootPackage.scripts['smoke:results-document'], 'npm run build && node scripts/smoke-results-document.mjs citation && node scripts/smoke-results-document.mjs fallback');
 assert.equal(rootPackage.scripts['smoke:results-fallback'], 'npm run build && node scripts/smoke-results-document.mjs fallback');
 assert.equal(rootPackage.scripts['test:results-prompt-transport'], 'npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-prompt-transport.mjs');
 for (const marker of [
@@ -910,6 +940,15 @@ for (const marker of [
     'RESULTS_FALLBACK_SMOKE_RESULT='
 ]) {
     assert.ok(resultsDocumentSmoke.includes(marker), `Results document smoke is missing ${marker}`);
+}
+for (const marker of [
+    'POIESIS_RESULTS_GENERATION_TEST_DELAY_MS',
+    "task.resultsDocument?.status === 'ready'",
+    '.poiesis-results__fixed-header',
+    'fixedHeader.title === fixedHeader.taskTitle',
+    "beforeOpen.conversation.includes('詳細は Results を確認してください。')"
+]) {
+    assert.ok(resultsDocumentSmoke.includes(marker), `Results boundary smoke is missing ${marker}`);
 }
 for (const marker of [
     'codexRolloutFiles()',

@@ -1,5 +1,5 @@
 import { StorageService } from '@theia/core/lib/browser';
-import { Emitter, Event } from '@theia/core/lib/common';
+import { Disposable, Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import {
@@ -23,6 +23,70 @@ export interface TaskChangeSet {
     error?: string;
 }
 
+export interface TaskChangedFileSummary {
+    path: string;
+    status: 'added' | 'modified' | 'deleted';
+    additions: number;
+    deletions: number;
+}
+
+export interface TaskDiffStat {
+    files: TaskChangedFileSummary[];
+    fileCount: number;
+    additions: number;
+    deletions: number;
+}
+
+/** Application-owned diffstat used by both Results chrome and built-in fallback content. */
+export function summarizeTaskChangeSet(changeSet: TaskChangeSet | undefined): TaskDiffStat {
+    if (!changeSet) {
+        return { files: [], fileCount: 0, additions: 0, deletions: 0 };
+    }
+    const chunks = changeSet.diff.split(/(?=^diff --git )/m).filter(chunk => chunk.startsWith('diff --git '));
+    const files = changeSet.files.map((path, index) => {
+        const normalizedPath = path.replace(/\\/g, '/');
+        const chunk = chunks.find(candidate => candidate.includes(` a/${normalizedPath} b/${normalizedPath}`))
+            ?? chunks[index]
+            ?? '';
+        const additions = chunk.split(/\r?\n/).filter(line => line.startsWith('+') && !line.startsWith('+++')).length;
+        const deletions = chunk.split(/\r?\n/).filter(line => line.startsWith('-') && !line.startsWith('---')).length;
+        const status = /^new file mode\b/m.test(chunk) || /^--- \/dev\/null$/m.test(chunk)
+            ? 'added' as const
+            : /^deleted file mode\b/m.test(chunk) || /^\+\+\+ \/dev\/null$/m.test(chunk)
+                ? 'deleted' as const
+                : 'modified' as const;
+        return { path: normalizedPath, status, additions, deletions };
+    });
+    return {
+        files,
+        fileCount: files.length,
+        additions: files.reduce((total, file) => total + file.additions, 0),
+        deletions: files.reduce((total, file) => total + file.deletions, 0)
+    };
+}
+
+/** One request-title rule shared by Task storage, the Results rail, and Results chrome. */
+export function taskTitleForRequest(request: string): string {
+    const compact = request.replace(/\s+/g, ' ').trim();
+    return compact.length > 46 ? `${compact.slice(0, 43)}…` : compact;
+}
+
+/** Application-owned completion timestamp. Results Skills never receive or format this value. */
+export function formatTaskEndedAtJst(value: string | undefined): string {
+    const date = value ? new Date(value) : undefined;
+    if (!date || Number.isNaN(date.getTime())) {
+        return '';
+    }
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+        timeZone: 'Asia/Tokyo'
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes): string =>
+        parts.find(candidate => candidate.type === type)?.value ?? '';
+    return `${part('year')}/${part('month')}/${part('day')} ${part('hour')}:${part('minute')} JST`;
+}
+
 /** A successfully captured Change Set with no changed files or diff content. */
 export function isEmptyTaskChangeSet(changeSet: TaskChangeSet | undefined): boolean {
     return changeSet?.source === 'empty'
@@ -43,6 +107,15 @@ export interface TaskResultsQuestion {
     timestamp: string;
 }
 
+export interface TaskResultDocument {
+    taskId: string;
+    status: 'generating' | 'ready' | 'failed';
+    html?: string;
+    error?: string;
+    generator?: 'ai' | 'template' | 'fallback';
+    fallbackReason?: string;
+}
+
 export interface ExecutionTask {
     id: string;
     sessionId: string;
@@ -52,10 +125,14 @@ export interface ExecutionTask {
     startedAt: string;
     endedAt?: string;
     completionSummary?: string;
+    /** Full implementer handoff for Results; never rendered directly in Agent conversation. */
+    implementerReport?: string;
     baseline: TaskBaseline;
     changeSet?: TaskChangeSet;
     failure?: TaskFailure;
     resultsQuestions?: TaskResultsQuestion[];
+    /** New Results documents are persisted with their owning Task. */
+    resultsDocument?: TaskResultDocument;
 }
 
 export interface TaskEvent {
@@ -78,6 +155,8 @@ export class TaskService {
     static readonly MAX_RESULTS_RESPONSE_CHARS = 12_000;
     protected readonly tasks = new Map<string, ExecutionTask>();
     protected readonly baselineCaptures = new Map<string, Promise<GitSnapshotCapture>>();
+    protected readonly terminalFinalizers = new Set<(task: ExecutionTask) => Promise<void>>();
+    protected readonly finalizingTaskIds = new Set<string>();
     protected readonly persistedResultsQuestions = new Map<string, Map<string, TaskResultsQuestion[]>>();
     protected readonly onDidChangeEmitter = new Emitter<TaskEvent>();
     readonly onDidChangeTask: Event<TaskEvent> = this.onDidChangeEmitter.event;
@@ -132,7 +211,7 @@ export class TaskService {
         return task;
     }
 
-    failBeforeStart(sessionId: string, request: string, failure: TaskFailure): ExecutionTask {
+    async failBeforeStart(sessionId: string, request: string, failure: TaskFailure): Promise<ExecutionTask> {
         const startedAt = new Date().toISOString();
         const task: ExecutionTask = {
             id: `task-${Date.now()}-${++this.sequence}`,
@@ -152,8 +231,7 @@ export class TaskService {
             },
             failure
         };
-        this.tasks.set(task.id, task);
-        this.onDidChangeEmitter.fire({ type: 'failed', task });
+        await this.finalizeTerminalTask(task, 'failed');
         return task;
     }
 
@@ -167,6 +245,25 @@ export class TaskService {
 
     async fail(taskId: string, failure?: TaskFailure): Promise<ExecutionTask | undefined> {
         return this.finish(taskId, 'failed', 'failed', failure);
+    }
+
+    setResultsDocument(taskId: string, document: TaskResultDocument | undefined): ExecutionTask | undefined {
+        const current = this.tasks.get(taskId);
+        if (!current || document && document.taskId !== taskId) {
+            return current;
+        }
+        const updated = { ...current, resultsDocument: document };
+        this.tasks.set(taskId, updated);
+        return updated;
+    }
+
+    registerTerminalFinalizer(finalizer: (task: ExecutionTask) => Promise<void>): Disposable {
+        this.terminalFinalizers.add(finalizer);
+        return Disposable.create(() => this.terminalFinalizers.delete(finalizer));
+    }
+
+    isFinalizing(taskId: string): boolean {
+        return this.finalizingTaskIds.has(taskId);
     }
 
     async whenBaselineCaptured(taskId: string): Promise<void> {
@@ -199,15 +296,17 @@ export class TaskService {
             const resultsQuestions = this.persistedResultsQuestions
                 .get(candidate.sessionId)?.get(candidate.id)
                 ?? legacyResultsQuestions;
+            const resultsDocument = this.normalizeResultsDocument(candidate.resultsDocument, candidate.id);
             const task: ExecutionTask = candidate.status === 'running'
                 ? {
                     ...candidate,
                     status: 'failed',
                     endedAt: new Date().toISOString(),
                     failure: { summary: 'アプリ終了により中断されました' },
-                    resultsQuestions
+                    resultsQuestions,
+                    resultsDocument
                 }
-                : { ...candidate, resultsQuestions };
+                : { ...candidate, resultsQuestions, resultsDocument };
             this.tasks.set(task.id, task);
             if (legacyResultsQuestions.length > 0) {
                 this.migrateLegacyResultsQuestions(task.sessionId, task.id, legacyResultsQuestions);
@@ -237,6 +336,9 @@ export class TaskService {
 
     remove(taskIds: Iterable<string>): void {
         for (const taskId of taskIds) {
+            if (this.finalizingTaskIds.has(taskId)) {
+                continue;
+            }
             const task = this.tasks.get(taskId);
             this.tasks.delete(taskId);
             this.baselineCaptures.delete(taskId);
@@ -273,12 +375,36 @@ export class TaskService {
                 ...capture,
                 capturedAt: new Date().toISOString()
             },
-            completionSummary: completionSummary?.trim().slice(0, 12_000) || undefined,
+            completionSummary: status === 'completed'
+                ? this.completionReport(completionSummary, capture.files)
+                : undefined,
+            implementerReport: status === 'completed'
+                ? completionSummary?.trim().slice(0, 12_000) || undefined
+                : undefined,
             failure
         };
-        this.tasks.set(task.id, task);
-        this.onDidChangeEmitter.fire({ type: eventType, task });
+        await this.finalizeTerminalTask(task, eventType);
         return task;
+    }
+
+    protected async finalizeTerminalTask(
+        task: ExecutionTask,
+        eventType: Extract<TaskEvent['type'], 'ended' | 'failed' | 'cancelled'>
+    ): Promise<void> {
+        this.tasks.set(task.id, task);
+        this.finalizingTaskIds.add(task.id);
+        try {
+            for (const finalizer of this.terminalFinalizers) {
+                try {
+                    await finalizer(task);
+                } catch (error) {
+                    console.warn('[Poiesis] A Task terminal finalizer failed.', error);
+                }
+            }
+        } finally {
+            this.finalizingTaskIds.delete(task.id);
+        }
+        this.onDidChangeEmitter.fire({ type: eventType, task });
     }
 
     protected async captureBaseline(workspacePath?: string): Promise<GitSnapshotCapture> {
@@ -333,8 +459,39 @@ export class TaskService {
     }
 
     protected titleFor(request: string): string {
-        const compact = request.replace(/\s+/g, ' ').trim();
-        return compact.length > 46 ? `${compact.slice(0, 43)}…` : compact;
+        return taskTitleForRequest(request);
+    }
+
+    protected completionReport(raw: string | undefined, files: readonly string[]): string {
+        const firstContentLine = (raw ?? '')
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .find(line => line && !/^```/.test(line));
+        const compact = (firstContentLine ?? 'タスクを完了しました。')
+            .replace(/^#{1,6}\s+/, '')
+            .replace(/^[-*+]\s+/, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const summary = compact.length > 140 ? `${compact.slice(0, 139)}…` : compact;
+        const visibleFiles = files.slice(0, 5).map(path => path.replace(/\\/g, '/'));
+        const remaining = files.length - visibleFiles.length;
+        const fileSummary = visibleFiles.length > 0
+            ? `変更ファイル: ${visibleFiles.join(', ')}${remaining > 0 ? `、ほか${remaining}件` : ''}。`
+            : '変更ファイル: なし。';
+        return `${summary}\n${fileSummary} 詳細は Results を確認してください。`;
+    }
+
+    protected normalizeResultsDocument(
+        document: TaskResultDocument | undefined,
+        taskId: string
+    ): TaskResultDocument | undefined {
+        if (!document
+            || document.taskId !== taskId
+            || !['ready', 'failed'].includes(document.status)
+            || document.status === 'ready' && typeof document.html !== 'string') {
+            return undefined;
+        }
+        return document;
     }
 
     protected normalizeResultsQuestionTasks(

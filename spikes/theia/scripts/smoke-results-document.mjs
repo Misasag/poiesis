@@ -25,6 +25,12 @@ const browserProfile = resolve(runDirectory, 'browser-profile');
 const emptyPlugins = resolve(runDirectory, 'empty-plugins');
 const theiaConfig = resolve(runDirectory, 'theia-config');
 const theiaCli = resolve(root, 'node_modules', '@theia', 'cli', 'bin', 'theia.js');
+const longCompletionReply = [
+    'Fallback smoke completed.',
+    'Detailed implementation notes that must stay out of the Agent completion message.',
+    'Verification command output that belongs in Results instead of the conversation.',
+    'Additional explanation returned by the mock runtime to exercise UI-side enforcement.'
+].join('\n');
 mkdirSync(workspace, { recursive: true });
 mkdirSync(emptyPlugins, { recursive: true });
 writeFileSync(resolve(workspace, 'citation-target.txt'), 'one\ntwo\nthree\nfour\nfive\n', 'utf8');
@@ -45,8 +51,9 @@ const serverProcess = spawn(process.execPath, [
     env: {
         ...process.env,
         THEIA_CONFIG_DIR: theiaConfig,
-        POIESIS_AGENT_TEST_REPLY: 'Fallback smoke completed.',
+        POIESIS_AGENT_TEST_REPLY: longCompletionReply,
         POIESIS_AGENT_TEST_DELAY_MS: '3500',
+        POIESIS_RESULTS_GENERATION_TEST_DELAY_MS: '1200',
         POIESIS_RESULTS_GENERATION_FORCE_FAILURE: '1'
     },
     windowsHide: true,
@@ -90,7 +97,10 @@ try {
             retry: true,
             diagnosticAttempts: diagnostics.length,
             completionSummary: true,
-            fileStats: true
+            fileStats: true,
+            fixedHeader: true,
+            generatedBeforeOpen: true,
+            shortConversationReport: true
         })}`);
     }
 } catch (error) {
@@ -183,8 +193,54 @@ async function smokeFallback(page, diagnostics) {
     await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
     writeFileSync(resolve(workspace, 'fallback-new.html'), '<!doctype html>\n<title>Fallback smoke</title>\n', 'utf8');
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
+    await page.waitForFunction(() => {
+        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
+        const state = raw ? JSON.parse(raw) : undefined;
+        const task = state?.sessions?.[0]?.tasks?.at(-1);
+        return task?.status === 'completed' && task.resultsDocument?.status === 'ready';
+    });
+    const beforeOpen = await page.evaluate(() => {
+        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
+        const state = raw ? JSON.parse(raw) : undefined;
+        const task = state?.sessions?.[0]?.tasks?.at(-1);
+        const agentMessages = [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')];
+        return {
+            activeResults: document.querySelector('#poiesis-results-tab')?.getAttribute('aria-selected') === 'true',
+            iframeCount: document.querySelectorAll('.poiesis-results__document').length,
+            task,
+            conversation: agentMessages.at(-1)?.textContent?.trim() ?? ''
+        };
+    });
+    assert(!beforeOpen.activeResults && beforeOpen.iframeCount === 0,
+        `Results opened before the explicit tab action: ${JSON.stringify(beforeOpen)}`);
+    assert(beforeOpen.task?.resultsDocument?.status === 'ready',
+        `The completed document was not stored on its Task before Results opened: ${JSON.stringify(beforeOpen)}`);
+    const conversationLines = beforeOpen.conversation.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    assert(conversationLines.length <= 2
+        && beforeOpen.conversation.includes('fallback-new.html')
+        && beforeOpen.conversation.includes('詳細は Results を確認してください。')
+        && !beforeOpen.conversation.includes('Detailed implementation notes'),
+    `The Agent completion report was not shortened by the Application: ${JSON.stringify(beforeOpen.conversation)}`);
     await page.click('#poiesis-results-tab');
     await page.waitForSelector('.poiesis-results__document');
+    const fixedHeader = await page.evaluate(() => {
+        const header = document.querySelector('.poiesis-results__fixed-header');
+        const taskTitle = document.querySelector('.poiesis-results__task-select.active > span')?.textContent?.trim();
+        return {
+            title: header?.querySelector('[data-task-title]')?.textContent?.trim(),
+            taskTitle,
+            status: header?.querySelector('.poiesis-results__status')?.textContent?.trim(),
+            time: header?.querySelector('time')?.textContent?.trim(),
+            diffstat: header?.querySelector('.poiesis-results__diffstat')?.textContent?.replace(/\s+/g, ' ').trim()
+        };
+    });
+    assert(fixedHeader.title === fixedHeader.taskTitle,
+        `The fixed header title differs from the Task card: ${JSON.stringify(fixedHeader)}`);
+    assert(fixedHeader.status === '完了' && fixedHeader.time === formatJst(beforeOpen.task.endedAt)
+        && fixedHeader.diffstat?.includes('1ファイル')
+        && fixedHeader.diffstat.includes('+2')
+        && fixedHeader.diffstat.includes('−0'),
+    `The fixed Results metadata is incomplete: ${JSON.stringify(fixedHeader)}`);
     let frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-action="retry-ai-results"]');
     const fallback = await frame.evaluate(() => ({
@@ -267,6 +323,16 @@ function stopProcessTree(child) {
 
 function ascii(value) {
     return value.replace(/[^\x20-\x7E\r\n\t]/g, '?');
+}
+
+function formatJst(value) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+        timeZone: 'Asia/Tokyo'
+    }).formatToParts(new Date(value));
+    const part = type => parts.find(candidate => candidate.type === type)?.value ?? '';
+    return `${part('year')}/${part('month')}/${part('day')} ${part('hour')}:${part('minute')} JST`;
 }
 
 function assert(condition, message) {
