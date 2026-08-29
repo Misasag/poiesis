@@ -13,8 +13,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  create-release:
+    name: create-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      # electron-builder races release creation when jobs publish
+      # concurrently; creating the release up front removes the race.
+      - name: Create the GitHub release for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+          || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+          --title "${GITHUB_REF_NAME#v}" --notes "Poiesis ${GITHUB_REF_NAME#v}"
+
   windows-latest:
     name: windows-latest
+    needs: create-release
     runs-on: windows-latest
     timeout-minutes: 60
     env:
@@ -76,17 +93,22 @@ jobs:
           --publish always
           --config electron-builder.yml
 
-  macos-latest:
-    name: macos-latest (${{ matrix.arch }})
+  macos:
+    name: macos (${{ matrix.arch }})
     needs: windows-latest
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
-        arch:
-          - arm64
-          - x64
+        include:
+          # arm64 builds natively on Apple Silicon runners; x64 builds
+          # natively on the Intel macos-13 runner (node-gyp is unstable
+          # under Rosetta: "async hook stack has become corrupted").
+          - arch: arm64
+            runner: macos-latest
+          - arch: x64
+            runner: macos-13
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.electron-builder-cache
@@ -96,10 +118,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Rosetta for the x64 toolchain
-        if: matrix.arch == 'x64'
-        run: sudo softwareupdate --install-rosetta --agree-to-license
 
       - uses: actions/setup-node@v4
         with:
