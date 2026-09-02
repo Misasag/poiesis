@@ -10,10 +10,36 @@ const rootPackage = JSON.parse(await read('package.json'));
 const appPackage = JSON.parse(await read('browser-app/package.json'));
 const electronPackage = JSON.parse(await read('electron-app/package.json'));
 const extensionPackage = JSON.parse(await read('agent-window/package.json'));
-const agentWidget = await read('agent-window/src/browser/agent-window-widget.tsx');
+const agentWidget = (await Promise.all([
+    'agent-window/src/browser/agent-window-widget.tsx',
+    'agent-window/src/browser/agent-window/agent-window-host.ts',
+    'agent-window/src/browser/agent-window/session-store.ts',
+    'agent-window/src/browser/agent-window/rail-part.tsx',
+    'agent-window/src/browser/agent-window/header-part.tsx',
+    'agent-window/src/browser/agent-window/agent-part.tsx',
+    'agent-window/src/browser/agent-window/results-part.tsx',
+    'agent-window/src/browser/agent-window/code-part.tsx',
+    'agent-window/src/browser/agent-window/customize-part.tsx',
+    'agent-window/src/browser/agent-window/settings-part.tsx',
+    'agent-window/src/browser/components/poiesis-select.tsx',
+    'agent-window/src/browser/components/poiesis-inputs.tsx',
+    'agent-window/src/browser/components/poiesis-composer.tsx',
+    'agent-window/src/browser/components/elapsed.tsx'
+].map(read))).join('\n');
 const composerBehavior = await read('agent-window/src/browser/composer-behavior.ts');
 const composerBehaviorTest = await read('scripts/test-composer-behavior.mjs');
-const agentStyles = await read('agent-window/src/browser/style/index.css');
+const agentStyles = (await Promise.all([
+    'agent-window/src/browser/style/base.css',
+    'agent-window/src/browser/style/components.css',
+    'agent-window/src/browser/style/rail.css',
+    'agent-window/src/browser/style/header.css',
+    'agent-window/src/browser/style/agent.css',
+    'agent-window/src/browser/style/results.css',
+    'agent-window/src/browser/style/code.css',
+    'agent-window/src/browser/style/customize.css',
+    'agent-window/src/browser/style/settings.css',
+    'agent-window/src/browser/style/responsive.css'
+].map(read))).join('\n');
 const typography = await read('agent-window/src/browser/typography.ts');
 const safeMarkdown = await read('agent-window/src/browser/safe-markdown.ts');
 const moduleSource = await read('agent-window/src/browser/agent-window-frontend-module.ts');
@@ -994,7 +1020,7 @@ for (const marker of [
     "import { ScmService } from '@theia/scm/lib/browser/scm-service'",
     "const NEW_SESSION_TITLE = '新しい会話'",
     'interface WindowAgentSession',
-    'protected readonly sessions: WindowAgentSession[] = []',
+    'public readonly sessions: WindowAgentSession[] = []',
     'const workspaceGroups = this.workspaceSessionGroups()',
     'const activeTab = session?.activeTab ?? \'agent\'',
     "data-mode={this.codeMode ? 'code' : this.customizeViewVisible ? 'customize' : activeTab}",
@@ -1008,7 +1034,7 @@ for (const marker of [
     'provider.historyProvider?.currentHistoryItemRef',
     'session.title = this.titleForSession(content)',
     'session.hasUserMessage = true',
-    'protected async createSession(): Promise<void>',
+    'public async createSession(): Promise<void>',
     "activeTab: 'agent'",
     'session.activeTab = tab',
     'poiesis-agent-window__code-control',
@@ -1120,7 +1146,7 @@ for (const marker of [
     'this.pendingPinnedEditorUris.add(uriKey)',
     'protected isCodeCenterWidget(factoryId: string, widget: Widget): boolean',
     'widget instanceof EditorWidget',
-    'factoryId.startsWith(AgentWindowWidget.EDITOR_WIDGET_FACTORY_ID)',
+    'factoryId.startsWith(CodePart.EDITOR_WIDGET_FACTORY_ID)',
     'protected syncCodeWidgetAttachments(): void',
     'this.attachCodeWidget(this.activeCodeSidebarWidget(), this.codeSidebarHost)',
     'this.attachCodeWidget(this.activeCodeCenterWidget, this.codeEditorHost)',
@@ -1214,7 +1240,7 @@ for (const marker of [
     'onValueChange={value => this.setAgentDraft(session?.id, value)}',
     'onValueChange={value => scopeKey && this.setResultsDraft(scopeKey, value)}',
     'const shouldSelectResultsTask =',
-    'protected isResultsTask(task: ExecutionTask): boolean',
+    'public isResultsTask(task: ExecutionTask): boolean',
     "return task.status !== 'running';",
     'resultsTaskIds.has(candidate.selectedResultsTaskId)',
     'protected async deleteResultsTask(taskId: string): Promise<void>',
@@ -1685,7 +1711,7 @@ for (const marker of [
     'resultsDocuments?: TaskResultDocument[]',
     'this.taskService.restore',
     'this.resultsService.restore',
-    'protected persistedTasks(session: WindowAgentSession)',
+    'public persistedTasks(session: WindowAgentSession)',
     "failure: { summary: 'アプリ終了により中断されました' }"
 ]) {
     assert.ok(agentWidget.includes(marker), `Session artifact persistence is missing ${marker}`);
@@ -1734,13 +1760,13 @@ for (const marker of [
     'protected restoreSession(sessionId: string, select = false): void',
     "aria-label='サイドバーの幅を変更'",
     'protected startRailResize(event: React.PointerEvent<HTMLDivElement>): void',
-    'protected persistWindowState(): Promise<void>',
-    'protected windowStatePersistence: Promise<void> = Promise.resolve()',
+    'public persistWindowState(): Promise<void>',
+    'public windowStatePersistence: Promise<void> = Promise.resolve()',
     'this.windowStatePersistence = this.windowStatePersistence',
     '.then(() => this.refreshCliDetection())',
     '.then(() => this.initializeSessions())',
-    'protected sessionsInitialized = false',
-    'protected findSessionForTask(task: ExecutionTask)',
+    'public sessionsInitialized = false',
+    'public findSessionForTask(task: ExecutionTask)',
     'protected canonicalWorkspaceUri(workspaceUri: string | undefined)',
     'protected sameWorkspaceUri(left: string | undefined, right: string | undefined)',
     '? this.canonicalWorkspaceUri(candidate.workspaceUri)',
@@ -1749,9 +1775,9 @@ for (const marker of [
     'protected async recordPreSpawnFailure(',
     'const task = await this.taskService.failBeforeStart(',
     'requirementChoice,\n            session.workspaceUri',
-    'protected async restoreWindowState(): Promise<boolean>',
-    'protected async loadGlobalWindowState()',
-    'protected mergePersistedWindowStates(',
+    'public async restoreWindowState(): Promise<boolean>',
+    'public async loadGlobalWindowState()',
+    'public mergePersistedWindowStates(',
     'SESSION_MIGRATION_MARKER_KEY',
     'GLOBAL_SESSION_STORAGE_KEY',
     'protected async openRepository(): Promise<void>',

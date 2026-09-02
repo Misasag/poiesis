@@ -1,0 +1,129 @@
+
+
+.poiesis-agent-window__context {
+    min-width: 0;
+}
+
+.poiesis-agent-window__context-scope {
+    align-items: center;
+    display: flex;
+    gap: 7px;
+}
+
+.poiesis-agent-window__context-scope small {
+    color: #7e817a;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.poiesis-agent-window__context > strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-agent-window__code-control {
+    align-items: center;
+    background: #242522;
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 6px;
+    color: #d9d8d2;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 12px;
+    gap: 5px;
+    padding: 3px 7px;
+}
+
+.poiesis-agent-window__code-control:hover,
+.poiesis-agent-window__code-control:focus-visible,
+.poiesis-agent-window__code-control.active {
+    background: #32332f;
+    border-color: #62645e;
+    color: #f1f0eb;
+    outline: none;
+}
+
+.poiesis-agent-window__code-header {
+    gap: 12px;
+    justify-content: flex-start;
+    min-height: 54px;
+    padding: 9px 16px;
+}
+
+.poiesis-agent-window__code-header .poiesis-agent-window__code-control {
+    font-size: 12px;
+    padding: 4px 8px;
+}
+
+.poiesis-agent-window__code-workspace {
+    color: #a5a69f;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-agent-window__tabs {
+    align-items: center;
+    border: 1px solid #393a36;
+    border-radius: 7px;
+    display: flex;
+    flex: none;
+    gap: 0;
+    padding: 2px;
+}
+
+.poiesis-agent-window__tabs button {
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    color: #9ea099;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 5px 8px;
+}
+
+.poiesis-agent-window__tabs button:hover,
+.poiesis-agent-window__tabs button:focus-visible {
+    color: var(--poiesis-chrome-text);
+    outline: none;
+}
+
+.poiesis-agent-window__tabs button.active {
+    background: var(--poiesis-chrome-hover);
+    color: #f1f0eb;
+    font-weight: 600;
+}
+
+.poiesis-agent-window__tab-divider {
+    color: #4b4d48;
+    font-size: 12px;
+    padding: 0 1px;
+}
+
+.poiesis-agent-window__viewport {
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+}
+
+.poiesis-agent-window__tabs {
+    background: #20211f;
+    border-color: var(--poiesis-control-border);
+    gap: 2px;
+}
+
+.poiesis-agent-window__tabs button {
+    border-radius: 6px;
+}
+
+.poiesis-agent-window__content .poiesis-agent-window__context-pill {
+    font-size: 12px;
+}

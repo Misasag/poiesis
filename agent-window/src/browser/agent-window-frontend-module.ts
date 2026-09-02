@@ -33,7 +33,16 @@ import {
 } from '../common/requirement-classification-protocol';
 import { RequirementClassificationService } from './requirement-classification-service';
 import { ResultsAssertionServer, resultsAssertionServerPath } from '../common/results-assertion-protocol';
-import '../../src/browser/style/index.css';
+import '../../src/browser/style/base.css';
+import '../../src/browser/style/components.css';
+import '../../src/browser/style/rail.css';
+import '../../src/browser/style/header.css';
+import '../../src/browser/style/agent.css';
+import '../../src/browser/style/results.css';
+import '../../src/browser/style/code.css';
+import '../../src/browser/style/customize.css';
+import '../../src/browser/style/settings.css';
+import '../../src/browser/style/responsive.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     rebind(FrontendApplication).to(PoiesisFrontendApplication).inSingletonScope();

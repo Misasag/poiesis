@@ -1,0 +1,319 @@
+:root {
+    /* Keep these tokens aligned with ../typography.ts, which supplies Results iframe styles. */
+    --poiesis-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    --poiesis-font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", "BIZ UDGothic", monospace;
+}
+
+#poiesis-window-host {
+    background: #181918;
+    inset: 0;
+    overflow: clip;
+    position: absolute;
+}
+
+.poiesis-folder-explorer {
+    background: #1d1e1c;
+    border: 1px solid #4a4c46;
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgb(0 0 0 / 58%);
+    color: var(--poiesis-chrome-text);
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    inset: clamp(18px, 5vw, 54px);
+    min-height: 0;
+    overflow: hidden;
+    position: absolute;
+    z-index: 100;
+}
+
+#poiesis-window-host > .poiesis-agent-window {
+    height: 100%;
+    width: 100%;
+}
+
+.poiesis-changes__content {
+    box-sizing: border-box;
+    color: var(--theia-foreground);
+    height: 100%;
+    overflow: auto;
+    padding: 14px;
+}
+
+/* Agent Window chrome follows docs/ui/agent-window-spec.html. */
+.poiesis-agent-window {
+    min-height: 320px;
+    min-width: 360px;
+}
+
+.poiesis-agent-window__content {
+    --poiesis-chrome-bg: #181918;
+    --poiesis-chrome-panel: #1d1e1c;
+    --poiesis-chrome-panel-raised: #222320;
+    --poiesis-chrome-hover: #2b2c29;
+    --poiesis-chrome-line: #30312f;
+    --poiesis-chrome-line-strong: #444540;
+    --poiesis-chrome-text: #efeee9;
+    --poiesis-chrome-copy: #c8c9c3;
+    --poiesis-chrome-muted: #858780;
+    --poiesis-results-accent: #6577a0;
+    background: var(--poiesis-chrome-bg);
+    box-sizing: border-box;
+    color: var(--poiesis-chrome-text);
+    display: grid;
+    gap: 0;
+    grid-template-columns: var(--poiesis-rail-width, 258px) minmax(0, 1fr);
+    height: 100%;
+    margin: 0;
+    max-width: none;
+    min-height: 0;
+    /* `hidden` remains programmatically scrollable: focusing a deep modal control
+       used to set this grid's scrollTop and move the entire application offscreen. */
+    overflow: clip;
+    padding: 0;
+    position: relative;
+    width: 100%;
+}
+
+.poiesis-agent-window__content[data-mode='code'] {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.poiesis-agent-window__content--initializing {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    place-items: center;
+}
+
+.poiesis-agent-window__initializing {
+    align-items: center;
+    color: var(--poiesis-chrome-muted);
+    display: flex;
+    gap: 10px;
+    min-height: 100%;
+}
+
+.poiesis-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true'] {
+    grid-template-columns: 52px minmax(0, 1fr);
+}
+
+[data-poiesis-design-variant='d1-b'] .poiesis-agent-window__content {
+    margin: 0;
+    max-width: none;
+    padding: 0;
+}
+
+.poiesis-agent-window__content *,
+.poiesis-agent-window__content *::before,
+.poiesis-agent-window__content *::after {
+    box-sizing: border-box;
+}
+
+.poiesis-agent-window__content button,
+.poiesis-agent-window__content input,
+.poiesis-agent-window__content textarea {
+    font: inherit;
+}
+
+.poiesis-agent-window__content button {
+    color: inherit;
+}
+
+.poiesis-agent-window__rail {
+    background: var(--poiesis-chrome-panel);
+    border-right: 1px solid var(--poiesis-chrome-line);
+    display: grid;
+    font-family: var(--poiesis-font-sans);
+    font-size: 13px;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    line-height: 1.48;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.poiesis-agent-window__header {
+    align-items: center;
+    background: var(--poiesis-chrome-bg);
+    border-bottom: 1px solid #2c2d2b;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    min-height: 54px;
+    min-width: 0;
+    overflow: hidden;
+    padding: 9px 16px;
+    width: 100%;
+}
+
+.poiesis-agent-window__agent {
+    display: grid;
+    gap: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+}
+
+.poiesis-agent-window__app-header {
+    padding-right: 18px;
+}
+
+.poiesis-agent-window__app-close {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-muted);
+    cursor: pointer;
+    display: flex;
+    font-size: 12px;
+    gap: 5px;
+    padding: 6px 8px;
+}
+
+.poiesis-agent-window__app-close:hover,
+.poiesis-agent-window__app-close:focus-visible {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
+    outline: none;
+}
+
+.poiesis-agent-window__app-page {
+    background: #191a18;
+    display: grid;
+    grid-template-columns: 176px minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.poiesis-agent-window__app-nav {
+    background: #1f201e;
+    border-right: 1px solid var(--poiesis-chrome-line);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 18px 10px;
+}
+
+.poiesis-agent-window__app-nav button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    color: var(--poiesis-chrome-muted);
+    cursor: pointer;
+    display: flex;
+    font-size: 12px;
+    gap: 9px;
+    padding: 8px 10px;
+    text-align: left;
+}
+
+.poiesis-agent-window__app-nav button:hover,
+.poiesis-agent-window__app-nav button:focus-visible,
+.poiesis-agent-window__app-nav button.active {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
+    outline: none;
+}
+
+.poiesis-agent-window__app-page-body {
+    min-width: 0;
+    overflow: auto;
+    padding: clamp(24px, 5vw, 56px);
+}
+
+.poiesis-agent-window__settings-page,
+.poiesis-agent-window__customize-page {
+    margin: 0 auto;
+    max-width: 760px;
+}
+
+body .lm-Widget.dialogOverlay .dialogBlock {
+    background: #1d1e1c;
+    border: 1px solid #50524c;
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgb(0 0 0 / 58%);
+    color: #c8c9c3;
+    max-width: min(620px, calc(100vw - 40px));
+    min-width: min(420px, calc(100vw - 40px));
+}
+
+body .lm-Widget.dialogOverlay .dialogTitle {
+    background: #222320;
+    border-bottom: 1px solid #3c3e39;
+    color: #efeee9;
+    font-size: 14px;
+    font-weight: 650;
+    min-height: 50px;
+    padding: 10px 14px 10px 17px;
+    text-align: left;
+}
+
+body .lm-Widget.dialogOverlay .dialogTitle i.closeButton {
+    border-radius: 6px;
+    color: #92948d;
+    padding: 5px;
+}
+
+body .lm-Widget.dialogOverlay .dialogTitle i.closeButton:hover {
+    background: #2b2c29;
+    color: #efeee9;
+}
+
+body .lm-Widget.dialogOverlay .dialogContent {
+    background: #1d1e1c;
+    color: #c8c9c3;
+    line-height: 1.58;
+    padding: 18px;
+}
+
+body .lm-Widget.dialogOverlay .dialogControl {
+    background: #1d1e1c;
+    border-top: 1px solid #30312f;
+    gap: 8px;
+    padding: 11px 14px;
+}
+
+body .lm-Widget.dialogOverlay .dialogControl .theia-button {
+    background: #30322e;
+    border: 1px solid #555750;
+    border-radius: 6px;
+    color: #efeee9;
+    font: inherit;
+    min-height: 32px;
+    padding: 6px 12px;
+}
+
+body .lm-Widget.dialogOverlay .dialogControl .theia-button:hover {
+    background: #3a3c37;
+}
+
+body .lm-Widget.dialogOverlay .dialogControl .theia-button.main {
+    background: #93643d;
+    border-color: #b47b4e;
+    color: #fff9f2;
+}
+
+body .lm-Widget.dialogOverlay :is(button, .theia-button, .closeButton):focus-visible {
+    outline: 2px solid #c28b60;
+    outline-offset: 2px;
+}
+
+body .lm-Widget.dialogOverlay ::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+body .lm-Widget.dialogOverlay ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+body .lm-Widget.dialogOverlay ::-webkit-scrollbar-thumb {
+    background: #5c5f58;
+    border: 2px solid transparent;
+    border-radius: 999px;
+}

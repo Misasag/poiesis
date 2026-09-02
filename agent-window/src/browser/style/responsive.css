@@ -1,0 +1,116 @@
+
+
+@media (max-width: 680px) {
+    .poiesis-agent-window__header {
+        padding-inline: 11px;
+    }
+
+    .poiesis-agent-window__code {
+        grid-template-columns: 148px minmax(0, 1fr);
+    }
+
+    .poiesis-agent-window__context > strong {
+        max-width: 150px;
+    }
+
+    .poiesis-results {
+        grid-template-columns: minmax(0, 1fr) 128px;
+    }
+
+    .poiesis-results__canvas,
+    .poiesis-results__qa-panel,
+    .poiesis-results__composer {
+        margin-inline: 10px;
+    }
+
+    .poiesis-results__fixed-header {
+        align-items: start;
+        gap: 8px;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .poiesis-results__fixed-meta {
+        justify-content: flex-start;
+    }
+
+    .poiesis-results__badges {
+        justify-content: flex-start;
+    }
+
+    .poiesis-agent-window__app-page {
+        grid-template-columns: 52px minmax(0, 1fr);
+    }
+
+    .poiesis-agent-window__app-nav button {
+        justify-content: center;
+        padding-inline: 0;
+    }
+
+    .poiesis-agent-window__app-nav button span:last-child {
+        display: none;
+    }
+
+    .poiesis-agent-window__app-page-body {
+        padding: 22px 16px;
+    }
+
+    .poiesis-customize-view__new-skill {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Accessibility and readability overrides from the product UI audit. */
+.poiesis-agent-window__content {
+    --poiesis-agent-conversation-width: min(78vw, 960px);
+    --poiesis-chrome-muted: #92948d;
+    --poiesis-control-border: #70726b;
+    --poiesis-focus-ring: #c28b60;
+    --poiesis-focus-ring-soft: rgb(194 139 96 / 24%);
+    --poiesis-results-muted: #9aa5bd;
+    --poiesis-results-send: #dce4f7;
+    --poiesis-results-send-text: #232938;
+    --poiesis-results-accent: #6577a0;
+    --poiesis-shadow-composer: 0 10px 30px rgb(0 0 0 / 16%);
+    --poiesis-shadow-results: 0 8px 24px rgb(0 0 0 / 18%);
+    --motion-fast: 120ms cubic-bezier(.2, 0, 0, 1);
+    font-family: var(--poiesis-font-sans);
+    font-size: 13px;
+    line-height: 1.48;
+    letter-spacing: 0;
+    zoom: var(--poiesis-ui-font-scale, 1);
+}
+
+/* Keep the conversation fluid below the documented 1280px design floor. */
+@media (max-width: 1279px) {
+    .poiesis-agent-window__messages {
+        padding-inline: clamp(16px, 3vw, 32px);
+    }
+
+    .poiesis-agent-window__composer {
+        width: min(var(--poiesis-agent-conversation-width), calc(100% - 32px));
+    }
+
+    .poiesis-agent-window__task-state {
+        margin-inline: 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .poiesis-agent-window__content *,
+    .poiesis-folder-explorer * {
+        scroll-behavior: auto !important;
+        animation-duration: 0ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0ms !important;
+    }
+}
+
+/* Safety net for dialogs still owned by Theia services (save conflicts, file guards, etc.). */
+body .lm-Widget.dialogOverlay {
+    backdrop-filter: blur(2px);
+    background: rgb(0 0 0 / 62%);
+    color: #c8c9c3;
+    font-family: var(--poiesis-font-sans);
+    font-size: 13px;
+    padding: 20px;
+}
