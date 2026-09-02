@@ -29,22 +29,31 @@ interface SkillBundleManifest {
 - `kind`はAgentとResultsの責務を分離する。
 - `entry`はbundleの実装entryを指す。第一完成点では読み込み方式を固定しない。
 
-## Workspace file bundle
+## Skill file bundle
 
-Workspace内の次の構造をUser Skill bundleとして扱う。
+次の4ルート直下のフォルダーをUser Skill bundleとして扱う。小さいrankを優先する。
+
+| rank | root | source |
+|---:|---|---|
+| 100 | `<workspace>/.poiesis/skills` | `workspace` |
+| 200 | `<workspace>/.agents/skills` | `workspace-agents` |
+| 300 | `<home>/.poiesis/skills` | `user` |
+| 400 | `<home>/.agents/skills` | `user-agents` |
 
 ```text
-.poiesis/skills/<skill-id>/
-└── skill.md
+<root>/<skill-id>/
+└── SKILL.md
 ```
 
-`skill.md`はYAML frontmatterとMarkdown本文で構成する。frontmatterの値は第一完成点では1行のscalarとする。
+entryはAgent Skills標準の`SKILL.md`と従来互換の`skill.md`を大文字小文字を区別せず探索する。同じbundleに両方ある場合は`SKILL.md`を優先し、warningを表示する。entryはYAML frontmatterとMarkdown本文で構成する。frontmatterの値は第一完成点では1行のscalarとし、未知のtop-level keyは無視する。
 
 ```markdown
 ---
 name: Review checklist
 description: 変更後の確認観点を定義します
-kind: agent
+metadata:
+  poiesis:
+    kind: agent
 ---
 
 # Review checklist
@@ -56,11 +65,17 @@ kind: agent
 interface SkillDocumentFrontmatter {
   name: string;
   description: string;
-  kind: 'agent' | 'results';
+  kind?: 'agent' | 'results';
+  metadata?: {
+    poiesis?: {
+      kind?: 'agent' | 'results';
+    };
+  };
 }
 
 interface SkillDocumentBundle extends SkillBundle {
-  source: 'workspace';
+  source: 'workspace' | 'workspace-agents' | 'user' | 'user-agents';
+  rank: 100 | 200 | 300 | 400;
   rootUri: string;
   skillDocumentUri: string;
   frontmatter: SkillDocumentFrontmatter;
@@ -69,9 +84,11 @@ interface SkillDocumentBundle extends SkillBundle {
 }
 ```
 
-file bundleのmanifestはファイルから導出する。`id`は`<skill-id>`フォルダー名、`name`／`description`／`kind`はfrontmatter、`version`は`workspace`、`entry`は`skill.md`とする。この導出により、manifest用の別ファイルを要求せず、`skill.md` bundleも`SkillBundle`契約へ適合する。
+file bundleのmanifestはファイルから導出する。`id`は`<skill-id>`フォルダー名、`name`／`description`はfrontmatter、`kind`はtop-levelの`kind`または`metadata.poiesis.kind`、`entry`は実際に見つかった`SKILL.md`または`skill.md`とする。`kind`がなければwarningを表示してAgent Skillとして扱う。この導出により、manifest用の別ファイルを要求せず、Agent Skills標準bundleも`SkillBundle`契約へ適合する。
 
-Customizeの「新しいSkill」はこの構造をscaffoldし、画面内editorで`skill.md`を開く。保存は通常のWorkspaceファイル保存であり、marketplaceからのinstallではない。`enabled`は`skill.md`本文に書き戻さず、WorkspaceをまたぐApplicationのglobal storageに保存する。新規作成時の既定値は`true`とする。
+同じ`id`が複数ルートにある場合は最小rankのbundleだけをpromptへ注入する。下位rankのbundleもCustomizeには表示するが、`shadowedBy`に優先bundleのdocument URIを記録し、toggleを無効にする。たとえばユーザーscopeのbundleとWorkspace scopeのbundleが同名ならWorkspaceを優先し、diagnosticsへshadowing理由を残す。
+
+Customizeの「新しいSkill」はWorkspaceまたはユーザーscopeへこの構造をscaffoldし、画面内editorで`SKILL.md`または従来の`skill.md`を開く。保存は通常のファイル保存であり、marketplaceからのinstallではない。`enabled`はentry本文に書き戻さず、WorkspaceをまたぐApplicationのglobal storageへdocument URIをkeyとして保存する。新規作成時の既定値は`true`とする。
 
 ## Lifecycle
 
@@ -92,12 +109,12 @@ Agent skillは作業を「どのように行うか」を定義する。prompt構
 
 Agent skillは成果の正本を自己申告しない。Task、Baseline、Change Setの正本は引き続きApplicationが所有する。
 
-有効なWorkspace Agent skillはTask開始時に毎回ファイルから読み直し、frontmatterを除いた本文をimplementer promptの末尾へ次の形で加える。順序は`skill-id`の昇順とする。
+有効でshadowされていないAgent skillはTask開始時に毎回ファイルから読み直し、frontmatterを除いた本文をimplementer promptの末尾へ次の形で加える。順序は`rank`、`skill-id`の昇順とする。
 
 ```text
 ## Workspace skills (user-defined instructions)
 ### <skill name>
-<skill.md body>
+<SKILL.md または skill.md body>
 ```
 
 本文は1 Skillあたり8,000文字、合計24,000文字を上限とする。個別上限では切り詰めを明記し、合計上限を超える後続Skillはdiagnosticsへ理由を残して除外する。これはprompt contentだけの境界であり、Skill本文をcodeとして実行／evalせず、provider、model、sandbox、runtime configを変更する権限を与えない。
@@ -110,7 +127,7 @@ Results skillは終了済みTaskと確定済みChange Setを入力に、一つ�
 
 Skill HTMLへApplication内部のTask ID、Taskタイトル、状態、完了時刻、集計diffstatを表示しない。これらはApplicationがSkill HTML外の固定ヘッダーへ表示する。
 
-有効なWorkspace Results skillも生成開始時に毎回読み直し、同じ区切り・順序・文字数上限でAI Resultsのpromptへ成果文書の追加ガイダンスとして加える。静的な`builtin.results` templateはUser Skillを解釈しないため、AI生成からtemplateへfallbackした場合はこの追加ガイダンスを反映しない。
+有効でshadowされていないResults skillも生成開始時に毎回読み直し、同じ区切り・rank順・文字数上限でAI Resultsのpromptへ成果文書の追加ガイダンスとして加える。静的な`builtin.results` templateはUser Skillを解釈しないため、AI生成からtemplateへfallbackした場合はこの追加ガイダンスを反映しない。
 
 ## Conforming bundles
 
@@ -153,4 +170,4 @@ Customizeは組み込みbundleを説明し、WorkspaceのUser Skillを走査・s
 - ApplicationはTask lifecycle、Change Set、生成タイミング、sandboxed canvasを所有する。
 - Agent会話の画像とHTMLプレビューはApplicationが検証したWorkspace内の実在ファイルだけを表示し、外部URLは既定ブロック、生HTML本文は描画しない。この境界をSkillから緩和することはできない。
 - bundleはWorkspace外の権限や、選択されたAI providerを暗黙に拡張しない。
-- Workspace file bundleの編集権限は、現在開いているWorkspace内の`.poiesis/skills`に限定する。
+- file bundleの画面内editorは、4つのdiscovery rootで見つかった`SKILL.md`または`skill.md`をscopeにかかわらず編集できる。
