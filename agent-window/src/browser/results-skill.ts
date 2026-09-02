@@ -1,4 +1,5 @@
 import { Emitter, Event } from '@theia/core/lib/common';
+import URI from '@theia/core/lib/common/uri';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import {
@@ -499,6 +500,7 @@ export class ResultsService {
         @inject(ResultsSkill) protected readonly resultsSkill: ResultsSkill,
         @inject(RequirementService) protected readonly requirementService: RequirementService,
         @inject(RequirementClassificationService) protected readonly requirementClassificationService: RequirementClassificationService,
+        @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService,
         @inject(AgentRuntimeServer) protected readonly runtimeServer: AgentRuntimeServer
     ) { }
 
@@ -617,6 +619,9 @@ export class ResultsService {
 
     protected startGeneration(task: ExecutionTask): Promise<void> {
         const generation = this.generateTask(task).then(() => {
+            void this.recordPendingSkillProposals(task).catch(error =>
+                console.warn('[Poiesis] Could not record pending Skill proposals.', error)
+            );
             void this.requirementClassificationService.suggestTitle(task.id)
                 .catch(error =>
                     console.warn('[Poiesis][Requirement title] Suggestion failed unexpectedly.', error)
@@ -633,6 +638,15 @@ export class ResultsService {
         });
         this.generationPromises.set(task.id, generation);
         return generation;
+    }
+
+    protected async recordPendingSkillProposals(task: ExecutionTask): Promise<void> {
+        if (!task.workspaceUri) {
+            this.taskService.setSkillProposals(task.id, []);
+            return;
+        }
+        const proposals = await this.workspaceSkillService.listPending(new URI(task.workspaceUri));
+        this.taskService.setSkillProposals(task.id, proposals.map(proposal => proposal.id));
     }
 
     protected async generateTask(task: ExecutionTask): Promise<void> {

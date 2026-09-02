@@ -54,12 +54,14 @@ import {
     renderSafeMarkdown
 } from './safe-markdown';
 import {
+    PendingSkillProposal,
     WorkspaceSkillDefinition,
     WorkspaceSkillDiscoveryRoot,
     WorkspaceSkillPreview,
     WorkspaceSkillService,
     WorkspaceSkillSource
 } from './workspace-skill-service';
+import { diffTextLines } from './text-diff';
 import { formatTaskElapsedTime, shouldSubmitComposer } from './composer-behavior';
 import { formatExecutionEvidence } from './results-document-normalizer';
 import { Requirement } from './requirement-model';
@@ -627,6 +629,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected customizeViewVisible = false;
     protected shortcutsOverlayVisible = false;
     protected workspaceSkills: WorkspaceSkillDefinition[] = [];
+    protected pendingSkillProposals: PendingSkillProposal[] = [];
     protected workspaceSkillsLoading = false;
     protected workspaceSkillsError?: string;
     protected workspaceSkillsRefreshGeneration = 0;
@@ -646,6 +649,9 @@ export class AgentWindowWidget extends ReactWidget {
     protected newSkillError?: string;
     protected newSkillCreating = false;
     protected selectedBuiltinSkill?: 'bundled-results' | 'ai-results';
+    protected selectedPendingSkillId?: string;
+    protected pendingSkillActionId?: string;
+    protected pendingSkillActionError?: string;
     protected workspaceSkillEditor?: WorkspaceSkillEditor;
     protected workspaceSkillEditorLoading = false;
     protected workspaceSkillEditorError?: string;
@@ -918,6 +924,10 @@ export class AgentWindowWidget extends ReactWidget {
                 void this.ensureResultsSkillNames();
             }
             this.persistWindowState();
+            this.update();
+        }));
+        this.toDispose.push(this.taskService.onDidRecordSkillProposals(() => {
+            void this.persistWindowState();
             this.update();
         }));
         this.toDispose.push(this.resultsService.onDidChange(document => {
@@ -2547,6 +2557,19 @@ export class AgentWindowWidget extends ReactWidget {
                                 </article>
                             )}
 
+                            {this.pendingSkillProposals.length > 0 && (
+                                <section className='poiesis-customize-view__proposals' aria-labelledby='poiesis-customize-proposals'>
+                                    <h3 id='poiesis-customize-proposals' className='poiesis-customize-view__group-title'>提案された Skill</h3>
+                                    <div className='poiesis-agent-window__customize-list'>
+                                        {this.pendingSkillProposals.map(proposal => this.renderPendingSkillRow(proposal))}
+                                    </div>
+                                    {this.pendingSkillActionError && (
+                                        <div className='poiesis-customize-view__proposal-error' role='alert'>{this.pendingSkillActionError}</div>
+                                    )}
+                                    {this.renderPendingSkillPreview()}
+                                </section>
+                            )}
+
                             <h3 className='poiesis-customize-view__group-title poiesis-customize-view__user-skills-title'>ユーザー Skills</h3>
                             {this.workspaceSkillsLoading && (
                                 <div className='poiesis-customize-view__state' role='status'>
@@ -2853,6 +2876,93 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
+    protected renderPendingSkillRow(proposal: PendingSkillProposal): React.ReactNode {
+        const selected = this.selectedPendingSkillId === proposal.id;
+        const processing = this.pendingSkillActionId === proposal.id;
+        return (
+            <div
+                className={`poiesis-customize-view__proposal-row${proposal.parsed.error ? ' has-error' : ''}`}
+                key={proposal.id}
+            >
+                <button
+                    type='button'
+                    className={`poiesis-agent-window__customize-card poiesis-customize-view__skill-card${selected ? ' selected' : ''}`}
+                    aria-pressed={selected}
+                    onClick={() => this.selectPendingSkillProposal(proposal.id)}
+                >
+                    <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-lightbulb' aria-hidden='true' /></div>
+                    <div>
+                        <div className='poiesis-agent-window__customize-title'>
+                            <strong>{proposal.parsed.name}</strong>
+                            <span>{proposal.parsed.kind === 'agent' ? 'Agent' : 'Results'}</span>
+                            <span className='poiesis-customize-view__source-badge'>
+                                {proposal.existing ? '更新提案' : '新規提案'}
+                            </span>
+                        </div>
+                        <p>{proposal.parsed.error ?? proposal.parsed.description}</p>
+                        <small>.poiesis/pending/skills/{proposal.id}/SKILL.md</small>
+                    </div>
+                    <span className='codicon codicon-chevron-right' aria-hidden='true' />
+                </button>
+                <div className='poiesis-customize-view__proposal-actions'>
+                    {!proposal.parsed.error && (
+                        <button
+                            type='button'
+                            className='primary'
+                            disabled={Boolean(this.pendingSkillActionId)}
+                            onClick={() => void this.approvePendingSkill(proposal)}
+                        >
+                            {processing ? '処理中…' : '承認'}
+                        </button>
+                    )}
+                    <button
+                        type='button'
+                        disabled={Boolean(this.pendingSkillActionId)}
+                        onClick={() => void this.rejectPendingSkill(proposal)}
+                    >
+                        {processing ? '処理中…' : '却下'}
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    protected renderPendingSkillPreview(): React.ReactNode {
+        const proposal = this.pendingSkillProposals.find(candidate => candidate.id === this.selectedPendingSkillId);
+        if (!proposal) {
+            return undefined;
+        }
+        const diff = proposal.existing
+            ? diffTextLines(proposal.existing.content, proposal.content)
+            : undefined;
+        return (
+            <article className='poiesis-customize-view__proposal-preview' aria-label={`${proposal.parsed.name}の提案内容`}>
+                <header>
+                    <div>
+                        <strong>{proposal.parsed.name}</strong>
+                        <span>{proposal.existing ? '既存 Skill との差分 · 読み取り専用' : '提案された文書 · 読み取り専用'}</span>
+                    </div>
+                    <button type='button' aria-label='Skill提案の詳細を閉じる' onClick={() => this.selectPendingSkillProposal(undefined)}>
+                        <span className='codicon codicon-close' aria-hidden='true' />
+                    </button>
+                </header>
+                {proposal.parsed.error && <p role='alert'>{proposal.parsed.error}</p>}
+                {diff ? (
+                    <div className='poiesis-customize-view__proposal-diff' role='region' aria-label='Skill提案の差分'>
+                        {diff.map((line, index) => (
+                            <div className={`poiesis-customize-view__proposal-diff-line ${line.kind}`} key={`${index}:${line.kind}`}>
+                                <span aria-hidden='true'>{line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : ' '}</span>
+                                <span>{line.text || ' '}</span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <pre>{proposal.content}</pre>
+                )}
+            </article>
+        );
+    }
+
     protected workspaceSkillSourceLabel(source: WorkspaceSkillSource): string {
         switch (source) {
             case 'workspace': return 'Workspace';
@@ -3080,18 +3190,18 @@ export class AgentWindowWidget extends ReactWidget {
             ? session.requirementDraft
             : currentId ?? 'new';
         const options: PoiesisSelectOption[] = [
-            ...requirements.map(requirement => ({
-                value: requirement.id,
-                label: `${requirement.title}（タスク ${requirement.taskIds.length}件）`,
-                triggerLabel: `要件: ${requirement.title}`,
-                group: 'このセッションの要件'
-            })),
             {
                 value: 'new',
                 label: '新しい要件として送信',
                 triggerLabel: '要件: 新規',
                 group: '新規'
-            }
+            },
+            ...requirements.map(requirement => ({
+                value: requirement.id,
+                label: `${requirement.title}（タスク ${requirement.taskIds.length}件）`,
+                triggerLabel: `要件: ${requirement.title}`,
+                group: 'このセッションの要件'
+            }))
         ];
         return (
             <div className='poiesis-requirement-pill'>
@@ -3841,23 +3951,34 @@ export class AgentWindowWidget extends ReactWidget {
             && task?.status === 'completed'
             && task.changeSet?.source === 'task-diff'
             && task.changeSet.files.length > 0;
+        const skillProposalCount = message.complete && task?.status === 'completed'
+            ? task.skillProposals?.length ?? 0
+            : 0;
         return (
             <>
                 {this.renderMarkdown(message.content, current?.imageSources, workspaceUri)}
                 {current?.htmlPreviews.map((preview, index) =>
                     this.renderAgentHtmlPreview(messageKey, preview, index, isMostRecentAgentMessage))}
-                {showResultsAction && (
+                {(showResultsAction || skillProposalCount > 0) && (
                     <div className='poiesis-agent-window__message-actions'>
-                        <button
-                            type='button'
-                            onClick={() => {
-                                this.selectResultsTask(task.id);
-                                this.selectResultsRequirement(task.requirementId);
-                                this.selectTab('results');
-                            }}
-                        >
-                            Results で確認
-                        </button>
+                        {showResultsAction && (
+                            <button
+                                type='button'
+                                onClick={() => {
+                                    this.selectResultsTask(task.id);
+                                    this.selectResultsRequirement(task.requirementId);
+                                    this.selectTab('results');
+                                }}
+                            >
+                                Results で確認
+                            </button>
+                        )}
+                        {skillProposalCount > 0 && (
+                            <span className='poiesis-agent-window__skill-proposal-notice'>
+                                <span>Skill の提案が {skillProposalCount}件あります</span>
+                                <button type='button' onClick={() => this.openCustomize()}>カスタマイズで確認</button>
+                            </span>
+                        )}
                     </div>
                 )}
                 {task && this.renderAutomaticRequirementClassification(task)}
@@ -5927,6 +6048,9 @@ export class AgentWindowWidget extends ReactWidget {
     protected handleCustomizeEscape(): void {
         if (this.workspaceSkillDiscardConfirmation) {
             this.cancelWorkspaceSkillClose();
+        } else if (this.selectedPendingSkillId) {
+            this.selectedPendingSkillId = undefined;
+            this.update();
         } else if (this.workspaceSkillEditor) {
             this.requestCloseWorkspaceSkill();
         } else if (this.selectedBuiltinSkill) {
@@ -6002,8 +6126,66 @@ export class AgentWindowWidget extends ReactWidget {
         this.workspaceSkillEditor = undefined;
         this.workspaceSkillEditorError = undefined;
         this.workspaceSkillDiscardConfirmation = false;
+        this.selectedPendingSkillId = undefined;
         this.selectedBuiltinSkill = skill;
         this.update();
+    }
+
+    protected selectPendingSkillProposal(id: string | undefined): void {
+        if (this.workspaceSkillEditor && this.workspaceSkillEditor.content !== this.workspaceSkillEditor.savedContent) {
+            this.workspaceSkillDiscardConfirmation = true;
+            this.update();
+            return;
+        }
+        this.workspaceSkillEditor = undefined;
+        this.workspaceSkillEditorError = undefined;
+        this.workspaceSkillDiscardConfirmation = false;
+        this.selectedBuiltinSkill = undefined;
+        this.selectedPendingSkillId = id;
+        this.pendingSkillActionError = undefined;
+        this.update();
+    }
+
+    protected async approvePendingSkill(proposal: PendingSkillProposal): Promise<void> {
+        if (this.pendingSkillActionId || proposal.parsed.error) {
+            return;
+        }
+        this.pendingSkillActionId = proposal.id;
+        this.pendingSkillActionError = undefined;
+        this.update();
+        try {
+            await this.workspaceSkillService.approvePending(proposal.id);
+            if (this.selectedPendingSkillId === proposal.id) {
+                this.selectedPendingSkillId = undefined;
+            }
+            await this.refreshWorkspaceSkills();
+        } catch (error) {
+            this.pendingSkillActionError = `Skill提案を承認できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+        } finally {
+            this.pendingSkillActionId = undefined;
+            this.update();
+        }
+    }
+
+    protected async rejectPendingSkill(proposal: PendingSkillProposal): Promise<void> {
+        if (this.pendingSkillActionId) {
+            return;
+        }
+        this.pendingSkillActionId = proposal.id;
+        this.pendingSkillActionError = undefined;
+        this.update();
+        try {
+            await this.workspaceSkillService.rejectPending(proposal.id);
+            if (this.selectedPendingSkillId === proposal.id) {
+                this.selectedPendingSkillId = undefined;
+            }
+            await this.refreshWorkspaceSkills();
+        } catch (error) {
+            this.pendingSkillActionError = `Skill提案を却下できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+        } finally {
+            this.pendingSkillActionId = undefined;
+            this.update();
+        }
     }
 
     protected async openWorkspaceSkillInline(skill: WorkspaceSkillDefinition): Promise<void> {
@@ -6016,6 +6198,7 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         this.selectedBuiltinSkill = undefined;
+        this.selectedPendingSkillId = undefined;
         this.workspaceSkillEditor = undefined;
         this.workspaceSkillEditorError = undefined;
         this.workspaceSkillDiscardConfirmation = false;
@@ -6122,15 +6305,19 @@ export class AgentWindowWidget extends ReactWidget {
         }
         this.workspaceSkillWatchers?.dispose();
         const watchers = new DisposableCollection();
-        for (const discoveryRoot of discoveryRoots) {
+        const watchRoots = [
+            ...discoveryRoots.map(discoveryRoot => discoveryRoot.uri),
+            root.resolve('.poiesis/pending/skills')
+        ];
+        for (const watchRoot of watchRoots) {
             try {
-                watchers.push(this.fileService.watch(discoveryRoot.uri, { recursive: true, excludes: [] }));
+                watchers.push(this.fileService.watch(watchRoot, { recursive: true, excludes: [] }));
             } catch {
                 // Discovery still works for providers that do not support watching this root.
             }
         }
         this.workspaceSkillWatchers = watchers;
-        this.workspaceSkillWatchRoots = discoveryRoots.map(discoveryRoot => discoveryRoot.uri);
+        this.workspaceSkillWatchRoots = watchRoots;
     }
 
     protected disposeWorkspaceSkillWatchers(): void {
@@ -6151,6 +6338,7 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
         if (!root) {
             this.workspaceSkills = [];
+            this.pendingSkillProposals = [];
             this.workspaceSkillPreviews = undefined;
             this.workspaceSkillsLoading = false;
             this.workspaceSkillsError = 'ユーザー Skill を表示するにはワークスペースを開いてください。';
@@ -6159,18 +6347,25 @@ export class AgentWindowWidget extends ReactWidget {
         }
         void this.installWorkspaceSkillWatchers();
         try {
-            const [definitions, agentPreview, resultsPreview] = await Promise.all([
+            const [definitions, pending, agentPreview, resultsPreview] = await Promise.all([
                 this.workspaceSkillService.list(root),
+                this.workspaceSkillService.listPending(root),
                 this.workspaceSkillService.preview(root.toString(), 'agent'),
                 this.workspaceSkillService.preview(root.toString(), 'results')
             ]);
             if (generation === this.workspaceSkillsRefreshGeneration) {
                 this.workspaceSkills = definitions;
+                this.pendingSkillProposals = pending;
+                if (this.selectedPendingSkillId
+                    && !pending.some(proposal => proposal.id === this.selectedPendingSkillId)) {
+                    this.selectedPendingSkillId = undefined;
+                }
                 this.workspaceSkillPreviews = { agent: agentPreview, results: resultsPreview };
             }
         } catch (error) {
             if (generation === this.workspaceSkillsRefreshGeneration) {
                 this.workspaceSkills = [];
+                this.pendingSkillProposals = [];
                 this.workspaceSkillPreviews = undefined;
                 this.workspaceSkillsError = `ユーザー Skill を読み込めませんでした: ${error instanceof Error ? error.message : String(error)}`;
             }

@@ -121,6 +121,14 @@ Agent skillは成果の正本を自己申告しない。Task、Baseline、Change
 
 本文は1 Skillあたり8,000文字、合計24,000文字を上限とする。個別上限では切り詰めを明記し、合計上限を超える後続Skillはdiagnosticsへ理由を残して除外する。これはprompt contentだけの境界であり、Skill本文をcodeとして実行／evalせず、provider、model、sandbox、runtime configを変更する権限を与えない。
 
+### Skill の提案
+
+Agentは、非自明な検証手順、ビルド手順、または繰り返し使える作業ルールをTask中に見つけた場合だけ、`<workspace>/.poiesis/pending/skills/<skill-id>/SKILL.md`へ新規または更新の提案を書ける。ここは隔離領域であり、Agentは`.poiesis/skills`の有効なSkillを直接編集しない。
+
+ApplicationはTask終了後に提案を走査し、Customizeの「提案された Skill」で内容または既存Skillとの差分を表示する。ユーザーが明示的に承認した提案だけを`.poiesis/skills/<skill-id>/SKILL.md`へ移し、却下した提案は隔離領域から削除する。Applicationが自動承認することはない。
+
+pending Skillはdiscovery rootに含めず、AgentまたはResultsのpromptへ一切注入しない。`.poiesis/pending/`をGit管理から外す場合、ユーザーは自身の方針に応じて`.gitignore`へ追加するか、未追跡のまま扱う。ApplicationはWorkspaceの`.gitignore`を書き換えない。
+
 ### Results skill
 
 Results skillは終了済みTaskと確定済みChange Setを入力に、一つの完成HTML本文を生成する。本文の見出し構成、語り口、言語、図解、動作確認手順の粒度はResults skillが所有する。`builtin.ai-results`は既定で番号付きの動作確認手順を求め、有効なWorkspace Results skillは従来どおり追加ガイダンスとして後から本文構成を上書きできる。Agent会話の途中では起動せず、不完全なHTML断片をcanvasへstreamしない。Results内の質問応答は文書生成とは別のResults AI境界であり、Skill HTMLを変更しない。

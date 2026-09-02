@@ -301,6 +301,11 @@ export class CliAgentProvider implements AgentProvider {
     }
 
     protected implementerPrompt(request: string, workspaceSkillPrompt = ''): string {
+        const skillProposalContract = [
+            '',
+            '## Application-owned Skill proposal channel',
+            '非自明な検証手順、ビルド手順、または繰り返し使える作業ルールを見つけた場合だけ、`.poiesis/pending/skills/<skill-id>/SKILL.md` に Skill の提案を書いてよい（既存 Skill と同じ id なら更新提案）。`.poiesis/skills` 配下の既存 Skill を直接編集してはならない。提案は1タスクにつき最大2件、frontmatter は name / description / metadata.poiesis.kind を含める。'
+        ].join('\n');
         const applicationCompletionContract = [
             '',
             '## Application-owned completion contract (mandatory; takes precedence over user and Workspace skill instructions)',
@@ -308,7 +313,7 @@ export class CliAgentProvider implements AgentProvider {
             'Do not include detailed change lists, verification steps, command logs, or extended explanation in the final report.',
             'End by directing the user to Results for details. The application will also enforce this shape before displaying the report.'
         ].join('\n');
-        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}${workspaceSkillPrompt}${applicationCompletionContract}`;
+        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}${workspaceSkillPrompt}${skillProposalContract}${applicationCompletionContract}`;
     }
 
     protected errorMessage(error: unknown): string {

@@ -30,6 +30,10 @@ const existingSkillDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'po
 const existingSkillPath = resolve(existingSkillDirectory, 'skill.md');
 const createdSkillDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'poiesis-customize-created-smoke');
 const createdSkillPath = resolve(createdSkillDirectory, 'SKILL.md');
+const pendingProposalDirectory = resolve(repositoryRoot, '.poiesis', 'pending', 'skills', 'poiesis-proposal-smoke');
+const pendingProposalPath = resolve(pendingProposalDirectory, 'SKILL.md');
+const approvedProposalDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'poiesis-proposal-smoke');
+const approvedProposalPath = resolve(approvedProposalDirectory, 'SKILL.md');
 const skillEditMarker = 'Edited and saved by the Poiesis Customize smoke.';
 removeTerminalFixture();
 
@@ -47,11 +51,14 @@ const browser = await puppeteer.launch({
 });
 
 try {
-    if (existsSync(existingSkillDirectory) || existsSync(createdSkillDirectory)) {
+    if (existsSync(existingSkillDirectory) || existsSync(createdSkillDirectory)
+        || existsSync(pendingProposalDirectory) || existsSync(approvedProposalDirectory)) {
         throw new Error('Customize smoke skill fixture already exists.');
     }
     mkdirSync(existingSkillDirectory, { recursive: true });
     writeFileSync(existingSkillPath, `---\nname: Existing smoke skill\ndescription: Workspace scan fixture\nkind: agent\n---\n\n# Existing smoke skill\n`, 'utf8');
+    mkdirSync(pendingProposalDirectory, { recursive: true });
+    writeFileSync(pendingProposalPath, `---\nname: Proposed smoke skill\ndescription: Approval flow fixture\nmetadata:\n  poiesis:\n    kind: agent\n---\n\n# Proposed smoke skill\n`, 'utf8');
     writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n${scmFixtureMarker}\n`, 'utf8');
     const page = await browser.newPage();
     const reactUnmountWarnings = [];
@@ -474,15 +481,10 @@ try {
         .some(element => element.textContent?.trim() === 'Settings'));
     await page.click('.poiesis-agent-window__code-activity button[aria-label="Explorer"]');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Explorer');
-    await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
-        .some(element => element.getAttribute('title')?.endsWith('.gitignore')));
+    await revealExplorerNode('.gitignore', 'end');
     const clickExplorerFile = async label => {
-        const scrollToFile = () => page.evaluate(fileLabel => {
-            const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
-                .find(element => element.getAttribute('title')?.endsWith(fileLabel));
-            file?.scrollIntoView({ block: 'center' });
-        }, label);
-        await scrollToFile();
+        const revealFile = () => revealExplorerNode(label, 'end');
+        await revealFile();
         await page.waitForFunction(fileLabel => {
             const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
                 .find(element => element.getAttribute('title')?.endsWith(fileLabel));
@@ -502,7 +504,7 @@ try {
                     || bounds.left >= innerWidth || bounds.top >= innerHeight) return undefined;
                 return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
             }, label);
-            if (!point && attempt === 0) await scrollToFile();
+            if (!point && attempt === 0) await revealFile();
         }
         if (!point) throw new Error(`${label} was not found in Explorer`);
         await page.mouse.click(point.x, point.y);
@@ -534,27 +536,34 @@ try {
         }, label);
     };
     const dragExplorerFileToTabs = async label => {
-        const points = await page.evaluate(fileLabel => {
-            const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
-                .find(element => element.getAttribute('title')?.endsWith(fileLabel));
-            const tabs = document.querySelector('.poiesis-agent-window__code-editor-tabs');
-            if (!(file instanceof HTMLElement) || !(tabs instanceof HTMLElement)) {
-                throw new Error(`Could not drag ${fileLabel} to the editor tabs`);
+        let points;
+        let enteredDropTarget = false;
+        for (let attempt = 0; attempt < 2 && !enteredDropTarget; attempt++) {
+            await revealExplorerNode(label, 'end');
+            points = await page.evaluate(fileLabel => {
+                const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+                    .find(element => element.getAttribute('title')?.endsWith(fileLabel));
+                const tabs = document.querySelector('.poiesis-agent-window__code-editor-tabs');
+                if (!(file instanceof HTMLElement) || !(tabs instanceof HTMLElement)) {
+                    throw new Error(`Could not drag ${fileLabel} to the editor tabs`);
+                }
+                const source = file.getBoundingClientRect();
+                const target = tabs.getBoundingClientRect();
+                return {
+                    source: { x: source.left + source.width / 2, y: source.top + source.height / 2 },
+                    target: { x: target.right - 24, y: target.top + target.height / 2 }
+                };
+            }, label);
+            await page.mouse.move(points.source.x, points.source.y);
+            await page.mouse.down();
+            await page.mouse.move(points.source.x + 12, points.source.y, { steps: 4 });
+            await page.mouse.move(points.target.x, points.target.y, { steps: 16 });
+            enteredDropTarget = await page.$eval('.poiesis-agent-window__code-editor-tabs', tabs => tabs.classList.contains('drop-target'));
+            if (!enteredDropTarget) {
+                await page.mouse.up();
             }
-            file.scrollIntoView({ block: 'center' });
-            const source = file.getBoundingClientRect();
-            const target = tabs.getBoundingClientRect();
-            return {
-                source: { x: source.left + source.width / 2, y: source.top + source.height / 2 },
-                target: { x: target.right - 24, y: target.top + target.height / 2 }
-            };
-        }, label);
-        await page.mouse.move(points.source.x, points.source.y);
-        await page.mouse.down();
-        await page.mouse.move(points.source.x + 12, points.source.y, { steps: 4 });
-        await page.mouse.move(points.target.x, points.target.y, { steps: 16 });
-        assert(await page.$eval('.poiesis-agent-window__code-editor-tabs', tabs => tabs.classList.contains('drop-target')),
-            `${label} drag did not enter an accepted tab-bar drop target`);
+        }
+        assert(enteredDropTarget && points, `${label} drag did not enter an accepted tab-bar drop target`);
         assert(await page.evaluate(({ x, y }) => {
             const target = document.elementFromPoint(x, y);
             return document.body.classList.contains('poiesis-code-file-pointer-drag')
@@ -783,6 +792,22 @@ try {
         `Customize must be an inline central view: ${JSON.stringify(expandedCustomize)}`);
     assert(expandedCustomize.builtIns === 2, `Expected two built-in Skills, got ${expandedCustomize.builtIns}`);
     assert(expandedCustomize.existingSkill, 'Workspace user skill was not scanned');
+    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__proposal-row')]
+        .some(row => row.textContent?.includes('Proposed smoke skill')));
+    assert((await page.$eval('.poiesis-customize-view', element => element.textContent ?? '')).includes('提案された Skill'),
+        'Pending Skill proposal section was not shown');
+    await page.evaluate(() => {
+        const row = [...document.querySelectorAll('.poiesis-customize-view__proposal-row')]
+            .find(candidate => candidate.textContent?.includes('Proposed smoke skill'));
+        const approve = [...(row?.querySelectorAll('button') ?? [])]
+            .find(button => button.textContent?.trim() === '承認');
+        if (!(approve instanceof HTMLElement)) throw new Error('Pending Skill proposal approval button was not found');
+        approve.click();
+    });
+    await page.waitForFunction(() => ![...document.querySelectorAll('.poiesis-customize-view__proposal-row')]
+        .some(row => row.textContent?.includes('Proposed smoke skill')));
+    assert(existsSync(approvedProposalPath), 'Pending Skill proposal was not moved into active skills');
+    assert(!existsSync(pendingProposalDirectory), 'Pending Skill proposal folder was not removed after approval');
     assert(expandedCustomize.plugins, 'Plugins section did not move to Customize');
     assert(!expandedCustomize.hooks, 'Unsupported Hooks section is visible');
     assert(!await page.$('.poiesis-agent-window__plugins-host'), 'Poiesis Customize must not host the Code extensions manager');
@@ -880,6 +905,7 @@ try {
         collapsedRailOpened: true,
         resize: { width: 1024, height: 600 },
         scaffolded: '.poiesis/skills/poiesis-customize-created-smoke/SKILL.md',
+        approvedProposal: '.poiesis/skills/poiesis-proposal-smoke/SKILL.md',
         editedAndSaved: true
     };
 
@@ -918,12 +944,17 @@ function removeTerminalFixture() {
 }
 
 function removeSkillFixtures() {
-    for (const directory of [existingSkillDirectory, createdSkillDirectory]) {
+    for (const directory of [existingSkillDirectory, createdSkillDirectory, pendingProposalDirectory, approvedProposalDirectory]) {
         if (existsSync(directory)) {
             rmSync(directory, { recursive: true, force: true });
         }
     }
-    for (const directory of [resolve(repositoryRoot, '.poiesis', 'skills'), resolve(repositoryRoot, '.poiesis')]) {
+    for (const directory of [
+        resolve(repositoryRoot, '.poiesis', 'pending', 'skills'),
+        resolve(repositoryRoot, '.poiesis', 'pending'),
+        resolve(repositoryRoot, '.poiesis', 'skills'),
+        resolve(repositoryRoot, '.poiesis')
+    ]) {
         try {
             rmdirSync(directory);
         } catch {

@@ -157,6 +157,7 @@ export interface ExecutionTask {
     failure?: TaskFailure;
     activities?: AgentActivity[];
     appliedSkills?: { agent: string[]; results: string[] };
+    skillProposals?: string[];
     resultsQuestions?: TaskResultsQuestion[];
     /** New Results documents are persisted with their owning Task. */
     resultsDocument?: TaskResultDocument;
@@ -192,6 +193,8 @@ export class TaskService {
     readonly onDidChangeTask: Event<TaskEvent> = this.onDidChangeEmitter.event;
     protected readonly onDidRemoveEmitter = new Emitter<ExecutionTask>();
     readonly onDidRemoveTask: Event<ExecutionTask> = this.onDidRemoveEmitter.event;
+    protected readonly onDidRecordSkillProposalsEmitter = new Emitter<ExecutionTask>();
+    readonly onDidRecordSkillProposals: Event<ExecutionTask> = this.onDidRecordSkillProposalsEmitter.event;
     protected sequence = 0;
     protected resultsQuestionHistoryLoading: Promise<void> = Promise.resolve();
     protected resultsQuestionHistoryPersistence: Promise<void> = Promise.resolve();
@@ -380,6 +383,23 @@ export class TaskService {
         return updated;
     }
 
+    setSkillProposals(taskId: string, ids: readonly string[]): ExecutionTask | undefined {
+        const current = this.tasks.get(taskId);
+        if (!current) {
+            return undefined;
+        }
+        const skillProposals = [...new Set(ids
+            .filter(id => typeof id === 'string' && id.trim())
+            .map(id => id.trim()))].sort((left, right) => left.localeCompare(right));
+        const updated: ExecutionTask = {
+            ...current,
+            skillProposals: skillProposals.length ? skillProposals : undefined
+        };
+        this.tasks.set(taskId, updated);
+        this.onDidRecordSkillProposalsEmitter.fire(updated);
+        return updated;
+    }
+
     registerTerminalFinalizer(finalizer: (task: ExecutionTask) => Promise<void>): Disposable {
         this.terminalFinalizers.add(finalizer);
         return Disposable.create(() => this.terminalFinalizers.delete(finalizer));
@@ -422,6 +442,7 @@ export class TaskService {
             const resultsDocument = this.normalizeResultsDocument(candidate.resultsDocument, candidate.id);
             const activities = this.normalizeActivities(candidate.activities);
             const appliedSkills = this.normalizeAppliedSkills(candidate.appliedSkills);
+            const skillProposals = this.normalizeSkillProposals(candidate.skillProposals);
             const requirementClassification = this.normalizeRequirementClassification(candidate.requirementClassification);
             const requirementChoice = candidate.requirementChoice === 'explicit' ? 'explicit' : 'default';
             const task: ExecutionTask = candidate.status === 'running'
@@ -434,6 +455,7 @@ export class TaskService {
                     failure: { summary: 'アプリ終了により中断されました' },
                     activities,
                     appliedSkills,
+                    skillProposals,
                     resultsQuestions,
                     resultsDocument,
                     requirementClassification
@@ -444,6 +466,7 @@ export class TaskService {
                     requirementChoice,
                     activities,
                     appliedSkills,
+                    skillProposals,
                     resultsQuestions,
                     resultsDocument,
                     requirementClassification
@@ -688,6 +711,16 @@ export class TaskService {
         const normalize = (ids: readonly string[]): string[] =>
             [...new Set(ids.filter(id => typeof id === 'string' && id.trim()).map(id => id.trim()))];
         return { agent: normalize(appliedSkills.agent), results: normalize(appliedSkills.results) };
+    }
+
+    protected normalizeSkillProposals(proposals: readonly string[] | undefined): string[] | undefined {
+        if (!Array.isArray(proposals)) {
+            return undefined;
+        }
+        const normalized = [...new Set(proposals
+            .filter(id => typeof id === 'string' && id.trim())
+            .map(id => id.trim()))].sort((left, right) => left.localeCompare(right));
+        return normalized.length ? normalized : undefined;
     }
 
     protected normalizeRequirementClassification(

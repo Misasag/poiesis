@@ -2,9 +2,10 @@ import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
 import URI from '@theia/core/lib/common/uri';
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { inject, injectable } from '@theia/core/shared/inversify';
+import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { SkillBundleKind } from '../common/skill-bundle';
 import { GlobalStorageService } from './global-storage-service';
-import { mergeSkillsByRank, parseSkillDocument } from './skill-document';
+import { mergeSkillsByRank, ParsedSkillDocument, parseSkillDocument } from './skill-document';
 
 export const WORKSPACE_SKILL_INSTRUCTION_MAX_CHARS = 8_000;
 export const WORKSPACE_SKILLS_TOTAL_MAX_CHARS = 24_000;
@@ -39,6 +40,17 @@ export interface WorkspaceSkillDefinition {
     warnings: string[];
 }
 
+export interface PendingSkillProposal {
+    id: string;
+    uri: string;
+    parsed: ParsedSkillDocument;
+    content: string;
+    existing?: {
+        uri: string;
+        content: string;
+    };
+}
+
 export interface WorkspaceSkillPrompt {
     content: string;
     diagnostics: string[];
@@ -69,7 +81,8 @@ export class WorkspaceSkillService {
     constructor(
         @inject(FileService) protected readonly fileService: FileService,
         @inject(GlobalStorageService) protected readonly globalStorageService: GlobalStorageService,
-        @inject(EnvVariablesServer) protected readonly envVariablesServer: EnvVariablesServer
+        @inject(EnvVariablesServer) protected readonly envVariablesServer: EnvVariablesServer,
+        @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService
     ) { }
 
     async getDiscoveryRoots(root: URI): Promise<WorkspaceSkillDiscoveryRoot[]> {
@@ -87,6 +100,80 @@ export class WorkspaceSkillService {
         const roots = await this.getDiscoveryRoots(root);
         const discovered = (await Promise.all(roots.map(candidate => this.listRoot(candidate, enablement)))).flat();
         return mergeSkillsByRank(discovered);
+    }
+
+    async listPending(root: URI): Promise<PendingSkillProposal[]> {
+        const pendingRoot = root.resolve('.poiesis/pending/skills');
+        if (!await this.fileService.exists(pendingRoot)) {
+            return [];
+        }
+        const activeRoot = root.resolve('.poiesis/skills');
+        const pendingStat = await this.fileService.resolve(pendingRoot);
+        const proposals = await Promise.all((pendingStat.children ?? [])
+            .filter(child => child.isDirectory)
+            .sort((left, right) => left.name.localeCompare(right.name))
+            .map(async child => {
+                const proposalUri = child.resource.resolve('SKILL.md');
+                let content = '';
+                let parsed: ParsedSkillDocument;
+                try {
+                    content = (await this.fileService.read(proposalUri)).value;
+                    parsed = parseSkillDocument(child.name, content);
+                } catch (error) {
+                    parsed = {
+                        ...parseSkillDocument(child.name, ''),
+                        error: `SKILL.mdを読み込めませんでした: ${this.errorMessage(error)}`
+                    };
+                }
+                const existing = await this.readExistingWorkspaceSkill(activeRoot.resolve(child.name));
+                return {
+                    id: child.name,
+                    uri: proposalUri.toString(),
+                    parsed,
+                    content,
+                    existing
+                };
+            }));
+        return proposals;
+    }
+
+    async approvePending(id: string): Promise<void> {
+        const root = this.currentWorkspaceRoot();
+        const proposal = (await this.listPending(root)).find(candidate => candidate.id === id);
+        if (!proposal) {
+            throw new Error(`Skill提案「${id}」が見つかりません。`);
+        }
+        if (proposal.parsed.error) {
+            throw new Error(proposal.parsed.error);
+        }
+        const activeDirectory = root.resolve('.poiesis/skills').resolve(id);
+        if (!await this.fileService.exists(activeDirectory)) {
+            await this.fileService.createFolder(activeDirectory, { fromUserGesture: true });
+        } else {
+            const activeStat = await this.fileService.resolve(activeDirectory);
+            for (const entry of (activeStat.children ?? []).filter(child =>
+                !child.isDirectory && child.name.toLowerCase() === 'skill.md')) {
+                await this.fileService.delete(entry.resource, {
+                    recursive: false,
+                    useTrash: false,
+                    fromUserGesture: true
+                });
+            }
+        }
+        await this.fileService.move(new URI(proposal.uri), activeDirectory.resolve('SKILL.md'), {
+            overwrite: true,
+            fromUserGesture: true
+        });
+        await this.deletePendingDirectory(root, id);
+    }
+
+    async rejectPending(id: string): Promise<void> {
+        const root = this.currentWorkspaceRoot();
+        const proposal = (await this.listPending(root)).find(candidate => candidate.id === id);
+        if (!proposal) {
+            throw new Error(`Skill提案「${id}」が見つかりません。`);
+        }
+        await this.deletePendingDirectory(root, id);
     }
 
     parse(
@@ -301,6 +388,51 @@ export class WorkspaceSkillService {
                 rank: root.rank,
                 warnings
             };
+        }
+    }
+
+    protected async readExistingWorkspaceSkill(skillDirectory: URI): Promise<PendingSkillProposal['existing']> {
+        if (!await this.fileService.exists(skillDirectory)) {
+            return undefined;
+        }
+        const stat = await this.fileService.resolve(skillDirectory);
+        const entries = (stat.children ?? [])
+            .filter(child => !child.isDirectory && child.name.toLowerCase() === 'skill.md')
+            .sort((left, right) => left.name.localeCompare(right.name));
+        const preferred = entries.find(entry => entry.name === 'SKILL.md') ?? entries[0];
+        if (!preferred) {
+            return undefined;
+        }
+        try {
+            return {
+                uri: preferred.resource.toString(),
+                content: (await this.fileService.read(preferred.resource)).value
+            };
+        } catch {
+            return {
+                uri: preferred.resource.toString(),
+                content: ''
+            };
+        }
+    }
+
+    protected currentWorkspaceRoot(): URI {
+        const root = this.workspaceService.tryGetRoots()[0]
+            ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
+        if (!root) {
+            throw new Error('Skill提案を操作するにはワークスペースを開いてください。');
+        }
+        return root.resource;
+    }
+
+    protected async deletePendingDirectory(root: URI, id: string): Promise<void> {
+        const directory = root.resolve('.poiesis/pending/skills').resolve(id);
+        if (await this.fileService.exists(directory)) {
+            await this.fileService.delete(directory, {
+                recursive: true,
+                useTrash: false,
+                fromUserGesture: true
+            });
         }
     }
 

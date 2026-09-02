@@ -11,6 +11,7 @@ import {
     splitTaskInRequirementModel
 } from './requirement-model';
 import { ExecutionTask, TaskResultDocument, TaskResultsQuestion, TaskService } from './task-service';
+import { shortenLegacyRequirementTitle } from './requirement-title-migration';
 
 const REQUIREMENTS_STORAGE_KEY = 'poiesis.requirements.sessions.v1';
 
@@ -70,7 +71,8 @@ export class RequirementService {
         const migrated = migrateRequirementModel(tasks, [...this.requirements.values()], () => this.nextId());
         this.requirements.clear();
         for (const requirement of migrated.requirements) {
-            this.requirements.set(requirement.id, requirement);
+            const restored = shortenLegacyRequirementTitle(requirement);
+            this.requirements.set(restored.id, restored);
         }
         for (const [taskId, requirementId] of migrated.assignments) {
             this.taskService.setRequirementId(taskId, requirementId);
@@ -247,6 +249,7 @@ export class RequirementService {
             ...requirement,
             title: typeof requirement.title === 'string' && requirement.title.trim() ? requirement.title.trim() : '要件',
             titleSource: requirement.titleSource === 'ai' || requirement.titleSource === 'user' ? requirement.titleSource : 'task',
+            titleShortened: requirement.titleShortened === true ? true : undefined,
             taskIds: Array.isArray(requirement.taskIds)
                 ? [...new Set(requirement.taskIds.filter(id => typeof id === 'string'))]
                 : [],

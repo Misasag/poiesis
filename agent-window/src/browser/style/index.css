@@ -1766,7 +1766,10 @@
 }
 
 .poiesis-agent-window__message-actions {
+    align-items: center;
     display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
     margin-top: 10px;
 }
 
@@ -1775,6 +1778,22 @@
     border-radius: 5px;
     font-size: 12px;
     padding: 5px 8px;
+}
+
+.poiesis-agent-window__skill-proposal-notice {
+    align-items: center;
+    color: #8f928b;
+    display: inline-flex;
+    flex-wrap: wrap;
+    font-size: 12px;
+    gap: 8px;
+}
+
+.poiesis-agent-window__skill-proposal-notice button {
+    border: 0;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
 .poiesis-agent-window__requirement-classification {
@@ -4815,6 +4834,59 @@ body.poiesis-code-file-pointer-drag * {
     margin-top: 20px;
 }
 
+.poiesis-customize-view__proposals {
+    margin-top: 20px;
+}
+
+.poiesis-customize-view__proposals > .poiesis-agent-window__customize-list {
+    margin-top: 7px;
+}
+
+.poiesis-customize-view__proposal-row {
+    align-items: center;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.poiesis-customize-view__proposal-row.has-error .poiesis-customize-view__skill-card {
+    border-color: #76504b;
+}
+
+.poiesis-customize-view__proposal-actions {
+    display: grid;
+    gap: 6px;
+    min-width: 64px;
+}
+
+.poiesis-customize-view__proposal-actions button {
+    background: #30322e;
+    border: 1px solid #62645d;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+
+.poiesis-customize-view__proposal-actions button.primary {
+    background: #d6d8d1;
+    border-color: #d6d8d1;
+    color: #20211f;
+}
+
+.poiesis-customize-view__proposal-actions button:disabled {
+    cursor: default;
+    opacity: .5;
+}
+
+.poiesis-customize-view__proposal-error {
+    color: var(--theia-errorForeground);
+    font-size: 12px;
+    margin-top: 8px;
+}
+
 .poiesis-customize-view__scope-group + .poiesis-customize-view__scope-group {
     margin-top: 16px;
 }
@@ -4970,7 +5042,8 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-agent-window__customize-close,
-.poiesis-customize-view__builtin-preview header button {
+.poiesis-customize-view__builtin-preview header button,
+.poiesis-customize-view__proposal-preview header button {
     align-items: center;
     background: transparent;
     border: 1px solid transparent;
@@ -4984,12 +5057,14 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-agent-window__customize-close:hover,
-.poiesis-customize-view__builtin-preview header button:hover {
+.poiesis-customize-view__builtin-preview header button:hover,
+.poiesis-customize-view__proposal-preview header button:hover {
     background: var(--poiesis-chrome-hover);
     color: var(--poiesis-chrome-text);
 }
 
 .poiesis-customize-view__builtin-preview,
+.poiesis-customize-view__proposal-preview,
 .poiesis-customize-view__editor {
     background: #20211f;
     border: 1px solid #4d4f49;
@@ -4999,6 +5074,7 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-customize-view__builtin-preview header,
+.poiesis-customize-view__proposal-preview header,
 .poiesis-customize-view__editor > header {
     align-items: center;
     display: flex;
@@ -5007,6 +5083,7 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-customize-view__builtin-preview header > div,
+.poiesis-customize-view__proposal-preview header > div,
 .poiesis-customize-view__editor > header > div {
     display: grid;
     gap: 2px;
@@ -5014,6 +5091,7 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-customize-view__builtin-preview header span,
+.poiesis-customize-view__proposal-preview header span,
 .poiesis-customize-view__editor header small {
     color: var(--poiesis-chrome-muted);
     font-size: 12px;
@@ -5037,6 +5115,53 @@ body.poiesis-code-file-pointer-drag * {
     margin: 0;
     overflow: auto;
     padding: 10px;
+}
+
+.poiesis-customize-view__proposal-preview > p[role='alert'] {
+    color: var(--theia-errorForeground);
+    font-size: 12px;
+    margin: 10px 0 0;
+}
+
+.poiesis-customize-view__proposal-preview pre,
+.poiesis-customize-view__proposal-diff {
+    background: #171816;
+    border: 1px solid var(--poiesis-chrome-line);
+    border-radius: 7px;
+    color: #c8c9c3;
+    font: 12px/1.55 var(--theia-code-font-family, monospace);
+    margin: 10px 0 0;
+    max-height: 420px;
+    overflow: auto;
+}
+
+.poiesis-customize-view__proposal-preview pre {
+    padding: 10px;
+    white-space: pre-wrap;
+}
+
+.poiesis-customize-view__proposal-diff-line {
+    display: grid;
+    grid-template-columns: 20px minmax(max-content, 1fr);
+    min-height: 19px;
+    padding: 0 8px 0 2px;
+    white-space: pre;
+}
+
+.poiesis-customize-view__proposal-diff-line > span:first-child {
+    opacity: .8;
+    text-align: center;
+    user-select: none;
+}
+
+.poiesis-customize-view__proposal-diff-line.added {
+    background: color-mix(in srgb, var(--theia-gitDecoration-addedResourceForeground) 12%, transparent);
+    color: var(--theia-gitDecoration-addedResourceForeground);
+}
+
+.poiesis-customize-view__proposal-diff-line.removed {
+    background: color-mix(in srgb, var(--theia-gitDecoration-deletedResourceForeground) 12%, transparent);
+    color: var(--theia-gitDecoration-deletedResourceForeground);
 }
 
 .poiesis-customize-view__dirty {

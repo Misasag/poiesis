@@ -6,6 +6,7 @@ import {
     removeTaskFromRequirementModel,
     splitTaskInRequirementModel
 } from '../agent-window/lib/browser/requirement-model.js';
+import { shortenLegacyRequirementTitle } from '../agent-window/lib/browser/requirement-title-migration.js';
 
 const tasks = [
     { id: 'task-a', sessionId: 'session-1', title: 'A', startedAt: '2026-09-02T01:00:00.000Z' },
@@ -46,4 +47,34 @@ assert.equal(removed.length, 2);
 
 const currentTasks = tasks.map(task => ({ ...task, requirementId: split.assignments.get(task.id) }));
 assert.equal(currentRequirementIdForTasks(currentTasks), split.assignments.get('task-c'));
+
+const legacyLongTitle = 'これは二十四文字を超える古いタスク由来の要件タイトルです';
+const secondLongTitle = '一度短縮されたあとに設定された二十四文字を超えるタイトルです';
+const storedRequirement = (id, title, titleSource, titleShortened) => ({
+    id,
+    sessionId: 'legacy',
+    title,
+    titleSource,
+    titleShortened,
+    createdAt: '2026-09-02T00:00:00.000Z',
+    updatedAt: '2026-09-02T00:00:00.000Z',
+    taskIds: [`${id}-task`]
+});
+const restoredLegacy = shortenLegacyRequirementTitle(storedRequirement('legacy-long', legacyLongTitle, 'task'));
+assert(restoredLegacy.title.length <= 24);
+assert.equal(restoredLegacy.titleShortened, true);
+const restoredAgain = shortenLegacyRequirementTitle({ ...restoredLegacy, title: secondLongTitle });
+assert.equal(restoredAgain.title, secondLongTitle);
+const userTitle = shortenLegacyRequirementTitle(storedRequirement(
+    'user-long', 'User supplied requirement title that remains untouched', 'user'));
+assert.equal(userTitle.title, 'User supplied requirement title that remains untouched');
+assert.equal(userTitle.titleShortened, undefined);
+const aiTitle = shortenLegacyRequirementTitle(storedRequirement(
+    'ai-long', 'AI supplied requirement title that remains untouched', 'ai'));
+assert.equal(aiTitle.title, 'AI supplied requirement title that remains untouched');
+assert.equal(aiTitle.titleShortened, undefined);
+const shortTitle = shortenLegacyRequirementTitle(storedRequirement('task-short', '短いタイトル', 'task'));
+assert.equal(shortTitle.title, '短いタイトル');
+assert.equal(shortTitle.titleShortened, undefined);
+
 console.log('requirement-model tests passed');

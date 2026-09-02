@@ -7,6 +7,7 @@ export interface Requirement {
     sessionId: string;
     title: string;
     titleSource: RequirementTitleSource;
+    titleShortened?: boolean;
     createdAt: string;
     updatedAt: string;
     taskIds: string[];
