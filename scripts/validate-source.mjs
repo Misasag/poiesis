@@ -40,6 +40,7 @@ const resultsGenerationProtocol = await read('agent-window/src/common/results-ge
 const resultsGenerationContext = await read('agent-window/src/browser/results-generation-context.ts');
 const resultsGenerationServer = await read('agent-window/src/node/results-generation-server.ts');
 const globalStorageService = await read('agent-window/src/browser/global-storage-service.ts');
+const skillDocument = await read('agent-window/src/browser/skill-document.ts');
 const workspaceSkillService = await read('agent-window/src/browser/workspace-skill-service.ts');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
@@ -697,8 +698,11 @@ for (const marker of [
     'multi-agent orchestration',
     'runtime config schema',
     '`builtin.results`',
-    '.poiesis/skills/<skill-id>/',
-    '`skill.md` bundleも`SkillBundle`契約へ適合する',
+    '<workspace>/.poiesis/skills',
+    '<home>/.agents/skills',
+    '`metadata.poiesis.kind`',
+    '`SKILL.md`または`skill.md`',
+    '`shadowedBy`',
     '1 Skillあたり8,000文字、合計24,000文字',
     'provider、model、sandbox、runtime configを変更する権限を与えない',
     'Execution evidenceは、ApplicationがTask実行中に観測して保存した'
@@ -1002,13 +1006,22 @@ for (const marker of [
     'WORKSPACE_SKILL_INSTRUCTION_MAX_CHARS = 8_000',
     'WORKSPACE_SKILLS_TOTAL_MAX_CHARS = 24_000',
     "root.resolve('.poiesis/skills')",
-    "content.slice(frontmatter[0].length).trim()",
     "skills = await this.list(new URI(workspaceUri))",
     'if (!skill.enabled)',
     'Workspace skills (user-defined instructions)',
     'setEnabled(skillDocumentUri: string, enabled: boolean)'
 ]) {
     assert.ok(workspaceSkillService.includes(marker), `Workspace Skill execution boundary is missing ${marker}`);
+}
+for (const marker of [
+    'export function parseSkillDocument(',
+    "content.slice(frontmatter[0].length).trim()",
+    'metadataPoiesisKind(lines)',
+    "kind が未指定のため Agent Skill として扱います",
+    'export function mergeSkillsByRank',
+    'shadowedBy: winner'
+]) {
+    assert.ok(skillDocument.includes(marker), `Pure Skill document parser is missing ${marker}`);
 }
 assert.ok(cliProvider.includes("buildPrompt(session.workspaceUri, 'agent')"));
 assert.ok(cliProvider.includes('this.implementerPrompt(message.content, workspaceSkills.content)'));

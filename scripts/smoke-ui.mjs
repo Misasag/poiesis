@@ -29,7 +29,7 @@ const terminalFixturePath = resolve(process.cwd(), '.poiesis-terminal-smoke.txt'
 const existingSkillDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'poiesis-customize-existing-smoke');
 const existingSkillPath = resolve(existingSkillDirectory, 'skill.md');
 const createdSkillDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'poiesis-customize-created-smoke');
-const createdSkillPath = resolve(createdSkillDirectory, 'skill.md');
+const createdSkillPath = resolve(createdSkillDirectory, 'SKILL.md');
 const skillEditMarker = 'Edited and saved by the Poiesis Customize smoke.';
 removeTerminalFixture();
 
@@ -818,9 +818,9 @@ try {
     await page.waitForSelector('.poiesis-customize-view__editor-input');
     await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__editor header small')
         ?.textContent?.includes('poiesis-customize-created-smoke'));
-    assert(existsSync(createdSkillPath), '新しいSkill did not scaffold skill.md');
+    assert(existsSync(createdSkillPath), '新しいSkill did not scaffold SKILL.md');
     const scaffoldedSkill = readFileSync(createdSkillPath, 'utf8');
-    assert(scaffoldedSkill.includes('kind: results'), 'Scaffolded skill.md did not preserve the selected kind');
+    assert(scaffoldedSkill.includes('kind: results'), 'Scaffolded SKILL.md did not preserve the selected kind');
     await page.focus('.poiesis-customize-view__editor-input');
     await page.keyboard.down('Control');
     await page.keyboard.press('End');
@@ -831,7 +831,7 @@ try {
     await page.keyboard.press('s');
     await page.keyboard.up('Control');
     await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__dirty:not(.active)')?.textContent?.includes('保存済み'));
-    assert(readFileSync(createdSkillPath, 'utf8').includes(skillEditMarker), 'Edited skill.md was not saved');
+    assert(readFileSync(createdSkillPath, 'utf8').includes(skillEditMarker), 'Edited SKILL.md was not saved');
     await page.focus('.poiesis-customize-view__editor-input');
     await page.keyboard.type('\ndiscard-this-smoke-change');
     await click(page, '.poiesis-customize-view__editor footer button', '閉じる');
@@ -859,7 +859,7 @@ try {
         expanded: expandedCustomize,
         collapsedRailOpened: true,
         resize: { width: 1024, height: 600 },
-        scaffolded: '.poiesis/skills/poiesis-customize-created-smoke/skill.md',
+        scaffolded: '.poiesis/skills/poiesis-customize-created-smoke/SKILL.md',
         editedAndSaved: true
     };
 

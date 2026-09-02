@@ -4393,14 +4393,23 @@ body.poiesis-code-file-pointer-drag * {
 }
 
 .poiesis-customize-view__section-heading {
-    align-items: center;
+    align-items: flex-start;
     display: flex;
+    gap: 16px;
     justify-content: space-between;
 }
 
 .poiesis-customize-view__section h2 {
     font-size: 17px;
     margin: 0;
+}
+
+.poiesis-customize-view__budget {
+    color: var(--poiesis-chrome-muted);
+    display: grid;
+    font-size: 12px;
+    gap: 2px;
+    margin-top: 7px;
 }
 
 .poiesis-customize-view__text-button {
@@ -4413,12 +4422,76 @@ body.poiesis-code-file-pointer-drag * {
     padding: 7px 11px;
 }
 
+.poiesis-customize-view__prompt-previews {
+    display: grid;
+    gap: 8px;
+    margin: 13px 0 18px;
+}
+
+.poiesis-customize-view__prompt-preview {
+    background: #20211f;
+    border: 1px solid #484a44;
+    border-radius: 8px;
+    padding: 9px 11px;
+}
+
+.poiesis-customize-view__prompt-preview > header {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+}
+
+.poiesis-customize-view__prompt-preview > header strong {
+    font-size: 12px;
+}
+
+.poiesis-customize-view__prompt-preview .poiesis-customize-view__text-button {
+    padding: 5px 9px;
+}
+
+.poiesis-customize-view__prompt-preview-content {
+    margin-top: 9px;
+}
+
+.poiesis-customize-view__prompt-preview-content pre {
+    background: #171816;
+    border: 1px solid var(--poiesis-chrome-line);
+    border-radius: 7px;
+    color: #c8c9c3;
+    font: 12px/1.55 var(--theia-code-font-family, monospace);
+    margin: 0;
+    max-height: 360px;
+    overflow: auto;
+    padding: 10px;
+    white-space: pre-wrap;
+}
+
+.poiesis-customize-view__prompt-diagnostics {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    margin-top: 9px;
+}
+
+.poiesis-customize-view__prompt-diagnostics ul {
+    margin: 5px 0 0;
+    padding-left: 20px;
+}
+
 .poiesis-customize-view__group-title {
     color: #9ea099;
     font-size: 12px;
     font-weight: 700;
     letter-spacing: .04em;
     margin: 7px 1px 0;
+}
+
+.poiesis-customize-view__user-skills-title {
+    margin-top: 20px;
+}
+
+.poiesis-customize-view__scope-group + .poiesis-customize-view__scope-group {
+    margin-top: 16px;
 }
 
 .poiesis-customize-view__user-heading {
@@ -4435,6 +4508,12 @@ body.poiesis-code-file-pointer-drag * {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.poiesis-customize-view__group-empty {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    padding: 8px 2px 2px;
 }
 
 .poiesis-customize-view__state {
@@ -4474,6 +4553,14 @@ body.poiesis-code-file-pointer-drag * {
     border-color: #76504b;
 }
 
+.poiesis-customize-view__skill-row.is-shadowed {
+    opacity: .58;
+}
+
+.poiesis-customize-view__skill-row.is-shadowed .poiesis-customize-view__skill-card {
+    cursor: pointer;
+}
+
 .poiesis-customize-view__skill-enablement {
     align-items: center;
     color: var(--poiesis-chrome-muted);
@@ -4495,6 +4582,10 @@ body.poiesis-code-file-pointer-drag * {
     min-width: 0;
 }
 
+.poiesis-customize-view__skill-card .poiesis-agent-window__customize-title {
+    flex-wrap: wrap;
+}
+
 .poiesis-customize-view__skill-card p,
 .poiesis-customize-view__skill-card small {
     overflow: hidden;
@@ -4507,6 +4598,34 @@ body.poiesis-code-file-pointer-drag * {
     display: block;
     font-size: 12px;
     margin-top: 4px;
+}
+
+.poiesis-customize-view__source-badge {
+    background: #343630;
+    border: 1px solid #55584f;
+    border-radius: 999px;
+    color: #b9bbb4 !important;
+    flex: none;
+    font-size: 12px;
+    padding: 1px 6px;
+}
+
+.poiesis-customize-view__skill-note,
+.poiesis-customize-view__skill-size {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    line-height: 1.45;
+    margin-top: 4px;
+}
+
+.poiesis-customize-view__skill-size {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 12px;
+}
+
+.poiesis-customize-view__skill-size span + span {
+    color: #caa67f;
 }
 
 .poiesis-customize-view__skill-card > .codicon:last-child {
@@ -4685,7 +4804,7 @@ body.poiesis-code-file-pointer-drag * {
     border-radius: 9px;
     display: grid;
     gap: 9px;
-    grid-template-columns: minmax(0, 1fr) 130px;
+    grid-template-columns: minmax(0, 1fr) 130px 130px;
     padding: 12px;
 }
 
