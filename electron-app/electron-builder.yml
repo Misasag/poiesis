@@ -21,6 +21,7 @@ files:
   - src-gen
   - lib
   - scripts
+  - product.json
   - "!**node_modules/**"
 extraResources:
   - from: ../plugins
