@@ -766,6 +766,12 @@
     outline: none;
 }
 
+.poiesis-agent-window__rail-toggle:focus-visible,
+.poiesis-agent-window__repository-open:focus-visible {
+    outline: 2px solid #899784;
+    outline-offset: 1px;
+}
+
 .poiesis-agent-window__rail-action,
 .poiesis-agent-window__session {
     background: transparent;
@@ -807,6 +813,12 @@
     background: var(--poiesis-chrome-hover);
     color: var(--poiesis-chrome-text);
     outline: none;
+}
+
+.poiesis-agent-window__rail-action.pressed {
+    background: rgb(255 255 255 / 4%);
+    box-shadow: inset 2px 0 #656861;
+    color: #c2c3bd;
 }
 
 .poiesis-agent-window__session-search {
@@ -961,8 +973,8 @@
 
 .poiesis-agent-window__repository-open {
     border-radius: 5px;
-    height: 20px;
-    width: 14px;
+    height: 28px;
+    width: 28px;
 }
 
 .poiesis-agent-window__repository-open .codicon {
@@ -1166,11 +1178,11 @@
     color: #92948d;
     cursor: pointer;
     display: inline-flex;
-    height: 23px;
+    height: 28px;
     justify-content: center;
     opacity: 0;
     padding: 0;
-    width: 23px;
+    width: 28px;
 }
 
 .poiesis-agent-window__session-row:hover .poiesis-agent-window__session-menu-trigger,
@@ -1184,6 +1196,11 @@
     background: #393a36;
     color: var(--poiesis-chrome-text);
     outline: none;
+}
+
+.poiesis-agent-window__session-menu-trigger:focus-visible {
+    outline: 2px solid #899784;
+    outline-offset: 1px;
 }
 
 .poiesis-agent-window__session-menu {
@@ -1341,15 +1358,20 @@
     border-radius: 5px;
     cursor: pointer;
     display: flex;
-    height: 20px;
+    height: 28px;
     justify-content: center;
-    width: 14px;
+    width: 28px;
 }
 
 .poiesis-agent-window__rail-footer button:hover,
 .poiesis-agent-window__rail-footer button:focus-visible {
     background: var(--poiesis-chrome-hover);
     outline: none;
+}
+
+.poiesis-agent-window__rail-footer button:focus-visible {
+    outline: 2px solid #899784;
+    outline-offset: 1px;
 }
 
 .poiesis-agent-window__rail-footer button .codicon {
@@ -1474,12 +1496,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.poiesis-agent-window__code-hint {
-    color: #6f716b;
-    font-size: 12px;
-    margin-left: auto;
 }
 
 .poiesis-agent-window__tabs {
@@ -4481,12 +4497,6 @@ body.poiesis-code-file-pointer-drag * {
     align-items: center;
     display: flex;
     gap: 8px;
-}
-
-.poiesis-agent-window__customize-header .poiesis-agent-window__context > small {
-    color: var(--poiesis-chrome-muted);
-    display: block;
-    font-size: 12px;
 }
 
 .poiesis-agent-window__customize-close,

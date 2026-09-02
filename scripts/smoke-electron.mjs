@@ -397,7 +397,7 @@ try {
     resizeChecks.push(await assertElectronLayout(page, 'code'));
 
     await page.waitForSelector('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea', { timeout: uiTimeout });
-    assert(await page.$('.poiesis-agent-window__code-terminal-select [aria-label="Active Terminal"]'),
+    assert(await page.$('.poiesis-agent-window__code-terminal-select [aria-label="選択中の Terminal"]'),
         'Active Terminal selector is missing in Electron');
     const firstTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
     await page.focus('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea');
@@ -416,7 +416,7 @@ try {
     await page.keyboard.press('ArrowUp');
     await page.waitForFunction(height => Math.round(document.querySelector('.poiesis-agent-window__code-panel')?.getBoundingClientRect().height ?? 0) === height + 12,
         {}, terminalPanelHeight);
-    await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="New Terminal"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="新しい Terminal"]', element => element.click());
     try {
         await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-terminal-select')?.dataset.optionCount === '2');
     } catch (error) {
@@ -437,22 +437,22 @@ try {
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
     await choosePoiesisSelect(page, '.poiesis-agent-window__code-terminal-select .poiesis-select__trigger', firstTerminalId);
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
-    await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="Close Panel"]', element => element.click());
-    await page.waitForSelector('.poiesis-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
+    await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="パネルを閉じる"]', element => element.click());
+    await page.waitForSelector('.poiesis-agent-window__code-status button[aria-label="パネルを切り替える"][aria-expanded="false"]');
     assert(!await page.$('.poiesis-agent-window__code-panel'), 'Close Panel must hide the Electron Terminal panel');
-    await page.$eval('.poiesis-agent-window__code-status button[aria-label="Toggle Panel"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-status button[aria-label="パネルを切り替える"]', element => element.click());
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
     await page.keyboard.down('Control');
     await page.keyboard.press('Backquote');
     await page.keyboard.up('Control');
-    await page.waitForSelector('.poiesis-agent-window__code-status button[aria-label="Toggle Panel"][aria-expanded="false"]');
+    await page.waitForSelector('.poiesis-agent-window__code-status button[aria-label="パネルを切り替える"][aria-expanded="false"]');
     await page.keyboard.down('Control');
     await page.keyboard.press('Backquote');
     await page.keyboard.up('Control');
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
     await choosePoiesisSelect(page, '.poiesis-agent-window__code-terminal-select .poiesis-select__trigger', secondTerminalId);
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, secondTerminalId);
-    await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="Kill Terminal"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-panel-tabs button[aria-label="Terminal を終了"]', element => element.click());
     await page.waitForFunction(id => document.querySelector('.poiesis-agent-window__code-terminal-select')?.dataset.optionCount === '1'
         && document.querySelector('.poiesis-agent-window__code-terminal-host > *')?.id === id, {}, firstTerminalId);
 
@@ -465,22 +465,22 @@ try {
     await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Search"]', element => element.click());
     await page.waitForSelector('#search-input-field', { timeout: uiTimeout });
     await page.waitForFunction(() => document.activeElement?.id === 'search-input-field');
-    for (const label of ['Refresh Search Results', 'Clear Search Results', 'Collapse All Search Results']) {
+    for (const label of ['検索結果を更新', '検索結果をクリア', '検索結果をすべて折りたたむ']) {
         assert(await page.$(`.poiesis-agent-window__code-sidebar-actions button[aria-label="${label}"]`), `Search action is missing in Electron: ${label}`);
     }
-    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="検索結果をクリア"]', element => element.click());
     await page.focus('#search-input-field');
     const codeSearchQuery = ['Source contract', 'validation passed.'].join(' ');
     await page.type('#search-input-field', codeSearchQuery);
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => document.querySelector('#search-in-workspace .search-info')?.textContent?.includes('2 results in 2 files'));
-    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Clear Search Results"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="検索結果をクリア"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('#search-input-field')?.value === ''
         && document.querySelectorAll('#search-in-workspace .theia-TreeNode').length === 0);
 
     await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Source Control"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
-    await page.waitForSelector('.poiesis-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]');
+    await page.waitForSelector('.poiesis-agent-window__code-sidebar-actions button[aria-label="Source Control を更新"]');
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-title[aria-expanded="true"]');
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-host #scm-history-graph-widget');
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-host .scm-history-graph-row svg');
@@ -491,17 +491,17 @@ try {
     await page.$eval('.poiesis-agent-window__code-git-graph-title', element => element.click());
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-host:not([hidden])');
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-host .scm-history-graph-row');
-    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Source Control を更新"]', element => element.click());
     await waitForScmAction(page, 'UX.md', 'Stage Changes');
     await hoverScmResource(page, 'UX.md');
     for (const action of ['Open File', 'Discard Changes', 'Stage Changes']) {
         assert(await scmActionExists(page, 'UX.md', action), `Source Control action is missing in Electron: ${action}`);
     }
     await executeScmAction(page, 'UX.md', 'Stage Changes', 'staged');
-    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Source Control を更新"]', element => element.click());
     await waitForScmAction(page, 'UX.md', 'Unstage Changes');
     await executeScmAction(page, 'UX.md', 'Unstage Changes', 'unstaged');
-    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Refresh Source Control"]', element => element.click());
+    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Source Control を更新"]', element => element.click());
     await waitForScmAction(page, 'UX.md', 'Stage Changes');
     restoreScmFixture();
 

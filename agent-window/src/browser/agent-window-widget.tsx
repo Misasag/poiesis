@@ -1006,7 +1006,8 @@ export class AgentWindowWidget extends ReactWidget {
                     </button>
                     <button
                         type='button'
-                        className={`poiesis-agent-window__rail-action${this.sessionSearchVisible ? ' active' : ''}`}
+                        className={`poiesis-agent-window__rail-action${this.sessionSearchVisible ? ' pressed' : ''}`}
+                        aria-pressed={this.sessionSearchVisible}
                         aria-expanded={this.sessionSearchVisible && !this.railCollapsed}
                         aria-controls='poiesis-agent-window-session-search'
                         title='検索'
@@ -1036,8 +1037,8 @@ export class AgentWindowWidget extends ReactWidget {
                                 elementRef={this.setSessionSearchInput}
                                 type='search'
                                 value={this.sessionSearchQuery}
-                                placeholder='Search conversations'
-                                aria-label='会話をタイトルで検索'
+                                placeholder='会話を検索'
+                                aria-label='会話を検索'
                                 onValueChange={value => this.setSessionSearchQuery(value)}
                                 onKeyDown={event => {
                                     if (event.key === 'Escape') {
@@ -1049,12 +1050,12 @@ export class AgentWindowWidget extends ReactWidget {
                     )}
                 </div>
                 <div className='poiesis-agent-window__rail-heading'>
-                    <span>Workspaces</span>
+                    <span>ワークスペース</span>
                     <button
                         type='button'
                         className='poiesis-agent-window__repository-open'
-                        title='Open Folder'
-                        aria-label='フォルダーを開いてリポジトリを選択または追加'
+                        title='フォルダーを開く'
+                        aria-label='フォルダーを開く'
                         aria-expanded={this.workspacePickerVisible}
                         aria-controls='poiesis-agent-window-workspace-picker'
                         onClick={event => this.toggleWorkspacePicker(event.currentTarget)}
@@ -1161,11 +1162,11 @@ export class AgentWindowWidget extends ReactWidget {
                     <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
                 </button>
                 {expanded && pinnedSessions.length > 0 && (
-                    <div className='poiesis-agent-window__session-section-label'>Pinned</div>
+                    <div className='poiesis-agent-window__session-section-label'>ピン留め</div>
                 )}
                 {expanded && pinnedSessions.map(session => this.renderSessionRow(session))}
                 {expanded && pinnedSessions.length > 0 && recentSessions.length > 0 && (
-                    <div className='poiesis-agent-window__session-section-label'>Recent</div>
+                    <div className='poiesis-agent-window__session-section-label'>最近</div>
                 )}
                 {expanded && recentSessions.map(session => this.renderSessionRow(session))}
                 {expanded && !group.activeSessions.length && (
@@ -1182,7 +1183,7 @@ export class AgentWindowWidget extends ReactWidget {
                             onClick={() => this.toggleArchivedSessions()}
                         >
                             <span className={`codicon codicon-chevron-${this.showArchivedSessions ? 'down' : 'right'}`} aria-hidden='true' />
-                            <span>Archived</span>
+                            <span>アーカイブ</span>
                             <small>{group.archivedSessions.length}</small>
                         </button>
                         {this.showArchivedSessions && group.archivedSessions.map(session => this.renderSessionRow(session))}
@@ -1253,7 +1254,7 @@ export class AgentWindowWidget extends ReactWidget {
                         type='button'
                         className='poiesis-agent-window__session'
                         title={switchesWorkspace
-                            ? `${session.title} — ${this.repositoryLabel(session.workspaceUri)}へ切り替え`
+                            ? `${session.title} ・ ${this.repositoryLabel(session.workspaceUri)}へ切り替え`
                             : session.title}
                         aria-current={selected ? 'true' : undefined}
                         onClick={() => session.archived ? this.restoreSession(session.id, true) : this.selectSession(session.id)}
@@ -1262,7 +1263,7 @@ export class AgentWindowWidget extends ReactWidget {
                         <span className={`poiesis-agent-window__status-dot ${state.kind}`} aria-hidden='true' />
                         <span className='poiesis-agent-window__session-copy'>
                             <span className='poiesis-agent-window__session-title'>{session.title}</span>
-                            <small className={`poiesis-agent-window__session-meta ${state.kind}`}>{state.label}</small>
+                            {state.label && <small className={`poiesis-agent-window__session-meta ${state.kind}`}>{state.label}</small>}
                         </span>
                         <time className='poiesis-agent-window__session-time'>{this.sessionMeta(session)}</time>
                     </button>
@@ -1627,17 +1628,17 @@ export class AgentWindowWidget extends ReactWidget {
                 className='poiesis-agent-window__workspace-picker'
                 id='poiesis-agent-window-workspace-picker'
                 role='dialog'
-                aria-label='Workspaceを開く'
+                aria-label='ワークスペースを開く'
                 style={this.workspacePickerAnchor}
             >
-                <div className='poiesis-agent-window__workspace-picker-title'>Workspaceを開く</div>
+                <div className='poiesis-agent-window__workspace-picker-title'>ワークスペースを開く</div>
                 <label className='poiesis-agent-window__workspace-picker-search'>
                     <span className='codicon codicon-search' aria-hidden='true' />
                     <PoiesisTextInput
                         elementRef={input => { this.workspaceSearchInput = input ?? undefined; }}
                         value={this.workspaceSearchQuery}
-                        placeholder='Workspaceを検索'
-                        aria-label='Workspaceを検索'
+                        placeholder='ワークスペースを検索'
+                        aria-label='ワークスペースを検索'
                         onValueChange={value => this.setWorkspaceSearchQuery(value)}
                         onKeyDown={event => {
                             if (event.key === 'Escape') {
@@ -1651,7 +1652,7 @@ export class AgentWindowWidget extends ReactWidget {
                 </label>
                 {currentChoices.length > 0 && (
                     <>
-                        <div className='poiesis-agent-window__workspace-picker-label'>On This PC</div>
+                        <div className='poiesis-agent-window__workspace-picker-label'>この PC</div>
                         {currentChoices.map(choice => (
                             <button
                                 type='button'
@@ -1668,7 +1669,7 @@ export class AgentWindowWidget extends ReactWidget {
                 )}
                 {recentChoices.length > 0 && (
                     <>
-                        <div className='poiesis-agent-window__workspace-picker-label'>Recent</div>
+                        <div className='poiesis-agent-window__workspace-picker-label'>最近</div>
                         {recentChoices.map(choice => (
                             <button
                                 type='button'
@@ -1684,7 +1685,7 @@ export class AgentWindowWidget extends ReactWidget {
                     </>
                 )}
                 {choices.length === 0 && query && (
-                    <div className='poiesis-agent-window__workspace-picker-empty'>一致するWorkspaceはありません</div>
+                    <div className='poiesis-agent-window__workspace-picker-empty'>一致するワークスペースはありません</div>
                 )}
                 <div className='poiesis-agent-window__workspace-picker-divider' />
                 <button
@@ -1693,7 +1694,7 @@ export class AgentWindowWidget extends ReactWidget {
                     onClick={() => void this.openRepository()}
                 >
                     <span className='codicon codicon-folder-opened' aria-hidden='true' />
-                    <span><strong>Open Folder…</strong><small>このPCからフォルダーを選択</small></span>
+                    <span><strong>フォルダーを開く…</strong><small>この PC からフォルダーを選択</small></span>
                 </button>
             </div>
         );
@@ -1708,7 +1709,7 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected repositoryLabel(workspaceUri: string | undefined): string {
         if (!workspaceUri) {
-            return 'Select repository';
+            return 'Repositoryを選択';
         }
         const known = this.repositoryChoices().find(choice => this.sameWorkspaceUri(choice.uri, workspaceUri));
         return known?.name ?? new URI(workspaceUri).path.base ?? 'Repository';
@@ -1868,10 +1869,10 @@ export class AgentWindowWidget extends ReactWidget {
             return '今';
         }
         if (ageInMinutes < 60) {
-            return `${ageInMinutes}m`;
+            return `${ageInMinutes}分`;
         }
         const ageInHours = Math.floor(ageInMinutes / 60);
-        return ageInHours < 24 ? `${ageInHours}h` : `${Math.floor(ageInHours / 24)}d`;
+        return ageInHours < 24 ? `${ageInHours}時間` : `${Math.floor(ageInHours / 24)}日`;
     }
 
     protected sessionState(session: WindowAgentSession): {
@@ -1890,9 +1891,13 @@ export class AgentWindowWidget extends ReactWidget {
         if (session.lastTaskStatus === 'cancelled') {
             return { kind: 'cancelled', label: 'キャンセル' };
         }
-        return { kind: 'idle', label: '待機中' };
+        if (session.lastTaskStatus === 'completed') {
+            return { kind: 'idle', label: '完了' };
+        }
+        return { kind: 'idle', label: '' };
     }
 
+    // UI copy is Japanese; product modes and product/tool names such as Agent, Results, and Code stay Latin.
     protected renderHeader(): React.ReactNode {
         if (this.codeMode) {
             return (
@@ -1909,7 +1914,6 @@ export class AgentWindowWidget extends ReactWidget {
                         <span>Code</span>
                     </button>
                     <span className='poiesis-agent-window__code-workspace'>{this.workspaceContextLabel()}</span>
-                    <span className='poiesis-agent-window__code-hint'>Poiesis Workbench</span>
                 </header>
             );
         }
@@ -1918,18 +1922,20 @@ export class AgentWindowWidget extends ReactWidget {
                 <header className='poiesis-agent-window__header poiesis-agent-window__customize-header'>
                     <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
                     <div className='poiesis-agent-window__context'>
-                        <small>{this.workspaceContextLabel()}</small>
-                        <strong>Customize</strong>
+                        <div className='poiesis-agent-window__context-scope'>
+                            <small>{this.workspaceContextLabel()}</small>
+                            <button type='button' className='poiesis-agent-window__code-control' onClick={() => this.toggleCodeMode()}>
+                                <span className='codicon codicon-code' aria-hidden='true' />
+                                <span>Code</span>
+                            </button>
+                        </div>
+                        <strong>カスタマイズ</strong>
                     </div>
                     <div className='poiesis-agent-window__customize-header-actions'>
-                        <button type='button' className='poiesis-agent-window__code-control' onClick={() => this.toggleCodeMode()}>
-                            <span className='codicon codicon-code' aria-hidden='true' />
-                            <span>Code</span>
-                        </button>
                         <button
                             type='button'
                             className='poiesis-agent-window__customize-close'
-                            aria-label='Customizeを閉じる'
+                            aria-label='カスタマイズを閉じる'
                             onClick={() => this.closeCustomize()}
                         >
                             <span className='codicon codicon-close' aria-hidden='true' />
@@ -1956,7 +1962,7 @@ export class AgentWindowWidget extends ReactWidget {
                             <span>Code</span>
                         </button>
                     </div>
-                    <strong>{this.codeMode ? 'Code' : session?.hasUserMessage ? session.title : 'New Agent'}</strong>
+                    <strong>{this.codeMode ? 'Code' : session?.hasUserMessage ? session.title : '新しいチャット'}</strong>
                 </div>
                 {!this.codeMode && session?.hasUserMessage && (
                     <nav className='poiesis-agent-window__tabs' role='tablist' aria-label='Agent と Results の切り替え'>
@@ -2006,7 +2012,7 @@ export class AgentWindowWidget extends ReactWidget {
                             <div className='poiesis-agent-window__new-agent-empty'>
                                 <span className='codicon codicon-comment-add' aria-hidden='true' />
                                 <strong>何を作りますか?</strong>
-                                <small>Repository、branch、実行場所を選んでからAgentへ依頼します</small>
+                                <small>Repository と branch を確認して、Agent へ依頼します</small>
                             </div>
                         )}
                         {(session?.messages ?? []).map(message => (
@@ -2095,7 +2101,7 @@ export class AgentWindowWidget extends ReactWidget {
                 <header className='poiesis-folder-explorer__header'>
                     <div>
                         <span className='codicon codicon-folder-opened' aria-hidden='true' />
-                        <strong>Select workspace folder</strong>
+                        <strong>ワークスペースのフォルダーを選択</strong>
                     </div>
                     <button type='button' aria-label='フォルダー選択を閉じる' onClick={() => this.closeFolderExplorer()}>
                         <span className='codicon codicon-close' aria-hidden='true' />
@@ -2133,14 +2139,14 @@ export class AgentWindowWidget extends ReactWidget {
                     </button>
                 </div>
                 <main className='poiesis-folder-explorer__body'>
-                    <div className='poiesis-folder-explorer__column-heading'><span>Name</span><span>Type</span></div>
+                    <div className='poiesis-folder-explorer__column-heading'><span>名前</span><span>種類</span></div>
                     {this.creatingFolder && (
                         <div className='poiesis-folder-explorer__new-folder-row'>
                             <span className='codicon codicon-folder' aria-hidden='true' />
                             <PoiesisTextInput
                                 autoFocus
                                 value={this.newFolderName}
-                                placeholder='New folder'
+                                placeholder='新しいフォルダー'
                                 aria-label='新しいフォルダー名'
                                 onValueChange={value => {
                                     this.newFolderName = value;
@@ -2157,10 +2163,10 @@ export class AgentWindowWidget extends ReactWidget {
                                     }
                                 }}
                             />
-                            <button type='button' disabled={!this.newFolderName.trim()} onClick={() => void this.createFolderInExplorer()}>Create</button>
+                            <button type='button' disabled={!this.newFolderName.trim()} onClick={() => void this.createFolderInExplorer()}>作成</button>
                         </div>
                     )}
-                    {this.folderExplorerLoading && <div className='poiesis-folder-explorer__state'>Loading folders…</div>}
+                    {this.folderExplorerLoading && <div className='poiesis-folder-explorer__state'>フォルダーを読み込み中…</div>}
                     {!this.folderExplorerLoading && this.folderExplorerError && <div className='poiesis-folder-explorer__state error' role='alert'>{this.folderExplorerError}</div>}
                     {!this.folderExplorerLoading && !this.folderExplorerError && result?.directories.map(directory => (
                         <button
@@ -2171,7 +2177,7 @@ export class AgentWindowWidget extends ReactWidget {
                             onClick={() => void this.loadFolderExplorer(directory.path)}
                         >
                             <span><span className='codicon codicon-folder' aria-hidden='true' /><strong>{directory.name}</strong></span>
-                            <small>File folder</small>
+                            <small>フォルダー</small>
                             <span className='codicon codicon-chevron-right' aria-hidden='true' />
                         </button>
                     ))}
@@ -2190,11 +2196,11 @@ export class AgentWindowWidget extends ReactWidget {
                         }}
                     >
                         <span className='codicon codicon-new-folder' aria-hidden='true' />
-                        New folder
+                        新しいフォルダー
                     </button>
                     <span className='poiesis-folder-explorer__selection'>{result?.path ?? ''}</span>
-                    <button type='button' onClick={() => this.closeFolderExplorer()}>Cancel</button>
-                    <button type='button' className='primary' disabled={!result || this.folderExplorerLoading} onClick={() => this.selectFolderFromExplorer()}>Select Folder</button>
+                    <button type='button' onClick={() => this.closeFolderExplorer()}>キャンセル</button>
+                    <button type='button' className='primary' disabled={!result || this.folderExplorerLoading} onClick={() => this.selectFolderFromExplorer()}>フォルダーを選択</button>
                 </footer>
             </section>
         );
@@ -2250,7 +2256,7 @@ export class AgentWindowWidget extends ReactWidget {
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-cli'>
                             <div className='poiesis-settings-modal__section-heading'>
-                                <h2 id='poiesis-settings-cli'>AI — Provider / Model</h2>
+                                <h2 id='poiesis-settings-cli'>AI の役割と Model</h2>
                                 <button type='button' className='poiesis-settings-modal__text-button' disabled={this.cliDetectionLoading} onClick={() => void this.refreshCliDetection()}>再検出</button>
                             </div>
                             {this.renderCliRoleSelector('agent', 'Agent の AI', this.agentCli)}
@@ -2258,7 +2264,7 @@ export class AgentWindowWidget extends ReactWidget {
                         </section>
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-results'>
-                            <h2 id='poiesis-settings-results'>Results — 外部リソース</h2>
+                            <h2 id='poiesis-settings-results'>Results・外部リソース</h2>
                             <p className='poiesis-settings-modal__section-copy'>成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。</p>
                             <div className='poiesis-settings-modal__row'>
                                 <div><strong>成果文書の外部リソース読み込みを許可</strong><small>OFFではResults HTMLからのネットワーク画像や外部スタイルをブロックします。</small></div>
@@ -2270,7 +2276,7 @@ export class AgentWindowWidget extends ReactWidget {
                         </section>
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-sessions'>
-                            <h2 id='poiesis-settings-sessions'>セッション — データ管理</h2>
+                            <h2 id='poiesis-settings-sessions'>セッション・データ管理</h2>
                             <div className='poiesis-settings-modal__archived'>
                                 <strong>アーカイブ済み</strong>
                                 {archivedSessions.length === 0 && <p>アーカイブ済みのセッションはありません。</p>}
@@ -2290,7 +2296,7 @@ export class AgentWindowWidget extends ReactWidget {
                                 ))}
                             </div>
                             <div className='poiesis-settings-modal__danger-zone'>
-                                <div><strong>保存データをすべてクリア</strong><small>会話、タスク、Resultsの保存状態をこのWindowから削除します。</small></div>
+                                <div><strong>保存データをすべてクリア</strong><small>会話、タスク、Resultsの保存状態をこのウィンドウから削除します。</small></div>
                                 {this.clearDataConfirmation ? (
                                     <div className='poiesis-settings-modal__confirm' role='group' aria-label='保存データのクリアを確認'>
                                         <span>この操作は取り消せません。</span>
@@ -2360,7 +2366,7 @@ export class AgentWindowWidget extends ReactWidget {
                 <div className='poiesis-customize-view__page'>
                     <header className='poiesis-customize-view__intro'>
                         <span className='codicon codicon-tools' aria-hidden='true' />
-                        <div><h1 id='poiesis-customize-title'>Customize</h1><p>PoiesisのSkillとPluginを管理します。</p></div>
+                        <div><h1 id='poiesis-customize-title'>カスタマイズ</h1><p>PoiesisのSkillとPluginを管理します。</p></div>
                     </header>
                     <section className='poiesis-customize-view__section' aria-labelledby='poiesis-customize-skills'>
                             <div className='poiesis-customize-view__section-heading'>
@@ -2374,7 +2380,7 @@ export class AgentWindowWidget extends ReactWidget {
                                 </button>
                             </div>
                             <p className='poiesis-customize-view__section-copy'>
-                                有効なAgent Skillは次のTaskから実装指示へ加わり、有効なResults SkillはAI成果文書の構成を案内します。組み込みテンプレートへのfallback時はResults Skillの追加指示を使いません。
+                                有効なAgent Skillは次のTaskから実装指示へ加わり、有効なResults SkillはAI成果文書の構成を案内します。組み込みテンプレートへの切り替え時はResults Skillの追加指示を使いません。
                             </p>
 
                             <h3 className='poiesis-customize-view__group-title'>組み込み</h3>
@@ -2421,14 +2427,14 @@ export class AgentWindowWidget extends ReactWidget {
                                         ? 'Task情報、Change Set、差分をResults AIへ読み取り専用で渡し、1つの自己完結HTML文書を生成します。失敗時はBundled Resultsへ切り替わります。'
                                         : 'Task情報とChange Setを決定的なテンプレートへ渡し、外部リソースやスクリプトを含まない自己完結HTML文書を生成します。'}</p>
                                     <pre>{this.selectedBuiltinSkill === 'ai-results'
-                                        ? '入力 → Results AI → HTML検証 → Results canvas\n                    ↘ 失敗時: Bundled Results'
-                                        : 'Task + Change Set → 組み込みHTML → Results canvas'}</pre>
+                                        ? '入力 → Results AI → HTML検証 → Results キャンバス\n                    ↘ 失敗時: Bundled Results'
+                                        : 'Task + Change Set → 組み込みHTML → Results キャンバス'}</pre>
                                 </article>
                             )}
 
                             <div className='poiesis-customize-view__user-heading'>
-                                <h3 className='poiesis-customize-view__group-title'>User Skills</h3>
-                                <span>{workspaceName ? `${workspaceName} / .poiesis/skills` : 'Workspaceが開かれていません'}</span>
+                                <h3 className='poiesis-customize-view__group-title'>ユーザー Skills</h3>
+                                <span>{workspaceName ? `${workspaceName} / .poiesis/skills` : 'ワークスペースが開かれていません'}</span>
                             </div>
                             {this.workspaceSkillsLoading && (
                                 <div className='poiesis-customize-view__state' role='status'>
@@ -2440,7 +2446,7 @@ export class AgentWindowWidget extends ReactWidget {
                                 <div className='poiesis-customize-view__state error' role='alert'>{this.workspaceSkillsError}</div>
                             )}
                             {!this.workspaceSkillsLoading && !this.workspaceSkillsError && this.workspaceSkills.length === 0 && (
-                                <div className='poiesis-customize-view__state'>User Skillはまだありません。</div>
+                                <div className='poiesis-customize-view__state'>ユーザー Skill はまだありません。</div>
                             )}
                             {!this.workspaceSkillsLoading && this.workspaceSkills.length > 0 && (
                                 <div className='poiesis-agent-window__customize-list'>
@@ -2481,7 +2487,7 @@ export class AgentWindowWidget extends ReactWidget {
                             )}
 
                             {(this.workspaceSkillEditorLoading || this.workspaceSkillEditorError || editor) && (
-                                <section className='poiesis-customize-view__editor' aria-label='User Skill editor'>
+                                <section className='poiesis-customize-view__editor' aria-label='ユーザー Skill エディター'>
                                     {this.workspaceSkillEditorLoading ? (
                                         <div className='poiesis-customize-view__state' role='status'>
                                             <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
@@ -2559,7 +2565,7 @@ export class AgentWindowWidget extends ReactWidget {
                                         />
                                     </label>
                                     <label>
-                                        <span>Kind</span>
+                                        <span>種類</span>
                                         <PoiesisSelect
                                             value={this.newSkillKind}
                                             ariaLabel='新しいSkillの種類'
@@ -2589,11 +2595,11 @@ export class AgentWindowWidget extends ReactWidget {
                                 <article className='poiesis-agent-window__customize-card'>
                                     <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-package' aria-hidden='true' /></div>
                                     <div><div className='poiesis-agent-window__customize-title'><strong>Poiesis plugin bundles</strong><span>App</span></div><p>PoiesisのAgent、Skill、外部サービス連携を追加するアプリ用Pluginです。Code拡張機能とは別に管理されます。</p></div>
-                                    <span className='poiesis-agent-window__status-badge'>No additions</span>
+                                    <span className='poiesis-agent-window__status-badge'>追加なし</span>
                                 </article>
                             </div>
                     </section>
-                    <footer className='poiesis-customize-view__footer'>User Skillはこの画面で編集し、保存またはCtrl+Sで保存します。</footer>
+                    <footer className='poiesis-customize-view__footer'>ユーザー Skill はこの画面で編集し、保存またはCtrl+Sで保存します。</footer>
                 </div>
             </section>
         );
@@ -2819,10 +2825,6 @@ export class AgentWindowWidget extends ReactWidget {
                     <span className='codicon codicon-git-branch' aria-hidden='true' />
                     <span>{branch}</span>
                 </span>
-                <span className='poiesis-agent-window__context-pill static' title='現在利用できる実行先はLocalのみです'>
-                    <span className='codicon codicon-device-desktop' aria-hidden='true' />
-                    <span>Run on · This Computer</span>
-                </span>
                 {this.renderAiRolePill('agent')}
             </div>
         );
@@ -2854,11 +2856,11 @@ export class AgentWindowWidget extends ReactWidget {
                 </label>
                 {repositoryChoices.length > 0 && (
                     <>
-                        <div className='poiesis-agent-window__repository-group-label'>Recent</div>
+                        <div className='poiesis-agent-window__repository-group-label'>最近</div>
                         {repositoryChoices.slice(0, 2).map(choice => this.renderRepositoryChoice(session, choice, 'codicon-history'))}
                     </>
                 )}
-                <div className='poiesis-agent-window__repository-group-label'>On This PC</div>
+                <div className='poiesis-agent-window__repository-group-label'>この PC</div>
                 {filteredChoices.map(choice => this.renderRepositoryChoice(session, choice, 'codicon-device-desktop'))}
                 {!filteredChoices.length && (
                     <div className='poiesis-agent-window__repository-empty'>一致するRepositoryはありません</div>
@@ -2866,11 +2868,11 @@ export class AgentWindowWidget extends ReactWidget {
                 <div className='poiesis-agent-window__repository-footer'>
                     <button type='button' onClick={() => void this.openFolderExplorer(session)}>
                         <span className='codicon codicon-folder-opened' aria-hidden='true' />
-                        Use Existing…
+                        既存のフォルダーを使用…
                     </button>
                     <button type='button' onClick={() => void this.openFolderExplorer(session, true)}>
                         <span className='codicon codicon-new-folder' aria-hidden='true' />
-                        New Folder
+                        新しいフォルダー
                     </button>
                 </div>
             </div>
@@ -3836,24 +3838,24 @@ export class AgentWindowWidget extends ReactWidget {
                         <div className='poiesis-agent-window__code-sidebar-actions'>
                             {this.codeSidebarTab === 'files' && (
                                 <React.Fragment>
-                                    {this.renderExplorerAction('new-file', 'New File', FileNavigatorCommands.NEW_FILE_TOOLBAR.id)}
-                                    {this.renderExplorerAction('new-folder', 'New Folder', FileNavigatorCommands.NEW_FOLDER_TOOLBAR.id)}
-                                    {this.renderExplorerAction('refresh', 'Refresh Explorer', FileNavigatorCommands.REFRESH_NAVIGATOR.id)}
-                                    {this.renderExplorerAction('collapse-all', 'Collapse Folders', FileNavigatorCommands.COLLAPSE_ALL.id)}
+                                    {this.renderExplorerAction('new-file', '新しいファイル', FileNavigatorCommands.NEW_FILE_TOOLBAR.id)}
+                                    {this.renderExplorerAction('new-folder', '新しいフォルダー', FileNavigatorCommands.NEW_FOLDER_TOOLBAR.id)}
+                                    {this.renderExplorerAction('refresh', 'Explorer を更新', FileNavigatorCommands.REFRESH_NAVIGATOR.id)}
+                                    {this.renderExplorerAction('collapse-all', 'フォルダーを折りたたむ', FileNavigatorCommands.COLLAPSE_ALL.id)}
                                 </React.Fragment>
                             )}
                             {this.codeSidebarTab === 'search' && (
                                 <React.Fragment>
-                                    {this.renderSearchAction('refresh', 'Refresh Search Results', SearchInWorkspaceCommands.REFRESH_RESULTS.id)}
-                                    {this.renderSearchAction('clear-all', 'Clear Search Results', SearchInWorkspaceCommands.CLEAR_ALL.id)}
-                                    {this.renderSearchAction('collapse-all', 'Collapse All Search Results', SearchInWorkspaceCommands.COLLAPSE_ALL.id)}
+                                    {this.renderSearchAction('refresh', '検索結果を更新', SearchInWorkspaceCommands.REFRESH_RESULTS.id)}
+                                    {this.renderSearchAction('clear-all', '検索結果をクリア', SearchInWorkspaceCommands.CLEAR_ALL.id)}
+                                    {this.renderSearchAction('collapse-all', '検索結果をすべて折りたたむ', SearchInWorkspaceCommands.COLLAPSE_ALL.id)}
                                 </React.Fragment>
                             )}
                             {this.codeSidebarTab === 'git' && (
                                 <button
                                     type='button'
-                                    title='Refresh Source Control'
-                                    aria-label='Refresh Source Control'
+                                    title='Source Control を更新'
+                                    aria-label='Source Control を更新'
                                     onClick={() => void this.commandService.executeCommand('git.refresh')}
                                 >
                                     <span className='codicon codicon-refresh' aria-hidden='true' />
@@ -3863,8 +3865,8 @@ export class AgentWindowWidget extends ReactWidget {
                                 <div className='poiesis-agent-window__code-explorer-more'>
                                     <button
                                         type='button'
-                                        title='More Actions'
-                                        aria-label='More Actions'
+                                        title='その他の操作'
+                                        aria-label='その他の操作'
                                         aria-haspopup='menu'
                                         aria-expanded={this.explorerMoreVisible}
                                         onClick={() => {
@@ -3975,7 +3977,7 @@ export class AgentWindowWidget extends ReactWidget {
                                     <button
                                         type='button'
                                         className='poiesis-agent-window__code-editor-tab-close'
-                                        title='Close'
+                                        title='閉じる'
                                         aria-label={`${label}を閉じる`}
                                         onClick={() => void this.closeCodeCenterWidget(widget)}
                                     >
@@ -3996,11 +3998,11 @@ export class AgentWindowWidget extends ReactWidget {
                             )}
                         </div>
                         {this.codePanelVisible && (
-                            <section className='poiesis-agent-window__code-panel' aria-label='Bottom Panel'>
+                            <section className='poiesis-agent-window__code-panel' aria-label='下部パネル'>
                                 <div
                                     className='poiesis-agent-window__code-panel-resize'
                                     role='separator'
-                                    aria-label='Resize Terminal Panel'
+                                    aria-label='Terminal パネルの高さを変更'
                                     aria-orientation='horizontal'
                                     aria-valuemin={MIN_CODE_PANEL_HEIGHT}
                                     aria-valuenow={this.codePanelHeight}
@@ -4028,7 +4030,7 @@ export class AgentWindowWidget extends ReactWidget {
                                     {this.codeTerminalWidgets.length > 0 && this.codeTerminalWidget && (
                                         <PoiesisSelect
                                             className='poiesis-agent-window__code-terminal-select'
-                                            ariaLabel='Active Terminal'
+                                            ariaLabel='選択中の Terminal'
                                             value={this.codeTerminalWidget.id}
                                             options={this.codeTerminalWidgets.map(terminal => ({
                                                 value: terminal.id,
@@ -4037,19 +4039,19 @@ export class AgentWindowWidget extends ReactWidget {
                                             onChange={value => this.selectCodeTerminalById(value)}
                                         />
                                     )}
-                                    <button type='button' title='New Terminal' aria-label='New Terminal' onClick={() => void this.createCodeTerminal()}>
+                                    <button type='button' title='新しい Terminal' aria-label='新しい Terminal' onClick={() => void this.createCodeTerminal()}>
                                         <span className='codicon codicon-add' aria-hidden='true' />
                                     </button>
                                     <button
                                         type='button'
-                                        title='Kill Terminal'
-                                        aria-label='Kill Terminal'
+                                        title='Terminal を終了'
+                                        aria-label='Terminal を終了'
                                         disabled={!this.codeTerminalWidget}
                                         onClick={() => this.closeCodeTerminal()}
                                     >
                                         <span className='codicon codicon-trash' aria-hidden='true' />
                                     </button>
-                                    <button type='button' title='Close Panel' aria-label='Close Panel' onClick={() => this.toggleCodePanel(false)}>
+                                    <button type='button' title='パネルを閉じる' aria-label='パネルを閉じる' onClick={() => this.toggleCodePanel(false)}>
                                         <span className='codicon codicon-close' aria-hidden='true' />
                                     </button>
                                 </div>
@@ -4058,20 +4060,20 @@ export class AgentWindowWidget extends ReactWidget {
                         )}
                     </div>
                 </main>
-                <footer className='poiesis-agent-window__code-status' aria-label='Status Bar'>
+                <footer className='poiesis-agent-window__code-status' aria-label='ステータスバー'>
                     {this.renderCodeScmStatusCommands()}
                     <span><span className='codicon codicon-error' aria-hidden='true' /> 0</span>
                     <span><span className='codicon codicon-warning' aria-hidden='true' /> 0</span>
                     <span className='poiesis-agent-window__code-status-spacer' />
                     <span>UTF-8</span>
                     <span>LF</span>
-                    <span>Spaces: 4</span>
+                    <span>スペース: 4</span>
                     <span><span className='codicon codicon-bell' aria-hidden='true' /></span>
                     <button
                         type='button'
                         className={this.codePanelVisible ? 'active' : ''}
-                        title='Toggle Panel'
-                        aria-label='Toggle Panel'
+                        title='パネルを切り替える'
+                        aria-label='パネルを切り替える'
                         aria-expanded={this.codePanelVisible}
                         onClick={() => this.toggleCodePanel()}
                     >
@@ -4123,7 +4125,7 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected scmStatusCommandLabel(title: string): string {
-        return title.replace(/\$\([^)]+\)\s*/g, '').trim() || 'Source Control action';
+        return title.replace(/\$\([^)]+\)\s*/g, '').trim() || 'Source Control の操作';
     }
 
     protected async executeScmStatusCommand(command: ScmCommand): Promise<void> {
@@ -4134,7 +4136,7 @@ export class AgentWindowWidget extends ReactWidget {
             await this.commandService.executeCommand(command.command, ...(command.arguments ?? []));
         } catch (error) {
             console.error('[Poiesis] Could not execute an SCM status bar command.', error);
-            await this.messageService.error(`Source Control action failed: ${this.scmStatusCommandLabel(command.title)}`);
+            await this.messageService.error(`Source Control の操作に失敗しました: ${this.scmStatusCommandLabel(command.title)}`);
         }
     }
 
@@ -4161,32 +4163,32 @@ export class AgentWindowWidget extends ReactWidget {
                     aria-labelledby='poiesis-code-close-title'
                 >
                     <header>
-                        <h2 id='poiesis-code-close-title'>Save changes to {label}?</h2>
+                        <h2 id='poiesis-code-close-title'>{label} の変更を保存しますか？</h2>
                         <button
                             type='button'
-                            title='Cancel'
-                            aria-label='Cancel'
+                            title='キャンセル'
+                            aria-label='キャンセル'
                             disabled={this.pendingCodeCenterCloseBusy}
                             onClick={() => this.cancelCodeCenterClose()}
                         >
                             <span className='codicon codicon-close' aria-hidden='true' />
                         </button>
                     </header>
-                    <p>Your changes will be lost if you don't save them.</p>
+                    <p>保存しない場合、変更内容は失われます。</p>
                     <footer>
                         <button
                             type='button'
                             disabled={this.pendingCodeCenterCloseBusy}
                             onClick={() => this.cancelCodeCenterClose()}
                         >
-                            Cancel
+                            キャンセル
                         </button>
                         <button
                             type='button'
                             disabled={this.pendingCodeCenterCloseBusy}
                             onClick={() => void this.resolveCodeCenterClose(false)}
                         >
-                            Don't Save
+                            保存しない
                         </button>
                         <button
                             type='button'
@@ -4195,7 +4197,7 @@ export class AgentWindowWidget extends ReactWidget {
                             disabled={this.pendingCodeCenterCloseBusy}
                             onClick={() => void this.resolveCodeCenterClose(true)}
                         >
-                            Save
+                            保存
                         </button>
                     </footer>
                 </section>
@@ -4252,12 +4254,12 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected renderExplorerMoreMenu(): React.ReactNode {
         return (
-            <div className='poiesis-agent-window__code-explorer-menu' role='menu' aria-label='Explorer More Actions'>
-                {this.renderExplorerMenuItem('Toggle Hidden Files', FileNavigatorCommands.TOGGLE_HIDDEN_FILES.id)}
-                {this.renderExplorerMenuItem('Auto Reveal', FileNavigatorCommands.TOGGLE_AUTO_REVEAL.id)}
+            <div className='poiesis-agent-window__code-explorer-menu' role='menu' aria-label='Explorer のその他の操作'>
+                {this.renderExplorerMenuItem('隠しファイルを切り替える', FileNavigatorCommands.TOGGLE_HIDDEN_FILES.id)}
+                {this.renderExplorerMenuItem('自動表示', FileNavigatorCommands.TOGGLE_AUTO_REVEAL.id)}
                 <div className='poiesis-agent-window__code-explorer-menu-separator' role='separator' />
-                {this.renderExplorerMenuItem('Refresh Explorer', FileNavigatorCommands.REFRESH_NAVIGATOR.id)}
-                {this.renderExplorerMenuItem('Collapse Folders', FileNavigatorCommands.COLLAPSE_ALL.id)}
+                {this.renderExplorerMenuItem('Explorer を更新', FileNavigatorCommands.REFRESH_NAVIGATOR.id)}
+                {this.renderExplorerMenuItem('フォルダーを折りたたむ', FileNavigatorCommands.COLLAPSE_ALL.id)}
             </div>
         );
     }
@@ -5424,7 +5426,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (!root) {
             this.workspaceSkills = [];
             this.workspaceSkillsLoading = false;
-            this.workspaceSkillsError = 'User Skillを表示するにはWorkspaceを開いてください。';
+            this.workspaceSkillsError = 'ユーザー Skill を表示するにはワークスペースを開いてください。';
             this.update();
             return;
         }
@@ -5436,7 +5438,7 @@ export class AgentWindowWidget extends ReactWidget {
         } catch (error) {
             if (generation === this.workspaceSkillsRefreshGeneration) {
                 this.workspaceSkills = [];
-                this.workspaceSkillsError = `User Skillを読み込めませんでした: ${error instanceof Error ? error.message : String(error)}`;
+                this.workspaceSkillsError = `ユーザー Skill を読み込めませんでした: ${error instanceof Error ? error.message : String(error)}`;
             }
         } finally {
             if (generation === this.workspaceSkillsRefreshGeneration) {
@@ -5458,7 +5460,7 @@ export class AgentWindowWidget extends ReactWidget {
         }
         const root = this.workspaceRoot()?.resource;
         if (!root) {
-            this.newSkillError = 'Skillを作成するにはWorkspaceを開いてください。';
+            this.newSkillError = 'Skillを作成するにはワークスペースを開いてください。';
             this.update();
             return;
         }
@@ -5741,14 +5743,14 @@ export class AgentWindowWidget extends ReactWidget {
             || path.split('/').some(segment => !segment || segment === '.' || segment === '..');
         if (invalidPath || !Number.isSafeInteger(startLine) || !Number.isSafeInteger(endLine)
             || startLine < 1 || endLine < startLine || endLine > 10_000_000) {
-            this.messageService.error('引用先を開けません。Workspace 内のファイルと行番号を確認してください。');
+            this.messageService.error('引用先を開けません。ワークスペース内のファイルと行番号を確認してください。');
             return;
         }
         const workspace = this.workspaceRoot()?.resource.normalizePath();
         const file = workspace?.resolve(path).normalizePath();
         try {
             if (!workspace || !file || !workspace.isEqualOrParent(file, false) || !await this.fileService.exists(file)) {
-                this.messageService.error('引用先のファイルが Workspace 内に見つかりません。');
+                this.messageService.error('引用先のファイルがワークスペース内に見つかりません。');
                 return;
             }
             const stat = await this.fileService.resolve(file);
