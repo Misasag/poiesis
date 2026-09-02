@@ -21,12 +21,14 @@ jobs:
       - uses: actions/checkout@v4
       # electron-builder races release creation when jobs publish
       # concurrently; creating the release up front removes the race.
-      - name: Create the GitHub release for this tag
+      # It is created as a DRAFT so electron-updater never sees a "latest"
+      # release without latest.yml; publish-release flips it after Windows.
+      - name: Create the GitHub release for this tag as a draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >-
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
-          || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+          || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft
           --title "${GITHUB_REF_NAME#v}" --notes "Poiesis ${GITHUB_REF_NAME#v}"
 
   windows-latest:
@@ -92,6 +94,21 @@ jobs:
           --x64
           --publish always
           --config electron-builder.yml
+
+  publish-release:
+    name: publish-release
+    needs: windows-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Windows artifacts (installer, blockmap, latest.yml) are attached now, so
+      # the release can become visible to electron-updater; macOS assets are
+      # added to the published release afterwards.
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
 
   macos:
     name: macos (${{ matrix.arch }})
