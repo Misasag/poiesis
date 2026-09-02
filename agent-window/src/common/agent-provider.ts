@@ -24,8 +24,22 @@ export interface AgentMessage {
     ownerSessionId: string;
 }
 
+export type AgentActivityKind = 'command' | 'file-change' | 'read' | 'reasoning' | 'message' | 'tool';
+export type AgentActivityStatus = 'running' | 'completed' | 'failed';
+
+export interface AgentActivity {
+    id: string;
+    kind: AgentActivityKind;
+    title: string;
+    detail?: string;
+    status: AgentActivityStatus;
+    startedAt: string;
+    endedAt?: string;
+}
+
 export type AgentEvent =
     | { type: 'task-started'; sessionId: string; taskId: string }
+    | { type: 'activity'; sessionId: string; taskId: string; activity: AgentActivity }
     | { type: 'message-delta'; sessionId: string; taskId: string; delta: string }
     | { type: 'message-completed'; sessionId: string; taskId: string }
     | { type: 'task-completed'; sessionId: string; taskId: string }

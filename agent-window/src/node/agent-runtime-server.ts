@@ -170,6 +170,65 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         if (testReply !== undefined) {
             const configuredDelay = Number(process.env.POIESIS_AGENT_TEST_DELAY_MS);
             const testDelay = Number.isFinite(configuredDelay) ? Math.max(0, Math.min(configuredDelay, 10_000)) : 0;
+            if (process.env.POIESIS_AGENT_TEST_ACTIVITIES === '1') {
+                const changedPath = join(workspacePath, 'docs', 'UX.md');
+                const events = [
+                    {
+                        type: 'item.completed',
+                        item: { id: 'test-message-start', type: 'agent_message', text: '作業を開始します' }
+                    },
+                    {
+                        type: 'item.started',
+                        item: {
+                            id: 'test-command', type: 'command_execution', command: 'dir',
+                            aggregated_output: '', exit_code: null, status: 'in_progress'
+                        }
+                    },
+                    {
+                        type: 'item.completed',
+                        item: {
+                            id: 'test-command', type: 'command_execution', command: 'dir',
+                            aggregated_output: '', exit_code: 0, status: 'completed'
+                        }
+                    },
+                    {
+                        type: 'item.started',
+                        item: {
+                            id: 'test-file-change', type: 'file_change',
+                            changes: [{ path: changedPath, kind: 'update' }], status: 'in_progress'
+                        }
+                    },
+                    {
+                        type: 'item.completed',
+                        item: {
+                            id: 'test-file-change', type: 'file_change',
+                            changes: [{ path: changedPath, kind: 'update' }], status: 'completed'
+                        }
+                    }
+                ];
+                const stepDelay = testDelay / (events.length + 1);
+                events.forEach((event, index) => {
+                    setTimeout(() => {
+                        this.client?.notifyCodexEvent({
+                            type: 'output', executionId, stream: 'stdout',
+                            delta: `${JSON.stringify(event)}\n`
+                        });
+                    }, stepDelay * (index + 1));
+                });
+                setTimeout(() => {
+                    this.client?.notifyCodexEvent({
+                        type: 'output',
+                        executionId,
+                        stream: 'stdout',
+                        delta: `${JSON.stringify({
+                            type: 'item.completed',
+                            item: { id: 'test-message-final', type: 'agent_message', text: testReply }
+                        })}\n`
+                    });
+                    this.client?.notifyCodexEvent({ type: 'exit', executionId, code: 0, signal: null });
+                }, testDelay);
+                return;
+            }
             setTimeout(() => {
                 this.client?.notifyCodexEvent({
                     type: 'output',

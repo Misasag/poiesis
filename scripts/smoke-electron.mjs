@@ -179,10 +179,25 @@ try {
         assert(initialElapsed?.startsWith('作業中 · '), `Initial elapsed feedback is missing: ${initialElapsed}`);
         assert(updatedElapsed?.startsWith('作業中 · ') && updatedElapsed !== initialElapsed,
             `Elapsed feedback did not update every second: ${JSON.stringify({ initialElapsed, updatedElapsed })}`);
+        await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-activity__row').length >= 3
+            && !document.querySelector('.poiesis-agent-window__composer textarea')?.disabled);
+        const runningActivityRows = await page.$$eval('.poiesis-agent-activity__row', nodes => nodes.length);
+        const composerEnabledDuringRun = await page.$eval(
+            '.poiesis-agent-window__composer textarea', input => !input.disabled
+        );
+        assert(runningActivityRows >= 3, `Agent activity rows are missing during the run: ${runningActivityRows}`);
+        assert(composerEnabledDuringRun, 'Agent Composer textarea is disabled during the run');
         await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state [role="timer"]'));
+        await page.waitForSelector('.poiesis-agent-activity__summary');
+        const activitySummary = await page.$eval('.poiesis-agent-activity__summary', node => node.textContent?.trim() ?? '');
+        assert(activitySummary.includes('作業ログ') && activitySummary.includes('コマンド 1'),
+            `Collapsed activity summary is incomplete: ${activitySummary}`);
         console.log(`ELECTRON_TASK_FEEDBACK_SMOKE_RESULT=${JSON.stringify({
             elapsedVisible: true,
-            elapsedUpdated: true
+            elapsedUpdated: true,
+            runningActivityRows,
+            composerEnabledDuringRun,
+            activitySummaryVisible: true
         })}`);
         break smokeRun;
     }

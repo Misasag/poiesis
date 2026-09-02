@@ -1627,6 +1627,140 @@
     margin-top: 8px;
 }
 
+.poiesis-agent-activity {
+    background: #20211f;
+    border: 1px solid var(--poiesis-chrome-line);
+    border-radius: 7px;
+    color: #a9aba5;
+    font-size: 12px;
+    margin-bottom: 10px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.poiesis-agent-activity__header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    min-height: 31px;
+    padding: 5px 9px;
+}
+
+.poiesis-agent-activity__header strong {
+    color: #c9cac5;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.poiesis-agent-activity__header button,
+.poiesis-agent-activity__summary,
+.poiesis-agent-window__message-actions button {
+    background: transparent;
+    border: 0;
+    color: #aeb0aa;
+    cursor: pointer;
+    font: inherit;
+}
+
+.poiesis-agent-activity__header button:hover,
+.poiesis-agent-activity__summary:hover,
+.poiesis-agent-window__message-actions button:hover {
+    color: #e2e2dd;
+}
+
+.poiesis-agent-activity__summary {
+    align-items: center;
+    display: flex;
+    font-size: 12px;
+    gap: 6px;
+    min-height: 33px;
+    padding: 6px 9px;
+    text-align: left;
+    width: 100%;
+}
+
+.poiesis-agent-activity__summary > span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-agent-activity__rows {
+    border-top: 1px solid var(--poiesis-chrome-line);
+}
+
+.poiesis-agent-activity__row {
+    align-items: center;
+    display: grid;
+    gap: 7px;
+    grid-template-columns: 15px max-content minmax(0, 1fr) 15px;
+    min-height: 29px;
+    padding: 5px 9px;
+}
+
+.poiesis-agent-activity__row + .poiesis-agent-activity__row {
+    border-top: 1px solid rgb(255 255 255 / 4%);
+}
+
+.poiesis-agent-activity__row > .codicon:first-child {
+    color: #8f928b;
+}
+
+.poiesis-agent-activity__row > strong {
+    color: #bfc0bb;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.poiesis-agent-activity__detail {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-agent-window__message .poiesis-agent-activity__message-detail {
+    color: #999c95;
+    font-size: 12px;
+    line-height: 1.45;
+    margin: 0;
+    min-width: 0;
+    white-space: pre-wrap;
+}
+
+.poiesis-agent-activity__row--reasoning {
+    color: #858881;
+    font-style: normal;
+}
+
+.poiesis-agent-activity__row--reasoning > strong,
+.poiesis-agent-activity__row--reasoning > .codicon:first-child {
+    color: #858881;
+}
+
+.poiesis-agent-activity__status {
+    color: #747871;
+    justify-self: end;
+}
+
+.poiesis-agent-activity__status--failed {
+    color: var(--theia-errorForeground);
+}
+
+.poiesis-agent-window__message-actions {
+    display: flex;
+    margin-top: 10px;
+}
+
+.poiesis-agent-window__message-actions button {
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 5px;
+    font-size: 12px;
+    padding: 5px 8px;
+}
+
 .poiesis-agent-window__task-state {
     align-items: center;
     background: #21221f;

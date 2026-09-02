@@ -26,6 +26,8 @@ const providerSource = await read('agent-window/src/common/agent-provider.ts');
 const runtimeProtocol = await read('agent-window/src/common/agent-runtime-protocol.ts');
 const runtimeClient = await read('agent-window/src/browser/agent-runtime-client.ts');
 const cliProvider = await read('agent-window/src/browser/cli-agent-provider.ts');
+const agentActivityParser = await read('agent-window/src/browser/agent-activity-parser.ts');
+const agentActivityParserTest = await read('scripts/test-agent-activity-parser.mjs');
 const mockProvider = await read('agent-window/src/browser/mock-agent-provider.ts');
 const taskService = await read('agent-window/src/browser/task-service.ts');
 const resultsSkill = await read('agent-window/src/browser/results-skill.ts');
@@ -341,7 +343,9 @@ for (const signature of [
     assert.ok(providerSource.includes(signature), `AgentProvider is missing ${signature}`);
 }
 assert.ok(providerSource.includes('ownerSessionId: string'), 'Agent messages must retain their stable app-session owner');
-assert.ok(agentWidget.includes("import { AgentEvent, AgentProvider, AgentSession }"));
+assert.ok(providerSource.includes("export type AgentActivityKind = 'command' | 'file-change' | 'read'"));
+assert.ok(providerSource.includes("{ type: 'activity'; sessionId: string; taskId: string; activity: AgentActivity }"));
+assert.ok(agentWidget.includes('AgentActivity, AgentActivityKind, AgentEvent, AgentProvider, AgentSession'));
 assert.ok(!agentWidget.includes("from './mock-agent-provider'"), 'Agent UI must depend on AgentProvider, not its implementation');
 assert.ok(moduleSource.includes('bind(AgentProvider).toService(CliAgentProvider)'));
 assert.ok(moduleSource.includes('.createProxy<AgentRuntimeServer>(agentRuntimeServerPath, client)'));
@@ -359,10 +363,9 @@ for (const marker of [
     'await this.runtimeServer.runCodex',
     'providerId: session.providerId',
     'model: session.model',
-    "run.providerId === 'claude'",
-    "run.providerId === 'grok'",
-    "claudeEvent.type === 'assistant'",
-    "claudeEvent.type === 'result'",
+    'activityParser: createAgentActivityParser(session.providerId, session.workspacePath)',
+    'const result = run.activityParser.consumeLine(line)',
+    "type: 'activity'",
     'type: \'message-delta\'',
     'type: \'message-completed\'',
     'await this.taskService.end(run.taskId, run.finalMessage?.trim()',
@@ -371,6 +374,27 @@ for (const marker of [
     'You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.'
 ]) {
     assert.ok(cliProvider.includes(marker), `CLI AgentProvider is missing ${marker}`);
+}
+for (const marker of [
+    "this.providerId === 'grok'",
+    "this.providerId === 'claude'",
+    "itemType === 'command_execution'",
+    "itemType === 'file_change'",
+    "itemType === 'agent_message'",
+    "name === 'Read'",
+    "name === 'Bash'",
+    'stripShellWrapper',
+    'MAX_ACTIVITY_DETAIL_CHARS = 2_000'
+]) {
+    assert.ok(agentActivityParser.includes(marker), `Agent activity parser is missing ${marker}`);
+}
+for (const marker of [
+    "createAgentActivityParser('codex', 'C:\\\\work\\\\probe')",
+    "createAgentActivityParser('claude', 'C:\\\\work\\\\probe')",
+    'Codex command events must upsert by id.',
+    'Malformed input must produce one diagnostic.'
+]) {
+    assert.ok(agentActivityParserTest.includes(marker), `Agent activity parser test is missing ${marker}`);
 }
 assert.ok(runtimeClient.includes('notifyCodexEvent'));
 assert.ok(runtimeClient.includes('onCodexEvent'));
@@ -1255,8 +1279,8 @@ assert.ok(!agentWidget.includes('protected activeTab:'), 'Agent / Results select
 assert.ok(!agentWidget.includes('Widget.ResizeMessage.UnknownSize'), 'Code widgets must receive measured pixel resize messages');
 assert.equal(
     agentWidget.match(/this\.selectTab\('results'\)/g)?.length,
-    1,
-    'Only the explicit Results tab action may switch to Results'
+    2,
+    'Only the explicit Results tab and completed-task action may switch to Results'
 );
 const codeToggle = agentWidget.match(/protected toggleCodeMode\(\): void \{[\s\S]*?\n    \}/)?.[0];
 assert.ok(codeToggle, 'Code mode toggle is missing');

@@ -19,7 +19,7 @@ import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget
 import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-contribution';
 import { SearchInWorkspaceCommands } from '@theia/search-in-workspace/lib/browser/search-in-workspace-frontend-contribution';
 import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
-import { AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
+import { AgentActivity, AgentActivityKind, AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
 import {
     AgentRuntimeServer,
     AiRole,
@@ -74,6 +74,7 @@ const DEFAULT_CODE_PANEL_HEIGHT = 190;
 const MIN_CODE_PANEL_HEIGHT = 96;
 const MAX_PERSISTED_TASKS_PER_SESSION = 10;
 const MAX_PERSISTED_RESULTS_HTML_CHARS = 300_000;
+const MAX_AGENT_ACTIVITIES_PER_MESSAGE = 300;
 interface ChatMessage {
     id: string;
     role: 'user' | 'agent';
@@ -82,6 +83,7 @@ interface ChatMessage {
     taskId?: string;
     error?: boolean;
     errorDetails?: string;
+    activities?: AgentActivity[];
 }
 
 interface AgentHtmlPreview {
@@ -674,6 +676,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected readonly agentRichContent = new Map<string, AgentRichContentState>();
     protected readonly agentRichContentPending = new Map<string, string>();
     protected readonly agentHtmlPreviewExpanded = new Map<string, boolean>();
+    protected readonly agentActivityExpanded = new Set<string>();
     protected selectedSessionId?: string;
     protected sessionSequence = 0;
     protected railCollapsed = false;
@@ -2014,6 +2017,7 @@ export class AgentWindowWidget extends ReactWidget {
                                     ? 'poiesis-agent-window__user-message'
                                     : 'poiesis-agent-window__message'}
                             >
+                                {message.role === 'agent' && this.renderAgentActivities(session, message)}
                                 {message.error ? (
                                     <div className='poiesis-agent-window__message-error' role='alert'>
                                         <strong>{message.content}</strong>
@@ -2057,9 +2061,13 @@ export class AgentWindowWidget extends ReactWidget {
                         placeholder='次の変更内容や質問を入力…'
                         aria-label='Agent へのメッセージ'
                         rows={2}
-                        disabled={!session || Boolean(runningTask)}
+                        disabled={!session}
                         onValueChange={value => this.setAgentDraft(session?.id, value)}
-                        onSubmit={() => void this.sendAgentMessage()}
+                        onSubmit={() => {
+                            if (!runningTask) {
+                                void this.sendAgentMessage();
+                            }
+                        }}
                     />
                     <div className='poiesis-agent-window__composer-footer'>
                         {session && newAgent && this.renderNewAgentContext(session)}
@@ -2068,6 +2076,7 @@ export class AgentWindowWidget extends ReactWidget {
                             className='poiesis-agent-window__send'
                             type='button'
                             aria-label='Agent へ送信'
+                            title={runningTask ? 'タスクの実行中は送信できません' : undefined}
                             disabled={!session?.workspaceUri || Boolean(runningTask) || !session.agentDraft.trim()}
                             onClick={() => void this.sendAgentMessage()}
                         >
@@ -3204,12 +3213,146 @@ export class AgentWindowWidget extends ReactWidget {
             queueMicrotask(() => void this.prepareAgentRichContent(messageKey, signature, message.content, workspaceUri));
         }
         const current = richContent?.signature === signature ? richContent : undefined;
+        const task = message.taskId ? this.taskService.get(message.taskId) : undefined;
+        const showResultsAction = message.complete
+            && task?.status === 'completed'
+            && task.changeSet?.source === 'task-diff'
+            && task.changeSet.files.length > 0;
         return (
             <>
                 {this.renderMarkdown(message.content, current?.imageSources, workspaceUri)}
                 {current?.htmlPreviews.map((preview, index) => this.renderAgentHtmlPreview(messageKey, preview, index))}
+                {showResultsAction && (
+                    <div className='poiesis-agent-window__message-actions'>
+                        <button
+                            type='button'
+                            onClick={() => {
+                                this.selectResultsTask(task.id);
+                                this.selectTab('results');
+                            }}
+                        >
+                            Results で確認
+                        </button>
+                    </div>
+                )}
             </>
         );
+    }
+
+    protected renderAgentActivities(session: WindowAgentSession | undefined, message: ChatMessage): React.ReactNode {
+        const task = message.taskId ? this.taskService.get(message.taskId) : undefined;
+        const finalReports = new Set([
+            message.complete ? message.content.trim() : '',
+            message.complete ? task?.implementerReport?.trim() ?? '' : ''
+        ].filter(Boolean));
+        const activities = (message.activities ?? []).filter(activity =>
+            activity.kind !== 'message' || !activity.detail || !finalReports.has(activity.detail.trim())
+        );
+        if (!activities.length) {
+            return undefined;
+        }
+        const messageKey = `${session?.id ?? 'workspace'}:${message.id}`;
+        const expanded = this.agentActivityExpanded.has(messageKey);
+        const finished = task ? task.status !== 'running' : message.complete;
+        if (finished) {
+            const commandCount = activities.filter(activity => activity.kind === 'command').length;
+            const fileChangeCount = activities.filter(activity => activity.kind === 'file-change').length;
+            return (
+                <div className={`poiesis-agent-activity${expanded ? ' expanded' : ' collapsed'}`}>
+                    <button
+                        type='button'
+                        className='poiesis-agent-activity__summary'
+                        aria-expanded={expanded}
+                        onClick={() => this.toggleAgentActivity(messageKey)}
+                    >
+                        <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
+                        <span>
+                            作業ログ {activities.length}件 · コマンド {commandCount} · ファイル変更 {fileChangeCount}
+                        </span>
+                    </button>
+                    {expanded && (
+                        <div className='poiesis-agent-activity__rows'>
+                            {activities.map(activity => this.renderAgentActivityRow(activity))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        const visibleActivities = expanded ? activities : activities.slice(-8);
+        return (
+            <div className='poiesis-agent-activity'>
+                <div className='poiesis-agent-activity__header'>
+                    <strong>作業ログ · {activities.length}件</strong>
+                    {activities.length > 8 && (
+                        <button
+                            type='button'
+                            aria-expanded={expanded}
+                            onClick={() => this.toggleAgentActivity(messageKey)}
+                        >
+                            {expanded ? '折りたたむ' : 'すべて表示'}
+                        </button>
+                    )}
+                </div>
+                <div className='poiesis-agent-activity__rows'>
+                    {visibleActivities.map(activity => this.renderAgentActivityRow(activity))}
+                </div>
+            </div>
+        );
+    }
+
+    protected renderAgentActivityRow(activity: AgentActivity): React.ReactNode {
+        const icon = this.agentActivityIcon(activity);
+        const statusIcon = activity.status === 'running'
+            ? 'codicon-loading codicon-modifier-spin'
+            : activity.status === 'failed' ? 'codicon-error' : 'codicon-check';
+        const statusLabel = activity.status === 'running'
+            ? '実行中'
+            : activity.status === 'failed' ? '失敗' : '完了';
+        return (
+            <div
+                key={activity.id}
+                className={`poiesis-agent-activity__row poiesis-agent-activity__row--${activity.kind}`}
+            >
+                <span className={`codicon ${icon}`} aria-hidden='true' />
+                <strong>{activity.title}</strong>
+                {activity.kind === 'message'
+                    ? <p className='poiesis-agent-activity__message-detail' title={activity.detail}>{activity.detail}</p>
+                    : <span className='poiesis-agent-activity__detail' title={activity.detail}>{activity.detail}</span>}
+                <span
+                    className={`poiesis-agent-activity__status poiesis-agent-activity__status--${activity.status} codicon ${statusIcon}`}
+                    aria-label={statusLabel}
+                    title={statusLabel}
+                />
+            </div>
+        );
+    }
+
+    protected agentActivityIcon(activity: AgentActivity): string {
+        if (activity.kind === 'command') {
+            return 'codicon-terminal';
+        }
+        if (activity.kind === 'file-change') {
+            return 'codicon-edit';
+        }
+        if (activity.kind === 'read') {
+            return activity.title === '検索' ? 'codicon-search' : 'codicon-file';
+        }
+        if (activity.kind === 'reasoning') {
+            return 'codicon-lightbulb';
+        }
+        if (activity.kind === 'message') {
+            return 'codicon-comment';
+        }
+        return 'codicon-tools';
+    }
+
+    protected toggleAgentActivity(messageKey: string): void {
+        if (this.agentActivityExpanded.has(messageKey)) {
+            this.agentActivityExpanded.delete(messageKey);
+        } else {
+            this.agentActivityExpanded.add(messageKey);
+        }
+        this.update();
     }
 
     protected renderMarkdown(
@@ -5894,7 +6037,8 @@ export class AgentWindowWidget extends ReactWidget {
                     && typeof message.content === 'string'
                 ).map(message => this.migrateLegacyCliErrorMessage({
                     ...message,
-                    complete: Boolean(message.complete)
+                    complete: Boolean(message.complete),
+                    activities: this.restoreAgentActivities(message.activities)
                 })) : []).map(message => {
                     const task = message.taskId ? taskById.get(message.taskId) : undefined;
                     if (message.complete || task?.status !== 'failed') {
@@ -6269,8 +6413,16 @@ export class AgentWindowWidget extends ReactWidget {
         if (!session) {
             return;
         }
+        const autoFollowActivities = event.type === 'activity'
+            && session.id === this.selectedSessionId
+            && this.isAgentMessagesNearBottom();
         if (event.type === 'task-started') {
             session.messages.push({ id: `agent-${event.taskId}`, role: 'agent', content: '', complete: false, taskId: event.taskId });
+        } else if (event.type === 'activity') {
+            this.updateAgentMessage(session, event.taskId, message => ({
+                ...message,
+                activities: this.upsertAgentActivity(message.activities, event.activity)
+            }));
         } else if (event.type === 'message-delta') {
             this.updateAgentMessage(session, event.taskId, message => ({ ...message, content: message.content + event.delta }));
         } else if (event.type === 'message-completed') {
@@ -6293,6 +6445,78 @@ export class AgentWindowWidget extends ReactWidget {
         session.updatedAt = Date.now();
         this.persistWindowState();
         this.update();
+        if (autoFollowActivities) {
+            requestAnimationFrame(() => {
+                if (session.id !== this.selectedSessionId) {
+                    return;
+                }
+                const messages = this.node.querySelector<HTMLElement>('.poiesis-agent-window__messages');
+                if (messages) {
+                    messages.scrollTop = messages.scrollHeight;
+                }
+            });
+        }
+    }
+
+    protected isAgentMessagesNearBottom(): boolean {
+        const messages = this.node.querySelector<HTMLElement>('.poiesis-agent-window__messages');
+        return Boolean(messages && messages.scrollHeight - messages.scrollTop - messages.clientHeight <= 40);
+    }
+
+    protected upsertAgentActivity(current: AgentActivity[] | undefined, incoming: AgentActivity): AgentActivity[] {
+        const activity = {
+            ...incoming,
+            detail: incoming.detail?.slice(0, 2_000)
+        };
+        const activities = [...(current ?? [])];
+        const existing = activities.findIndex(candidate => candidate.id === activity.id);
+        if (existing >= 0) {
+            activities[existing] = activity;
+        } else {
+            activities.push(activity);
+        }
+        return this.capAgentActivities(activities);
+    }
+
+    protected capAgentActivities(activities: AgentActivity[]): AgentActivity[] {
+        const capped = activities.slice();
+        while (capped.length > MAX_AGENT_ACTIVITIES_PER_MESSAGE) {
+            const disposable = capped.findIndex(activity => activity.kind === 'reasoning' || activity.kind === 'message');
+            capped.splice(disposable >= 0 ? disposable : 0, 1);
+        }
+        return capped;
+    }
+
+    protected restoreAgentActivities(value: unknown): AgentActivity[] | undefined {
+        if (!Array.isArray(value)) {
+            return undefined;
+        }
+        const kinds = new Set<AgentActivityKind>(['command', 'file-change', 'read', 'reasoning', 'message', 'tool']);
+        const statuses = new Set(['running', 'completed', 'failed']);
+        const activities = value.flatMap(candidate => {
+            const activity = candidate as Partial<AgentActivity> | null;
+            if (!activity
+                || typeof activity.id !== 'string'
+                || !kinds.has(activity.kind as AgentActivityKind)
+                || typeof activity.title !== 'string'
+                || !statuses.has(activity.status ?? '')
+                || typeof activity.startedAt !== 'string'
+                || !Number.isFinite(Date.parse(activity.startedAt))) {
+                return [];
+            }
+            return [{
+                id: activity.id,
+                kind: activity.kind as AgentActivityKind,
+                title: activity.title,
+                detail: typeof activity.detail === 'string' ? activity.detail.slice(0, 2_000) : undefined,
+                status: activity.status as AgentActivity['status'],
+                startedAt: activity.startedAt,
+                endedAt: typeof activity.endedAt === 'string' && Number.isFinite(Date.parse(activity.endedAt))
+                    ? activity.endedAt
+                    : undefined
+            }];
+        });
+        return this.capAgentActivities(activities);
     }
 
     protected updateAgentMessage(session: WindowAgentSession, taskId: string, update: (message: ChatMessage) => ChatMessage): void {

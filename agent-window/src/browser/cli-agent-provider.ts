@@ -14,6 +14,7 @@ import {
     KnownCliId
 } from '../common/agent-runtime-protocol';
 import { AgentRuntimeClientImpl } from './agent-runtime-client';
+import { AgentActivityParser, createAgentActivityParser } from './agent-activity-parser';
 import { MockAgentProvider } from './mock-agent-provider';
 import { ResultsService } from './results-skill';
 import { TaskService } from './task-service';
@@ -32,6 +33,7 @@ interface CodexRun {
     providerId: KnownCliId;
     providerName: string;
     model?: string;
+    activityParser: AgentActivityParser;
     stdoutBuffer: string;
     diagnostics: string;
     finalMessage?: string;
@@ -104,6 +106,7 @@ export class CliAgentProvider implements AgentProvider {
             providerId: session.providerId,
             providerName: session.providerName,
             model: session.model,
+            activityParser: createAgentActivityParser(session.providerId, session.workspacePath),
             stdoutBuffer: '',
             diagnostics: '',
             state: 'starting'
@@ -267,59 +270,20 @@ export class CliAgentProvider implements AgentProvider {
     }
 
     protected consumeJsonLine(run: CodexRun, line: string): void {
-        if (!line.trim()) {
-            return;
+        const result = run.activityParser.consumeLine(line);
+        if (result.finalMessage !== undefined) {
+            run.finalMessage = result.finalMessage;
         }
-        if (run.providerId === 'grok') {
-            run.finalMessage = `${run.finalMessage ? `${run.finalMessage}\n` : ''}${line}`;
-            return;
+        for (const diagnostic of result.diagnostics) {
+            this.appendDiagnostic(run, diagnostic);
         }
-        try {
-            const event = JSON.parse(line) as {
-                type?: string;
-                message?: string;
-                error?: { message?: string } | string;
-                item?: { type?: string; text?: string; message?: string };
-                result?: string;
-                is_error?: boolean;
-                subtype?: string;
-            };
-            if (run.providerId === 'claude') {
-                const claudeEvent = event as typeof event & {
-                    message?: {
-                        content?: Array<{ type?: string; text?: string }>;
-                    };
-                };
-                if (claudeEvent.type === 'assistant') {
-                    const text = claudeEvent.message?.content
-                        ?.filter(item => item.type === 'text' && typeof item.text === 'string')
-                        .map(item => item.text)
-                        .join('\n')
-                        .trim();
-                    if (text) {
-                        run.finalMessage = text;
-                    }
-                }
-                if (claudeEvent.type === 'result' && typeof claudeEvent.result === 'string' && claudeEvent.result.trim()) {
-                    run.finalMessage = claudeEvent.result;
-                }
-                if (claudeEvent.is_error || claudeEvent.subtype === 'error') {
-                    this.appendDiagnostic(run, claudeEvent.result ?? line);
-                }
-                return;
-            }
-            if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) {
-                run.finalMessage = event.item.text;
-            }
-            if (event.type === 'error' || event.type === 'turn.failed' || event.item?.type === 'error') {
-                const detail = event.message
-                    ?? event.item?.message
-                    ?? (typeof event.error === 'string' ? event.error : event.error?.message)
-                    ?? line;
-                this.appendDiagnostic(run, detail);
-            }
-        } catch {
-            this.appendDiagnostic(run, line);
+        for (const activity of result.activities) {
+            this.eventEmitter.fire({
+                type: 'activity',
+                sessionId: run.sessionId,
+                taskId: run.taskId,
+                activity
+            });
         }
     }
 
