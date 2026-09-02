@@ -5,7 +5,8 @@ import { WorkspaceService } from '@theia/workspace/lib/browser';
 import {
     AgentRuntimeServer,
     GitChangeSetCapture,
-    GitSnapshotCapture
+    GitSnapshotCapture,
+    KnownCliId
 } from '../common/agent-runtime-protocol';
 import type { AgentActivity, AgentActivityKind } from '../common/agent-provider';
 
@@ -114,6 +115,8 @@ export interface TaskResultDocument {
     html?: string;
     error?: string;
     generator?: 'ai' | 'template' | 'fallback';
+    providerId?: KnownCliId;
+    model?: string;
     fallbackReason?: string;
     generatedAt?: string;
     durationMs?: number;

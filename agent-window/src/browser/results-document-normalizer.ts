@@ -28,9 +28,19 @@ export function normalizeAiResultsHtml(
     if (html.length > AI_RESULTS_HTML_MAX_CHARS) {
         throw new Error(`AI Results HTML exceeded ${AI_RESULTS_HTML_MAX_CHARS} characters.`);
     }
-    const completeDocument = /^(?:<!doctype\s+html[^>]*>\s*)?<html(?:\s|>)[\s\S]*<\/html\s*>\s*$/i;
-    if (!completeDocument.test(html) || (html.match(/<html(?:\s|>)/gi)?.length ?? 0) !== 1) {
+    const documentStart = /^(?:<!doctype\s+html[^>]*>\s*)?<html(?:\s|>)/i;
+    const htmlOpenCount = html.match(/<html(?:\s|>)/gi)?.length ?? 0;
+    const htmlCloseCount = html.match(/<\/html\s*>/gi)?.length ?? 0;
+    if (!documentStart.test(html) || htmlOpenCount !== 1 || htmlCloseCount > 1
+        || htmlCloseCount === 1 && !/<\/html\s*>\s*$/i.test(html)) {
         throw new Error('AI Results did not return one complete HTML document.');
+    }
+    if (htmlCloseCount === 0) {
+        html = `${html}\n</html>`;
+        notes.push('Missing closing html tag was appended.');
+    }
+    if (html.length > AI_RESULTS_HTML_MAX_CHARS) {
+        throw new Error(`AI Results HTML exceeded ${AI_RESULTS_HTML_MAX_CHARS} characters.`);
     }
     if (/<script\b|<link\b|\son\w+\s*=|(?:src|href)\s*=\s*["']\s*(?:https?:)?\/\/|url\(\s*["']?\s*(?:https?:)?\/\//i.test(html)) {
         throw new Error('AI Results HTML contained scripts or external resources.');

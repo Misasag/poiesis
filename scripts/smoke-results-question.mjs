@@ -106,11 +106,15 @@ try {
                 tasks: [{
                     id: fixture.taskId,
                     sessionId: fixture.sessionId,
-                    title: 'Stored result task',
+                    title: 'Stored result task with a deliberately long Application-owned title for responsive header verification',
                     request: 'Update docs/UX.md',
                     status: 'completed',
                     startedAt: fixture.now,
                     endedAt: fixture.now,
+                    appliedSkills: {
+                        agent: ['workspace-review-checklist', 'responsive-results-layout-guidance', 'verification-evidence-policy'],
+                        results: []
+                    },
                     baseline: { kind: 'workspace-snapshot', capturedAt: fixture.now },
                     changeSet: {
                         source: 'task-diff',
@@ -290,7 +294,7 @@ try {
     }, {}, panelStorageKey);
 
     const collapsedLayouts = [];
-    for (const size of [{ width: 1280, height: 720 }, { width: 1600, height: 900 }]) {
+    for (const size of [{ width: 1280, height: 720 }, { width: 1400, height: 800 }]) {
         await page.setViewport({ ...size, deviceScaleFactor: 1 });
         const label = `collapsed-${size.width}x${size.height}`;
         collapsedLayouts.push({
@@ -344,7 +348,7 @@ try {
     }, {}, panelStorageKey);
 
     const expandedLayouts = [];
-    for (const size of [{ width: 1280, height: 720 }, { width: 1600, height: 900 }]) {
+    for (const size of [{ width: 1280, height: 720 }, { width: 1400, height: 800 }]) {
         await page.setViewport({ ...size, deviceScaleFactor: 1 });
         const label = `expanded-${size.width}x${size.height}`;
         expandedLayouts.push({
@@ -430,6 +434,12 @@ async function assertDockedLayout(page, label) {
             };
         };
         const history = document.querySelector('.poiesis-results__qa-history');
+        const header = document.querySelector('.poiesis-results__fixed-header');
+        const title = header?.querySelector('.poiesis-results__fixed-title');
+        const titleHeading = title?.querySelector('h1');
+        const meta = header?.querySelector('.poiesis-results__fixed-meta');
+        const badges = meta?.querySelector('.poiesis-results__badges');
+        const rowCount = elements => new Set([...elements].map(element => Math.round(element.getBoundingClientRect().top))).size;
         return {
             label: currentLabel,
             viewport: { width: innerWidth, height: innerHeight },
@@ -437,12 +447,34 @@ async function assertDockedLayout(page, label) {
             canvas: bounds('.poiesis-results__canvas'),
             panel: bounds('.poiesis-results__qa-panel'),
             composer: bounds('.poiesis-results__composer'),
+            header: bounds('.poiesis-results__fixed-header'),
+            title: bounds('.poiesis-results__fixed-title'),
+            headerStyle: titleHeading instanceof HTMLElement ? {
+                lineClamp: getComputedStyle(titleHeading).webkitLineClamp,
+                metaWrap: meta instanceof HTMLElement ? getComputedStyle(meta).flexWrap : undefined,
+                badgeWrap: badges instanceof HTMLElement ? getComputedStyle(badges).flexWrap : undefined,
+                metaRows: meta instanceof HTMLElement ? rowCount(meta.children) : 0,
+                badgeRows: badges instanceof HTMLElement ? rowCount(badges.children) : 0,
+                appliedSkillsTitle: [...badges?.children ?? []]
+                    .find(element => element.textContent?.includes('適用 Skills:'))?.getAttribute('title')
+            } : undefined,
             historyOverflow: history instanceof HTMLElement && history.scrollHeight > history.clientHeight,
             expanded: document.querySelector('.poiesis-results__qa-toggle')?.getAttribute('aria-expanded') === 'true'
         };
     }, label);
-    assert(snapshot.main && snapshot.canvas && snapshot.panel && snapshot.composer,
+    assert(snapshot.main && snapshot.canvas && snapshot.panel && snapshot.composer && snapshot.header && snapshot.title && snapshot.headerStyle,
         `Docked layout is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.title.width >= snapshot.header.width * 0.45,
+        `The Results title used less than 45 percent at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.headerStyle.lineClamp === '2'
+        && snapshot.headerStyle.metaWrap === 'wrap'
+        && snapshot.headerStyle.badgeWrap === 'wrap'
+        && snapshot.headerStyle.appliedSkillsTitle?.includes('verification-evidence-policy'),
+    `The responsive Results header contract is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
+    if (snapshot.viewport.width <= 1400) {
+        assert(snapshot.headerStyle.metaRows >= 2,
+            `The Results metadata did not wrap at ${label}: ${JSON.stringify(snapshot)}`);
+    }
     assert(snapshot.expanded, `The panel collapsed unexpectedly at ${label}.`);
     assert(snapshot.canvas.bottom <= snapshot.panel.top + 1,
         `The panel overlaps the Results canvas at ${label}: ${JSON.stringify(snapshot)}`);
@@ -461,7 +493,10 @@ async function assertDockedLayout(page, label) {
         viewport: snapshot.viewport,
         panelHeight: snapshot.panel.height,
         mainHeight: snapshot.main.height,
-        historyOverflow: snapshot.historyOverflow
+        historyOverflow: snapshot.historyOverflow,
+        titleWidthRatio: Number((snapshot.title.width / snapshot.header.width).toFixed(3)),
+        metaRows: snapshot.headerStyle.metaRows,
+        badgeRows: snapshot.headerStyle.badgeRows
     };
 }
 

@@ -2712,30 +2712,49 @@ export class AgentWindowWidget extends ReactWidget {
         editor: WorkspaceSkillEditor | undefined,
         workspaceName: string | undefined
     ): React.ReactNode {
-        const groups: Array<{ source: WorkspaceSkillSource; label: string; path: string }> = [
-            { source: 'workspace', label: 'Workspace', path: workspaceName ? `${workspaceName} / .poiesis/skills` : '.poiesis/skills' },
-            { source: 'workspace-agents', label: 'Workspace (.agents/skills)', path: workspaceName ? `${workspaceName} / .agents/skills` : '.agents/skills' },
-            { source: 'user', label: 'ユーザー', path: '~/.poiesis/skills' },
-            { source: 'user-agents', label: 'ユーザー (.agents/skills)', path: '~/.agents/skills' }
+        const groups: Array<{ source: WorkspaceSkillSource; label: string; path: string; root: string }> = [
+            {
+                source: 'workspace', label: 'Workspace', root: '.poiesis/skills',
+                path: workspaceName ? `${workspaceName} / .poiesis/skills` : '.poiesis/skills'
+            },
+            {
+                source: 'workspace-agents', label: 'Workspace (.agents/skills)', root: '.agents/skills',
+                path: workspaceName ? `${workspaceName} / .agents/skills` : '.agents/skills'
+            },
+            { source: 'user', label: 'ユーザー', path: '~/.poiesis/skills', root: '~/.poiesis/skills' },
+            { source: 'user-agents', label: 'ユーザー (.agents/skills)', path: '~/.agents/skills', root: '~/.agents/skills' }
         ];
-        return groups.map(group => {
-            const skills = this.workspaceSkills.filter(skill => skill.source === group.source);
-            return (
-                <section className='poiesis-customize-view__scope-group' aria-label={group.label} key={group.source}>
-                    <div className='poiesis-customize-view__user-heading'>
-                        <h4 className='poiesis-customize-view__group-title'>{group.label}</h4>
-                        <span>{group.path}</span>
+        const skillsBySource = new Map(groups.map(group => [
+            group.source,
+            this.workspaceSkills.filter(skill => skill.source === group.source)
+        ]));
+        const visibleGroups = groups.filter(group => group.source === 'workspace' || skillsBySource.get(group.source)?.length);
+        const emptyRoots = groups.filter(group => !skillsBySource.get(group.source)?.length).map(group => group.root);
+        return (
+            <>
+                {visibleGroups.map(group => {
+                    const skills = skillsBySource.get(group.source) ?? [];
+                    return (
+                        <section className='poiesis-customize-view__scope-group' aria-label={group.label} key={group.source}>
+                            <div className='poiesis-customize-view__user-heading'>
+                                <h4 className='poiesis-customize-view__group-title'>{group.label}</h4>
+                                <span>{group.path}</span>
+                            </div>
+                            {skills.length > 0 && (
+                                <div className='poiesis-agent-window__customize-list'>
+                                    {skills.map(skill => this.renderWorkspaceSkillRow(skill, editor))}
+                                </div>
+                            )}
+                        </section>
+                    );
+                })}
+                {emptyRoots.length > 0 && (
+                    <div className='poiesis-customize-view__empty-roots'>
+                        他のスコープに Skill はありません: {emptyRoots.join('、')}
                     </div>
-                    {skills.length === 0 ? (
-                        <div className='poiesis-customize-view__group-empty'>Skill はありません</div>
-                    ) : (
-                        <div className='poiesis-agent-window__customize-list'>
-                            {skills.map(skill => this.renderWorkspaceSkillRow(skill, editor))}
-                        </div>
-                    )}
-                </section>
-            );
-        });
+                )}
+            </>
+        );
     }
 
     protected renderWorkspaceSkillRow(
@@ -3509,6 +3528,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (appliedSkillIds.some(id => !this.resultsSkillNames.has(id))) {
             void this.ensureResultsSkillNames();
         }
+        const appliedSkillNames = appliedSkillIds.map(id => this.resultsSkillNames.get(id) ?? id);
         return (
             <header className='poiesis-results__fixed-header' data-task-status={task.status}>
                 <div className='poiesis-results__fixed-title'>
@@ -3527,7 +3547,9 @@ export class AgentWindowWidget extends ReactWidget {
                         <span className='poiesis-results__badges' aria-label='成果文書の生成情報'>
                             {generationBadge && <span>{generationBadge}</span>}
                             {appliedSkillIds.length > 0 && (
-                                <span>適用 Skills: {appliedSkillIds.map(id => this.resultsSkillNames.get(id) ?? id).join('、')}</span>
+                                <span title={`適用 Skills: ${appliedSkillNames.join('、')}`}>
+                                    適用 Skills: {appliedSkillNames.join('、')}
+                                </span>
                             )}
                         </span>
                     )}
@@ -3553,6 +3575,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (appliedSkillIds.some(id => !this.resultsSkillNames.has(id))) {
             void this.ensureResultsSkillNames();
         }
+        const appliedSkillNames = appliedSkillIds.map(id => this.resultsSkillNames.get(id) ?? id);
         return (
             <header className='poiesis-results__fixed-header' data-task-status={latestTask.status}>
                 <div className='poiesis-results__fixed-title'>
@@ -3570,7 +3593,9 @@ export class AgentWindowWidget extends ReactWidget {
                     <span className='poiesis-results__badges' aria-label='要件成果文書の生成情報'>
                         {generationBadge && <span>{generationBadge}</span>}
                         {appliedSkillIds.length > 0 && (
-                            <span>適用 Skills: {appliedSkillIds.map(id => this.resultsSkillNames.get(id) ?? id).join('、')}</span>
+                            <span title={`適用 Skills: ${appliedSkillNames.join('、')}`}>
+                                適用 Skills: {appliedSkillNames.join('、')}
+                            </span>
                         )}
                         <span>タスク {tasks.length}件</span>
                     </span>
@@ -3584,8 +3609,9 @@ export class AgentWindowWidget extends ReactWidget {
             return undefined;
         }
         if (document.generator === 'ai') {
-            const provider = this.cliDetectionReport?.detections.find(candidate => candidate.id === this.resultsCli)?.name
-                ?? ({ codex: 'Codex', claude: 'Claude Code', grok: 'Grok', gemini: 'Gemini CLI' } satisfies Record<KnownCliId, string>)[this.resultsCli];
+            const providerId = isKnownCliId(document.providerId) ? document.providerId : this.resultsCli;
+            const provider = this.cliDetectionReport?.detections.find(candidate => candidate.id === providerId)?.name
+                ?? ({ codex: 'Codex', claude: 'Claude Code', grok: 'Grok', gemini: 'Gemini CLI' } satisfies Record<KnownCliId, string>)[providerId];
             return `AI 生成 · ${provider}`;
         }
         const fallbackLabel = document.fallbackReason === 'no-workspace'
@@ -7410,6 +7436,17 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
     }
 
+    protected beginSplitRequirementRename(requirement: Requirement): void {
+        this.beginRequirementRename(requirement);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (this.renamingRequirementId === requirement.id) {
+                const input = this.node.querySelector<HTMLInputElement>('.poiesis-results__requirement-rename input');
+                input?.focus();
+                input?.select();
+            }
+        }));
+    }
+
     protected cancelRequirementRename(): void {
         this.renamingRequirementId = undefined;
         this.requirementRenameDraft = '';
@@ -7452,7 +7489,7 @@ export class AgentWindowWidget extends ReactWidget {
         this.openResultsMenuKey = undefined;
         void this.persistWindowState();
         void this.persistResultsQaPanelState();
-        this.update();
+        this.beginSplitRequirementRename(requirement);
     }
 
     protected setResultsQuestionPanelExpanded(scopeKey: string, expanded: boolean, revealLatest = false): void {

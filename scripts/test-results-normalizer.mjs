@@ -31,6 +31,19 @@ const fenced = normalizeAiResultsHtml(
 );
 assert(fenced.html.startsWith('<html>') && fenced.html.includes('<p>Fenced</p>'), 'Fenced HTML must be unwrapped.');
 
+const missingClose = normalizeAiResultsHtml(
+    '<!doctype html><html lang="ja"><head></head><body><p>Missing close</p></body>',
+    { taskTitle: 'Missing close task' }
+);
+assert(missingClose.html.endsWith('</html>'), 'A missing closing html tag must be appended.');
+assert(missingClose.notes.includes('Missing closing html tag was appended.'),
+    'Appending a missing closing html tag must be reported in normalization notes.');
+
+assert.throws(() => normalizeAiResultsHtml(
+    '<html><head></head><body>First</body></html><html><body>Second</body></html>',
+    { taskTitle: 'Repeated html' }
+), /one complete HTML document/, 'Multiple html elements must still be rejected.');
+
 const activities = [
     {
         id: 'reasoning-1', kind: 'reasoning', title: 'Thinking', detail: 'private chain', status: 'completed',

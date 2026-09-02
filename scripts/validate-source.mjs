@@ -58,6 +58,7 @@ const agentRichContentSmoke = await read('scripts/smoke-agent-rich-content.mjs')
 const markdownSmoke = await read('scripts/smoke-markdown.mjs');
 const resultsDocumentSmoke = await read('scripts/smoke-results-document.mjs');
 const resultsQuestionSmoke = await read('scripts/smoke-results-question.mjs');
+const uiSmoke = await read('scripts/smoke-ui.mjs');
 const resultsPromptTransportTest = await read('scripts/test-results-prompt-transport.mjs');
 const round15Smoke = await read('scripts/smoke-round15-browser.mjs');
 const round16Smoke = await read('scripts/smoke-round16-console.mjs');
@@ -278,10 +279,14 @@ for (const marker of [
     'taskRailCollapsedRestored',
     'taskRailExpandedRestored',
     '{ width: 1280, height: 720 }',
-    '{ width: 1600, height: 900 }',
+    '{ width: 1400, height: 800 }',
     'collapsed-maximized',
     'expanded-maximized',
-    'taskCountAfterUpdate'
+    'taskCountAfterUpdate',
+    'snapshot.title.width >= snapshot.header.width * 0.45',
+    "snapshot.headerStyle.metaWrap === 'wrap'",
+    "snapshot.headerStyle.badgeWrap === 'wrap'",
+    'titleWidthRatio'
 ]) {
     assert.ok(resultsQuestionSmoke.includes(marker), `Results task rail smoke is missing ${marker}`);
 }
@@ -684,10 +689,24 @@ for (const marker of [
     assert.ok(resultsSkill.includes(marker), `Bundled Results skill is missing ${marker}`);
 }
 for (const marker of [
+    'const generation = this.generateTask(task).then(() => {',
+    'void this.startRequirementGeneration(task.requirementId).catch',
+    "if (event.type === 'tasks-changed')",
+    'const providerId = this.context.providerId;',
+    'providerId,\n                model'
+]) {
+    assert.ok(resultsSkill.includes(marker), `Results generation polish is missing ${marker}`);
+}
+assert.ok(!resultsSkill.includes("event.type === 'tasks-changed' || event.type === 'renamed'"),
+    'Renaming a Requirement must not regenerate its Results document');
+assert.ok(taskService.includes('providerId?: KnownCliId;') && taskService.includes('model?: string;'),
+    'Task Results documents must persist their generation provider and model');
+for (const marker of [
     'export function normalizeAiResultsHtml(',
     'export function formatExecutionEvidence(',
     'Leading heading duplicated the Application-owned task title and was removed.',
     'Remaining h1 elements were demoted to h2.',
+    'Missing closing html tag was appended.',
     "activity.kind !== 'reasoning'",
     '[古い実行記録を省略しました]'
 ]) {
@@ -701,6 +720,8 @@ for (const marker of [
     'Non-title h1 elements must become h2 elements.',
     'Script-bearing output must still be rejected.',
     'Fenced HTML must be unwrapped.',
+    'A missing closing html tag must be appended.',
+    'Multiple html elements must still be rejected.',
     'Truncation must remove oldest evidence first.'
 ]) {
     assert.ok(resultsDocumentNormalizerTest.includes(marker), `Results normalizer test is missing ${marker}`);
@@ -826,7 +847,9 @@ for (const marker of [
     "srcDoc={this.resultsDocumentHtml(document.html)}",
     '<PoiesisResultsElapsed key={scopeKey} />',
     "return `AI 生成 · ${provider}`",
+    'isKnownCliId(document.providerId) ? document.providerId : this.resultsCli',
     '適用 Skills:',
+    'title={`適用 Skills: ${appliedSkillNames.join(\'、\')}`}',
     'this.workspaceSkillService.list(root)',
     "sandbox='allow-scripts'",
     "type: 'poiesis:open-citation' | 'poiesis:retry-ai-results'",
@@ -1300,6 +1323,9 @@ for (const marker of [
     'this.renderRequirementCard(',
     'this.requirementService.moveTask(taskId, targetRequirementId)',
     'this.requirementService.splitTaskToNew(taskId)',
+    'this.beginSplitRequirementRename(requirement);',
+    'input?.select();',
+    "他のスコープに Skill はありません: {emptyRoots.join('、')}",
     "onClick={() => this.beginRequirementRename(requirement)}"
 ]) {
     assert.ok(agentWidget.includes(marker), `Requirement UI is missing ${marker}`);
@@ -1310,6 +1336,10 @@ assert.ok(!agentStyles.includes('.poiesis-results__task-row.no-change'), 'No-cha
 assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.openCustomize()}"), 'Code Extensions must not open Poiesis Customize');
 assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Poiesis Settings');
 assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Poiesis Customize must not manage Code extensions');
+assert.ok(agentStyles.includes('grid-template-columns: minmax(45%, 1fr) minmax(0, 1fr);'),
+    'The fixed Results title must retain at least 45 percent of the header width');
+assert.ok(uiSmoke.includes("{ timeout: 10_000 }, label") && uiSmoke.includes('attempt < 2 && !point'),
+    'Explorer file clicks must wait for layout and retry scrolling once');
 const settingsModalSource = agentWidget.match(/protected renderSettingsModal\(\): React\.ReactNode \{[\s\S]*?\n    protected renderShortcutsOverlay/)?.[0] ?? '';
 assert.ok(!settingsModalSource.includes('poiesis-settings-skills'), 'Settings modal must not contain Skills');
 assert.ok(!settingsModalSource.includes('poiesis-settings-plugins'), 'Settings modal must not contain Plugins');

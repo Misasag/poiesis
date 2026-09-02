@@ -477,14 +477,34 @@ try {
     await page.waitForFunction(() => [...document.querySelectorAll('#files .theia-FileStatNode')]
         .some(element => element.getAttribute('title')?.endsWith('.gitignore')));
     const clickExplorerFile = async label => {
-        const point = await page.evaluate(fileLabel => {
+        const scrollToFile = () => page.evaluate(fileLabel => {
             const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
                 .find(element => element.getAttribute('title')?.endsWith(fileLabel));
-            if (!(file instanceof HTMLElement)) throw new Error(`${fileLabel} was not found in Explorer`);
-            file.scrollIntoView({ block: 'center' });
-            const bounds = file.getBoundingClientRect();
-            return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+            file?.scrollIntoView({ block: 'center' });
         }, label);
+        await scrollToFile();
+        await page.waitForFunction(fileLabel => {
+            const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+                .find(element => element.getAttribute('title')?.endsWith(fileLabel));
+            if (!(file instanceof HTMLElement)) return false;
+            const bounds = file.getBoundingClientRect();
+            return bounds.width > 0 && bounds.height > 0;
+        }, { timeout: 10_000 }, label);
+        let point;
+        for (let attempt = 0; attempt < 2 && !point; attempt++) {
+            await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+            point = await page.evaluate(fileLabel => {
+                const file = [...document.querySelectorAll('#files .theia-FileStatNode')]
+                    .find(element => element.getAttribute('title')?.endsWith(fileLabel));
+                if (!(file instanceof HTMLElement)) return undefined;
+                const bounds = file.getBoundingClientRect();
+                if (bounds.width <= 0 || bounds.height <= 0 || bounds.right <= 0 || bounds.bottom <= 0
+                    || bounds.left >= innerWidth || bounds.top >= innerHeight) return undefined;
+                return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+            }, label);
+            if (!point && attempt === 0) await scrollToFile();
+        }
+        if (!point) throw new Error(`${label} was not found in Explorer`);
         await page.mouse.click(point.x, point.y);
         assert(await page.evaluate(fileLabel => {
             const file = [...document.querySelectorAll('#files .theia-FileStatNode')]

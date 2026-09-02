@@ -42,6 +42,8 @@ export interface ResultsSkill extends ResultsSkillBundle {
 export interface ResultsSkillDocument {
     html: string;
     generator: 'ai' | 'template' | 'fallback';
+    providerId?: TaskResultDocument['providerId'];
+    model?: string;
     fallbackReason?: string;
 }
 
@@ -220,6 +222,8 @@ export class AiResultsSkill implements ResultsSkill {
         if (input.task.status === 'running') {
             throw new Error('Results generation requires a finished Task.');
         }
+        const providerId = this.context.providerId;
+        const model = this.context.model.trim() || undefined;
         const workspace = this.workspaceService.tryGetRoots()[0]
             ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
         if (!workspace) {
@@ -237,8 +241,8 @@ export class AiResultsSkill implements ResultsSkill {
             }
             const result = await this.generationServer.generate({
                 taskId: input.documentId ?? input.task.id,
-                providerId: this.context.providerId,
-                model: this.context.model || undefined,
+                providerId,
+                model,
                 workspaceUri: workspace.resource.toString(),
                 taskMetadata: {
                     status: input.task.status,
@@ -272,7 +276,9 @@ export class AiResultsSkill implements ResultsSkill {
             }
             return {
                 html: this.normalizeAndValidate(result.html, input.requirement?.title ?? input.task.title),
-                generator: 'ai'
+                generator: 'ai',
+                providerId,
+                model
             };
         } catch (error) {
             if (error instanceof ResultsGenerationCancelledError) {
@@ -382,7 +388,7 @@ export class ResultsService {
     protected init(): void {
         this.taskService.registerTerminalFinalizer(task => this.startGeneration(task));
         this.requirementService.onDidChange(event => {
-            if (event.type === 'tasks-changed' || event.type === 'renamed') {
+            if (event.type === 'tasks-changed') {
                 for (const requirementId of event.requirementIds) {
                     const requirement = this.requirementService.get(requirementId);
                     const tasks = requirement?.taskIds.map(taskId => this.taskService.get(taskId)).filter(Boolean) ?? [];
@@ -492,8 +498,11 @@ export class ResultsService {
     }
 
     protected startGeneration(task: ExecutionTask): Promise<void> {
-        const generation = this.generateTask(task)
-            .then(() => this.startRequirementGeneration(task.requirementId));
+        const generation = this.generateTask(task).then(() => {
+            void this.startRequirementGeneration(task.requirementId).catch(error =>
+                console.warn('[Poiesis] Could not generate Requirement Results in the background.', error)
+            );
+        });
         this.generationPromises.set(task.id, generation);
         return generation;
     }
@@ -573,7 +582,6 @@ export class ResultsService {
             return;
         }
 
-        const changeSet = await this.cumulativeChangeSet(requirement);
         const latestTask = tasks.at(-1)!;
         const documentId = this.requirementDocumentId(requirement.id);
         const generationToken = ++this.generationSequence;
@@ -581,6 +589,7 @@ export class ResultsService {
         this.generationTokens.set(documentId, generationToken);
         this.setRequirementDocument(requirement, { taskId: documentId, status: 'generating' });
         try {
+            const changeSet = await this.cumulativeChangeSet(requirement);
             const generated = await this.resultsSkill.generate({
                 task: latestTask,
                 changeSet,
