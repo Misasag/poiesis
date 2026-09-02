@@ -723,6 +723,7 @@ body.poiesis-code-file-pointer-drag * {
     gap: 12px;
     grid-column: 1 / -1;
     grid-row: 2;
+    min-height: 22px;
     padding: 0 8px;
 }
 
@@ -765,4 +766,10 @@ body.poiesis-code-file-pointer-drag * {
     align-items: center;
     display: flex;
     gap: 2px;
+}
+
+.poiesis-agent-window__code-status button.poiesis-agent-window__code-status-problems {
+    gap: 4px;
+    padding-inline: 5px;
+    width: auto;
 }

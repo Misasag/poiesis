@@ -14,6 +14,7 @@ import { ScmCommand, ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/brow
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
+import { ProblemManager } from '@theia/markers/lib/browser/problem/problem-manager';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
 import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-contribution';
@@ -156,6 +157,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         @inject(EditorManager) public readonly editorManager: EditorManager,
         @inject(OpenerService) public readonly openerService: OpenerService,
         @inject(FileService) public readonly fileService: FileService,
+        @inject(ProblemManager) public readonly problemManager: ProblemManager,
         @inject(CommandService) public readonly commandService: CommandService,
         @inject(SaveableService) public readonly saveableService: SaveableService,
         @inject(IconThemeService) public readonly iconThemeService: IconThemeService,
@@ -375,6 +377,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         this.installCodeEditorSaveShortcut();
         this.installCodeTerminalShortcut();
         this.installCodeTabDropTarget();
+        this.codePart.installCodeStatusListeners();
         const receiveResultsMessage = (event: MessageEvent): void => this.handleResultsFrameMessage(event);
         window.addEventListener('message', receiveResultsMessage);
         this.toDispose.push(Disposable.create(() => window.removeEventListener('message', receiveResultsMessage)));

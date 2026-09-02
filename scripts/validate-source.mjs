@@ -1032,6 +1032,8 @@ for (const marker of [
     "static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener'",
     "static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget'",
     "import { EditorManager, EditorWidget } from '@theia/editor/lib/browser'",
+    "import { ProblemManager } from '@theia/markers/lib/browser/problem/problem-manager'",
+    "import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor'",
     "import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service'",
     "import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model'",
     "import { ScmService } from '@theia/scm/lib/browser/scm-service'",
@@ -1121,6 +1123,15 @@ for (const marker of [
     "aria-label='パネルを閉じる'",
     "aria-label='パネルを切り替える'",
     "className='poiesis-agent-window__code-status'",
+    'this.problemManager.getProblemStat()',
+    'this.problemManager.onDidChangeMarkers',
+    'this.editorManager.onCurrentEditorChanged',
+    'editor.document.getEncoding()',
+    'editor.getControl().getModel()',
+    'control.onDidChangeModelOptions',
+    'model.getEOL()',
+    'model.getOptions()',
+    'CodePart.PROBLEMS_WIDGET_FACTORY_ID',
     'protected renderCodeScmStatusCommands(): React.ReactNode',
     'const commands = this.scmService.statusBarCommands',
     'data-scm-status-index={index}',
@@ -1821,6 +1832,8 @@ for (const marker of [
     assert.ok(agentWidget.includes(marker), `Agent rail is missing ${marker}`);
 }
 assert.ok(!agentWidget.includes('FileDialogService'), 'Poiesis must not open stock Theia file dialogs');
+assert.ok(!agentWidget.includes('スペース: 4'), 'Code status must not contain a hard-coded indentation value');
+assert.ok(!agentWidget.includes('codicon-bell'), 'Code status must not contain a dead notification control');
 assert.ok(!agentWidget.includes('showOpenDialog'), 'Folder selection must use the Poiesis explorer');
 assert.ok(!railSource.includes('<small>現在</small>'), 'Selected sessions must use quiet age metadata, not a current badge');
 assert.ok(

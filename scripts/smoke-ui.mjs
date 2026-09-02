@@ -313,6 +313,8 @@ try {
         await page.click('.poiesis-agent-window__code-editor-tab-close');
         await page.waitForFunction(count => document.querySelectorAll('.poiesis-agent-window__code-editor-tab').length < count, {}, tabCount);
     }
+    assert(!await page.$('.poiesis-agent-window__code-status-eol'), 'EOL status must be absent with no editor open');
+    assert(!await page.$('.poiesis-agent-window__code-status-indentation'), 'Indentation status must be absent with no editor open');
     for (const label of ['新しいファイル', '新しいフォルダー', 'Explorer を更新', 'フォルダーを折りたたむ']) {
         assert(await page.$(`.poiesis-agent-window__code-sidebar-actions button[aria-label="${label}"]`), `Explorer action is missing: ${label}`);
     }
@@ -328,14 +330,26 @@ try {
     const revealExplorerNode = async (label, align = 'end') => {
         const deadline = Date.now() + uiTimeout;
         while (Date.now() < deadline) {
-            if (await page.evaluate(nodeLabel => [...document.querySelectorAll('#files .theia-FileStatNode')]
-                .some(element => element.getAttribute('title')?.endsWith(nodeLabel)), label)) return;
+            if (await page.evaluate(nodeLabel => {
+                const node = [...document.querySelectorAll('#files .theia-FileStatNode')]
+                    .find(element => element.getAttribute('title')?.endsWith(nodeLabel));
+                node?.scrollIntoView({ block: 'center' });
+                return Boolean(node);
+            }, label)) {
+                await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+                return;
+            }
             await page.evaluate(edge => {
                 const files = document.getElementById('files');
                 if (!files) return;
                 for (const element of [files, ...files.querySelectorAll('*')]) {
                     if (element instanceof HTMLElement && element.scrollHeight > element.clientHeight) {
-                        element.scrollTo({ top: edge === 'end' ? element.scrollHeight : 0 });
+                        const maximum = element.scrollHeight - element.clientHeight;
+                        const step = Math.max(80, Math.floor(element.clientHeight * .7));
+                        const next = edge === 'end'
+                            ? element.scrollTop >= maximum - 1 ? 0 : Math.min(maximum, element.scrollTop + step)
+                            : element.scrollTop <= 1 ? maximum : Math.max(0, element.scrollTop - step);
+                        element.scrollTo({ top: next });
                     }
                 }
             }, align);
@@ -608,6 +622,17 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__code-editor-tab').length === 3
         && document.querySelector('.poiesis-agent-window__code-editor-tab.active:not(.preview) .poiesis-agent-window__code-editor-tab-name')?.textContent?.trim() === 'UX.md');
     await page.waitForSelector('.poiesis-agent-window__code-editor-host .monaco-editor');
+    await page.waitForFunction(() => {
+        const eol = document.querySelector('.poiesis-agent-window__code-status-eol')?.textContent?.trim() ?? '';
+        const indentation = document.querySelector('.poiesis-agent-window__code-status-indentation')?.textContent?.trim() ?? '';
+        return /^(LF|CRLF)$/.test(eol) && /^(スペース|タブ): \d+$/.test(indentation);
+    });
+    const honestEditorStatus = await page.evaluate(() => ({
+        eol: document.querySelector('.poiesis-agent-window__code-status-eol')?.textContent?.trim(),
+        indentation: document.querySelector('.poiesis-agent-window__code-status-indentation')?.textContent?.trim()
+    }));
+    assert(/^(LF|CRLF)$/.test(honestEditorStatus.eol ?? ''), `Editor EOL status is not real: ${JSON.stringify(honestEditorStatus)}`);
+    assert(/^(スペース|タブ): \d+$/.test(honestEditorStatus.indentation ?? ''), `Editor indentation status is not real: ${JSON.stringify(honestEditorStatus)}`);
     assert(await page.$('#files .theia-FileStatNode.theia-mod-selected'), 'Opened file must remain selected in Explorer');
     const openedCode = await page.evaluate(readState);
     assert(openedCode.editorTabs.includes('.gitignore'), 'Dragging a file must create a pinned Poiesis editor tab');
@@ -692,6 +717,8 @@ try {
     await page.click('.poiesis-agent-window__code-editor-tab-close');
     await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__code-editor-tab').length === 0
         && Boolean(document.querySelector('.poiesis-agent-window__code-empty')));
+    assert(!await page.$('.poiesis-agent-window__code-status-eol'), 'EOL status must disappear after the last editor closes');
+    assert(!await page.$('.poiesis-agent-window__code-status-indentation'), 'Indentation status must disappear after the last editor closes');
 
     await click(page, '.poiesis-agent-window__code-control', 'Code');
     await page.waitForSelector('.poiesis-results');

@@ -6,6 +6,7 @@ import type URI from '@theia/core/lib/common/uri';
 import type { Widget } from '@theia/core/shared/@lumino/widgets';
 import type { EditorManager } from '@theia/editor/lib/browser';
 import type { FileService } from '@theia/filesystem/lib/browser/file-service';
+import type { ProblemManager } from '@theia/markers/lib/browser/problem/problem-manager';
 import type { ScmService } from '@theia/scm/lib/browser/scm-service';
 import type { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import type { VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
@@ -92,6 +93,7 @@ export interface AgentWindowHost {
     readonly editorManager: EditorManager;
     readonly openerService: OpenerService;
     readonly fileService: FileService;
+    readonly problemManager: ProblemManager;
     readonly commandService: CommandService;
     readonly saveableService: SaveableService;
     readonly iconThemeService: IconThemeService;
@@ -208,6 +210,7 @@ export abstract class AgentWindowPartBase {
     protected get editorManager(): EditorManager { return this.host.editorManager; }
     protected get openerService(): OpenerService { return this.host.openerService; }
     protected get fileService(): FileService { return this.host.fileService; }
+    protected get problemManager(): ProblemManager { return this.host.problemManager; }
     protected get commandService(): CommandService { return this.host.commandService; }
     protected get saveableService(): SaveableService { return this.host.saveableService; }
     protected get iconThemeService(): IconThemeService { return this.host.iconThemeService; }

@@ -6,10 +6,14 @@ import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { CommandService, Disposable, DisposableCollection, MessageService } from '@theia/core/lib/common';
 import { FileUri } from '@theia/core/lib/common/file-uri';
+import { SUPPORTED_ENCODINGS } from '@theia/core/lib/common/supported-encodings';
 import URI from '@theia/core/lib/common/uri';
 import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { Widget } from '@theia/core/shared/@lumino/widgets';
 import { EditorManager, EditorWidget } from '@theia/editor/lib/browser';
+import { ProblemManager } from '@theia/markers/lib/browser/problem/problem-manager';
+import { PROBLEMS_WIDGET_ID } from '@theia/markers/lib/browser/problem/problem-widget';
+import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
 import { ScmCommand, ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-provider';
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
@@ -77,6 +81,12 @@ import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
 
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
 
+interface CodeEditorStatus {
+    encoding?: string;
+    eol: 'LF' | 'CRLF';
+    indentation: string;
+}
+
 const DEFAULT_CODE_SIDEBAR_WIDTH = 260;
 const MIN_CODE_SIDEBAR_WIDTH = 180;
 const MAX_CODE_SIDEBAR_WIDTH = 520;
@@ -91,6 +101,7 @@ export class CodePart extends AgentWindowPart {
     static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener';
     static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget';
     static readonly EXTENSIONS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container';
+    static readonly PROBLEMS_WIDGET_FACTORY_ID = PROBLEMS_WIDGET_ID;
 
     protected codeSidebarTab: CodeSidebarTab = 'files';
 
@@ -172,6 +183,37 @@ export class CodePart extends AgentWindowPart {
     };
 
     protected suppressNextCodeFileClick = false;
+
+    protected codeEditorStatus?: CodeEditorStatus;
+
+    protected codeEditorStatusEditor?: MonacoEditor;
+
+    protected codeEditorStatusListeners = new DisposableCollection();
+
+    protected codeEditorStatusRefreshTimer?: number;
+
+    protected codeStatusListenersInstalled = false;
+
+    protected registeringCodeProblems = false;
+
+    public installCodeStatusListeners(): void {
+        if (this.codeStatusListenersInstalled) {
+            return;
+        }
+        this.codeStatusListenersInstalled = true;
+        const listeners = new DisposableCollection();
+        listeners.push(this.problemManager.onDidChangeMarkers(() => this.update()));
+        listeners.push(this.editorManager.onCurrentEditorChanged(() => this.bindCodeEditorStatus()));
+        listeners.push(Disposable.create(() => {
+            this.codeEditorStatusListeners.dispose();
+            if (this.codeEditorStatusRefreshTimer !== undefined) {
+                window.clearTimeout(this.codeEditorStatusRefreshTimer);
+                this.codeEditorStatusRefreshTimer = undefined;
+            }
+        }));
+        this.host.addDisposable(listeners);
+        this.bindCodeEditorStatus();
+    }
 
     public disposeCodeResources(): void {
         this.codeSidebarResizeCleanup?.dispose();
@@ -447,13 +489,9 @@ export class CodePart extends AgentWindowPart {
                 </main>
                 <footer className='poiesis-agent-window__code-status' aria-label='ステータスバー'>
                     {this.renderCodeScmStatusCommands()}
-                    <span><span className='codicon codicon-error' aria-hidden='true' /> 0</span>
-                    <span><span className='codicon codicon-warning' aria-hidden='true' /> 0</span>
+                    {this.renderCodeProblemStatus()}
                     <span className='poiesis-agent-window__code-status-spacer' />
-                    <span>UTF-8</span>
-                    <span>LF</span>
-                    <span>スペース: 4</span>
-                    <span><span className='codicon codicon-bell' aria-hidden='true' /></span>
+                    {this.renderCodeEditorStatus()}
                     <button
                         type='button'
                         className={this.codePanelVisible ? 'active' : ''}
@@ -468,6 +506,116 @@ export class CodePart extends AgentWindowPart {
                 {this.renderCodeCenterCloseDialog()}
             </section>
         );
+    }
+
+    protected renderCodeProblemStatus(): React.ReactNode {
+        const { errors, warnings } = this.problemManager.getProblemStat();
+        const label = `問題を表示: エラー ${errors}、警告 ${warnings}`;
+        return (
+            <button
+                type='button'
+                className='poiesis-agent-window__code-status-problems'
+                title={label}
+                aria-label={label}
+                onClick={() => void this.openCodeProblems()}
+            >
+                <span className='codicon codicon-error' aria-hidden='true' />
+                <span>{errors}</span>
+                <span className='codicon codicon-warning' aria-hidden='true' />
+                <span>{warnings}</span>
+            </button>
+        );
+    }
+
+    protected renderCodeEditorStatus(): React.ReactNode {
+        const status = this.codeEditorStatus;
+        if (!status) {
+            return undefined;
+        }
+        return (
+            <>
+                {status.encoding && <span className='poiesis-agent-window__code-status-encoding'>{status.encoding}</span>}
+                <span className='poiesis-agent-window__code-status-eol'>{status.eol}</span>
+                <span className='poiesis-agent-window__code-status-indentation'>{status.indentation}</span>
+            </>
+        );
+    }
+
+    protected async openCodeProblems(): Promise<void> {
+        const problems = await this.widgetManager.getOrCreateWidget(CodePart.PROBLEMS_WIDGET_FACTORY_ID);
+        this.registeringCodeProblems = true;
+        try {
+            this.registerCodeWidget(CodePart.PROBLEMS_WIDGET_FACTORY_ID, problems, true);
+        } finally {
+            this.registeringCodeProblems = false;
+        }
+        this.selectCodeCenterWidget(problems);
+    }
+
+    protected activeCodeMonacoEditor(): MonacoEditor | undefined {
+        const editorWidget = this.editorManager.currentEditor === this.activeCodeCenterWidget
+            ? this.editorManager.currentEditor
+            : this.activeCodeCenterWidget instanceof EditorWidget
+                ? this.activeCodeCenterWidget
+                : undefined;
+        return editorWidget?.editor instanceof MonacoEditor ? editorWidget.editor : undefined;
+    }
+
+    protected bindCodeEditorStatus(): void {
+        const editor = this.activeCodeMonacoEditor();
+        if (editor === this.codeEditorStatusEditor) {
+            this.refreshCodeEditorStatus();
+            return;
+        }
+        this.codeEditorStatusListeners.dispose();
+        this.codeEditorStatusListeners = new DisposableCollection();
+        this.codeEditorStatusEditor = editor;
+        if (editor) {
+            const control = editor.getControl();
+            this.codeEditorStatusListeners.push(control.onDidChangeModelOptions(() => this.scheduleCodeEditorStatusRefresh()));
+            this.codeEditorStatusListeners.push(control.onDidChangeModelContent(() => this.scheduleCodeEditorStatusRefresh()));
+            this.codeEditorStatusListeners.push(control.onDidChangeModel(() => this.bindCodeEditorStatus()));
+            this.codeEditorStatusListeners.push(editor.onEncodingChanged(() => this.scheduleCodeEditorStatusRefresh()));
+        }
+        this.refreshCodeEditorStatus();
+    }
+
+    protected scheduleCodeEditorStatusRefresh(): void {
+        if (this.codeEditorStatusRefreshTimer !== undefined) {
+            window.clearTimeout(this.codeEditorStatusRefreshTimer);
+        }
+        this.codeEditorStatusRefreshTimer = window.setTimeout(() => {
+            this.codeEditorStatusRefreshTimer = undefined;
+            this.refreshCodeEditorStatus();
+        }, 40);
+    }
+
+    protected refreshCodeEditorStatus(): void {
+        const editor = this.activeCodeMonacoEditor();
+        const model = editor ? editor.getControl().getModel() : undefined;
+        let nextStatus: CodeEditorStatus | undefined;
+        if (editor && model) {
+            const options = model.getOptions();
+            const encodingId = editor.document.getEncoding();
+            nextStatus = {
+                encoding: encodingId ? SUPPORTED_ENCODINGS[encodingId]?.labelShort ?? encodingId : undefined,
+                eol: model.getEOL() === '\r\n' ? 'CRLF' : 'LF',
+                indentation: `${options.insertSpaces ? 'スペース' : 'タブ'}: ${options.insertSpaces ? options.indentSize : options.tabSize}`
+            };
+        }
+        if (this.sameCodeEditorStatus(this.codeEditorStatus, nextStatus)) {
+            return;
+        }
+        this.codeEditorStatus = nextStatus;
+        if (this.host.state.codeMode) {
+            this.update();
+        }
+    }
+
+    protected sameCodeEditorStatus(left: CodeEditorStatus | undefined, right: CodeEditorStatus | undefined): boolean {
+        return left?.encoding === right?.encoding
+            && left?.eol === right?.eol
+            && left?.indentation === right?.indentation;
     }
 
     protected renderCodeScmStatusCommands(): React.ReactNode {
@@ -713,6 +861,7 @@ export class CodePart extends AgentWindowPart {
             this.detachCodeWidget(this.activeCodeCenterWidget);
             this.codeCenterWidgets.push(widget);
             this.activeCodeCenterWidget = widget;
+            this.bindCodeEditorStatus();
             changed = true;
             const onDisposed = (): void => this.removeCodeCenterWidget(widget);
             const onTitleChanged = (): void => this.update();
@@ -756,7 +905,8 @@ export class CodePart extends AgentWindowPart {
     protected isCodeCenterWidget(factoryId: string, widget: Widget): boolean {
         return widget instanceof EditorWidget
             || factoryId.startsWith(CodePart.EDITOR_WIDGET_FACTORY_ID)
-            || factoryId === CodePart.SETTINGS_WIDGET_FACTORY_ID;
+            || factoryId === CodePart.SETTINGS_WIDGET_FACTORY_ID
+            || factoryId === CodePart.PROBLEMS_WIDGET_FACTORY_ID && this.registeringCodeProblems;
     }
 
     protected readonly setCodeSidebarHost = (host: HTMLDivElement | null): void => {
@@ -1281,6 +1431,7 @@ export class CodePart extends AgentWindowPart {
     protected selectCodeCenterWidget(widget: Widget, focusTab = false): void {
         this.detachCodeWidget(this.activeCodeCenterWidget);
         this.activeCodeCenterWidget = widget;
+        this.bindCodeEditorStatus();
         this.update();
         this.syncCodeWidgetAttachments();
         requestAnimationFrame(() => this.revealCodeCenterTab(widget, focusTab));
@@ -1469,7 +1620,7 @@ export class CodePart extends AgentWindowPart {
     }
 
     protected closeCodeCenterWidget(widget: Widget): void {
-        if (widget.id === CodePart.SETTINGS_WIDGET_FACTORY_ID) {
+        if (widget.id === CodePart.SETTINGS_WIDGET_FACTORY_ID || widget.id === CodePart.PROBLEMS_WIDGET_FACTORY_ID) {
             this.detachCodeWidget(widget);
             widget.hide();
             this.removeCodeCenterWidget(widget);
@@ -1537,6 +1688,7 @@ export class CodePart extends AgentWindowPart {
         if (this.activeCodeCenterWidget === widget) {
             this.activeCodeCenterWidget = nextWidget;
         }
+        this.bindCodeEditorStatus();
         this.update();
         this.syncCodeWidgetAttachments();
         if (this.activeCodeCenterWidget) {
