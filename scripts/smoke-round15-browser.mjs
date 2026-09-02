@@ -69,7 +69,7 @@ try {
             .map(row => ({ label: row.textContent?.trim(), checked: row.querySelector('input[type="checkbox"]')?.checked }))
     }));
     assert(customize.copy?.includes('次のTaskから実装指示へ加わり'), 'Customize copy does not describe live Agent Skill behavior.');
-    assert(customize.copy?.includes('fallback時はResults Skillの追加指示を使いません'), 'Template fallback boundary is not disclosed.');
+    assert(customize.copy?.includes('切り替え時はResults Skillの追加指示を使いません'), 'Template fallback boundary is not disclosed.');
     assert(customize.invalidError, 'Invalid skill.md did not show a row error.');
     assert(customize.switches.length === 2 && customize.switches.every(item => item.checked),
         `New skills were not enabled by default: ${JSON.stringify(customize.switches)}`);

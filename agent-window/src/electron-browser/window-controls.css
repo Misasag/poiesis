@@ -34,8 +34,7 @@
 .poiesis-agent-window__context-scope,
 .poiesis-agent-window__context-scope small,
 .poiesis-agent-window__context > strong,
-.poiesis-agent-window__code-workspace,
-.poiesis-agent-window__code-hint {
+.poiesis-agent-window__code-workspace {
     app-region: drag;
     -webkit-app-region: drag;
     -webkit-user-select: none;
