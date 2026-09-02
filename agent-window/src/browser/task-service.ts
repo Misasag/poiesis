@@ -7,6 +7,7 @@ import {
     GitChangeSetCapture,
     GitSnapshotCapture
 } from '../common/agent-runtime-protocol';
+import type { AgentActivity, AgentActivityKind } from '../common/agent-provider';
 
 export type ExecutionTaskStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -114,6 +115,8 @@ export interface TaskResultDocument {
     error?: string;
     generator?: 'ai' | 'template' | 'fallback';
     fallbackReason?: string;
+    generatedAt?: string;
+    durationMs?: number;
 }
 
 export interface ExecutionTask {
@@ -130,6 +133,8 @@ export interface ExecutionTask {
     baseline: TaskBaseline;
     changeSet?: TaskChangeSet;
     failure?: TaskFailure;
+    activities?: AgentActivity[];
+    appliedSkills?: { agent: string[]; results: string[] };
     resultsQuestions?: TaskResultsQuestion[];
     /** New Results documents are persisted with their owning Task. */
     resultsDocument?: TaskResultDocument;
@@ -150,6 +155,8 @@ interface PersistedResultsQuestionHistory {
 /** Application-owned lifecycle and workspace change-set boundary. */
 @injectable()
 export class TaskService {
+    static readonly MAX_ACTIVITIES_PER_TASK = 300;
+    static readonly MAX_ACTIVITY_DETAIL_CHARS = 2_000;
     static readonly MAX_RESULTS_QUESTIONS_PER_TASK = 20;
     static readonly MAX_RESULTS_QUESTION_CHARS = 4_000;
     static readonly MAX_RESULTS_RESPONSE_CHARS = 12_000;
@@ -257,6 +264,46 @@ export class TaskService {
         return updated;
     }
 
+    recordActivity(taskId: string, incoming: AgentActivity): ExecutionTask | undefined {
+        const current = this.tasks.get(taskId);
+        const activity = this.normalizeActivity(incoming);
+        if (!current || !activity) {
+            return current;
+        }
+        const activities = [...current.activities ?? []];
+        const existing = activities.findIndex(candidate => candidate.id === activity.id);
+        if (existing >= 0) {
+            activities[existing] = activity;
+        } else {
+            activities.push(activity);
+        }
+        while (activities.length > TaskService.MAX_ACTIVITIES_PER_TASK) {
+            const disposable = activities.findIndex(candidate => candidate.kind === 'reasoning' || candidate.kind === 'message');
+            activities.splice(disposable >= 0 ? disposable : 0, 1);
+        }
+        const updated = { ...current, activities };
+        this.tasks.set(taskId, updated);
+        return updated;
+    }
+
+    setAppliedSkills(taskId: string, role: 'agent' | 'results', ids: readonly string[]): ExecutionTask | undefined {
+        const current = this.tasks.get(taskId);
+        if (!current) {
+            return undefined;
+        }
+        const normalizedIds = [...new Set(ids.filter(id => typeof id === 'string' && id.trim()).map(id => id.trim()))];
+        const updated: ExecutionTask = {
+            ...current,
+            appliedSkills: {
+                agent: [...current.appliedSkills?.agent ?? []],
+                results: [...current.appliedSkills?.results ?? []],
+                [role]: normalizedIds
+            }
+        };
+        this.tasks.set(taskId, updated);
+        return updated;
+    }
+
     registerTerminalFinalizer(finalizer: (task: ExecutionTask) => Promise<void>): Disposable {
         this.terminalFinalizers.add(finalizer);
         return Disposable.create(() => this.terminalFinalizers.delete(finalizer));
@@ -297,16 +344,20 @@ export class TaskService {
                 .get(candidate.sessionId)?.get(candidate.id)
                 ?? legacyResultsQuestions;
             const resultsDocument = this.normalizeResultsDocument(candidate.resultsDocument, candidate.id);
+            const activities = this.normalizeActivities(candidate.activities);
+            const appliedSkills = this.normalizeAppliedSkills(candidate.appliedSkills);
             const task: ExecutionTask = candidate.status === 'running'
                 ? {
                     ...candidate,
                     status: 'failed',
                     endedAt: new Date().toISOString(),
                     failure: { summary: 'アプリ終了により中断されました' },
+                    activities,
+                    appliedSkills,
                     resultsQuestions,
                     resultsDocument
                 }
-                : { ...candidate, resultsQuestions, resultsDocument };
+                : { ...candidate, activities, appliedSkills, resultsQuestions, resultsDocument };
             this.tasks.set(task.id, task);
             if (legacyResultsQuestions.length > 0) {
                 this.migrateLegacyResultsQuestions(task.sessionId, task.id, legacyResultsQuestions);
@@ -492,6 +543,58 @@ export class TaskService {
             return undefined;
         }
         return document;
+    }
+
+    protected normalizeActivities(activities: readonly AgentActivity[] | undefined): AgentActivity[] | undefined {
+        if (!Array.isArray(activities)) {
+            return undefined;
+        }
+        const normalized = activities.flatMap(activity => {
+            const candidate = this.normalizeActivity(activity);
+            return candidate ? [candidate] : [];
+        });
+        while (normalized.length > TaskService.MAX_ACTIVITIES_PER_TASK) {
+            const disposable = normalized.findIndex(activity => activity.kind === 'reasoning' || activity.kind === 'message');
+            normalized.splice(disposable >= 0 ? disposable : 0, 1);
+        }
+        return normalized.length ? normalized : undefined;
+    }
+
+    protected normalizeActivity(activity: AgentActivity | undefined): AgentActivity | undefined {
+        const kinds = new Set<AgentActivityKind>(['command', 'file-change', 'read', 'reasoning', 'message', 'tool']);
+        if (!activity
+            || typeof activity.id !== 'string'
+            || !kinds.has(activity.kind)
+            || typeof activity.title !== 'string'
+            || !['running', 'completed', 'failed'].includes(activity.status)
+            || typeof activity.startedAt !== 'string'
+            || !Number.isFinite(Date.parse(activity.startedAt))) {
+            return undefined;
+        }
+        return {
+            id: activity.id,
+            kind: activity.kind,
+            title: activity.title,
+            detail: typeof activity.detail === 'string'
+                ? activity.detail.slice(0, TaskService.MAX_ACTIVITY_DETAIL_CHARS)
+                : undefined,
+            status: activity.status,
+            startedAt: activity.startedAt,
+            endedAt: typeof activity.endedAt === 'string' && Number.isFinite(Date.parse(activity.endedAt))
+                ? activity.endedAt
+                : undefined
+        };
+    }
+
+    protected normalizeAppliedSkills(
+        appliedSkills: ExecutionTask['appliedSkills'] | undefined
+    ): ExecutionTask['appliedSkills'] | undefined {
+        if (!appliedSkills || !Array.isArray(appliedSkills.agent) || !Array.isArray(appliedSkills.results)) {
+            return undefined;
+        }
+        const normalize = (ids: readonly string[]): string[] =>
+            [...new Set(ids.filter(id => typeof id === 'string' && id.trim()).map(id => id.trim()))];
+        return { agent: normalize(appliedSkills.agent), results: normalize(appliedSkills.results) };
     }
 
     protected normalizeResultsQuestionTasks(

@@ -26,7 +26,7 @@
     "shots:design": "node scripts/capture-design-shots.mjs",
     "smoke:electron": "node scripts/smoke-electron.mjs",
     "smoke:composer": "set \"POIESIS_COMPOSER_ONLY=1\" && node scripts/smoke-electron.mjs",
-    "smoke:task-feedback": "set \"POIESIS_TASK_FEEDBACK_ONLY=1\" && set \"POIESIS_AGENT_TEST_REPLY=Task completed.\" && set \"POIESIS_AGENT_TEST_DELAY_MS=2500\" && set \"POIESIS_AGENT_TEST_ACTIVITIES=1\" && node scripts/smoke-electron.mjs",
+    "smoke:task-feedback": "set \"POIESIS_TASK_FEEDBACK_ONLY=1\" && set \"POIESIS_AGENT_TEST_REPLY=Task completed.\" && set \"POIESIS_AGENT_TEST_DELAY_MS=2500\" && set \"POIESIS_AGENT_TEST_ACTIVITIES=1\" && set \"POIESIS_RESULTS_GENERATION_FORCE_FAILURE=1\" && node scripts/smoke-electron.mjs",
     "smoke:installed": "node scripts/smoke-installed.mjs",
     "smoke:agent-rich-content": "npm run build && node scripts/smoke-agent-rich-content.mjs",
     "smoke:code-branch-picker": "npm run build && node scripts/smoke-code-branch-picker.mjs",
@@ -52,6 +52,7 @@
     "start:electron": "npm run start --workspace=@poiesis/theia-electron-app --",
     "test:composer": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-composer-behavior.mjs",
     "test:agent-activity": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-agent-activity-parser.mjs",
+    "test:results-normalizer": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-normalizer.mjs",
     "test:results-prompt-transport": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-prompt-transport.mjs",
     "validate:source": "node scripts/validate-source.mjs"
   },

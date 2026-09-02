@@ -2212,6 +2212,26 @@
     text-decoration: none;
 }
 
+.poiesis-results__badges {
+    align-items: center;
+    color: var(--poiesis-chrome-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.poiesis-results__badges > span {
+    background: #292a27;
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 999px;
+    max-width: 280px;
+    overflow: hidden;
+    padding: 2px 7px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .poiesis-results__empty {
     align-self: center;
     color: var(--poiesis-chrome-muted);
@@ -4768,6 +4788,10 @@ body.poiesis-code-file-pointer-drag * {
     }
 
     .poiesis-results__fixed-meta {
+        justify-content: flex-start;
+    }
+
+    .poiesis-results__badges {
         justify-content: flex-start;
     }
 

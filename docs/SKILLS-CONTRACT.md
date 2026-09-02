@@ -112,6 +112,8 @@ Skill HTMLへApplication内部のTask ID、Taskタイトル、状態、完了時
 
 有効なWorkspace Results skillも生成開始時に毎回読み直し、同じ区切り・順序・文字数上限でAI Resultsのpromptへ成果文書の追加ガイダンスとして加える。静的な`builtin.results` templateはUser Skillを解釈しないため、AI生成からtemplateへfallbackした場合はこの追加ガイダンスを反映しない。
 
+Execution evidenceは、ApplicationがTask実行中に観測して保存したコマンド、ファイル変更、読み取り、tool、messageの記録である。Applicationはこの記録をApplication-owned inputとしてResults skillとResults Q&Aへ渡し、Skillは記録にある実行結果だけを検証済みとして扱う。記録がない確認は未検証であり、Skillによる自己申告で補完しない。
+
 ## Conforming bundles
 
 `builtin.results`は最初の適合bundleである。

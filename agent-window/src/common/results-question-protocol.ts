@@ -34,6 +34,8 @@ export interface ResultsQuestionScope {
     workspaceUri: string;
     taskMetadata: ResultsQuestionTaskMetadata;
     changeSetSummary: string;
+    diff?: string;
+    executionEvidence?: string;
     resultsHtml: string;
     history?: ResultsQuestionHistoryEntry[];
 }

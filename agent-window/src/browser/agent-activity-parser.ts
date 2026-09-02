@@ -89,8 +89,10 @@ class CliActivityParser implements AgentActivityParser {
         const base = this.codexActivityDescription(itemType, item);
         let detail = base.detail;
         const exitCode = numberValue(item.exit_code);
-        if (itemType === 'command_execution' && status === 'failed' && exitCode !== undefined) {
-            detail = `${detail ?? ''} · 終了コード ${exitCode}`.trim();
+        if (itemType === 'command_execution' && exitCode !== undefined) {
+            detail = status === 'failed'
+                ? `${detail ?? ''} · 終了コード ${exitCode}`.trim()
+                : `${detail ?? ''} (終了コード ${exitCode})`.trim();
         }
         const activity: AgentActivity = {
             id,
@@ -113,7 +115,7 @@ class CliActivityParser implements AgentActivityParser {
             return {
                 kind: 'command',
                 title: 'コマンド実行',
-                detail: stripShellWrapper(stringValue(item.command) ?? '')
+                detail: commandDetail(stringValue(item.command) ?? '')
             };
         }
         if (itemType === 'file_change') {
@@ -241,7 +243,7 @@ class CliActivityParser implements AgentActivityParser {
             return {
                 kind: 'command',
                 title: 'コマンド実行',
-                detail: stripShellWrapper(stringValue(input.command) ?? '')
+                detail: commandDetail(stringValue(input.command) ?? '')
             };
         }
         return { kind: 'tool', title: name, detail: compactJson(input) };
@@ -315,6 +317,14 @@ function stripShellWrapper(command: string): string {
         }
     }
     return stripped;
+}
+
+function commandDetail(command: string): string {
+    return stripShellWrapper(command)
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('; ');
 }
 
 function genericToolDetail(itemType: string, item: JsonObject): string | undefined {

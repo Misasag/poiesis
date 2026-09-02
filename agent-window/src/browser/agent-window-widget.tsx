@@ -54,6 +54,7 @@ import {
 } from './safe-markdown';
 import { WorkspaceSkillDefinition, WorkspaceSkillService } from './workspace-skill-service';
 import { formatTaskElapsedTime, shouldSubmitComposer } from './composer-behavior';
+import { formatExecutionEvidence } from './results-document-normalizer';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
@@ -579,6 +580,20 @@ const PoiesisTaskElapsed = ({ startedAt }: { startedAt: string }): React.ReactEl
     );
 };
 
+const PoiesisResultsElapsed = (): React.ReactElement => {
+    const [startedAt] = React.useState(Date.now());
+    const [now, setNow] = React.useState(startedAt);
+    React.useEffect(() => {
+        const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+        return () => window.clearInterval(interval);
+    }, []);
+    return (
+        <span role='timer' aria-live='off' aria-atomic='true'>
+            成果を作成しています… · {Math.max(0, Math.floor((now - startedAt) / 1_000))}s
+        </span>
+    );
+};
+
 @injectable()
 export class AgentWindowWidget extends ReactWidget {
     static readonly ID = 'poiesis-agent-window';
@@ -597,6 +612,10 @@ export class AgentWindowWidget extends ReactWidget {
     protected workspaceSkillsLoading = false;
     protected workspaceSkillsError?: string;
     protected workspaceSkillsRefreshGeneration = 0;
+    protected readonly resultsSkillNames = new Map<string, string>();
+    protected resultsSkillNamesWorkspaceUri?: string;
+    protected resultsSkillNamesLoading?: Promise<void>;
+    protected resultsSkillNamesLoaded = false;
     protected newSkillFormVisible = false;
     protected newSkillId = '';
     protected newSkillKind: SkillBundleKind = 'agent';
@@ -851,6 +870,8 @@ export class AgentWindowWidget extends ReactWidget {
             if (shouldSelectResultsTask && session) {
                 session.selectedResultsTaskId = event.task.id;
                 this.persistResultsQaPanelState();
+                this.resultsSkillNamesLoaded = false;
+                void this.ensureResultsSkillNames();
             }
             this.persistWindowState();
             this.update();
@@ -2952,7 +2973,9 @@ export class AgentWindowWidget extends ReactWidget {
                         )}
                         {selectedTask && (document?.status === 'generating'
                                 || selectedTask.status === 'completed' && !document) && (
-                            <div className='poiesis-results__empty' role='status'>成果を作成しています…</div>
+                            <div className='poiesis-results__empty poiesis-results__generating'>
+                                <PoiesisResultsElapsed key={selectedTask.id} />
+                            </div>
                         )}
                         {selectedTask && document?.status === 'failed' && (
                             <div className='poiesis-results__state error' role='alert'>
@@ -3100,6 +3123,15 @@ export class AgentWindowWidget extends ReactWidget {
         const diffstat = summarizeTaskChangeSet(task.changeSet);
         const status = task.status === 'completed' ? '完了' : task.status === 'failed' ? '失敗' : 'キャンセル';
         const completedAtJst = formatTaskEndedAtJst(task.endedAt);
+        const document = this.resultsService.get(task.id);
+        const generationBadge = this.resultsGenerationBadge(document);
+        const appliedSkillIds = [...new Set([
+            ...task.appliedSkills?.agent ?? [],
+            ...task.appliedSkills?.results ?? []
+        ])];
+        if (appliedSkillIds.some(id => !this.resultsSkillNames.has(id))) {
+            void this.ensureResultsSkillNames();
+        }
         return (
             <header className='poiesis-results__fixed-header' data-task-status={task.status}>
                 <div className='poiesis-results__fixed-title'>
@@ -3114,9 +3146,71 @@ export class AgentWindowWidget extends ReactWidget {
                         <ins>+{diffstat.additions}</ins>
                         <del>−{diffstat.deletions}</del>
                     </span>
+                    {(generationBadge || appliedSkillIds.length > 0) && (
+                        <span className='poiesis-results__badges' aria-label='成果文書の生成情報'>
+                            {generationBadge && <span>{generationBadge}</span>}
+                            {appliedSkillIds.length > 0 && (
+                                <span>適用 Skills: {appliedSkillIds.map(id => this.resultsSkillNames.get(id) ?? id).join('、')}</span>
+                            )}
+                        </span>
+                    )}
                 </div>
             </header>
         );
+    }
+
+    protected resultsGenerationBadge(document: TaskResultDocument | undefined): string | undefined {
+        if (document?.status !== 'ready') {
+            return undefined;
+        }
+        if (document.generator === 'ai') {
+            const provider = this.cliDetectionReport?.detections.find(candidate => candidate.id === this.resultsCli)?.name
+                ?? ({ codex: 'Codex', claude: 'Claude Code', grok: 'Grok', gemini: 'Gemini CLI' } satisfies Record<KnownCliId, string>)[this.resultsCli];
+            return `AI 生成 · ${provider}`;
+        }
+        const fallbackLabel = document.fallbackReason === 'no-workspace'
+            ? 'Workspace 未選択'
+            : document.fallbackReason === 'timeout'
+                ? '時間切れ'
+                : document.fallbackReason === 'generation-failed'
+                    ? 'AI 生成に失敗'
+                    : undefined;
+        return `テンプレート表示${fallbackLabel ? ` · ${fallbackLabel}` : ''}`;
+    }
+
+    protected ensureResultsSkillNames(): Promise<void> {
+        const root = this.workspaceRoot()?.resource;
+        const workspaceUri = root?.toString();
+        if (!root || !workspaceUri) {
+            return Promise.resolve();
+        }
+        if (this.resultsSkillNamesWorkspaceUri === workspaceUri && this.resultsSkillNamesLoading) {
+            return this.resultsSkillNamesLoading;
+        }
+        if (this.resultsSkillNamesWorkspaceUri === workspaceUri && this.resultsSkillNamesLoaded) {
+            return Promise.resolve();
+        }
+        this.resultsSkillNamesWorkspaceUri = workspaceUri;
+        this.resultsSkillNamesLoaded = false;
+        this.resultsSkillNames.clear();
+        const loading = this.workspaceSkillService.list(root).then(skills => {
+            if (this.resultsSkillNamesWorkspaceUri !== workspaceUri) {
+                return;
+            }
+            for (const skill of skills) {
+                this.resultsSkillNames.set(skill.id, skill.name || skill.id);
+            }
+            this.resultsSkillNamesLoaded = true;
+            this.update();
+        }).catch(error => {
+            console.warn('[Poiesis] Could not resolve applied Workspace Skill names.', error);
+        }).finally(() => {
+            if (this.resultsSkillNamesLoading === loading) {
+                this.resultsSkillNamesLoading = undefined;
+            }
+        });
+        this.resultsSkillNamesLoading = loading;
+        return loading;
     }
 
     protected renderResultsQuestionPanel(
@@ -3244,11 +3338,13 @@ export class AgentWindowWidget extends ReactWidget {
     protected renderAgentActivities(session: WindowAgentSession | undefined, message: ChatMessage): React.ReactNode {
         const task = message.taskId ? this.taskService.get(message.taskId) : undefined;
         const finalReports = new Set([
-            message.complete ? message.content.trim() : '',
-            message.complete ? task?.implementerReport?.trim() ?? '' : ''
+            message.complete ? this.normalizeActivityComparison(message.content) : '',
+            message.complete ? this.normalizeActivityComparison(task?.implementerReport ?? '') : ''
         ].filter(Boolean));
-        const activities = (message.activities ?? []).filter(activity =>
-            activity.kind !== 'message' || !activity.detail || !finalReports.has(activity.detail.trim())
+        const activities = (task ? task.activities ?? [] : message.activities ?? []).filter(activity =>
+            activity.kind !== 'message'
+            || !activity.detail
+            || !finalReports.has(this.normalizeActivityComparison(activity.detail))
         );
         if (!activities.length) {
             return undefined;
@@ -3300,6 +3396,10 @@ export class AgentWindowWidget extends ReactWidget {
                 </div>
             </div>
         );
+    }
+
+    protected normalizeActivityComparison(value: string): string {
+        return value.replace(/\s+/g, ' ').trim();
     }
 
     protected renderAgentActivityRow(activity: AgentActivity): React.ReactNode {
@@ -5680,6 +5780,13 @@ export class AgentWindowWidget extends ReactWidget {
         const policy = this.allowExternalResultsResources
             ? ''
             : `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">`;
+        const baseStyle = `<style data-poiesis-base>
+* { box-sizing: border-box; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9a9183; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #766d61; background-clip: padding-box; }
+</style>`;
         const bridge = `<script data-poiesis-results-bridge="v1">
 (function () {
   function send(message) { window.parent.postMessage(message, '*'); }
@@ -5705,12 +5812,15 @@ export class AgentWindowWidget extends ReactWidget {
   }, true);
 })();
 </script>`;
-        const withPolicy = policy && /<head(?:\s[^>]*)?>/i.test(sanitized)
-            ? sanitized.replace(/<head(?:\s[^>]*)?>/i, match => `${match}\n  ${policy}`)
-            : `${policy}\n${sanitized}`;
-        return /<\/body\s*>/i.test(withPolicy)
-            ? withPolicy.replace(/<\/body\s*>/i, `${bridge}\n</body>`)
-            : `${withPolicy}\n${bridge}`;
+        const headContent = [policy, baseStyle].filter(Boolean).join('\n  ');
+        const withHead = /<head(?:\s[^>]*)?>/i.test(sanitized)
+            ? sanitized.replace(/<head(?:\s[^>]*)?>/i, match => `${match}\n  ${headContent}`)
+            : /<html(?:\s[^>]*)?>/i.test(sanitized)
+                ? sanitized.replace(/<html(?:\s[^>]*)?>/i, match => `${match}\n<head>\n  ${headContent}\n</head>`)
+                : `<head>\n  ${headContent}\n</head>\n${sanitized}`;
+        return /<\/body\s*>/i.test(withHead)
+            ? withHead.replace(/<\/body\s*>/i, `${bridge}\n</body>`)
+            : `${withHead}\n${bridge}`;
     }
 
     protected handleResultsFrameMessage(event: MessageEvent): void {
@@ -6421,10 +6531,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (event.type === 'task-started') {
             session.messages.push({ id: `agent-${event.taskId}`, role: 'agent', content: '', complete: false, taskId: event.taskId });
         } else if (event.type === 'activity') {
-            this.updateAgentMessage(session, event.taskId, message => ({
-                ...message,
-                activities: this.upsertAgentActivity(message.activities, event.activity)
-            }));
+            this.taskService.recordActivity(event.taskId, event.activity);
         } else if (event.type === 'message-delta') {
             this.updateAgentMessage(session, event.taskId, message => ({ ...message, content: message.content + event.delta }));
         } else if (event.type === 'message-completed') {
@@ -6746,9 +6853,12 @@ export class AgentWindowWidget extends ReactWidget {
                     startedAt: task.startedAt,
                     endedAt: task.endedAt
                 },
-                changeSetSummary: task.changeSet?.diff
-                    || task.changeSet?.error
-                    || 'No changes were recorded.',
+                changeSetSummary: JSON.stringify({
+                    files: summarizeTaskChangeSet(task.changeSet).files,
+                    captureError: task.changeSet?.error
+                }, undefined, 2),
+                diff: this.truncateResultsReference(task.changeSet?.diff ?? '', 40_000, 'Diff'),
+                executionEvidence: formatExecutionEvidence(task.activities, 8_000) || undefined,
                 resultsHtml: document.html,
                 history: (task.resultsQuestions ?? []).slice(-6)
             });
@@ -6828,5 +6938,16 @@ export class AgentWindowWidget extends ReactWidget {
         this.persistWindowState();
         this.update();
         await this.sendAgentMessage();
+    }
+
+    protected truncateResultsReference(value: string, maxChars: number, label: string): string | undefined {
+        if (!value) {
+            return undefined;
+        }
+        if (value.length <= maxChars) {
+            return value;
+        }
+        const marker = `\n[${label} truncated; original length: ${value.length} characters]`;
+        return `${value.slice(0, Math.max(0, maxChars - marker.length))}${marker}`.slice(0, maxChars);
     }
 }

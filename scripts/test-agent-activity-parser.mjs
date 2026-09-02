@@ -38,7 +38,7 @@ const codex = consumeFixture(
 );
 const codexCommands = codex.activities.filter(activity => activity.kind === 'command');
 assert.equal(codexCommands.length, 1, 'Codex command events must upsert by id.');
-assert.equal(codexCommands[0].detail, 'dir', 'Codex command wrapper must be stripped.');
+assert.equal(codexCommands[0].detail, 'dir (終了コード 0)', 'Codex command wrapper must be stripped and its exit code retained.');
 assert.equal(codexCommands[0].status, 'completed', 'Codex command must complete.');
 assert.equal(codex.runningCommandObserved, true, 'Codex command must transition through running.');
 assert.equal(codex.activities.filter(activity => activity.kind === 'file-change')[0]?.detail,
@@ -70,5 +70,18 @@ const unknown = createAgentActivityParser('codex').consumeLine(JSON.stringify({
     item: { id: 'unknown-1', type: 'future_item', status: 'in_progress' }
 }));
 assert.equal(unknown.activities[0]?.kind, 'tool', 'Unknown Codex items must degrade to tool activities.');
+
+const multilineCommand = createAgentActivityParser('codex').consumeLine(JSON.stringify({
+    type: 'item.completed',
+    item: {
+        id: 'multiline-command',
+        type: 'command_execution',
+        command: 'echo one\necho two',
+        exit_code: 0,
+        status: 'completed'
+    }
+}));
+assert.equal(multilineCommand.activities[0]?.detail, 'echo one; echo two (終了コード 0)',
+    'Multiline commands must retain statement boundaries.');
 
 console.log('AGENT_ACTIVITY_PARSER_TEST=passed');

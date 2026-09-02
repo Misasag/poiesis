@@ -116,6 +116,7 @@ export class CliAgentProvider implements AgentProvider {
 
         try {
             const workspaceSkills = await this.workspaceSkillService.buildPrompt(session.workspaceUri, 'agent');
+            this.taskService.setAppliedSkills(task.id, 'agent', workspaceSkills.includedSkillIds);
             for (const diagnostic of workspaceSkills.diagnostics) {
                 this.appendDiagnostic(run, diagnostic);
                 console.warn(`[Poiesis] ${diagnostic}`);
@@ -278,6 +279,7 @@ export class CliAgentProvider implements AgentProvider {
             this.appendDiagnostic(run, diagnostic);
         }
         for (const activity of result.activities) {
+            this.taskService.recordActivity(run.taskId, activity);
             this.eventEmitter.fire({
                 type: 'activity',
                 sessionId: run.sessionId,

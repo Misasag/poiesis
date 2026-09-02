@@ -13,6 +13,7 @@ import { ResultsSkillBundle } from '../common/skill-bundle';
 import { ResultsGenerationServer } from '../common/results-generation-protocol';
 import { ResultsGenerationContext } from './results-generation-context';
 import { WorkspaceSkillService } from './workspace-skill-service';
+import { formatExecutionEvidence, normalizeAiResultsHtml } from './results-document-normalizer';
 
 export const ResultsSkill = Symbol('ResultsSkill');
 
@@ -157,8 +158,6 @@ export class BundledResultsSkill implements ResultsSkill {
     }
 }
 
-const AI_RESULTS_HTML_MAX_CHARS = 280_000;
-
 class ResultsGenerationCancelledError extends Error { }
 
 /** Default Results bundle: asks the selected Results AI, then falls back to the built-in template. */
@@ -177,7 +176,8 @@ export class AiResultsSkill implements ResultsSkill {
         @inject(BundledResultsSkill) protected readonly fallbackSkill: BundledResultsSkill,
         @inject(ResultsGenerationContext) protected readonly context: ResultsGenerationContext,
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
-        @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService
+        @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService,
+        @inject(TaskService) protected readonly taskService: TaskService
     ) { }
 
     async generate(input: ResultsSkillInput): Promise<ResultsSkillDocument> {
@@ -187,6 +187,7 @@ export class AiResultsSkill implements ResultsSkill {
         const workspace = this.workspaceService.tryGetRoots()[0]
             ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
         if (!workspace) {
+            this.taskService.setAppliedSkills(input.task.id, 'results', []);
             console.warn('[Poiesis][Results diagnostics] AI generation skipped: no local Workspace is open.');
             const fallback = await this.fallbackSkill.generate(input, { fallback: true });
             return { ...fallback, fallbackReason: 'no-workspace' };
@@ -194,6 +195,7 @@ export class AiResultsSkill implements ResultsSkill {
 
         try {
             const workspaceSkills = await this.workspaceSkillService.buildPrompt(workspace.resource.toString(), 'results');
+            this.taskService.setAppliedSkills(input.task.id, 'results', workspaceSkills.includedSkillIds);
             for (const diagnostic of workspaceSkills.diagnostics) {
                 console.warn(`[Poiesis] ${diagnostic}`);
             }
@@ -214,22 +216,28 @@ export class AiResultsSkill implements ResultsSkill {
                     captureError: input.changeSet.error
                 }, undefined, 2),
                 diff: input.changeSet.diff,
+                executionEvidence: formatExecutionEvidence(input.task.activities, 12_000) || undefined,
                 workspaceSkillGuidance: workspaceSkills.content || undefined
             });
             if (result.status === 'cancelled') {
                 throw new ResultsGenerationCancelledError(result.error.message);
             }
             if (result.status === 'failed') {
-                throw new Error(`${result.error.code}: ${result.error.message}${result.error.stderr ? `\n${result.error.stderr}` : ''}`);
+                console.warn('[Poiesis][Results diagnostics] AI generation failed; using bundled template.',
+                    `${result.error.code}: ${result.error.message}${result.error.stderr ? `\n${result.error.stderr}` : ''}`);
+                this.taskService.setAppliedSkills(input.task.id, 'results', []);
+                const fallback = await this.fallbackSkill.generate(input, { fallback: true });
+                return { ...fallback, fallbackReason: result.error.code === 'timeout' ? 'timeout' : 'generation-failed' };
             }
             return {
-                html: this.normalizeAndValidate(result.html),
+                html: this.normalizeAndValidate(result.html, input.task.title),
                 generator: 'ai'
             };
         } catch (error) {
             if (error instanceof ResultsGenerationCancelledError) {
                 throw error;
             }
+            this.taskService.setAppliedSkills(input.task.id, 'results', []);
             console.warn('[Poiesis][Results diagnostics] AI generation failed; using bundled template.', error);
             const fallback = await this.fallbackSkill.generate(input, { fallback: true });
             return { ...fallback, fallbackReason: 'generation-failed' };
@@ -240,25 +248,12 @@ export class AiResultsSkill implements ResultsSkill {
         return this.generationServer.cancel(taskId);
     }
 
-    protected normalizeAndValidate(output: string): string {
-        let html = output.trim();
-        const fenced = html.match(/```(?:html)?\s*([\s\S]*?)```/i);
-        if (fenced) {
-            html = fenced[1].trim();
+    protected normalizeAndValidate(output: string, taskTitle: string): string {
+        const normalized = normalizeAiResultsHtml(output, { taskTitle });
+        for (const note of normalized.notes) {
+            console.warn(`[Poiesis][Results diagnostics] ${note}`);
         }
-        if (html.length > AI_RESULTS_HTML_MAX_CHARS) {
-            throw new Error(`AI Results HTML exceeded ${AI_RESULTS_HTML_MAX_CHARS} characters.`);
-        }
-        if (!/^(?:<!doctype\s+html[^>]*>\s*)?<html(?:\s|>)/i.test(html)) {
-            throw new Error('AI Results did not return one complete HTML document.');
-        }
-        if (/<h1\b/i.test(html)) {
-            throw new Error('AI Results HTML repeated the Application-owned document title.');
-        }
-        if (/<script\b|<link\b|\son\w+\s*=|(?:src|href)\s*=\s*["']\s*(?:https?:)?\/\/|url\(\s*["']?\s*(?:https?:)?\/\//i.test(html)) {
-            throw new Error('AI Results HTML contained scripts or external resources.');
-        }
-        return html.replace(/\bTASK-\d+(?:-\d+)+\b/gi, '完了したタスク');
+        return normalized.html;
     }
 
 }
@@ -348,6 +343,7 @@ export class ResultsService {
         }
         const changeSet = task.changeSet!;
         const generationToken = ++this.generationSequence;
+        const generationStartedAt = Date.now();
         this.generationTokens.set(task.id, generationToken);
         this.set({ taskId: task.id, status: 'generating' }, task);
         try {
@@ -358,7 +354,13 @@ export class ResultsService {
             if (!/^(?:<!doctype\s+html[^>]*>\s*)?<html[\s>]/i.test(generated.html.trim())) {
                 throw new Error('Results skill did not return one complete HTML document.');
             }
-            this.set({ taskId: task.id, status: 'ready', ...generated }, task);
+            this.set({
+                taskId: task.id,
+                status: 'ready',
+                ...generated,
+                generatedAt: new Date().toISOString(),
+                durationMs: Math.max(0, Date.now() - generationStartedAt)
+            }, task);
         } catch (error) {
             if (this.generationTokens.get(task.id) !== generationToken) {
                 return;
@@ -366,7 +368,9 @@ export class ResultsService {
             this.set({
                 taskId: task.id,
                 status: 'failed',
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
+                generatedAt: new Date().toISOString(),
+                durationMs: Math.max(0, Date.now() - generationStartedAt)
             }, task);
         } finally {
             if (this.generationTokens.get(task.id) === generationToken) {

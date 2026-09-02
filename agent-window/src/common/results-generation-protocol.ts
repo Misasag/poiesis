@@ -19,6 +19,7 @@ export interface ResultsGenerationRequest {
     taskMetadata: ResultsGenerationTaskMetadata;
     changeSetSummary: string;
     diff: string;
+    executionEvidence?: string;
     workspaceSkillGuidance?: string;
 }
 

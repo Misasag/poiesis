@@ -217,6 +217,11 @@ async function smokeFallback(page, diagnostics) {
         `Results opened before the explicit tab action: ${JSON.stringify(beforeOpen)}`);
     assert(beforeOpen.task?.resultsDocument?.status === 'ready',
         `The completed document was not stored on its Task before Results opened: ${JSON.stringify(beforeOpen)}`);
+    assert(beforeOpen.task?.resultsDocument?.generator === 'fallback'
+        && beforeOpen.task.resultsDocument.fallbackReason === 'generation-failed'
+        && typeof beforeOpen.task.resultsDocument.generatedAt === 'string'
+        && Number.isFinite(beforeOpen.task.resultsDocument.durationMs),
+    `Results generation metadata was not persisted: ${JSON.stringify(beforeOpen.task?.resultsDocument)}`);
     const conversationLines = beforeOpen.conversation.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     assert(conversationLines.length <= 2
         && beforeOpen.conversation.includes('fallback-new.html')
@@ -233,7 +238,8 @@ async function smokeFallback(page, diagnostics) {
             taskTitle,
             status: header?.querySelector('.poiesis-results__status')?.textContent?.trim(),
             time: header?.querySelector('time')?.textContent?.trim(),
-            diffstat: header?.querySelector('.poiesis-results__diffstat')?.textContent?.replace(/\s+/g, ' ').trim()
+            diffstat: header?.querySelector('.poiesis-results__diffstat')?.textContent?.replace(/\s+/g, ' ').trim(),
+            badges: header?.querySelector('.poiesis-results__badges')?.textContent?.replace(/\s+/g, ' ').trim()
         };
     });
     assert(fixedHeader.title === fixedHeader.taskTitle,
@@ -241,14 +247,16 @@ async function smokeFallback(page, diagnostics) {
     assert(fixedHeader.status === '完了' && fixedHeader.time === formatJst(beforeOpen.task.endedAt)
         && fixedHeader.diffstat?.includes('1ファイル')
         && fixedHeader.diffstat.includes('+2')
-        && fixedHeader.diffstat.includes('−0'),
+        && fixedHeader.diffstat.includes('−0')
+        && fixedHeader.badges === 'テンプレート表示 · AI 生成に失敗',
     `The fixed Results metadata is incomplete: ${JSON.stringify(fixedHeader)}`);
     let frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-action="retry-ai-results"]');
     const fallback = await frame.evaluate(() => ({
         text: document.body.textContent ?? '',
         citations: document.querySelectorAll('a[data-poiesis-citation]').length,
-        rawError: (document.body.textContent ?? '').includes('テスト用失敗')
+        rawError: (document.body.textContent ?? '').includes('テスト用失敗'),
+        baseStyle: Boolean(document.head.querySelector('style[data-poiesis-base]'))
     }));
     assert(fallback.text.includes('AI 生成に失敗したため簡易表示'), `Fallback annotation is missing: ${JSON.stringify(fallback)}`);
     assert(fallback.text.includes('Fallback smoke completed.'), `Completion summary is missing: ${JSON.stringify(fallback)}`);
@@ -256,6 +264,7 @@ async function smokeFallback(page, diagnostics) {
         && fallback.text.includes('+2') && fallback.citations === 1,
         `Fallback file statistics are incomplete: ${JSON.stringify(fallback)}`);
     assert(!fallback.rawError, 'The internal generation error leaked into the fallback document.');
+    assert(fallback.baseStyle, 'The Application-owned Results base style was not injected.');
     await page.waitForFunction(() => document.querySelector('.poiesis-results__document') !== null);
     const attemptsBefore = diagnostics.length;
     await frame.click('[data-poiesis-action="retry-ai-results"]');
