@@ -1,3 +1,9 @@
+:root {
+    /* Keep these tokens aligned with ../typography.ts, which supplies Results iframe styles. */
+    --poiesis-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    --poiesis-font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", "BIZ UDGothic", monospace;
+}
+
 #poiesis-window-host {
     background: #181918;
     inset: 0;
@@ -710,7 +716,7 @@
     background: var(--poiesis-chrome-panel);
     border-right: 1px solid var(--poiesis-chrome-line);
     display: grid;
-    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+    font-family: var(--poiesis-font-sans);
     font-size: 13px;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     line-height: 1.48;
@@ -5406,7 +5412,7 @@ body.poiesis-code-file-pointer-drag * {
     --poiesis-shadow-composer: 0 10px 30px rgb(0 0 0 / 16%);
     --poiesis-shadow-results: 0 8px 24px rgb(0 0 0 / 18%);
     --motion-fast: 120ms cubic-bezier(.2, 0, 0, 1);
-    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+    font-family: var(--poiesis-font-sans);
     font-size: 13px;
     line-height: 1.48;
     letter-spacing: 0;
@@ -5714,7 +5720,7 @@ body.poiesis-code-file-pointer-drag * {
     border: 1px solid var(--poiesis-chrome-line);
     border-radius: 4px;
     color: #ebe7dd;
-    font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-family: var(--poiesis-font-mono);
     font-size: .92em;
     padding: 1px 4px;
 }
@@ -5893,7 +5899,7 @@ body .lm-Widget.dialogOverlay {
     backdrop-filter: blur(2px);
     background: rgb(0 0 0 / 62%);
     color: #c8c9c3;
-    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+    font-family: var(--poiesis-font-sans);
     font-size: 13px;
     padding: 20px;
 }

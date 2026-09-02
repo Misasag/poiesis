@@ -24,6 +24,7 @@ import { formatExecutionEvidence, normalizeAiResultsHtml } from './results-docum
 import { Requirement } from './requirement-model';
 import { RequirementService } from './requirement-service';
 import { RequirementClassificationService } from './requirement-classification-service';
+import { POIESIS_FONT_SANS } from './typography';
 import {
     buildFailedAssertionPromptSection,
     checkAppResultsAssertions,
@@ -122,7 +123,7 @@ export class BundledResultsSkill implements ResultsSkill {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>成果本文</title>
   <style>
-    :root { font: 14px/1.55 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif; background: #f1efe8; color: #262721; }
+    :root { font: 14px/1.55 ${POIESIS_FONT_SANS}; background: #f1efe8; color: #262721; }
     * { box-sizing: border-box; }
     html, body { min-height: 100%; }
     body { margin: 0; min-height: 100vh; background: #f1efe8; }

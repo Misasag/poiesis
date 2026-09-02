@@ -162,7 +162,7 @@ async function smokeCitation(page, workspacePath) {
                     taskId: fixture.taskId,
                     status: 'ready',
                     generator: 'ai',
-                    html: '<!doctype html><html><head><title>Citation</title></head><body><h2>根拠</h2><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></body></html>',
+                    html: '<!doctype html><html><head><title>Citation</title></head><body><h2 style="font-family: Georgia, serif">根拠</h2><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></body></html>',
                     assertions: [
                         { text: '変更ファイルがある場合、本文に根拠引用がある', source: 'app', status: 'pass' },
                         { text: '本文に見出し（h2〜h4）がある', source: 'app', status: 'pass' },
@@ -201,6 +201,13 @@ async function smokeCitation(page, workspacePath) {
     `AI assertion results were not persisted and rendered: ${JSON.stringify(assertionState)}`);
     const frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-citation="citation-target.txt:4"]');
+    const typography = await frame.evaluate(() => ({
+        bodyFontFamily: getComputedStyle(document.body).fontFamily,
+        headingFontFamily: getComputedStyle(document.querySelector('h2')).fontFamily
+    }));
+    assert(typography.bodyFontFamily.trim().startsWith('Inter')
+        && typography.headingFontFamily.trim().startsWith('Inter'),
+    `The Application sans stack did not override the AI document serif style: ${JSON.stringify(typography)}`);
     await frame.click('[data-poiesis-citation="citation-target.txt:4"]');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__content')?.getAttribute('data-mode') === 'code');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-name')?.textContent?.trim() === 'citation-target.txt');
@@ -278,12 +285,17 @@ async function smokeFallback(page, diagnostics) {
     `The fixed Results metadata is incomplete: ${JSON.stringify(fixedHeader)}`);
     let frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-action="retry-ai-results"]');
-    const fallback = await frame.evaluate(() => ({
-        text: document.body.textContent ?? '',
-        citations: document.querySelectorAll('a[data-poiesis-citation]').length,
-        rawError: (document.body.textContent ?? '').includes('テスト用失敗'),
-        baseStyle: Boolean(document.head.querySelector('style[data-poiesis-base]'))
-    }));
+    const fallback = await frame.evaluate(() => {
+        const baseStyle = document.head.querySelector('style[data-poiesis-base]');
+        return {
+            text: document.body.textContent ?? '',
+            citations: document.querySelectorAll('a[data-poiesis-citation]').length,
+            rawError: (document.body.textContent ?? '').includes('テスト用失敗'),
+            baseStyle: Boolean(baseStyle),
+            baseStyleText: baseStyle?.textContent ?? '',
+            bodyFontFamily: getComputedStyle(document.body).fontFamily
+        };
+    });
     assert(fallback.text.includes('AI 生成に失敗したため簡易表示'), `Fallback annotation is missing: ${JSON.stringify(fallback)}`);
     assert(fallback.text.includes('Fallback smoke completed.'), `Completion summary is missing: ${JSON.stringify(fallback)}`);
     assert(fallback.text.includes('fallback-new.html') && fallback.text.includes('追加')
@@ -291,6 +303,10 @@ async function smokeFallback(page, diagnostics) {
         `Fallback file statistics are incomplete: ${JSON.stringify(fallback)}`);
     assert(!fallback.rawError, 'The internal generation error leaked into the fallback document.');
     assert(fallback.baseStyle, 'The Application-owned Results base style was not injected.');
+    assert(fallback.baseStyleText.includes('font-family: inherit !important'),
+        `The Application-owned Results typography override was not injected: ${JSON.stringify(fallback)}`);
+    assert(fallback.bodyFontFamily.trim().startsWith('Inter'),
+        `The fallback document did not compute the Application sans stack: ${JSON.stringify(fallback)}`);
     await page.waitForFunction(() => document.querySelector('.poiesis-results__document') !== null);
     const attemptsBefore = diagnostics.length;
     await frame.click('[data-poiesis-action="retry-ai-results"]');

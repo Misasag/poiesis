@@ -63,6 +63,7 @@ import {
 } from './workspace-skill-service';
 import { diffTextLines } from './text-diff';
 import { formatTaskElapsedTime, shouldSubmitComposer } from './composer-behavior';
+import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from './typography';
 import { formatExecutionEvidence } from './results-document-normalizer';
 import { Requirement } from './requirement-model';
 import { RequirementService } from './requirement-service';
@@ -6644,6 +6645,9 @@ export class AgentWindowWidget extends ReactWidget {
             : `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">`;
         const baseStyle = `<style data-poiesis-base>
 * { box-sizing: border-box; }
+html, body { font-family: ${POIESIS_FONT_SANS}; }
+body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }
+code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9a9183; background-clip: padding-box; }

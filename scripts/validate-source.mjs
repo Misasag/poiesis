@@ -14,6 +14,7 @@ const agentWidget = await read('agent-window/src/browser/agent-window-widget.tsx
 const composerBehavior = await read('agent-window/src/browser/composer-behavior.ts');
 const composerBehaviorTest = await read('scripts/test-composer-behavior.mjs');
 const agentStyles = await read('agent-window/src/browser/style/index.css');
+const typography = await read('agent-window/src/browser/typography.ts');
 const safeMarkdown = await read('agent-window/src/browser/safe-markdown.ts');
 const moduleSource = await read('agent-window/src/browser/agent-window-frontend-module.ts');
 const poiesisFrontendApplication = await read('agent-window/src/browser/poiesis-frontend-application.ts');
@@ -328,6 +329,7 @@ for (const marker of [
     "process.env.POIESIS_RESULTS_GENERATION_FORCE_FAILURE === '1'",
     'HTML文書を1つだけ',
     'インラインSVGまたはCSS図',
+    'フォントはアプリが統一するので `font-family` を指定しないでください。',
     'script、イベントハンドラ、外部URL',
     'Workspace Skill guidance',
     'Execution evidence (実装者が実際に実行した操作の記録。アプリが観測した事実であり、実装者の自己申告ではない):',
@@ -1147,6 +1149,8 @@ for (const marker of [
     'protected resultsDocumentHtml(html: string): string',
     'Content-Security-Policy',
     '<style data-poiesis-base>',
+    'body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }',
+    'code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }',
     '::-webkit-scrollbar-thumb:hover',
     'protected async clearSavedSessionData(): Promise<void>',
     '<strong>Poiesis plugin bundles</strong>',
@@ -1434,6 +1438,21 @@ for (const marker of [
     'RESULTS_FALLBACK_SMOKE_RESULT='
 ]) {
     assert.ok(resultsDocumentSmoke.includes(marker), `Results document smoke is missing ${marker}`);
+}
+for (const marker of [
+    "export const POIESIS_FONT_SANS = 'Inter, ui-sans-serif, -apple-system",
+    '"Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif',
+    'export const POIESIS_FONT_MONO = \'"Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", "BIZ UDGothic", monospace\''
+]) {
+    assert.ok(typography.includes(marker), `Application typography constants are missing ${marker}`);
+}
+for (const marker of [
+    'font-family: inherit !important',
+    'bodyFontFamily.trim().startsWith(\'Inter\')',
+    'style="font-family: Georgia, serif"',
+    'headingFontFamily.trim().startsWith(\'Inter\')'
+]) {
+    assert.ok(resultsDocumentSmoke.includes(marker), `Results typography smoke is missing ${marker}`);
 }
 for (const marker of [
     'POIESIS_RESULTS_GENERATION_TEST_DELAY_MS',
