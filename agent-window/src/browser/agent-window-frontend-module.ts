@@ -26,6 +26,7 @@ import { ResultsGenerationContext } from './results-generation-context';
 import { FileResourceResolver } from '@theia/filesystem/lib/browser/file-resource';
 import { PoiesisFileResourceResolver } from './poiesis-file-resource-resolver';
 import { WorkspaceSkillService } from './workspace-skill-service';
+import { RequirementService } from './requirement-service';
 import '../../src/browser/style/index.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
@@ -48,6 +49,7 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     bind(ResultsGenerationContext).toSelf().inSingletonScope();
     bind(ResultsQuestionService).toSelf().inSingletonScope();
     bind(TaskService).toSelf().inSingletonScope();
+    bind(RequirementService).toSelf().inSingletonScope();
     bind(MockAgentProvider).toSelf().inSingletonScope();
     bind(CliAgentProvider).toSelf().inSingletonScope();
     bind(AgentProvider).toService(CliAgentProvider);

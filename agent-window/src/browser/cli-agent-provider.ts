@@ -98,7 +98,12 @@ export class CliAgentProvider implements AgentProvider {
             throw new Error('A Codex Task is already running for this session.');
         }
 
-        const task = this.taskService.start(message.ownerSessionId, message.content, session.workspacePath);
+        const task = this.taskService.start(
+            message.ownerSessionId,
+            message.content,
+            session.workspacePath,
+            message.requirementId
+        );
         const run: CodexRun = {
             sessionId,
             taskId: task.id,

@@ -51,6 +51,7 @@ const serverProcess = spawn(process.execPath, [
     env: {
         ...process.env,
         THEIA_CONFIG_DIR: theiaConfig,
+        POIESIS_SNAPSHOT_STORE_DIR: resolve(runDirectory, 'snapshot-store'),
         POIESIS_AGENT_TEST_REPLY: longCompletionReply,
         POIESIS_AGENT_TEST_DELAY_MS: '3500',
         POIESIS_RESULTS_GENERATION_TEST_DELAY_MS: '1200',
@@ -232,9 +233,9 @@ async function smokeFallback(page, diagnostics) {
     await page.waitForSelector('.poiesis-results__document');
     const fixedHeader = await page.evaluate(() => {
         const header = document.querySelector('.poiesis-results__fixed-header');
-        const taskTitle = document.querySelector('.poiesis-results__task-select.active > span')?.textContent?.trim();
+        const taskTitle = document.querySelector('.poiesis-results__requirement-card.active .poiesis-results__requirement-select > span')?.textContent?.trim();
         return {
-            title: header?.querySelector('[data-task-title]')?.textContent?.trim(),
+            title: header?.querySelector('h1')?.textContent?.trim(),
             taskTitle,
             status: header?.querySelector('.poiesis-results__status')?.textContent?.trim(),
             time: header?.querySelector('time')?.textContent?.trim(),
@@ -248,7 +249,8 @@ async function smokeFallback(page, diagnostics) {
         && fixedHeader.diffstat?.includes('1ファイル')
         && fixedHeader.diffstat.includes('+2')
         && fixedHeader.diffstat.includes('−0')
-        && fixedHeader.badges === 'テンプレート表示 · AI 生成に失敗',
+        && fixedHeader.badges?.includes('テンプレート表示 · AI 生成に失敗')
+        && fixedHeader.badges.includes('タスク 1件'),
     `The fixed Results metadata is incomplete: ${JSON.stringify(fixedHeader)}`);
     let frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-action="retry-ai-results"]');

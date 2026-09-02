@@ -278,7 +278,7 @@ try {
     'Results Skill HTML was modified by the question flow.');
 
     const expandedBaseline = await assertTaskRailLayout(page, 'expanded-baseline', false, 1);
-    await page.click('[aria-label="タスクレールを折りたたむ"]');
+    await page.click('[aria-label="要件レールを折りたたむ"]');
     await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="true"] .poiesis-results__task-switcher[data-collapsed="true"]');
     const collapsedBaseline = await assertTaskRailLayout(page, 'collapsed-baseline', true, 1);
     assert(collapsedBaseline.canvasWidth >= expandedBaseline.canvasWidth + 100,
@@ -324,11 +324,17 @@ try {
     await waitForApp(page);
     stage = 'task-rail-collapsed-restore';
     await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="true"] .poiesis-results__task-switcher[data-collapsed="true"]');
-    const restoredCollapsedRail = await assertTaskRailLayout(page, 'collapsed-after-restart-and-task-update', true, 2);
+    const restoredCollapsedRail = await assertTaskRailLayout(page, 'collapsed-after-restart-and-task-update', true, 1);
 
-    await page.click('[aria-label="タスクレールを展開"]');
+    await page.click('[aria-label="要件レールを展開"]');
     await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="false"] .poiesis-results__task-list');
-    const expandedAfterRestore = await assertTaskRailLayout(page, 'expanded-after-restore', false, 2);
+    const expandedAfterRestore = await assertTaskRailLayout(page, 'expanded-after-restore', false, 1);
+    const cumulativeTaskCount = await page.$eval(
+        '.poiesis-results__requirement-card.active .poiesis-results__requirement-select small',
+        node => node.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+    );
+    assert(cumulativeTaskCount.includes('タスク 2件'),
+        `The cumulative Requirement did not retain both Tasks: ${cumulativeTaskCount}`);
     assert(restoredCollapsedRail.canvasWidth >= expandedAfterRestore.canvasWidth + 100,
         `The expanded task rail did not reclaim its width: ${JSON.stringify({ restoredCollapsedRail, expandedAfterRestore })}`);
     await page.waitForFunction(key => {
@@ -343,20 +349,20 @@ try {
         const label = `expanded-${size.width}x${size.height}`;
         expandedLayouts.push({
             ...await assertDockedLayout(page, label),
-            ...await assertTaskRailLayout(page, label, false, 2)
+            ...await assertTaskRailLayout(page, label, false, 1)
         });
     }
     const maximized = await maximizeAndAssert(page);
     expandedLayouts.push({
         ...maximized.layout,
-        ...await assertTaskRailLayout(page, 'expanded-maximized', false, 2)
+        ...await assertTaskRailLayout(page, 'expanded-maximized', false, 1)
     });
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
     stage = 'task-rail-expanded-restore';
     await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="false"] .poiesis-results__task-list');
-    const restoredExpandedRail = await assertTaskRailLayout(page, 'expanded-after-restart', false, 2);
+    const restoredExpandedRail = await assertTaskRailLayout(page, 'expanded-after-restart', false, 1);
 
     await page.click('#poiesis-agent-tab');
     await page.waitForSelector('.poiesis-agent-window__agent');
@@ -486,8 +492,8 @@ async function assertTaskRailLayout(page, label, expectedCollapsed, expectedCoun
             composer: rect('.poiesis-results__composer'),
             rail: rect('.poiesis-results__task-switcher'),
             taskCount: Number(count?.textContent?.trim()),
-            collapseButton: Boolean(document.querySelector('[aria-label="タスクレールを折りたたむ"]')),
-            expandButton: Boolean(document.querySelector('[aria-label="タスクレールを展開"]')),
+            collapseButton: Boolean(document.querySelector('[aria-label="要件レールを折りたたむ"]')),
+            expandButton: Boolean(document.querySelector('[aria-label="要件レールを展開"]')),
             horizontalOverflow: document.documentElement.scrollWidth > innerWidth
         };
     }, label);

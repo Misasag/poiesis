@@ -51,10 +51,17 @@ export interface GitChangeSetRequest {
     baselineSnapshotId: string;
 }
 
+export interface GitChangeSetBetweenRequest {
+    fromSnapshotId: string;
+    toSnapshotId: string;
+    paths?: string[];
+}
+
 export interface GitChangeSetCapture {
     source: 'task-diff' | 'empty';
     diff: string;
     files: string[];
+    endSnapshotId?: string;
     error?: string;
 }
 
@@ -93,6 +100,7 @@ export interface AgentRuntimeServer extends RpcServer<AgentRuntimeClient> {
     detectClis(): Promise<CliDetectionReport>;
     captureGitSnapshot(request: GitSnapshotRequest): Promise<GitSnapshotCapture>;
     captureGitChangeSet(request: GitChangeSetRequest): Promise<GitChangeSetCapture>;
+    captureGitChangeSetBetween(request: GitChangeSetBetweenRequest): Promise<GitChangeSetCapture>;
     runCodex(request: CodexExecutionRequest): Promise<void>;
     cancelCodex(executionId: string): Promise<void>;
     browseFolders(request: FolderBrowserRequest): Promise<FolderBrowserResult>;

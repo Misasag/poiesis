@@ -10,6 +10,10 @@ import type { UpdateInfo } from 'electron-updater';
 
 const { autoUpdater } = require('electron-updater') as typeof import('electron-updater');
 
+// The backend is a child process without Electron's `app`; pass the already-resolved
+// Electron userData snapshot root through its inherited environment.
+process.env.POIESIS_SNAPSHOT_STORE_DIR ??= join(app.getPath('userData'), 'poiesis-snapshots');
+
 @injectable()
 class PoiesisUpdaterContribution implements ElectronMainApplicationContribution {
     protected logPath = '';

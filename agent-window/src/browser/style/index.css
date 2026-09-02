@@ -1908,6 +1908,31 @@
     margin-right: auto;
 }
 
+.poiesis-requirement-pill {
+    flex: 0 1 auto;
+    max-width: min(300px, 100%);
+    min-width: 0;
+}
+
+.poiesis-requirement-pill .poiesis-select__trigger {
+    background: #242522;
+    border-color: #555851;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    font-size: 12px;
+    gap: 5px;
+    min-height: 25px;
+    padding: 3px 7px;
+}
+
+.poiesis-requirement-pill .poiesis-select__trigger > .codicon:first-child {
+    color: #b8a176;
+}
+
+.poiesis-requirement-pill__popover .poiesis-select__option {
+    min-height: 31px;
+}
+
 .poiesis-agent-window__repository-picker {
     background: #242522;
     border: 1px solid #494b45;
@@ -2179,6 +2204,11 @@
 .poiesis-results__status.completed {
     background: #2f4535;
     color: #b9d7bf;
+}
+
+.poiesis-results__status.running {
+    background: #2d3c50;
+    color: #bdd0ea;
 }
 
 .poiesis-results__status.failed {
@@ -2494,6 +2524,251 @@
 .poiesis-results__task-list {
     display: grid;
     gap: 5px;
+}
+
+.poiesis-results__requirement-card {
+    background: #20211f;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    min-width: 0;
+    position: relative;
+}
+
+.poiesis-results__requirement-card.active {
+    background: #272d3d;
+    border-color: #46516c;
+}
+
+.poiesis-results__requirement-main {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 27px;
+    min-width: 0;
+}
+
+.poiesis-results__requirement-expand,
+.poiesis-results__requirement-select,
+.poiesis-results__history-row > button,
+.poiesis-results__more {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+}
+
+.poiesis-results__requirement-expand {
+    align-items: flex-start;
+    color: var(--poiesis-chrome-muted);
+    display: flex;
+    justify-content: center;
+    padding: 13px 0 0;
+}
+
+.poiesis-results__requirement-select {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 9px 4px;
+    text-align: left;
+}
+
+.poiesis-results__requirement-select > span {
+    color: var(--poiesis-chrome-text);
+    display: -webkit-box;
+    font-size: 13px;
+    font-weight: 650;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.35;
+    overflow: hidden;
+}
+
+.poiesis-results__requirement-select small,
+.poiesis-results__history-row small {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+}
+
+.poiesis-results__menu-host {
+    align-items: flex-start;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+    position: relative;
+}
+
+.poiesis-results__more {
+    align-items: center;
+    border-radius: 5px;
+    color: var(--poiesis-chrome-muted);
+    display: flex;
+    height: 25px;
+    justify-content: center;
+    margin-top: 5px;
+    width: 25px;
+}
+
+.poiesis-results__more:hover,
+.poiesis-results__more:focus-visible {
+    background: #383934;
+    color: var(--poiesis-chrome-text);
+    outline: none;
+}
+
+.poiesis-results__card-menu {
+    background: #282925;
+    border: 1px solid #50524c;
+    border-radius: 7px;
+    box-shadow: 0 12px 28px rgb(0 0 0 / 42%);
+    display: grid;
+    min-width: 160px;
+    padding: 4px;
+    position: absolute;
+    right: 0;
+    top: 31px;
+    z-index: 30;
+}
+
+.poiesis-results__card-menu.task-menu {
+    min-width: 190px;
+}
+
+.poiesis-results__move-submenu > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    color: var(--poiesis-chrome-copy);
+    cursor: pointer;
+    font-size: 12px;
+    list-style: none;
+    white-space: nowrap;
+}
+
+.poiesis-results__move-submenu > summary::-webkit-details-marker {
+    display: none;
+}
+
+.poiesis-results__move-submenu > summary:hover,
+.poiesis-results__move-submenu > summary:focus-visible {
+    background: #3a3b36;
+    color: var(--poiesis-chrome-text);
+    outline: none;
+}
+
+.poiesis-results__move-submenu[open] > summary .codicon {
+    transform: rotate(90deg);
+}
+
+.poiesis-results__move-submenu-list {
+    display: grid;
+    max-height: 164px;
+    overflow: auto;
+    margin: 2px 0 3px 8px;
+    padding-left: 4px;
+    border-left: 1px solid #50514b;
+}
+
+.poiesis-results__card-menu button {
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    color: var(--poiesis-chrome-copy);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 6px 8px;
+    text-align: left;
+}
+
+.poiesis-results__card-menu button:hover,
+.poiesis-results__card-menu button:focus-visible {
+    background: #3a3b36;
+    color: var(--poiesis-chrome-text);
+    outline: none;
+}
+
+.poiesis-results__card-menu button.danger {
+    color: #e7b2aa;
+}
+
+.poiesis-results__menu-label {
+    color: var(--poiesis-chrome-muted);
+    font-size: 12px;
+    padding: 5px 8px 2px;
+}
+
+.poiesis-results__requirement-tasks {
+    border-top: 1px solid var(--poiesis-chrome-line);
+    display: grid;
+    margin: 0 7px 7px 23px;
+}
+
+.poiesis-results__history-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 27px;
+    min-width: 0;
+    position: relative;
+}
+
+.poiesis-results__history-row + .poiesis-results__history-row {
+    border-top: 1px solid var(--poiesis-chrome-line);
+}
+
+.poiesis-results__history-row.active {
+    background: rgb(86 105 147 / 20%);
+}
+
+.poiesis-results__history-row > button {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: 7px 3px;
+    text-align: left;
+}
+
+.poiesis-results__history-row > button:disabled {
+    cursor: default;
+    opacity: .68;
+}
+
+.poiesis-results__history-row > button > span {
+    color: var(--poiesis-chrome-copy);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-results__history-row .poiesis-results__task-delete-confirm {
+    grid-column: 1 / -1;
+}
+
+.poiesis-results__requirement-rename {
+    align-items: center;
+    display: grid;
+    gap: 4px;
+    grid-column: 2 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 6px 5px 6px 0;
+}
+
+.poiesis-results__requirement-rename input {
+    background: #171817;
+    border: 1px solid #6577a0;
+    border-radius: 5px;
+    color: var(--poiesis-chrome-text);
+    min-width: 0;
+    padding: 5px 6px;
+}
+
+.poiesis-results__requirement-rename button {
+    background: #39445d;
+    border: 1px solid #6577a0;
+    border-radius: 5px;
+    color: #eef1f8;
+    cursor: pointer;
+    padding: 5px 7px;
 }
 
 .poiesis-results__task-row {

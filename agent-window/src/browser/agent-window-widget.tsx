@@ -29,11 +29,12 @@ import {
     isKnownCliId,
     KnownCliId
 } from '../common/agent-runtime-protocol';
-import { ResultsService } from './results-skill';
+import { formatRequirementExecutionEvidence, ResultsService } from './results-skill';
 import {
     ExecutionTask,
     formatTaskEndedAtJst,
     summarizeTaskChangeSet,
+    TaskChangeSet,
     TaskResultDocument,
     TaskResultsQuestion,
     TaskService,
@@ -61,6 +62,8 @@ import {
 } from './workspace-skill-service';
 import { formatTaskElapsedTime, shouldSubmitComposer } from './composer-behavior';
 import { formatExecutionEvidence } from './results-document-normalizer';
+import { Requirement } from './requirement-model';
+import { RequirementService } from './requirement-service';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
@@ -138,6 +141,8 @@ interface WindowAgentSession {
     agentDraft: string;
     messages: ChatMessage[];
     taskIds: string[];
+    requirementDraft?: string | 'new';
+    selectedResultsRequirementId?: string;
     selectedResultsTaskId?: string;
     readonly resultsDrafts: Map<string, string>;
     readonly resultsNotices: Map<string, ResultsNotice>;
@@ -160,6 +165,7 @@ interface PersistedResultsQaPanelState {
     version: 1;
     taskRailCollapsed?: boolean;
     sessions: Record<string, {
+        selectedRequirementId?: string;
         selectedTaskId?: string;
         expandedTaskIds: string[];
     }>;
@@ -651,6 +657,10 @@ export class AgentWindowWidget extends ReactWidget {
     protected cliDetectionLoading = false;
     protected deleteSessionConfirmationId?: string;
     protected deleteTaskConfirmationId?: string;
+    protected openResultsMenuKey?: string;
+    protected renamingRequirementId?: string;
+    protected requirementRenameDraft = '';
+    protected readonly expandedRequirementIds = new Set<string>();
     protected clearDataConfirmation = false;
     protected codeSidebarTab: CodeSidebarTab = 'files';
     protected codeFilesWidget?: Widget;
@@ -747,6 +757,7 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(AgentProvider) protected readonly agentProvider: AgentProvider,
         @inject(TaskService) protected readonly taskService: TaskService,
         @inject(ResultsService) protected readonly resultsService: ResultsService,
+        @inject(RequirementService) protected readonly requirementService: RequirementService,
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
         @inject(ScmService) protected readonly scmService: ScmService,
         @inject(TerminalService) protected readonly terminalService: TerminalService,
@@ -786,6 +797,10 @@ export class AgentWindowWidget extends ReactWidget {
         const closeSessionMenu = (event: PointerEvent): void => {
             if (this.openSessionMenuId && !(event.target as Element | null)?.closest('.poiesis-agent-window__session-actions')) {
                 this.openSessionMenuId = undefined;
+                this.update();
+            }
+            if (this.openResultsMenuKey && !(event.target as Element | null)?.closest('.poiesis-results__menu-host')) {
+                this.openResultsMenuKey = undefined;
                 this.update();
             }
             if (this.repositoryPickerVisible
@@ -889,7 +904,8 @@ export class AgentWindowWidget extends ReactWidget {
                 || event.type === 'failed'
                 || event.type === 'cancelled';
             if (shouldSelectResultsTask && session) {
-                session.selectedResultsTaskId = event.task.id;
+                session.selectedResultsRequirementId = event.task.requirementId;
+                session.selectedResultsTaskId = undefined;
                 this.persistResultsQaPanelState();
                 this.resultsSkillNamesLoaded = false;
                 void this.ensureResultsSkillNames();
@@ -900,6 +916,19 @@ export class AgentWindowWidget extends ReactWidget {
         this.toDispose.push(this.resultsService.onDidChange(document => {
             if (!this.taskService.isFinalizing(document.taskId)) {
                 this.persistWindowState();
+            }
+            this.update();
+        }));
+        this.toDispose.push(this.requirementService.onDidChange(event => {
+            if (event.type !== 'document-changed' && event.type !== 'questions-changed') {
+                for (const session of this.sessions) {
+                    if (session.selectedResultsRequirementId
+                        && !this.requirementService.get(session.selectedResultsRequirementId)) {
+                        session.selectedResultsRequirementId = this.latestRequirement(session)?.id;
+                        session.selectedResultsTaskId = undefined;
+                    }
+                }
+                void this.persistWindowState();
             }
             this.update();
         }));
@@ -2120,6 +2149,7 @@ export class AgentWindowWidget extends ReactWidget {
                     <div className='poiesis-agent-window__composer-footer'>
                         {session && newAgent && this.renderNewAgentContext(session)}
                         {session && !newAgent && this.renderAiRolePill('agent')}
+                        {session && this.renderRequirementPill(session)}
                         <button
                             className='poiesis-agent-window__send'
                             type='button'
@@ -2988,6 +3018,46 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
+    protected renderRequirementPill(session: WindowAgentSession): React.ReactNode {
+        const requirements = this.requirementsForSession(session);
+        const currentId = this.requirementService.currentRequirementId(session.id);
+        const selected = session.requirementDraft && (session.requirementDraft === 'new'
+            || requirements.some(requirement => requirement.id === session.requirementDraft))
+            ? session.requirementDraft
+            : currentId ?? 'new';
+        const options: PoiesisSelectOption[] = [
+            ...requirements.map(requirement => ({
+                value: requirement.id,
+                label: `${requirement.title}（タスク ${requirement.taskIds.length}件）`,
+                triggerLabel: `要件: ${requirement.title}`,
+                group: 'このセッションの要件'
+            })),
+            {
+                value: 'new',
+                label: '新しい要件として送信',
+                triggerLabel: '要件: 新規',
+                group: '新規'
+            }
+        ];
+        return (
+            <div className='poiesis-requirement-pill'>
+                <PoiesisSelect
+                    value={selected}
+                    options={options}
+                    ariaLabel='送信先の要件'
+                    popoverClassName='poiesis-requirement-pill__popover'
+                    popoverMinWidth={280}
+                    leadingIconClass='codicon-tag'
+                    onChange={value => {
+                        session.requirementDraft = value === 'new' ? 'new' : value;
+                        void this.persistWindowState();
+                        this.update();
+                    }}
+                />
+            </div>
+        );
+    }
+
     protected renderNewAgentContext(session: WindowAgentSession): React.ReactNode {
         const branch = session.branch ?? this.gitBranchForWorkspace(session.workspaceUri) ?? 'main';
         return (
@@ -3082,17 +3152,26 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderResults(session: WindowAgentSession | undefined): React.ReactNode {
-        const resultsTasks = [...this.finishedTasks(session)].reverse();
-        const selectedTask = resultsTasks.find(task => task.id === session?.selectedResultsTaskId)
-            ?? resultsTasks[0];
-        const document = selectedTask ? this.resultsService.get(selectedTask.id) : undefined;
-        const draft = selectedTask ? session?.resultsDrafts.get(selectedTask.id) ?? '' : '';
-        const notice = selectedTask ? session?.resultsNotices.get(selectedTask.id) : undefined;
+        const requirements = this.resultsRequirements(session);
+        const selectedRequirement = requirements.find(requirement => requirement.id === session?.selectedResultsRequirementId)
+            ?? requirements[0];
+        const selectedTask = selectedRequirement && session?.selectedResultsTaskId
+                ? selectedRequirement.taskIds.map(taskId => this.taskService.get(taskId))
+                .find(task => task?.id === session.selectedResultsTaskId && task?.status !== 'running')
+            : undefined;
+        const latestTask = selectedRequirement ? this.latestTaskForRequirement(selectedRequirement) : undefined;
+        const scopeKey = selectedTask?.id ?? (selectedRequirement ? `requirement:${selectedRequirement.id}` : undefined);
+        const document = selectedTask
+            ? this.resultsService.get(selectedTask.id)
+            : selectedRequirement ? this.resultsService.getRequirement(selectedRequirement.id) : undefined;
+        const draft = scopeKey ? session?.resultsDrafts.get(scopeKey) ?? '' : '';
+        const notice = scopeKey ? session?.resultsNotices.get(scopeKey) : undefined;
         const questionSending = notice?.status === 'sending';
-        const questionHistory = selectedTask?.resultsQuestions ?? [];
-        const questionPanelExpanded = selectedTask
-            ? session?.resultsQaExpanded.get(selectedTask.id) === true
+        const questionHistory = selectedTask?.resultsQuestions ?? selectedRequirement?.resultsQuestions ?? [];
+        const questionPanelExpanded = scopeKey
+            ? session?.resultsQaExpanded.get(scopeKey) === true
             : false;
+        const selectedTitle = selectedTask?.title ?? selectedRequirement?.title;
 
         return (
             <section
@@ -3106,116 +3185,123 @@ export class AgentWindowWidget extends ReactWidget {
                     id='poiesis-results-task-panel'
                     className='poiesis-results__main'
                     role='tabpanel'
-                    aria-labelledby={selectedTask ? `poiesis-results-task-tab-${selectedTask.id}` : undefined}
+                    aria-labelledby={selectedTask
+                        ? `poiesis-results-task-tab-${selectedTask.id}`
+                        : selectedRequirement ? `poiesis-results-requirement-tab-${selectedRequirement.id}` : undefined}
                 >
                     <div className='poiesis-results__canvas' aria-label='Results HTML キャンバス'>
-                        {!selectedTask && <div className='poiesis-results__empty'>Agent でタスクを完了すると、ここに成果が表示されます。</div>}
+                        {!selectedRequirement && <div className='poiesis-results__empty'>Agent でタスクを完了すると、ここに要件ごとの成果が表示されます。</div>}
                         {selectedTask && this.renderResultsHeader(selectedTask)}
-                        {selectedTask?.status === 'failed' && !document && (
+                        {!selectedTask && selectedRequirement && latestTask
+                            && this.renderRequirementResultsHeader(selectedRequirement, latestTask)}
+                        {latestTask?.status === 'failed' && !document && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>タスクに失敗しました</strong>
-                                <p>{selectedTask.failure?.summary ?? 'Codex がタスクを完了できませんでした。'}</p>
-                                <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
+                                <p>{latestTask.failure?.summary ?? 'Agent がタスクを完了できませんでした。'}</p>
+                                <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedTask?.status === 'cancelled' && !document && (
+                        {latestTask?.status === 'cancelled' && !document && (
                             <div className='poiesis-results__state cancelled' role='status'>
                                 <strong>タスクはキャンセルされました</strong>
                                 <p>成果は確定していません。必要なら同じ依頼を再試行できます。</p>
-                                <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
+                                <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedTask?.status === 'completed' && selectedTask.changeSet?.error && !document && (
+                        {latestTask?.status === 'completed' && latestTask.changeSet?.error && !document && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>変更内容を取得できませんでした</strong>
                                 <p>Repository の状態を確認して、タスクを再試行してください。</p>
-                                <button type='button' onClick={() => void this.retryTask(selectedTask.id)}>再試行</button>
+                                <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedTask && (document?.status === 'generating'
-                                || selectedTask.status === 'completed' && !document) && (
+                        {selectedRequirement && (document?.status === 'generating'
+                                || latestTask?.status === 'completed' && !document) && (
                             <div className='poiesis-results__empty poiesis-results__generating'>
-                                <PoiesisResultsElapsed key={selectedTask.id} />
+                                <PoiesisResultsElapsed key={scopeKey} />
                             </div>
                         )}
-                        {selectedTask && document?.status === 'failed' && (
+                        {selectedRequirement && document?.status === 'failed' && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>成果を作成できませんでした</strong>
                                 <p>Results skill の処理に失敗しました。</p>
-                                <button type='button' onClick={() => void this.retryResults(selectedTask.id)}>再試行</button>
+                                <button type='button' onClick={() => selectedTask
+                                    ? void this.retryResults(selectedTask.id)
+                                    : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedTask && document?.status === 'ready' && document.html && (
+                        {selectedRequirement && document?.status === 'ready' && document.html && (
                             <iframe
-                                key={`${selectedTask?.id}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
+                                key={`${scopeKey}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
                                 className='poiesis-results__document'
-                                title={`${selectedTask?.title}の成果`}
+                                title={`${selectedTitle}の成果`}
                                 sandbox='allow-scripts'
                                 srcDoc={this.resultsDocumentHtml(document.html)}
                             />
                         )}
                     </div>
-                    {selectedTask && (questionHistory.length > 0 || questionSending)
+                    {scopeKey && selectedTitle && (questionHistory.length > 0 || questionSending)
                         && this.renderResultsQuestionPanel(
-                            selectedTask,
+                            scopeKey,
+                            selectedTitle,
                             questionHistory,
                             questionSending ? notice : undefined,
                             questionPanelExpanded
                         )}
                     <section className='poiesis-results__composer' aria-label='Results の入力欄'>
                         <PoiesisComposer
-                            key={selectedTask?.id ?? 'no-results-task'}
+                            key={scopeKey ?? 'no-results-scope'}
                             value={draft}
                             placeholder='この結果について質問…'
                             aria-label='表示中の成果について質問'
                             rows={2}
                             maxLength={4_000}
-                            disabled={!selectedTask || document?.status !== 'ready' || questionSending}
-                            onValueChange={value => selectedTask && this.setResultsDraft(selectedTask.id, value)}
-                            onSubmit={() => selectedTask && void this.submitResultsQuestion(selectedTask.id)}
+                            disabled={!scopeKey || document?.status !== 'ready' || questionSending}
+                            onValueChange={value => scopeKey && this.setResultsDraft(scopeKey, value)}
+                            onSubmit={() => scopeKey && void this.submitResultsQuestion(scopeKey)}
                         />
                         <button
                             type='button'
                             className='poiesis-results__send'
                             aria-label='Results 内へ送信'
-                            disabled={!selectedTask || document?.status !== 'ready' || questionSending || !draft.trim()}
-                            onClick={() => selectedTask && void this.submitResultsQuestion(selectedTask.id)}
+                            disabled={!scopeKey || document?.status !== 'ready' || questionSending || !draft.trim()}
+                            onClick={() => scopeKey && void this.submitResultsQuestion(scopeKey)}
                         >
                             <span className='codicon codicon-arrow-up' aria-hidden='true' />
                         </button>
-                        {selectedTask && document?.status === 'ready' && this.renderAiRolePill('results', true)}
+                        {scopeKey && document?.status === 'ready' && this.renderAiRolePill('results', true)}
                     </section>
                 </div>
                 <aside
                     className='poiesis-results__task-switcher'
                     data-collapsed={this.resultsTaskRailCollapsed ? 'true' : 'false'}
-                    aria-label='同じセッションの実行タスク'
+                    aria-label='同じセッションの要件'
                 >
                     {this.resultsTaskRailCollapsed ? (
                         <button
                             type='button'
                             className='poiesis-agent-window__rail-toggle poiesis-results__task-switcher-collapsed-button'
-                            title='タスクレールを展開'
-                            aria-label='タスクレールを展開'
+                            title='要件レールを展開'
+                            aria-label='要件レールを展開'
                             aria-expanded='false'
                             aria-controls='poiesis-results-task-list'
                             onClick={() => this.toggleResultsTaskRail()}
                         >
-                            <span className='poiesis-results__task-count' aria-label={`タスク ${resultsTasks.length}件`}>
-                                {resultsTasks.length}
+                            <span className='poiesis-results__task-count' aria-label={`要件 ${requirements.length}件`}>
+                                {requirements.length}
                             </span>
                             <span className='codicon codicon-layout-sidebar-right' aria-hidden='true' />
                         </button>
                     ) : <>
                         <div className='poiesis-results__task-switcher-header'>
-                            <strong>タスク</strong>
+                            <strong>要件</strong>
                             <div className='poiesis-results__task-switcher-header-actions'>
-                                <span className='poiesis-results__task-count'>{resultsTasks.length}</span>
+                                <span className='poiesis-results__task-count'>{requirements.length}</span>
                                 <button
                                     type='button'
                                     className='poiesis-agent-window__rail-toggle poiesis-results__task-switcher-toggle'
-                                    title='タスクレールを折りたたむ'
-                                    aria-label='タスクレールを折りたたむ'
+                                    title='要件レールを折りたたむ'
+                                    aria-label='要件レールを折りたたむ'
                                     aria-expanded='true'
                                     aria-controls='poiesis-results-task-list'
                                     onClick={() => this.toggleResultsTaskRail()}
@@ -3225,58 +3311,188 @@ export class AgentWindowWidget extends ReactWidget {
                             </div>
                         </div>
                         <div id='poiesis-results-task-list' className='poiesis-results__task-list' role='tablist'>
-                        {resultsTasks.map((task, index) => {
-                            const confirmingDelete = this.deleteTaskConfirmationId === task.id;
-                            const finalizing = this.taskService.isFinalizing(task.id);
-                            const state = task.status === 'cancelled' ? 'キャンセル' : task.status === 'failed' ? '失敗' : '完了';
-                            const time = task.endedAt ? this.taskFinishedTime(task) : '';
-                            return (
-                                <div
-                                    key={task.id}
-                                    role='presentation'
-                                    className='poiesis-results__task-row'
-                                >
-                                    <button
-                                        id={`poiesis-results-task-tab-${task.id}`}
-                                        type='button'
-                                        role='tab'
-                                        aria-selected={selectedTask?.id === task.id}
-                                        aria-controls='poiesis-results-task-panel'
-                                        tabIndex={selectedTask?.id === task.id ? 0 : -1}
-                                        className={`poiesis-results__task-select${selectedTask?.id === task.id ? ' active' : ''}`}
-                                        onClick={() => this.selectResultsTask(task.id)}
-                                    >
-                                        <small>
-                                            {index === 0 ? '最新 · ' : ''}{state}
-                                            {time ? ` · ${time}` : ''}
-                                        </small>
-                                        <span title={task.title}>{task.title}</span>
-                                    </button>
-                                    {finalizing ? null : confirmingDelete ? (
-                                        <div className='poiesis-results__task-delete-confirm' role='group' aria-label={`${task.title}の削除を確認`}>
-                                            <span>削除しますか？</span>
-                                            <button type='button' className='danger' onClick={() => void this.deleteResultsTask(task.id)}>削除</button>
-                                            <button type='button' onClick={() => this.cancelDeleteResultsTask()}>戻る</button>
-                                        </div>
-                                    ) : (
-                                        <button
-                                            type='button'
-                                            className='poiesis-results__task-delete'
-                                            aria-label={`${task.title}を削除`}
-                                            title='タスクを削除'
-                                            onClick={() => this.beginDeleteResultsTask(task.id)}
-                                        >
-                                            <span className='codicon codicon-close' aria-hidden='true' />
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
+                        {requirements.map(requirement => this.renderRequirementCard(
+                            requirement,
+                            selectedRequirement?.id === requirement.id,
+                            selectedTask?.id
+                        ))}
                     </div>
-                        {!resultsTasks.length && <p>完了したタスクはありません。</p>}
+                        {!requirements.length && <p>完了した要件はありません。</p>}
                     </>}
                 </aside>
             </section>
+        );
+    }
+
+    protected renderRequirementCard(
+        requirement: Requirement,
+        selected: boolean,
+        selectedTaskId: string | undefined
+    ): React.ReactNode {
+        const latestTask = this.latestTaskForRequirement(requirement);
+        const expanded = this.expandedRequirementIds.has(requirement.id);
+        const menuKey = `requirement:${requirement.id}`;
+        const renaming = this.renamingRequirementId === requirement.id;
+        const tasks = requirement.taskIds.map(taskId => this.taskService.get(taskId))
+            .filter((task): task is ExecutionTask => Boolean(task))
+            .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+        return (
+            <article
+                key={requirement.id}
+                className={`poiesis-results__requirement-card${selected ? ' active' : ''}`}
+            >
+                <div className='poiesis-results__requirement-main'>
+                    <button
+                        type='button'
+                        className='poiesis-results__requirement-expand'
+                        aria-label={expanded ? `${requirement.title}のタスクを閉じる` : `${requirement.title}のタスクを表示`}
+                        aria-expanded={expanded}
+                        onClick={() => this.toggleRequirementExpanded(requirement.id)}
+                    >
+                        <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
+                    </button>
+                    {renaming ? (
+                        <form className='poiesis-results__requirement-rename' onSubmit={event => {
+                            event.preventDefault();
+                            this.commitRequirementRename(requirement.id);
+                        }}>
+                            <PoiesisTextInput
+                                autoFocus
+                                value={this.requirementRenameDraft}
+                                maxLength={120}
+                                aria-label='要件名'
+                                onValueChange={value => {
+                                    this.requirementRenameDraft = value;
+                                    this.update();
+                                }}
+                                onKeyDown={event => {
+                                    if (event.key === 'Escape') {
+                                        event.preventDefault();
+                                        this.cancelRequirementRename();
+                                    }
+                                }}
+                            />
+                            <button type='submit' disabled={!this.requirementRenameDraft.trim()}>保存</button>
+                        </form>
+                    ) : (
+                        <button
+                            id={`poiesis-results-requirement-tab-${requirement.id}`}
+                            type='button'
+                            role='tab'
+                            aria-selected={selected && !selectedTaskId}
+                            aria-controls='poiesis-results-task-panel'
+                            className='poiesis-results__requirement-select'
+                            onClick={() => this.selectResultsRequirement(requirement.id)}
+                        >
+                            <span title={requirement.title}>{requirement.title}</span>
+                            <small>
+                                タスク {tasks.length}件
+                                {latestTask ? ` · ${this.taskStatusLabel(latestTask)}` : ''}
+                                {latestTask?.endedAt ? ` · ${this.taskFinishedTime(latestTask)}` : ''}
+                            </small>
+                        </button>
+                    )}
+                    {!renaming && (
+                        <div className='poiesis-results__menu-host'>
+                            <button
+                                type='button'
+                                className='poiesis-results__more'
+                                aria-label={`${requirement.title}のメニュー`}
+                                aria-expanded={this.openResultsMenuKey === menuKey}
+                                onClick={() => {
+                                    this.openResultsMenuKey = this.openResultsMenuKey === menuKey ? undefined : menuKey;
+                                    this.update();
+                                }}
+                            >
+                                <span className='codicon codicon-ellipsis' aria-hidden='true' />
+                            </button>
+                            {this.openResultsMenuKey === menuKey && (
+                                <div className='poiesis-results__card-menu' role='menu'>
+                                    <button type='button' role='menuitem' onClick={() => this.beginRequirementRename(requirement)}>名前を変更</button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+                {expanded && (
+                    <div className='poiesis-results__requirement-tasks' role='group' aria-label={`${requirement.title}のタスク履歴`}>
+                        {tasks.map(task => this.renderRequirementTaskRow(requirement, task, selectedTaskId === task.id))}
+                    </div>
+                )}
+            </article>
+        );
+    }
+
+    protected renderRequirementTaskRow(
+        requirement: Requirement,
+        task: ExecutionTask,
+        selected: boolean
+    ): React.ReactNode {
+        const menuKey = `task:${task.id}`;
+        const confirmingDelete = this.deleteTaskConfirmationId === task.id;
+        const finalizing = task.status === 'running' || this.taskService.isFinalizing(task.id);
+        const otherRequirements = this.requirementsForSession(this.findSessionForTask(task))
+            .filter(candidate => candidate.id !== requirement.id);
+        return (
+            <div className={`poiesis-results__history-row${selected ? ' active' : ''}`} key={task.id}>
+                <button
+                    id={`poiesis-results-task-tab-${task.id}`}
+                    type='button'
+                    role='tab'
+                    aria-selected={selected}
+                    aria-controls='poiesis-results-task-panel'
+                    disabled={task.status === 'running'}
+                    onClick={() => this.selectResultsTask(task.id)}
+                >
+                    <span title={task.title}>{task.title}</span>
+                    <small>{this.taskStatusLabel(task)}{task.endedAt ? ` · ${this.taskFinishedTime(task)}` : ''}</small>
+                </button>
+                {!finalizing && (
+                    <div className='poiesis-results__menu-host'>
+                        <button
+                            type='button'
+                            className='poiesis-results__more'
+                            aria-label={`${task.title}のメニュー`}
+                            aria-expanded={this.openResultsMenuKey === menuKey}
+                            onClick={() => {
+                                this.openResultsMenuKey = this.openResultsMenuKey === menuKey ? undefined : menuKey;
+                                this.update();
+                            }}
+                        >
+                            <span className='codicon codicon-ellipsis' aria-hidden='true' />
+                        </button>
+                        {this.openResultsMenuKey === menuKey && (
+                            <div className='poiesis-results__card-menu task-menu' role='menu'>
+                                {otherRequirements.length > 0 && (
+                                    <details className='poiesis-results__move-submenu'>
+                                        <summary role='menuitem' aria-haspopup='menu'>
+                                            別の要件へ移動
+                                            <span className='codicon codicon-chevron-right' aria-hidden='true' />
+                                        </summary>
+                                        <div className='poiesis-results__move-submenu-list' role='menu'>
+                                            {otherRequirements.map(target => (
+                                                <button type='button' role='menuitem' key={target.id}
+                                                    onClick={() => this.moveTaskToRequirement(task.id, target.id)}>
+                                                    {target.title}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </details>
+                                )}
+                                <button type='button' role='menuitem' onClick={() => this.splitTaskToNewRequirement(task.id)}>新しい要件へ分割</button>
+                                <button type='button' role='menuitem' className='danger' onClick={() => this.beginDeleteResultsTask(task.id)}>タスクを削除</button>
+                            </div>
+                        )}
+                    </div>
+                )}
+                {confirmingDelete && (
+                    <div className='poiesis-results__task-delete-confirm' role='group' aria-label={`${task.title}の削除を確認`}>
+                        <span>削除しますか？</span>
+                        <button type='button' className='danger' onClick={() => void this.deleteResultsTask(task.id)}>削除</button>
+                        <button type='button' onClick={() => this.cancelDeleteResultsTask()}>戻る</button>
+                    </div>
+                )}
+            </div>
         );
     }
 
@@ -3296,7 +3512,7 @@ export class AgentWindowWidget extends ReactWidget {
         return (
             <header className='poiesis-results__fixed-header' data-task-status={task.status}>
                 <div className='poiesis-results__fixed-title'>
-                    <small>実行結果</small>
+                    <small>タスク単体の成果</small>
                     <h1 data-task-title={task.title} title={task.title}>{task.title}</h1>
                 </div>
                 <div className='poiesis-results__fixed-meta' aria-label='タスクの状態と変更規模'>
@@ -3315,6 +3531,49 @@ export class AgentWindowWidget extends ReactWidget {
                             )}
                         </span>
                     )}
+                </div>
+            </header>
+        );
+    }
+
+    protected renderRequirementResultsHeader(requirement: Requirement, latestTask: ExecutionTask): React.ReactNode {
+        const changeSet = this.resultsService.getRequirementChangeSet(requirement.id)
+            ?? this.fallbackRequirementChangeSet(requirement);
+        const diffstat = summarizeTaskChangeSet(changeSet);
+        const status = this.taskStatusLabel(latestTask);
+        const completedAtJst = formatTaskEndedAtJst(latestTask.endedAt);
+        const document = this.resultsService.getRequirement(requirement.id);
+        const generationBadge = this.resultsGenerationBadge(document);
+        const tasks = requirement.taskIds.map(taskId => this.taskService.get(taskId))
+            .filter((task): task is ExecutionTask => Boolean(task));
+        const appliedSkillIds = [...new Set(tasks.flatMap(task => [
+            ...task.appliedSkills?.agent ?? [],
+            ...task.appliedSkills?.results ?? []
+        ]))];
+        if (appliedSkillIds.some(id => !this.resultsSkillNames.has(id))) {
+            void this.ensureResultsSkillNames();
+        }
+        return (
+            <header className='poiesis-results__fixed-header' data-task-status={latestTask.status}>
+                <div className='poiesis-results__fixed-title'>
+                    <small>要件の成果</small>
+                    <h1 title={requirement.title}>{requirement.title}</h1>
+                </div>
+                <div className='poiesis-results__fixed-meta' aria-label='要件の状態と変更規模'>
+                    <span className={`poiesis-results__status ${latestTask.status}`}>{status}</span>
+                    {completedAtJst && <time dateTime={latestTask.endedAt}>{completedAtJst}</time>}
+                    <span className='poiesis-results__diffstat'>
+                        <b>{diffstat.fileCount}ファイル</b>
+                        <ins>+{diffstat.additions}</ins>
+                        <del>−{diffstat.deletions}</del>
+                    </span>
+                    <span className='poiesis-results__badges' aria-label='要件成果文書の生成情報'>
+                        {generationBadge && <span>{generationBadge}</span>}
+                        {appliedSkillIds.length > 0 && (
+                            <span>適用 Skills: {appliedSkillIds.map(id => this.resultsSkillNames.get(id) ?? id).join('、')}</span>
+                        )}
+                        <span>タスク {tasks.length}件</span>
+                    </span>
                 </div>
             </header>
         );
@@ -3375,18 +3634,19 @@ export class AgentWindowWidget extends ReactWidget {
     }
 
     protected renderResultsQuestionPanel(
-        task: ExecutionTask,
+        scopeKey: string,
+        title: string,
         history: readonly TaskResultsQuestion[],
         pending: ResultsNotice | undefined,
         expanded: boolean
     ): React.ReactNode {
         const questionCount = history.length + (pending ? 1 : 0);
-        const panelBodyId = `poiesis-results-qa-panel-${task.id}`;
+        const panelBodyId = `poiesis-results-qa-panel-${scopeKey.replace(/[^a-z0-9_-]/gi, '-')}`;
         return (
             <section
                 className={`poiesis-results__qa-panel${expanded ? ' expanded' : ' collapsed'}`}
-                aria-label={`${task.title}への質問パネル`}
-                data-results-task-id={task.id}
+                aria-label={`${title}への質問パネル`}
+                data-results-scope={scopeKey}
             >
                 <button
                     type='button'
@@ -3394,7 +3654,7 @@ export class AgentWindowWidget extends ReactWidget {
                     aria-controls={panelBodyId}
                     aria-expanded={expanded}
                     aria-label={expanded ? '質問パネルをたたむ' : '質問パネルを展開'}
-                    onClick={() => this.setResultsQuestionPanelExpanded(task.id, !expanded)}
+                    onClick={() => this.setResultsQuestionPanelExpanded(scopeKey, !expanded)}
                 >
                     <span className='poiesis-results__qa-toggle-title'>
                         <span className='codicon codicon-comment-discussion' aria-hidden='true' />
@@ -3409,7 +3669,7 @@ export class AgentWindowWidget extends ReactWidget {
                     <div
                         id={panelBodyId}
                         className='poiesis-results__qa-history'
-                        aria-label={`${task.title}への質問履歴`}
+                        aria-label={`${title}への質問履歴`}
                     >
                         {history.map((entry, index) => (
                             <article className={`poiesis-results__qa-entry${entry.error ? ' failed' : ''}`} key={`${entry.timestamp}-${index}`}>
@@ -3424,7 +3684,7 @@ export class AgentWindowWidget extends ReactWidget {
                                         ? <p>{entry.error}</p>
                                         : this.renderMarkdown(entry.answer ?? '')}
                                     {entry.error && (
-                                        <button type='button' onClick={() => void this.submitResultsQuestion(task.id, entry.question)}>再試行</button>
+                                        <button type='button' onClick={() => void this.submitResultsQuestion(scopeKey, entry.question)}>再試行</button>
                                     )}
                                 </div>
                             </article>
@@ -3485,6 +3745,7 @@ export class AgentWindowWidget extends ReactWidget {
                             type='button'
                             onClick={() => {
                                 this.selectResultsTask(task.id);
+                                this.selectResultsRequirement(task.requirementId);
                                 this.selectTab('results');
                             }}
                         >
@@ -6084,10 +6345,18 @@ export class AgentWindowWidget extends ReactWidget {
         const message = event.data as Partial<ResultsFrameMessage>;
         if (message.type === 'poiesis:retry-ai-results') {
             const session = this.selectedSession();
-            const task = [...this.finishedTasks(session)].reverse().find(candidate => candidate.id === session?.selectedResultsTaskId)
-                ?? [...this.finishedTasks(session)].reverse()[0];
-            if (task) {
-                void this.retryResults(task.id);
+            if (session?.selectedResultsTaskId) {
+                void this.retryResults(session.selectedResultsTaskId);
+            } else if (session?.selectedResultsRequirementId) {
+                const requirement = this.requirementService.get(session.selectedResultsRequirementId);
+                const onlyTask = requirement && this.finishedTasksForRequirement(requirement).length === 1
+                    ? this.finishedTasksForRequirement(requirement)[0]
+                    : undefined;
+                if (onlyTask) {
+                    void this.retryResults(onlyTask.id);
+                } else {
+                    void this.retryRequirementResults(session.selectedResultsRequirementId);
+                }
             }
         } else if (message.type === 'poiesis:open-citation' && typeof message.citation === 'string') {
             void this.openResultsCitation(message.citation);
@@ -6445,6 +6714,12 @@ export class AgentWindowWidget extends ReactWidget {
                     agentDraft: typeof candidate.agentDraft === 'string' ? candidate.agentDraft : '',
                     messages: restoredMessages,
                     taskIds,
+                    requirementDraft: candidate.requirementDraft === 'new' || typeof candidate.requirementDraft === 'string'
+                        ? candidate.requirementDraft
+                        : undefined,
+                    selectedResultsRequirementId: typeof candidate.selectedResultsRequirementId === 'string'
+                        ? candidate.selectedResultsRequirementId
+                        : undefined,
                     selectedResultsTaskId: typeof candidate.selectedResultsTaskId === 'string'
                         && resultsTaskIds.has(candidate.selectedResultsTaskId)
                         ? candidate.selectedResultsTaskId
@@ -6455,6 +6730,23 @@ export class AgentWindowWidget extends ReactWidget {
                 };
                 return [restored];
             }));
+            await this.requirementService.restore(this.taskService.list());
+            for (const session of this.sessions) {
+                const selectedTask = session.selectedResultsTaskId
+                    ? this.taskService.get(session.selectedResultsTaskId)
+                    : undefined;
+                const availableIds = new Set(this.requirementsForSession(session).map(requirement => requirement.id));
+                session.selectedResultsRequirementId = selectedTask?.requirementId
+                    ?? (session.selectedResultsRequirementId && availableIds.has(session.selectedResultsRequirementId)
+                        ? session.selectedResultsRequirementId
+                        : this.latestRequirement(session)?.id);
+                if (session.requirementDraft !== 'new'
+                    && session.requirementDraft
+                    && !availableIds.has(session.requirementDraft)) {
+                    session.requirementDraft = undefined;
+                }
+            }
+            await this.resultsService.restoreRequirements();
             this.selectedSessionId = typeof state.selectedSessionId === 'string' ? state.selectedSessionId : undefined;
             this.railWidth = this.clampRailWidth(Number(state.railWidth) || DEFAULT_RAIL_WIDTH);
             this.railCollapsed = Boolean(state.railCollapsed);
@@ -6559,14 +6851,24 @@ export class AgentWindowWidget extends ReactWidget {
                     continue;
                 }
                 const resultsTaskIds = new Set(this.finishedTasks(session).map(task => task.id));
+                const requirementIds = new Set(this.resultsRequirements(session).map(requirement => requirement.id));
+                const validScopeKeys = new Set([
+                    ...resultsTaskIds,
+                    ...[...requirementIds].map(requirementId => `requirement:${requirementId}`)
+                ]);
+                if (typeof persisted.selectedRequirementId === 'string'
+                    && requirementIds.has(persisted.selectedRequirementId)) {
+                    session.selectedResultsRequirementId = persisted.selectedRequirementId;
+                }
                 if (typeof persisted.selectedTaskId === 'string' && resultsTaskIds.has(persisted.selectedTaskId)) {
                     session.selectedResultsTaskId = persisted.selectedTaskId;
+                    session.selectedResultsRequirementId = this.taskService.get(persisted.selectedTaskId)?.requirementId;
                 }
                 session.resultsQaExpanded.clear();
                 if (Array.isArray(persisted.expandedTaskIds)) {
-                    for (const taskId of persisted.expandedTaskIds) {
-                        if (typeof taskId === 'string' && resultsTaskIds.has(taskId)) {
-                            session.resultsQaExpanded.set(taskId, true);
+                    for (const scopeKey of persisted.expandedTaskIds) {
+                        if (typeof scopeKey === 'string' && validScopeKeys.has(scopeKey)) {
+                            session.resultsQaExpanded.set(scopeKey, true);
                         }
                     }
                 }
@@ -6583,13 +6885,18 @@ export class AgentWindowWidget extends ReactWidget {
                 taskRailCollapsed: this.resultsTaskRailCollapsed,
                 sessions: Object.fromEntries(this.sessions.map(session => {
                     const resultsTaskIds = new Set(this.finishedTasks(session).map(task => task.id));
+                    const validScopeKeys = new Set([
+                        ...resultsTaskIds,
+                        ...this.resultsRequirements(session).map(requirement => `requirement:${requirement.id}`)
+                    ]);
                     return [session.id, {
+                        selectedRequirementId: session.selectedResultsRequirementId,
                         selectedTaskId: session.selectedResultsTaskId && resultsTaskIds.has(session.selectedResultsTaskId)
                             ? session.selectedResultsTaskId
                             : undefined,
                         expandedTaskIds: [...session.resultsQaExpanded]
-                            .filter(([taskId, expanded]) => expanded && resultsTaskIds.has(taskId))
-                            .map(([taskId]) => taskId)
+                            .filter(([scopeKey, expanded]) => expanded && validScopeKeys.has(scopeKey))
+                            .map(([scopeKey]) => scopeKey)
                     }];
                 }))
             };
@@ -6645,6 +6952,77 @@ export class AgentWindowWidget extends ReactWidget {
         return taskTitleForRequest(message);
     }
 
+    protected requirementForSend(session: WindowAgentSession, request: string): string {
+        const available = this.requirementsForSession(session);
+        const selected = session.requirementDraft && session.requirementDraft !== 'new'
+            ? available.find(requirement => requirement.id === session.requirementDraft)
+            : undefined;
+        const current = this.requirementService.currentRequirementId(session.id);
+        const requirement = session.requirementDraft === 'new'
+            ? this.requirementService.create(session.id, taskTitleForRequest(request))
+            : selected
+                ?? available.find(candidate => candidate.id === current)
+                ?? this.requirementService.create(session.id, taskTitleForRequest(request));
+        session.requirementDraft = requirement.id;
+        return requirement.id;
+    }
+
+    protected requirementsForSession(session: WindowAgentSession | undefined): Requirement[] {
+        if (!session) {
+            return [];
+        }
+        return this.requirementService.listForSession(session.id).sort((left, right) => {
+            const leftTime = this.latestTaskForRequirement(left)?.startedAt ?? left.updatedAt;
+            const rightTime = this.latestTaskForRequirement(right)?.startedAt ?? right.updatedAt;
+            return rightTime.localeCompare(leftTime);
+        });
+    }
+
+    protected resultsRequirements(session: WindowAgentSession | undefined): Requirement[] {
+        return this.requirementsForSession(session).filter(requirement => requirement.taskIds
+            .some(taskId => {
+                const task = this.taskService.get(taskId);
+                return task && task.status !== 'running';
+            }));
+    }
+
+    protected latestTaskForRequirement(requirement: Requirement): ExecutionTask | undefined {
+        return requirement.taskIds.map(taskId => this.taskService.get(taskId))
+            .filter((task): task is ExecutionTask => Boolean(task))
+            .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
+            .at(-1);
+    }
+
+    protected latestRequirement(session: WindowAgentSession | undefined): Requirement | undefined {
+        return this.resultsRequirements(session)[0];
+    }
+
+    protected finishedTasksForRequirement(requirement: Requirement): ExecutionTask[] {
+        return requirement.taskIds.map(taskId => this.taskService.get(taskId))
+            .filter((task): task is ExecutionTask => Boolean(task && task.status !== 'running'))
+            .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+    }
+
+    protected fallbackRequirementChangeSet(requirement: Requirement): TaskChangeSet {
+        const tasks = this.finishedTasksForRequirement(requirement);
+        const files = [...new Set(tasks.flatMap(task => task.changeSet?.files ?? []))].sort();
+        const diff = tasks.map(task => task.changeSet?.diff ?? '').filter(Boolean).join('\n');
+        return {
+            source: diff ? 'task-diff' : 'empty',
+            diff,
+            files,
+            capturedAt: tasks.at(-1)?.changeSet?.capturedAt ?? new Date().toISOString()
+        };
+    }
+
+    protected selectedResultsScopeKey(session: WindowAgentSession | undefined): string | undefined {
+        if (!session?.selectedResultsRequirementId) {
+            return undefined;
+        }
+        return session.selectedResultsTaskId
+            ?? `requirement:${session.selectedResultsRequirementId}`;
+    }
+
     protected persistedTasks(session: WindowAgentSession): ExecutionTask[] {
         return session.taskIds
             .map(taskId => this.taskService.get(taskId))
@@ -6675,6 +7053,7 @@ export class AgentWindowWidget extends ReactWidget {
         const currentWorkspaceKey = this.workspaceGroupKey(this.workspaceRoot()?.resource.toString());
         this.expandedWorkspaceGroups.add(currentWorkspaceKey);
         if (!restored) {
+            await this.requirementService.restore(this.taskService.list());
             await this.createSession();
             return;
         }
@@ -6701,6 +7080,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (!session || !session.workspaceUri || !content || this.runningTask(session)) {
             return;
         }
+        const requirementId = this.requirementForSend(session, content);
         session.agentDraft = '';
         const sentAt = Date.now();
         session.messages.push({ id: `user-${sentAt}`, role: 'user', content, complete: true });
@@ -6720,25 +7100,28 @@ export class AgentWindowWidget extends ReactWidget {
             await this.recordPreSpawnFailure(
                 session,
                 content,
+                requirementId,
                 'Agentを開始できませんでした。',
                 this.providerPreparationErrors.get(session.id)
             );
             return;
         }
         if (!session.agentSession) {
-            await this.recordPreSpawnFailure(session, content, 'Agentを開始できませんでした。');
+            await this.recordPreSpawnFailure(session, content, requirementId, 'Agentを開始できませんでした。');
             return;
         }
         try {
             await this.agentProvider.sendMessage(session.agentSession.id, {
                 role: 'user',
                 content,
-                ownerSessionId: session.id
+                ownerSessionId: session.id,
+                requirementId
             });
         } catch (error) {
             await this.recordPreSpawnFailure(
                 session,
                 content,
+                requirementId,
                 'Agentを開始できませんでした。',
                 error instanceof Error ? error.message : String(error)
             );
@@ -6748,10 +7131,11 @@ export class AgentWindowWidget extends ReactWidget {
     protected async recordPreSpawnFailure(
         session: WindowAgentSession,
         request: string,
+        requirementId: string,
         summary: string,
         details?: string
     ): Promise<void> {
-        const task = await this.taskService.failBeforeStart(session.id, request, { summary, details });
+        const task = await this.taskService.failBeforeStart(session.id, request, requirementId, { summary, details });
         session.messages.push({
             id: `agent-${task.id}`,
             role: 'agent',
@@ -6908,9 +7292,17 @@ export class AgentWindowWidget extends ReactWidget {
         if (!endedAt || Number.isNaN(endedAt.getTime())) {
             return '';
         }
-        const hours = endedAt.getHours().toString().padStart(2, '0');
-        const minutes = endedAt.getMinutes().toString().padStart(2, '0');
-        return `${hours}:${minutes}`;
+        return `${new Intl.DateTimeFormat('ja-JP', {
+            hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Tokyo'
+        }).format(endedAt)} JST`;
+    }
+
+    protected taskStatusLabel(task: ExecutionTask): string {
+        return task.status === 'running'
+            ? '実行中'
+            : task.status === 'completed'
+                ? '完了'
+                : task.status === 'failed' ? '失敗' : 'キャンセル';
     }
 
     protected toggleCodeMode(): void {
@@ -6930,9 +7322,10 @@ export class AgentWindowWidget extends ReactWidget {
         const session = this.selectedSession();
         if (session) {
             session.activeTab = tab;
-            if (tab === 'results' && !this.finishedTasks(session)
-                .some(task => task.id === session.selectedResultsTaskId)) {
-                session.selectedResultsTaskId = this.finishedTasks(session).at(-1)?.id;
+            if (tab === 'results' && !this.resultsRequirements(session)
+                .some(requirement => requirement.id === session.selectedResultsRequirementId)) {
+                session.selectedResultsRequirementId = this.latestRequirement(session)?.id;
+                session.selectedResultsTaskId = undefined;
                 this.persistResultsQaPanelState();
             }
             this.persistWindowState();
@@ -6976,7 +7369,9 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected selectResultsTask(taskId: string): void {
         const session = this.selectedSession();
-        if (session) {
+        const task = this.taskService.get(taskId);
+        if (session && task && task.status !== 'running') {
+            session.selectedResultsRequirementId = task.requirementId;
             session.selectedResultsTaskId = taskId;
             this.deleteTaskConfirmationId = undefined;
             this.persistWindowState();
@@ -6985,22 +7380,96 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
     }
 
-    protected setResultsQuestionPanelExpanded(taskId: string, expanded: boolean, revealLatest = false): void {
+    protected selectResultsRequirement(requirementId: string): void {
         const session = this.selectedSession();
-        if (!session || session.selectedResultsTaskId !== taskId
-            || !this.finishedTasks(session).some(task => task.id === taskId)) {
+        const requirement = this.requirementService.get(requirementId);
+        if (!session || requirement?.sessionId !== session.id) {
+            return;
+        }
+        session.selectedResultsRequirementId = requirementId;
+        session.selectedResultsTaskId = undefined;
+        this.deleteTaskConfirmationId = undefined;
+        void this.persistWindowState();
+        void this.persistResultsQaPanelState();
+        this.update();
+    }
+
+    protected toggleRequirementExpanded(requirementId: string): void {
+        if (this.expandedRequirementIds.has(requirementId)) {
+            this.expandedRequirementIds.delete(requirementId);
+        } else {
+            this.expandedRequirementIds.add(requirementId);
+        }
+        this.update();
+    }
+
+    protected beginRequirementRename(requirement: Requirement): void {
+        this.openResultsMenuKey = undefined;
+        this.renamingRequirementId = requirement.id;
+        this.requirementRenameDraft = requirement.title;
+        this.update();
+    }
+
+    protected cancelRequirementRename(): void {
+        this.renamingRequirementId = undefined;
+        this.requirementRenameDraft = '';
+        this.update();
+    }
+
+    protected commitRequirementRename(requirementId: string): void {
+        if (this.renamingRequirementId !== requirementId || !this.requirementRenameDraft.trim()) {
+            return;
+        }
+        this.requirementService.rename(requirementId, this.requirementRenameDraft);
+        this.cancelRequirementRename();
+    }
+
+    protected moveTaskToRequirement(taskId: string, targetRequirementId: string): void {
+        const moved = this.requirementService.moveTask(taskId, targetRequirementId);
+        const session = this.selectedSession();
+        if (!moved || !session) {
+            return;
+        }
+        session.selectedResultsRequirementId = moved.id;
+        session.selectedResultsTaskId = taskId;
+        this.expandedRequirementIds.add(moved.id);
+        this.openResultsMenuKey = undefined;
+        void this.persistWindowState();
+        void this.persistResultsQaPanelState();
+        this.update();
+    }
+
+    protected splitTaskToNewRequirement(taskId: string): void {
+        const requirement = this.requirementService.splitTaskToNew(taskId);
+        const session = this.selectedSession();
+        if (!requirement || !session) {
+            return;
+        }
+        session.selectedResultsRequirementId = requirement.id;
+        session.selectedResultsTaskId = undefined;
+        session.requirementDraft = requirement.id;
+        this.expandedRequirementIds.add(requirement.id);
+        this.openResultsMenuKey = undefined;
+        void this.persistWindowState();
+        void this.persistResultsQaPanelState();
+        this.update();
+    }
+
+    protected setResultsQuestionPanelExpanded(scopeKey: string, expanded: boolean, revealLatest = false): void {
+        const session = this.selectedSession();
+        if (!session || this.selectedResultsScopeKey(session) !== scopeKey) {
             return;
         }
         if (expanded) {
-            session.resultsQaExpanded.set(taskId, true);
+            session.resultsQaExpanded.set(scopeKey, true);
         } else {
-            session.resultsQaExpanded.delete(taskId);
+            session.resultsQaExpanded.delete(scopeKey);
         }
         this.persistResultsQaPanelState();
         this.update();
         if (expanded && revealLatest) {
             requestAnimationFrame(() => {
-                if (this.selectedSessionId !== session.id || this.selectedSession()?.selectedResultsTaskId !== taskId) {
+                if (this.selectedSessionId !== session.id || this.selectedResultsScopeKey(this.selectedSession()) !== scopeKey) {
                     return;
                 }
                 const history = this.node.querySelector<HTMLElement>('.poiesis-results__qa-history');
@@ -7016,6 +7485,7 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         this.deleteTaskConfirmationId = taskId;
+        this.openResultsMenuKey = undefined;
         this.update();
     }
 
@@ -7032,6 +7502,8 @@ export class AgentWindowWidget extends ReactWidget {
             return;
         }
         const deletedWasSelected = session.selectedResultsTaskId === taskId;
+        const deletedTask = this.taskService.get(taskId);
+        const previousRequirementId = deletedTask?.requirementId;
         session.taskIds = session.taskIds.filter(candidate => candidate !== taskId);
         session.resultsDrafts.delete(taskId);
         session.resultsNotices.delete(taskId);
@@ -7040,7 +7512,13 @@ export class AgentWindowWidget extends ReactWidget {
         this.taskService.remove([taskId]);
         const newestRemainingTask = this.finishedTasks(session).at(-1);
         if (deletedWasSelected) {
-            session.selectedResultsTaskId = newestRemainingTask?.id;
+            session.selectedResultsTaskId = undefined;
+            session.selectedResultsRequirementId = previousRequirementId && this.requirementService.get(previousRequirementId)
+                ? previousRequirementId
+                : this.latestRequirement(session)?.id;
+        } else if (session.selectedResultsRequirementId
+            && !this.requirementService.get(session.selectedResultsRequirementId)) {
+            session.selectedResultsRequirementId = this.latestRequirement(session)?.id;
         }
         session.lastTaskStatus = newestRemainingTask?.status === 'running'
             ? undefined
@@ -7054,25 +7532,33 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
     }
 
-    protected setResultsDraft(taskId: string, value: string): void {
+    protected setResultsDraft(scopeKey: string, value: string): void {
         const session = this.selectedSession();
-        session?.resultsDrafts.set(taskId, value);
-        session?.resultsNotices.delete(taskId);
+        session?.resultsDrafts.set(scopeKey, value);
+        session?.resultsNotices.delete(scopeKey);
         this.persistWindowState();
         this.update();
     }
 
-    protected async submitResultsQuestion(taskId: string, retryQuestion?: string): Promise<void> {
+    protected async submitResultsQuestion(scopeKey: string, retryQuestion?: string): Promise<void> {
         const session = this.selectedSession();
-        const task = this.taskService.get(taskId);
-        const document = this.resultsService.get(taskId);
-        const question = retryQuestion?.trim() || session?.resultsDrafts.get(taskId)?.trim();
-        const currentNotice = session?.resultsNotices.get(taskId);
+        const requirementId = scopeKey.startsWith('requirement:') ? scopeKey.slice('requirement:'.length) : undefined;
+        const requirement = requirementId ? this.requirementService.get(requirementId) : undefined;
+        const task = requirement ? this.finishedTasksForRequirement(requirement).at(-1) : this.taskService.get(scopeKey);
+        const document = requirement
+            ? this.resultsService.getRequirement(requirement.id)
+            : this.resultsService.get(scopeKey);
+        const changeSet = requirement
+            ? await this.resultsService.requirementChangeSet(requirement.id)
+            : task?.changeSet;
+        const question = retryQuestion?.trim() || session?.resultsDrafts.get(scopeKey)?.trim();
+        const currentNotice = session?.resultsNotices.get(scopeKey);
         if (!session
             || !session.workspaceUri
             || !task
             || task.status === 'running'
-            || !this.finishedTasks(session).some(candidate => candidate.id === taskId)
+            || requirement && requirement.sessionId !== session.id
+            || !requirement && !this.finishedTasks(session).some(candidate => candidate.id === scopeKey)
             || document?.status !== 'ready'
             || !document.html
             || !question
@@ -7080,22 +7566,24 @@ export class AgentWindowWidget extends ReactWidget {
             || currentNotice?.status === 'sending') {
             return;
         }
-        session.selectedResultsTaskId = taskId;
-        session.resultsDrafts.set(taskId, '');
-        session.resultsNotices.set(taskId, { question, status: 'sending', text: '' });
-        session.resultsQaExpanded.set(taskId, true);
+        session.selectedResultsRequirementId = requirement?.id ?? task.requirementId;
+        session.selectedResultsTaskId = requirement ? undefined : task.id;
+        session.resultsDrafts.set(scopeKey, '');
+        session.resultsNotices.set(scopeKey, { question, status: 'sending', text: '' });
+        session.resultsQaExpanded.set(scopeKey, true);
         this.persistWindowState();
         this.persistResultsQaPanelState();
         this.update();
         requestAnimationFrame(() => {
             const history = this.node.querySelector<HTMLElement>('.poiesis-results__qa-history');
-            if (this.selectedSessionId === session.id && session.selectedResultsTaskId === taskId && history) {
+            if (this.selectedSessionId === session.id && this.selectedResultsScopeKey(session) === scopeKey && history) {
                 history.scrollTop = history.scrollHeight;
             }
         });
         try {
             const result = await this.resultsQuestionService.ask(question, {
-                taskId,
+                taskId: scopeKey,
+                requirementTitle: requirement?.title,
                 providerId: this.resultsCli,
                 model: this.resultsModel.trim() || undefined,
                 workspaceUri: session.workspaceUri,
@@ -7107,64 +7595,77 @@ export class AgentWindowWidget extends ReactWidget {
                     endedAt: task.endedAt
                 },
                 changeSetSummary: JSON.stringify({
-                    files: summarizeTaskChangeSet(task.changeSet).files,
-                    captureError: task.changeSet?.error
+                    requirement: requirement?.title,
+                    tasks: requirement?.taskIds.length,
+                    files: summarizeTaskChangeSet(changeSet).files,
+                    captureError: changeSet?.error
                 }, undefined, 2),
-                diff: this.truncateResultsReference(task.changeSet?.diff ?? '', 40_000, 'Diff'),
-                executionEvidence: formatExecutionEvidence(task.activities, 8_000) || undefined,
+                diff: this.truncateResultsReference(changeSet?.diff ?? '', 40_000, 'Diff'),
+                executionEvidence: requirement
+                    ? formatRequirementExecutionEvidence(this.finishedTasksForRequirement(requirement), 16_000) || undefined
+                    : formatExecutionEvidence(task.activities, 8_000) || undefined,
                 resultsHtml: document.html,
-                history: (task.resultsQuestions ?? []).slice(-6)
+                history: (requirement?.resultsQuestions ?? task.resultsQuestions ?? []).slice(-6)
             });
             if (result.status === 'answered') {
-                this.taskService.recordResultsQuestion(taskId, {
+                const entry = {
                     question,
                     answer: result.answer,
                     timestamp: new Date().toISOString()
-                });
-                session.resultsNotices.set(taskId, {
+                };
+                requirement
+                    ? this.requirementService.recordResultsQuestion(requirement.id, entry)
+                    : this.taskService.recordResultsQuestion(task.id, entry);
+                session.resultsNotices.set(scopeKey, {
                     question,
                     status: 'answered',
                     text: result.answer
                 });
-                session.resultsQaExpanded.set(taskId, true);
+                session.resultsQaExpanded.set(scopeKey, true);
             } else if (result.status === 'failed') {
-                const history = this.taskService.recordResultsQuestion(taskId, {
+                const entry = {
                     question,
                     error: result.error.message,
                     timestamp: new Date().toISOString()
-                });
-                session.resultsNotices.set(taskId, {
+                };
+                const history = requirement
+                    ? this.requirementService.recordResultsQuestion(requirement.id, entry)
+                    : this.taskService.recordResultsQuestion(task.id, entry);
+                session.resultsNotices.set(scopeKey, {
                     question,
                     status: 'failed',
                     text: result.error.message,
                     historyTimestamp: history?.timestamp
                 });
-                session.resultsQaExpanded.set(taskId, true);
+                session.resultsQaExpanded.set(scopeKey, true);
             } else {
-                session.resultsDrafts.set(taskId, question);
-                session.resultsNotices.delete(taskId);
+                session.resultsDrafts.set(scopeKey, question);
+                session.resultsNotices.delete(scopeKey);
             }
         } catch {
             const text = '回答を作成できませんでした。もう一度お試しください。';
-            const history = this.taskService.recordResultsQuestion(taskId, {
+            const entry = {
                 question,
                 error: text,
                 timestamp: new Date().toISOString()
-            });
-            session.resultsNotices.set(taskId, {
+            };
+            const history = requirement
+                ? this.requirementService.recordResultsQuestion(requirement.id, entry)
+                : this.taskService.recordResultsQuestion(task.id, entry);
+            session.resultsNotices.set(scopeKey, {
                 question,
                 status: 'failed',
                 text,
                 historyTimestamp: history?.timestamp
             });
-            session.resultsQaExpanded.set(taskId, true);
+            session.resultsQaExpanded.set(scopeKey, true);
         }
         this.persistWindowState();
         this.persistResultsQaPanelState();
         this.update();
         requestAnimationFrame(() => {
             const history = this.node.querySelector<HTMLElement>('.poiesis-results__qa-history');
-            if (this.selectedSessionId === session.id && session.selectedResultsTaskId === taskId && history) {
+            if (this.selectedSessionId === session.id && this.selectedResultsScopeKey(session) === scopeKey && history) {
                 history.scrollTop = history.scrollHeight;
             }
         });
@@ -7172,6 +7673,10 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected async retryResults(taskId: string): Promise<void> {
         await this.resultsService.retry(taskId);
+    }
+
+    protected async retryRequirementResults(requirementId: string): Promise<void> {
+        await this.resultsService.retryRequirement(requirementId);
     }
 
     protected async retryTask(taskId: string): Promise<void> {
@@ -7186,6 +7691,7 @@ export class AgentWindowWidget extends ReactWidget {
         this.selectedSessionId = session.id;
         session.activeTab = 'agent';
         session.selectedResultsTaskId = undefined;
+        session.requirementDraft = task.requirementId;
         this.persistResultsQaPanelState();
         session.agentDraft = task.request;
         this.persistWindowState();

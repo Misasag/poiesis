@@ -1,7 +1,5 @@
-import { execFile } from 'node:child_process';
-import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { mkdir, readdir, stat } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import {
     AgentRuntimeClient,
@@ -11,6 +9,7 @@ import {
     CreateFolderRequest,
     FolderBrowserRequest,
     FolderBrowserResult,
+    GitChangeSetBetweenRequest,
     GitChangeSetCapture,
     GitChangeSetRequest,
     GitSnapshotCapture,
@@ -21,18 +20,7 @@ import { CliDetector } from './cli-detector';
 import { CliProviderRegistry } from './cli-provider-registry';
 import { grokExecutionEnvironment } from './known-cli-registry';
 import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
-
-interface SnapshotEntry {
-    content: Buffer;
-    executable: boolean;
-    kind: 'file' | 'symlink';
-}
-
-interface WorkspaceSnapshot {
-    repositoryRoot: string;
-    workspacePath: string;
-    entries: Map<string, SnapshotEntry>;
-}
+import { isGitRepository, SnapshotStore } from './snapshot-store';
 
 type CodexProcess = HiddenCliProcess;
 
@@ -43,10 +31,9 @@ interface CodexRun {
 
 @injectable()
 export class AgentRuntimeServerImpl implements AgentRuntimeServer {
-    protected readonly snapshots = new Map<string, WorkspaceSnapshot>();
+    protected readonly snapshotStore = new SnapshotStore();
     protected readonly codexRuns = new Map<string, CodexRun>();
     protected client?: AgentRuntimeClient;
-    protected snapshotSequence = 0;
 
     constructor(
         @inject(CliDetector) protected readonly cliDetector: CliDetector,
@@ -63,7 +50,6 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
             run.process.kill();
         }
         this.codexRuns.clear();
-        this.snapshots.clear();
         this.client = undefined;
     }
 
@@ -107,50 +93,15 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         if (!workspacePath) {
             return { source: 'empty', error: 'No workspace root is open.' };
         }
-        try {
-            const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
-            const snapshot = await this.captureWorkspace(resolvedWorkspace);
-            const snapshotId = `git-snapshot-${Date.now()}-${++this.snapshotSequence}`;
-            this.snapshots.set(snapshotId, snapshot);
-            return { source: 'git-snapshot', snapshotId };
-        } catch (error) {
-            return {
-                source: 'empty',
-                error: error instanceof Error ? error.message : String(error)
-            };
-        }
+        return this.snapshotStore.capture(await this.resolveWorkspace(workspacePath));
     }
 
     async captureGitChangeSet({ baselineSnapshotId }: GitChangeSetRequest): Promise<GitChangeSetCapture> {
-        const baseline = this.snapshots.get(baselineSnapshotId);
-        this.snapshots.delete(baselineSnapshotId);
-        if (!baseline) {
-            return {
-                source: 'empty',
-                diff: '',
-                files: [],
-                error: 'The Task baseline snapshot expired or was not found.'
-            };
-        }
+        return this.snapshotStore.captureChangeSet(baselineSnapshotId);
+    }
 
-        try {
-            const current = await this.captureWorkspace(baseline.workspacePath);
-            const files = this.changedFiles(baseline.entries, current.entries);
-            if (files.length === 0) {
-                return { source: 'empty', diff: '', files: [] };
-            }
-            const diff = await this.diffSnapshots(baseline, current, files);
-            return diff
-                ? { source: 'task-diff', diff, files }
-                : { source: 'empty', diff: '', files: [] };
-        } catch (error) {
-            return {
-                source: 'empty',
-                diff: '',
-                files: [],
-                error: error instanceof Error ? error.message : String(error)
-            };
-        }
+    async captureGitChangeSetBetween(request: GitChangeSetBetweenRequest): Promise<GitChangeSetCapture> {
+        return this.snapshotStore.captureBetween(request);
     }
 
     async runCodex({ executionId, providerId, model, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
@@ -247,6 +198,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         const provider = await this.providerRegistry.resolve('agent', providerId, model);
 
         const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
+        const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(resolvedWorkspace);
         const args = provider.id === 'claude'
             ? [
                 '-p', prompt,
@@ -275,6 +227,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
                 : [
                 'exec',
                 ...(provider.model ? ['-m', provider.model] : []),
+                ...(skipGitRepositoryCheck ? ['--skip-git-repo-check'] : []),
                 '--json',
                 '--color', 'never',
                 '--sandbox', 'workspace-write',
@@ -312,45 +265,6 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         await this.killProcess(run.process);
     }
 
-    protected async captureWorkspace(workspacePath: string): Promise<WorkspaceSnapshot> {
-        const resolvedWorkspacePath = resolve(workspacePath);
-        const repositoryRoot = (await this.git(
-            ['rev-parse', '--show-toplevel'],
-            resolvedWorkspacePath
-        )).trim();
-        const listed = await this.git([
-            'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--full-name', '--', '.'
-        ], resolvedWorkspacePath);
-        const paths = listed.split('\0').filter(Boolean).sort();
-        const entries = new Map<string, SnapshotEntry>();
-
-        for (const path of paths) {
-            const absolutePath = this.safePath(repositoryRoot, path);
-            try {
-                const stats = await lstat(absolutePath);
-                if (stats.isSymbolicLink()) {
-                    entries.set(path, {
-                        content: Buffer.from(await readlink(absolutePath)),
-                        executable: false,
-                        kind: 'symlink'
-                    });
-                } else if (stats.isFile()) {
-                    entries.set(path, {
-                        content: await readFile(absolutePath),
-                        executable: (stats.mode & 0o111) !== 0,
-                        kind: 'file'
-                    });
-                }
-            } catch (error) {
-                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-                    throw error;
-                }
-            }
-        }
-
-        return { repositoryRoot, workspacePath: resolvedWorkspacePath, entries };
-    }
-
     protected async resolveWorkspace(workspacePath: string): Promise<string> {
         const resolvedWorkspace = resolve(workspacePath);
         try {
@@ -385,109 +299,4 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         return killHiddenProcessTree(child);
     }
 
-    protected changedFiles(
-        baseline: Map<string, SnapshotEntry>,
-        current: Map<string, SnapshotEntry>
-    ): string[] {
-        return [...new Set([...baseline.keys(), ...current.keys()])]
-            .filter(path => !this.entriesEqual(baseline.get(path), current.get(path)))
-            .sort();
-    }
-
-    protected entriesEqual(left?: SnapshotEntry, right?: SnapshotEntry): boolean {
-        return left === right || !!left && !!right
-            && left.kind === right.kind
-            && left.executable === right.executable
-            && left.content.equals(right.content);
-    }
-
-    protected async diffSnapshots(
-        baseline: WorkspaceSnapshot,
-        current: WorkspaceSnapshot,
-        files: string[]
-    ): Promise<string> {
-        const temporaryRoot = await mkdtemp(join(tmpdir(), 'poiesis-task-diff-'));
-        const beforeRoot = join(temporaryRoot, 'before');
-        const afterRoot = join(temporaryRoot, 'after');
-        try {
-            await Promise.all([
-                this.writeSnapshot(beforeRoot, baseline.entries, files),
-                this.writeSnapshot(afterRoot, current.entries, files)
-            ]);
-            const diff = await this.git([
-                '-c', 'core.autocrlf=false',
-                'diff', '--no-index', '--binary', '--no-color', '--find-renames', '--', 'before', 'after'
-            ], temporaryRoot, true);
-            return this.normalizeSnapshotPaths(diff);
-        } finally {
-            await rm(temporaryRoot, { recursive: true, force: true });
-        }
-    }
-
-    protected async writeSnapshot(
-        root: string,
-        entries: Map<string, SnapshotEntry>,
-        files: string[]
-    ): Promise<void> {
-        await mkdir(root, { recursive: true });
-        for (const path of files) {
-            const entry = entries.get(path);
-            if (!entry) {
-                continue;
-            }
-            const destination = this.safePath(root, path);
-            await mkdir(dirname(destination), { recursive: true });
-            await writeFile(destination, entry.content, { mode: entry.executable ? 0o755 : 0o644 });
-        }
-    }
-
-    protected normalizeSnapshotPaths(diff: string): string {
-        return diff.split('\n').map(line => {
-            if (line.startsWith('diff --git ')) {
-                return line.replace('a/before/', 'a/').replace('b/after/', 'b/');
-            }
-            if (line.startsWith('--- a/before/')) {
-                return line.replace('--- a/before/', '--- a/');
-            }
-            if (line.startsWith('+++ b/after/')) {
-                return line.replace('+++ b/after/', '+++ b/');
-            }
-            if (line.startsWith('rename from before/')) {
-                return line.replace('rename from before/', 'rename from ');
-            }
-            if (line.startsWith('rename to after/')) {
-                return line.replace('rename to after/', 'rename to ');
-            }
-            if (line.startsWith('Binary files ')) {
-                return line.replace('a/before/', 'a/').replace('b/after/', 'b/');
-            }
-            return line;
-        }).join('\n');
-    }
-
-    protected safePath(root: string, gitPath: string): string {
-        const path = resolve(root, ...gitPath.split('/'));
-        const pathWithinRoot = relative(root, path);
-        if (pathWithinRoot.startsWith('..') || isAbsolute(pathWithinRoot)) {
-            throw new Error(`Git returned a path outside the workspace: ${gitPath}`);
-        }
-        return path;
-    }
-
-    protected git(args: string[], cwd: string, acceptDiff = false): Promise<string> {
-        return new Promise((resolvePromise, reject) => {
-            execFile(
-                'git',
-                args,
-                { cwd, windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
-                (error, stdout) => {
-                    if (error && !(acceptDiff && error.code === 1)) {
-                        reject(error);
-                    } else {
-                        resolvePromise(stdout);
-                    }
-                }
-            );
-        });
-    }
 }

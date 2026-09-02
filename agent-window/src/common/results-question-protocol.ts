@@ -29,6 +29,7 @@ export interface ResultsQuestionHistoryEntry {
  */
 export interface ResultsQuestionScope {
     taskId: string;
+    requirementTitle?: string;
     providerId: KnownCliId;
     model?: string;
     workspaceUri: string;

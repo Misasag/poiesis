@@ -22,6 +22,8 @@ export interface AgentMessage {
     content: string;
     /** Stable app-session owner; provider session ids are intentionally ephemeral. */
     ownerSessionId: string;
+    /** Application-owned manual grouping selected by the Agent composer. */
+    requirementId: string;
 }
 
 export type AgentActivityKind = 'command' | 'file-change' | 'read' | 'reasoning' | 'message' | 'tool';

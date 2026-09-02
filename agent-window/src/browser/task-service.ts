@@ -122,6 +122,7 @@ export interface TaskResultDocument {
 export interface ExecutionTask {
     id: string;
     sessionId: string;
+    requirementId: string;
     title: string;
     request: string;
     status: ExecutionTaskStatus;
@@ -131,6 +132,8 @@ export interface ExecutionTask {
     /** Full implementer handoff for Results; never rendered directly in Agent conversation. */
     implementerReport?: string;
     baseline: TaskBaseline;
+    baselineSnapshotId?: string;
+    endSnapshotId?: string;
     changeSet?: TaskChangeSet;
     failure?: TaskFailure;
     activities?: AgentActivity[];
@@ -167,6 +170,8 @@ export class TaskService {
     protected readonly persistedResultsQuestions = new Map<string, Map<string, TaskResultsQuestion[]>>();
     protected readonly onDidChangeEmitter = new Emitter<TaskEvent>();
     readonly onDidChangeTask: Event<TaskEvent> = this.onDidChangeEmitter.event;
+    protected readonly onDidRemoveEmitter = new Emitter<ExecutionTask>();
+    readonly onDidRemoveTask: Event<ExecutionTask> = this.onDidRemoveEmitter.event;
     protected sequence = 0;
     protected resultsQuestionHistoryLoading: Promise<void> = Promise.resolve();
     protected resultsQuestionHistoryPersistence: Promise<void> = Promise.resolve();
@@ -198,11 +203,12 @@ export class TaskService {
             });
     }
 
-    start(sessionId: string, request: string, workspacePath?: string): ExecutionTask {
+    start(sessionId: string, request: string, workspacePath: string | undefined, requirementId: string): ExecutionTask {
         const startedAt = new Date().toISOString();
         const task: ExecutionTask = {
             id: `task-${Date.now()}-${++this.sequence}`,
             sessionId,
+            requirementId,
             title: this.titleFor(request),
             request,
             status: 'running',
@@ -213,16 +219,29 @@ export class TaskService {
             }
         };
         this.tasks.set(task.id, task);
-        this.baselineCaptures.set(task.id, this.captureBaseline(workspacePath));
+        const baselineCapture = this.captureBaseline(workspacePath).then(capture => {
+            const current = this.tasks.get(task.id);
+            if (current && capture.snapshotId) {
+                this.tasks.set(task.id, { ...current, baselineSnapshotId: capture.snapshotId });
+            }
+            return capture;
+        });
+        this.baselineCaptures.set(task.id, baselineCapture);
         this.onDidChangeEmitter.fire({ type: 'started', task });
         return task;
     }
 
-    async failBeforeStart(sessionId: string, request: string, failure: TaskFailure): Promise<ExecutionTask> {
+    async failBeforeStart(
+        sessionId: string,
+        request: string,
+        requirementId: string,
+        failure: TaskFailure
+    ): Promise<ExecutionTask> {
         const startedAt = new Date().toISOString();
         const task: ExecutionTask = {
             id: `task-${Date.now()}-${++this.sequence}`,
             sessionId,
+            requirementId,
             title: this.titleFor(request),
             request,
             status: 'failed',
@@ -260,6 +279,16 @@ export class TaskService {
             return current;
         }
         const updated = { ...current, resultsDocument: document };
+        this.tasks.set(taskId, updated);
+        return updated;
+    }
+
+    setRequirementId(taskId: string, requirementId: string): ExecutionTask | undefined {
+        const current = this.tasks.get(taskId);
+        if (!current || !requirementId.trim()) {
+            return current;
+        }
+        const updated = { ...current, requirementId };
         this.tasks.set(taskId, updated);
         return updated;
     }
@@ -349,6 +378,7 @@ export class TaskService {
             const task: ExecutionTask = candidate.status === 'running'
                 ? {
                     ...candidate,
+                    requirementId: typeof candidate.requirementId === 'string' ? candidate.requirementId : '',
                     status: 'failed',
                     endedAt: new Date().toISOString(),
                     failure: { summary: 'アプリ終了により中断されました' },
@@ -357,7 +387,14 @@ export class TaskService {
                     resultsQuestions,
                     resultsDocument
                 }
-                : { ...candidate, activities, appliedSkills, resultsQuestions, resultsDocument };
+                : {
+                    ...candidate,
+                    requirementId: typeof candidate.requirementId === 'string' ? candidate.requirementId : '',
+                    activities,
+                    appliedSkills,
+                    resultsQuestions,
+                    resultsDocument
+                };
             this.tasks.set(task.id, task);
             if (legacyResultsQuestions.length > 0) {
                 this.migrateLegacyResultsQuestions(task.sessionId, task.id, legacyResultsQuestions);
@@ -395,6 +432,7 @@ export class TaskService {
             this.baselineCaptures.delete(taskId);
             if (task) {
                 this.removePersistedResultsQuestion(task.sessionId, taskId);
+                this.onDidRemoveEmitter.fire(task);
             }
         }
     }
@@ -418,14 +456,16 @@ export class TaskService {
         }
 
         const capture = await this.captureChangeSet(taskId);
+        const refreshed = this.tasks.get(taskId) ?? current;
         const task: ExecutionTask = {
-            ...current,
+            ...refreshed,
             status,
             endedAt: new Date().toISOString(),
             changeSet: {
                 ...capture,
                 capturedAt: new Date().toISOString()
             },
+            endSnapshotId: capture.endSnapshotId,
             completionSummary: status === 'completed'
                 ? this.completionReport(completionSummary, capture.files)
                 : undefined,

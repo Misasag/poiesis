@@ -5,10 +5,18 @@ export const resultsGenerationServerPath = '/services/poiesis/results-generation
 
 export interface ResultsGenerationTaskMetadata {
     status: 'completed' | 'failed' | 'cancelled';
+    title?: string;
     request: string;
+    endedAt?: string;
     completionSummary?: string;
     implementerReport?: string;
     failureSummary?: string;
+    changeSetSummary?: string;
+}
+
+export interface ResultsGenerationRequirementMetadata {
+    title: string;
+    tasks: ResultsGenerationTaskMetadata[];
 }
 
 export interface ResultsGenerationRequest {
@@ -17,6 +25,7 @@ export interface ResultsGenerationRequest {
     model?: string;
     workspaceUri: string;
     taskMetadata: ResultsGenerationTaskMetadata;
+    requirement?: ResultsGenerationRequirementMetadata;
     changeSetSummary: string;
     diff: string;
     executionEvidence?: string;
