@@ -125,6 +125,7 @@ const macAppIcon = await readFile(resolve(root, 'electron-app/resources/poiesis.
 const readme = await read('docs/THEIA-SPIKE.md');
 const firstCompletion = await read('docs/FIRST-COMPLETION.md');
 const skillsContract = await read('docs/SKILLS-CONTRACT.md');
+const updaterModule = await read('agent-window/src/electron-main/poiesis-updater-main-module.ts');
 
 assert.ok(!agentWindowSource.includes('resolveAgentWindowMember'),
     'Agent Window source must not contain dynamic member resolution');
@@ -2125,5 +2126,20 @@ assert.ok(
 for (const marker of ['AgentProvider', 'Codex CLI', 'TaskService', 'ResultsSkill', 'Agent / Results / Code']) {
     assert.ok(readme.includes(marker), `README is missing ${marker}`);
 }
+
+// Windows update flow: the installer starts only once Electron is quitting, always silently.
+assert.ok(updaterModule.includes('autoUpdater.autoInstallOnAppQuit = false'),
+    'Updater must own the install-on-quit step instead of the electron-updater quit hook');
+assert.ok(updaterModule.includes("app.on('quit', (_event, exitCode) => this.installUpdateOnQuit(exitCode))"),
+    'Updater must spawn the installer from the Electron quit event');
+assert.ok(updaterModule.includes('autoUpdater.quitAndInstall(true, this.relaunchAfterInstall)'),
+    'Updates must be applied by the silent installer with the relaunch flag of the explicit restart');
+assert.ok(!updaterModule.includes('quitAndInstall(false'),
+    'The assisted installer wizard must never be launched for an update');
+for (const marker of ['POIESIS_UPDATE_INSTALL_ON_QUIT', 'POIESIS_UPDATE_RESTART_NOT_COMPLETED', 'POIESIS_UPDATE_CHECK_RETRY_SCHEDULED']) {
+    assert.ok(updaterModule.includes(marker), `Updater log marker ${marker} is missing`);
+}
+assert.ok(updaterModule.includes('手動で起動しないでください'),
+    'Update dialog must tell the user not to launch Poiesis while the update is applied');
 
 console.log('Source contract validation passed.');

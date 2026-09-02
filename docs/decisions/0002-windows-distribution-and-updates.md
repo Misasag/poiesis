@@ -53,3 +53,16 @@ Phase AではGitHub providerとupload処理を実装しない。
 - installed app起動smoke(`smoke:installed`)exit 0、title `Poiesis`。Start Menu shortcut生成を確認。
 - 更新E2E(`smoke:update`)exit 0: 0.0.2 install → `release:local`で0.0.3をfeedへ → 起動時checkでdownload → 終了時適用 → installed versionが0.0.3。
 - 署名なし方針はownerが決定済み(配布規模が小さいため)。SAC適合はowner機での実測のみであり、他のSAC有効機での再現は保証しない。
+
+## 追記(2026-09-02): 更新適用の手順を変更
+
+0.1.1 から 0.2.1 への更新で、electron-builder の NSIS installer が「Poiesisが終了できません。手動で閉じて、『再試行』をクリックしてください。」を表示して失敗した。installer は `%LOCALAPPDATA%\Programs\Poiesis` 配下のプロセスを PowerShell で探して停止し、2 回試しても見つかり続けるとこのダイアログを出す。また終了時の silent install 中(約 45 秒)にユーザーが Poiesis を再起動すると、旧 uninstaller のファイル退避が使用中ファイルで失敗し、全ファイルを戻して終了する(インストール先は無傷で旧版のまま)。
+
+変更点(0.2.2):
+
+- `autoInstallOnAppQuit` を使わず、Electron の `quit` イベントで自前に installer を起動する。Theia がウィンドウを閉じている途中に installer が走ることはない。
+- 「今すぐ再起動して更新」は `quitAndInstall(false, true)` で assisted wizard を開くのをやめ、Theia 経由で終了したのちに silent install + 自動再起動(`--force-run`)とする。終了が拒否された場合(確認ダイアログの取り消し等)は 30 秒後に通常の「終了時に適用」へ戻す。
+- ダイアログで「適用中は Poiesis を手動で起動しない」ことを明示する。
+- 初回の更新チェック失敗(installer 実行中の起動やネットワーク未接続)は 60 秒後に 1 回だけ再試行する。
+
+保留: installer 種別(assisted / one-click)は本 ADR の決定どおり assisted を維持する。one-click にすると更新中の進捗バナーを表示できるが、インストール先の選択を失うため owner 判断とする。
