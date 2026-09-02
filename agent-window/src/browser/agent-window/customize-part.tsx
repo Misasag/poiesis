@@ -85,8 +85,6 @@ interface WorkspaceSkillEditor {
 }
 
 export class CustomizePart extends AgentWindowPart {
-    protected customizeViewVisible = false;
-
     protected workspaceSkills: WorkspaceSkillDefinition[] = [];
 
     protected pendingSkillProposals: PendingSkillProposal[] = [];
@@ -100,8 +98,6 @@ export class CustomizePart extends AgentWindowPart {
     protected workspaceSkillPreviews?: Record<SkillBundleKind, WorkspaceSkillPreview>;
 
     protected readonly visibleSkillPromptPreviews = new Set<SkillBundleKind>();
-
-    protected workspaceSkillWatchRoots: URI[] = [];
 
     protected workspaceSkillWatchers?: DisposableCollection;
 
@@ -137,8 +133,8 @@ export class CustomizePart extends AgentWindowPart {
 
     protected workspaceSkillSaving = false;
 
-    protected renderCustomizeView(): React.ReactNode {
-        const workspaceName = this.workspaceRoot()?.resource.path.base;
+    public renderCustomizeView(): React.ReactNode {
+        const workspaceName = this.host.sessions.workspaceRoot()?.resource.path.base;
         const editor = this.workspaceSkillEditor;
         const editorDirty = Boolean(editor && editor.content !== editor.savedContent);
         const agentInjectedCharacters = this.workspaceSkillInjectedCharacters('agent');
@@ -645,7 +641,7 @@ export class CustomizePart extends AgentWindowPart {
         }
     }
 
-    protected installWorkspaceSkillSaveShortcut(): void {
+    public installWorkspaceSkillSaveShortcut(): void {
         const onKeyDown = (event: KeyboardEvent): void => {
             const savePressed = (event.ctrlKey || event.metaKey)
                 && !event.altKey
@@ -653,7 +649,7 @@ export class CustomizePart extends AgentWindowPart {
                 && (event.key.toLocaleLowerCase() === 's' || event.code === 'KeyS');
             const editorFocused = event.target instanceof Element
                 && event.target.classList.contains('poiesis-customize-view__editor-input');
-            if (!savePressed || !this.customizeViewVisible || !this.workspaceSkillEditor || !editorFocused) {
+            if (!savePressed || !this.host.state.customizeViewVisible || !this.workspaceSkillEditor || !editorFocused) {
                 return;
             }
             event.preventDefault();
@@ -661,35 +657,35 @@ export class CustomizePart extends AgentWindowPart {
             void this.saveWorkspaceSkill();
         };
         document.addEventListener('keydown', onKeyDown, true);
-        this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
+        this.host.addDisposable(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
     }
 
-    protected openCustomize(): void {
-        if (this.customizeViewVisible) {
+    public openCustomize(): void {
+        if (this.host.state.customizeViewVisible) {
             this.closeCustomize();
             return;
         }
-        if (this.codeMode) {
-            this.detachCodeWidgets();
-            this.codeMode = false;
+        if (this.host.state.codeMode) {
+            this.host.detachCodeWidgets();
+            this.host.state.codeMode = false;
         }
-        this.settingsModalVisible = false;
-        this.shortcutsOverlayVisible = false;
-        this.customizeViewVisible = true;
+        this.host.state.settingsModalVisible = false;
+        this.host.state.shortcutsOverlayVisible = false;
+        this.host.state.customizeViewVisible = true;
         this.update();
         void this.refreshWorkspaceSkills();
         void this.installWorkspaceSkillWatchers();
     }
 
-    protected closeCustomize(update = true): void {
-        this.customizeViewVisible = false;
+    public closeCustomize(update = true): void {
+        this.host.state.customizeViewVisible = false;
         this.disposeWorkspaceSkillWatchers();
         if (update) {
             this.update();
         }
     }
 
-    protected handleCustomizeEscape(): void {
+    public handleCustomizeEscape(): void {
         if (this.workspaceSkillDiscardConfirmation) {
             this.cancelWorkspaceSkillClose();
         } else if (this.selectedPendingSkillId) {
@@ -911,21 +907,21 @@ export class CustomizePart extends AgentWindowPart {
         this.update();
     }
 
-    protected scheduleWorkspaceSkillsRefresh(): void {
+    public scheduleWorkspaceSkillsRefresh(): void {
         if (this.workspaceSkillRefreshTimer !== undefined) {
             window.clearTimeout(this.workspaceSkillRefreshTimer);
         }
         this.workspaceSkillRefreshTimer = window.setTimeout(() => {
             this.workspaceSkillRefreshTimer = undefined;
-            if (this.customizeViewVisible) {
+            if (this.host.state.customizeViewVisible) {
                 void this.refreshWorkspaceSkills();
             }
         }, 300);
     }
 
     protected async installWorkspaceSkillWatchers(): Promise<void> {
-        const root = this.workspaceRoot()?.resource;
-        if (!this.customizeViewVisible || !root) {
+        const root = this.host.sessions.workspaceRoot()?.resource;
+        if (!this.host.state.customizeViewVisible || !root) {
             return;
         }
         let discoveryRoots: WorkspaceSkillDiscoveryRoot[];
@@ -934,7 +930,7 @@ export class CustomizePart extends AgentWindowPart {
         } catch {
             return;
         }
-        if (!this.customizeViewVisible || this.workspaceRoot()?.resource.toString() !== root.toString()) {
+        if (!this.host.state.customizeViewVisible || this.host.sessions.workspaceRoot()?.resource.toString() !== root.toString()) {
             return;
         }
         this.workspaceSkillWatchers?.dispose();
@@ -951,22 +947,22 @@ export class CustomizePart extends AgentWindowPart {
             }
         }
         this.workspaceSkillWatchers = watchers;
-        this.workspaceSkillWatchRoots = watchRoots;
+        this.host.state.workspaceSkillWatchRoots = watchRoots;
     }
 
-    protected disposeWorkspaceSkillWatchers(): void {
+    public disposeWorkspaceSkillWatchers(): void {
         if (this.workspaceSkillRefreshTimer !== undefined) {
             window.clearTimeout(this.workspaceSkillRefreshTimer);
             this.workspaceSkillRefreshTimer = undefined;
         }
         this.workspaceSkillWatchers?.dispose();
         this.workspaceSkillWatchers = undefined;
-        this.workspaceSkillWatchRoots = [];
+        this.host.state.workspaceSkillWatchRoots = [];
     }
 
-    protected async refreshWorkspaceSkills(): Promise<void> {
+    public async refreshWorkspaceSkills(): Promise<void> {
         const generation = ++this.workspaceSkillsRefreshGeneration;
-        const root = this.workspaceRoot()?.resource;
+        const root = this.host.sessions.workspaceRoot()?.resource;
         this.workspaceSkillsLoading = true;
         this.workspaceSkillsError = undefined;
         this.update();
@@ -1021,7 +1017,7 @@ export class CustomizePart extends AgentWindowPart {
             this.update();
             return;
         }
-        const root = this.workspaceRoot()?.resource;
+        const root = this.host.sessions.workspaceRoot()?.resource;
         if (!root) {
             this.newSkillError = 'Skillを作成するにはワークスペースを開いてください。';
             this.update();
@@ -1090,9 +1086,9 @@ export class CustomizePart extends AgentWindowPart {
     protected async openWorkspaceSkillInCode(rawUri: string): Promise<void> {
         this.closeCustomize(false);
         try {
-            await this.openCodeFile(rawUri);
+            await this.host.openCodeFile(rawUri);
         } catch (error) {
-            this.customizeViewVisible = true;
+            this.host.state.customizeViewVisible = true;
             this.workspaceSkillEditorError = `SkillファイルをCodeで開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
             this.update();
         }

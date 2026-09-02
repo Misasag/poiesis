@@ -171,8 +171,6 @@ export class SessionStore extends AgentWindowPartBase {
 
     public resultsQaPanelStatePersistence: Promise<void> = Promise.resolve();
 
-    public resultsTaskRailCollapsed = false;
-
     public legacyErrorMessagesMigrated = false;
 
     public selectedSessionId?: string;
@@ -201,13 +199,13 @@ export class SessionStore extends AgentWindowPartBase {
         if (!session) {
             return;
         }
-        this.closeCustomize(false);
+        this.host.closeCustomize(false);
         this.selectedSessionId = sessionId;
         session.unreadTaskCompletion = false;
         session.updatedAt = Date.now();
-        this.openSessionMenuId = undefined;
+        this.host.state.openSessionMenuId = undefined;
         const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
-        if (session.workspaceUri && !this.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)) {
+        if (session.workspaceUri && !this.host.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)) {
             this.persistWindowState();
             this.update();
             this.workspaceService.open(new URI(session.workspaceUri), { preserveWindow: true });
@@ -230,7 +228,7 @@ export class SessionStore extends AgentWindowPartBase {
     }
 
     public workspaceContextLabel(session = this.selectedSession()): string {
-        const workspace = session?.workspaceUri ? this.repositoryLabel(session.workspaceUri) : this.workspaceFolderName();
+        const workspace = session?.workspaceUri ? this.host.repositoryLabel(session.workspaceUri) : this.workspaceFolderName();
         const branch = session?.branch ?? this.gitBranchForWorkspace(session?.workspaceUri) ?? this.currentGitBranch();
         return branch ? `${workspace} / ${branch}` : workspace;
     }
@@ -259,7 +257,7 @@ export class SessionStore extends AgentWindowPartBase {
         }
         this.watchedScmProviders.add(provider);
         this.watchScmHistoryProvider(provider.historyProvider);
-        this.toDispose.push(provider.onDidChange(() => {
+        this.host.addDisposable(provider.onDidChange(() => {
             this.watchScmHistoryProvider(provider.historyProvider);
             queueMicrotask(() => this.update());
         }));
@@ -270,7 +268,7 @@ export class SessionStore extends AgentWindowPartBase {
             return;
         }
         this.watchedScmHistoryProviders.add(historyProvider);
-        this.toDispose.push(historyProvider.onDidChangeCurrentHistoryItemRefs(() => this.update()));
+        this.host.addDisposable(historyProvider.onDidChangeCurrentHistoryItemRefs(() => this.update()));
     }
 
     public async createSession(): Promise<void> {
@@ -298,7 +296,7 @@ export class SessionStore extends AgentWindowPartBase {
         };
         this.sessions.push(session);
         this.selectedSessionId = session.id;
-        this.openSessionMenuId = undefined;
+        this.host.state.openSessionMenuId = undefined;
         this.persistWindowState();
         this.persistResultsQaPanelState();
         this.update();
@@ -315,10 +313,10 @@ export class SessionStore extends AgentWindowPartBase {
         try {
             session.agentSession = await this.agentProvider.createSession({
                 workspaceUri: session.workspaceUri,
-                providerId: this.agentCli,
-                model: this.agentModel.trim() || undefined
+                providerId: this.host.state.agentCli,
+                model: this.host.state.agentModel.trim() || undefined
             });
-            this.providerPreparationErrors.delete(session.id);
+            this.host.state.providerPreparationErrors.delete(session.id);
             if (!silent && (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-')))) {
                 session.messages = [{
                     id: `provider-ready-${session.id}`,
@@ -331,7 +329,7 @@ export class SessionStore extends AgentWindowPartBase {
             this.update();
             return true;
         } catch (error) {
-            this.providerPreparationErrors.set(session.id, error instanceof Error ? error.message : String(error));
+            this.host.state.providerPreparationErrors.set(session.id, error instanceof Error ? error.message : String(error));
             if (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-'))) {
                 session.messages = [{
                     id: `provider-error-${session.id}`,
@@ -383,7 +381,7 @@ export class SessionStore extends AgentWindowPartBase {
                 ).map(message => this.migrateLegacyCliErrorMessage({
                     ...message,
                     complete: Boolean(message.complete),
-                    activities: this.restoreAgentActivities(message.activities)
+                    activities: this.host.restoreAgentActivities(message.activities)
                 })) : []).map(message => {
                     const task = message.taskId ? taskById.get(message.taskId) : undefined;
                     if (message.complete || task?.status !== 'failed') {
@@ -403,7 +401,7 @@ export class SessionStore extends AgentWindowPartBase {
                     createdAt,
                     updatedAt: Number(candidate.updatedAt) || createdAt,
                     workspaceUri: typeof candidate.workspaceUri === 'string'
-                        ? this.canonicalWorkspaceUri(candidate.workspaceUri)
+                        ? this.host.canonicalWorkspaceUri(candidate.workspaceUri)
                         : this.workspaceRoot()?.resource.toString(),
                     branch: typeof candidate.branch === 'string' ? candidate.branch : this.currentGitBranch() ?? 'main',
                     runTarget: 'local',
@@ -460,8 +458,8 @@ export class SessionStore extends AgentWindowPartBase {
             }
             await this.resultsService.restoreRequirements();
             this.selectedSessionId = typeof state.selectedSessionId === 'string' ? state.selectedSessionId : undefined;
-            this.railWidth = this.clampRailWidth(Number(state.railWidth) || DEFAULT_RAIL_WIDTH);
-            this.railCollapsed = Boolean(state.railCollapsed);
+            this.host.state.railWidth = this.host.clampRailWidth(Number(state.railWidth) || DEFAULT_RAIL_WIDTH);
+            this.host.state.railCollapsed = Boolean(state.railCollapsed);
             this.sessionSequence = this.sessions.length;
             if (this.legacyErrorMessagesMigrated) {
                 await this.persistWindowState();
@@ -556,7 +554,7 @@ export class SessionStore extends AgentWindowPartBase {
             if (state?.version !== 1 || !state.sessions || typeof state.sessions !== 'object') {
                 return;
             }
-            this.resultsTaskRailCollapsed = state.taskRailCollapsed === true;
+            this.host.state.resultsTaskRailCollapsed = state.taskRailCollapsed === true;
             for (const session of this.sessions) {
                 const persisted = state.sessions[session.id];
                 if (!persisted) {
@@ -594,7 +592,7 @@ export class SessionStore extends AgentWindowPartBase {
         try {
             const state: PersistedResultsQaPanelState = {
                 version: 1,
-                taskRailCollapsed: this.resultsTaskRailCollapsed,
+                taskRailCollapsed: this.host.state.resultsTaskRailCollapsed,
                 sessions: Object.fromEntries(this.sessions.map(session => {
                     const resultsTaskIds = new Set(this.finishedTasks(session).map(task => task.id));
                     const validScopeKeys = new Set([
@@ -629,8 +627,8 @@ export class SessionStore extends AgentWindowPartBase {
             const state: PersistedAgentWindowState = {
                 version: 1,
                 selectedSessionId: this.selectedSessionId,
-                railWidth: this.railWidth,
-                railCollapsed: this.railCollapsed,
+                railWidth: this.host.state.railWidth,
+                railCollapsed: this.host.state.railCollapsed,
                 sessions: this.sessions.map(session => {
                     const tasks = this.persistedTasks(session);
                     const {
@@ -747,18 +745,18 @@ export class SessionStore extends AgentWindowPartBase {
         await this.workspaceService.roots;
         const restored = await this.restoreWindowState();
         await this.restoreResultsQaPanelState();
-        const currentWorkspaceKey = this.workspaceGroupKey(this.workspaceRoot()?.resource.toString());
-        this.expandedWorkspaceGroups.add(currentWorkspaceKey);
+        const currentWorkspaceKey = this.host.workspaceGroupKey(this.workspaceRoot()?.resource.toString());
+        this.host.state.expandedWorkspaceGroups.add(currentWorkspaceKey);
         if (!restored) {
             await this.requirementService.restore(this.taskService.list());
             await this.createSession();
             return;
         }
-        const activeSessions: WindowAgentSession[] = this.filteredSessions(false);
+        const activeSessions: WindowAgentSession[] = this.host.filteredSessions(false);
         const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
         const selected = activeSessions.find(session =>
-            session.id === this.selectedSessionId && this.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)
-        ) ?? activeSessions.find(session => this.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri));
+            session.id === this.selectedSessionId && this.host.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)
+        ) ?? activeSessions.find(session => this.host.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri));
         if (!selected) {
             await this.createSession();
             return;
@@ -824,8 +822,8 @@ export class SessionStore extends AgentWindowPartBase {
             session.selectedResultsRequirementId = event.task.requirementId;
             session.selectedResultsTaskId = undefined;
             this.persistResultsQaPanelState();
-            this.resultsSkillNamesLoaded = false;
-            void this.ensureResultsSkillNames();
+            this.host.state.resultsSkillNamesLoaded = false;
+            void this.host.ensureResultsSkillNames();
         }
         this.persistWindowState();
         this.update();

@@ -1,17 +1,23 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = path => readFile(resolve(root, path), 'utf8');
+const readTree = async path => {
+    const directory = resolve(root, path);
+    const entries = await readdir(directory, { withFileTypes: true });
+    return (await Promise.all(entries.map(entry => entry.isDirectory()
+        ? readTree(`${path}/${entry.name}`)
+        : read(`${path}/${entry.name}`)))).join('\n');
+};
 
 const rootPackage = JSON.parse(await read('package.json'));
 const appPackage = JSON.parse(await read('browser-app/package.json'));
 const electronPackage = JSON.parse(await read('electron-app/package.json'));
 const extensionPackage = JSON.parse(await read('agent-window/package.json'));
-const agentWidget = (await Promise.all([
-    'agent-window/src/browser/agent-window-widget.tsx',
+const agentWindowPartFiles = [
     'agent-window/src/browser/agent-window/agent-window-host.ts',
     'agent-window/src/browser/agent-window/session-store.ts',
     'agent-window/src/browser/agent-window/rail-part.tsx',
@@ -20,7 +26,13 @@ const agentWidget = (await Promise.all([
     'agent-window/src/browser/agent-window/results-part.tsx',
     'agent-window/src/browser/agent-window/code-part.tsx',
     'agent-window/src/browser/agent-window/customize-part.tsx',
-    'agent-window/src/browser/agent-window/settings-part.tsx',
+    'agent-window/src/browser/agent-window/settings-part.tsx'
+];
+const agentWindowParts = (await Promise.all(agentWindowPartFiles.map(read))).join('\n');
+const agentWindowSource = await readTree('agent-window/src');
+const agentWidget = (await Promise.all([
+    'agent-window/src/browser/agent-window-widget.tsx',
+    ...agentWindowPartFiles,
     'agent-window/src/browser/components/poiesis-select.tsx',
     'agent-window/src/browser/components/poiesis-inputs.tsx',
     'agent-window/src/browser/components/poiesis-composer.tsx',
@@ -113,6 +125,11 @@ const macAppIcon = await readFile(resolve(root, 'electron-app/resources/poiesis.
 const readme = await read('docs/THEIA-SPIKE.md');
 const firstCompletion = await read('docs/FIRST-COMPLETION.md');
 const skillsContract = await read('docs/SKILLS-CONTRACT.md');
+
+assert.ok(!agentWindowSource.includes('resolveAgentWindowMember'),
+    'Agent Window source must not contain dynamic member resolution');
+assert.ok(!agentWindowParts.includes('[name: string]: any'),
+    'Agent Window parts must not contain an untyped member index signature');
 
 assert.equal(rootPackage.devDependencies['@theia/cli'], '1.73.1');
 assert.equal(appPackage.theia.target, 'browser');
@@ -258,15 +275,15 @@ assert.ok(resultsQuestionService.includes('return this.server.ask(question, scop
 for (const marker of [
     'this.resultsQuestionService.ask(question, {',
     'workspaceUri: session.workspaceUri',
-    'providerId: this.resultsCli',
-    'model: this.resultsModel.trim() || undefined',
+    'providerId: this.host.state.resultsCli',
+    'model: this.host.state.resultsModel.trim() || undefined',
     "status: 'sending'",
     "status: 'failed'",
     'this.requirementService.recordResultsQuestion(requirement.id, entry)',
     'this.taskService.recordResultsQuestion(task.id, entry)',
     'history: (requirement?.resultsQuestions ?? task.resultsQuestions ?? []).slice(-6)',
     "diff: this.truncateResultsReference(changeSet?.diff ?? '', 40_000, 'Diff')",
-    'formatRequirementExecutionEvidence(this.finishedTasksForRequirement(requirement), 16_000)',
+    'formatRequirementExecutionEvidence(this.host.sessions.finishedTasksForRequirement(requirement), 16_000)',
     'question.length > 4_000',
     "currentNotice?.status === 'sending'"
 ]) {
@@ -304,10 +321,10 @@ assert.match(agentStyles, /\.poiesis-results__qa-panel\s*\{[^}]*max-height:\s*ca
     'Results Q&A panel must stay within about 40% of the canvas area');
 for (const marker of [
     'resultsTaskRailCollapsed',
-    'taskRailCollapsed: this.resultsTaskRailCollapsed',
+    'taskRailCollapsed: this.host.state.resultsTaskRailCollapsed',
     "aria-label='要件レールを折りたたむ'",
     "aria-label='要件レールを展開'",
-    "data-task-rail-collapsed={this.resultsTaskRailCollapsed ? 'true' : 'false'}"
+    "data-task-rail-collapsed={this.host.state.resultsTaskRailCollapsed ? 'true' : 'false'}"
 ]) {
     assert.ok(agentWidget.includes(marker), `Collapsible Results task rail is missing ${marker}`);
 }
@@ -1005,8 +1022,8 @@ for (const marker of ['固定ヘッダー', 'JST完了時刻', '1〜2行', '所�
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
     "type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions'",
-    'protected codeMode = false',
-    'protected customizeViewVisible = false',
+    'codeMode: boolean;',
+    'customizeViewVisible: boolean;',
     "static readonly FILES_WIDGET_FACTORY_ID = 'files'",
     "static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace'",
     "static readonly GIT_WIDGET_FACTORY_ID = 'scm-view'",
@@ -1023,23 +1040,23 @@ for (const marker of [
     'public readonly sessions: WindowAgentSession[] = []',
     'const workspaceGroups = this.workspaceSessionGroups()',
     'const activeTab = session?.activeTab ?? \'agent\'',
-    "data-mode={this.codeMode ? 'code' : this.customizeViewVisible ? 'customize' : activeTab}",
-    "data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}",
-    '{!this.codeMode && this.renderRail()}',
+    "data-mode={this.state.codeMode ? 'code' : this.state.customizeViewVisible ? 'customize' : activeTab}",
+    "data-rail-collapsed={this.state.railCollapsed ? 'true' : 'false'}",
+    '{!this.state.codeMode && this.renderRail()}',
     'pinnedSessions.map(session => this.renderSessionRow(session))',
     'protected renderSessionRow(session: WindowAgentSession): React.ReactNode',
-    '{this.workspaceFolderName()}',
-    '{this.workspaceContextLabel()}',
+    '{this.host.sessions.workspaceFolderName()}',
+    '{this.host.sessions.workspaceContextLabel()}',
     "ref?.id.startsWith('refs/heads/')",
     'provider.historyProvider?.currentHistoryItemRef',
-    'session.title = this.titleForSession(content)',
+    'session.title = this.host.sessions.titleForSession(content)',
     'session.hasUserMessage = true',
     'public async createSession(): Promise<void>',
     "activeTab: 'agent'",
     'session.activeTab = tab',
     'poiesis-agent-window__code-control',
-    'aria-pressed={this.codeMode}',
-    '{!this.codeMode && session?.hasUserMessage && (',
+    'aria-pressed={this.host.state.codeMode}',
+    '{!this.host.state.codeMode && session?.hasUserMessage && (',
     "aria-label='Agent と Results の切り替え'",
     "<span className='poiesis-agent-window__rail-action-label'>新しいチャット</span>",
     "id='poiesis-results-panel'",
@@ -1058,7 +1075,7 @@ for (const marker of [
     "srcDoc={this.resultsDocumentHtml(document.html)}",
     '<PoiesisResultsElapsed key={scopeKey} />',
     "return `AI 生成 · ${provider}`",
-    'isKnownCliId(document.providerId) ? document.providerId : this.resultsCli',
+    'isKnownCliId(document.providerId) ? document.providerId : this.host.state.resultsCli',
     '適用 Skills:',
     'title={`適用 Skills: ${appliedSkillNames.join(\'、\')}`}',
     'this.workspaceSkillService.list(root)',
@@ -1066,7 +1083,7 @@ for (const marker of [
     "type: 'poiesis:open-citation' | 'poiesis:retry-ai-results'",
     "window.addEventListener('message', receiveResultsMessage)",
     'event.source !== frame.contentWindow',
-    'protected async openResultsCitation(rawCitation: string)',
+    'public async openResultsCitation(rawCitation: string)',
     'workspace.isEqualOrParent(file, false)',
     'await this.editorManager.open(file, {',
     'start: { line: startLine - 1, character: 0 }',
@@ -1076,10 +1093,10 @@ for (const marker of [
     "placeholder='次の変更内容や質問を入力…'",
     "placeholder='この結果について質問…'",
     'submitResultsQuestion',
-    'protected toggleCodeMode(): void',
-    'protected renderCode(): React.ReactNode',
+    'public toggleCodeMode(): void',
+    'public renderCode(): React.ReactNode',
     "import { FormatType, open, OpenerService, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser'",
-    'protected installCodeEditorSaveShortcut(): void',
+    'public installCodeEditorSaveShortcut(): void',
     'saveReason: SaveReason.Manual',
     'const dirty = Saveable.isDirty(widget)',
     'protected renderCodeCenterCloseDialog(): React.ReactNode',
@@ -1125,19 +1142,19 @@ for (const marker of [
     'this.attachCodeWidget(this.codeGitGraphWidget, this.codeGitGraphHost)',
     "this.renderCodeActivity('extensions', 'extensions', 'Extensions')",
     'onClick={() => void this.openTheiaSettings()}',
-    'protected async ensureCodeTerminal(): Promise<void>',
+    'public async ensureCodeTerminal(): Promise<void>',
     'protected scheduleCodeWidgetAttachments(): void',
     'protected readonly codeTerminalWidgets: TerminalWidget[] = []',
     'protected async newCodeTerminal(): Promise<TerminalWidget>',
     'void terminal.start()',
-    'protected installCodeTerminalShortcut(): void',
+    'public installCodeTerminalShortcut(): void',
     'protected startCodePanelResize(event: React.PointerEvent<HTMLDivElement>): void',
     'protected async ensureCodeExtensionsWidget(): Promise<void>',
     'this.extensionsSearchModel.query = BUILTIN_QUERY',
     'registerCodeWidget(factoryId: string, widget: Widget, pinned = false): void',
     'protected previewCodeCenterWidget?: Widget',
     'protected pinCodeCenterWidget(widget: Widget): void',
-    'protected installCodeTabDropTarget(): void',
+    'public installCodeTabDropTarget(): void',
     'protected codeFilePointerDrag?: {',
     'node.draggable = false',
     "document.addEventListener('pointermove', onPointerMove, true)",
@@ -1164,14 +1181,14 @@ for (const marker of [
     'widget.editor.refresh()',
     'Widget.attach(widget, host)',
     'Widget.detach(widget)',
-    'protected openSettings(): void',
-    'this.settingsModalVisible = true',
-    'protected closeSettings(): void',
-    'protected renderSettingsModal(): React.ReactNode',
-    'protected renderCustomizeView(): React.ReactNode',
+    'public openSettings(): void',
+    'this.host.state.settingsModalVisible = true',
+    'public closeSettings(): void',
+    'public renderSettingsModal(): React.ReactNode',
+    'public renderCustomizeView(): React.ReactNode',
     "role='dialog'",
     "aria-modal='true'",
-    'protected async restorePoiesisSettings(): Promise<void>',
+    'public async restorePoiesisSettings(): Promise<void>',
     'protected resultsDocumentHtml(html: string): string',
     'Content-Security-Policy',
     '<style data-poiesis-base>',
@@ -1180,14 +1197,14 @@ for (const marker of [
     '::-webkit-scrollbar-thumb:hover',
     'protected async clearSavedSessionData(): Promise<void>',
     '<strong>Poiesis plugin bundles</strong>',
-    "this.renderCliRoleSelector('agent', 'Agent の AI', this.agentCli)",
-    "this.renderCliRoleSelector('results', 'Results の AI', this.resultsCli)",
+    "this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)",
+    "this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)",
     '成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。',
     'this.resultsGenerationContext.providerId = cli',
     'this.resultsGenerationContext.model = defaultModel',
-    'this.resultsGenerationContext.providerId = this.resultsCli',
-    'providerId: this.agentCli',
-    'model: this.agentModel.trim() || undefined',
+    'this.resultsGenerationContext.providerId = this.host.state.resultsCli',
+    'providerId: this.host.state.agentCli',
+    'model: this.host.state.agentModel.trim() || undefined',
     'detection.executableRoles.includes(role)',
     '検出済み（実行可）',
     '検出済み（実行対応は今後）',
@@ -1198,7 +1215,7 @@ for (const marker of [
     '組み込みテンプレートへの切り替え時はResults Skillの追加指示を使いません。',
     '<strong>Bundled Results</strong>',
     '<strong>AI Results</strong>',
-    "className={`poiesis-agent-window__rail-action${this.customizeViewVisible ? ' active' : ''}`}",
+    "className={`poiesis-agent-window__rail-action${this.host.state.customizeViewVisible ? ' active' : ''}`}",
     "<span className='poiesis-agent-window__rail-action-label'>カスタマイズ</span>",
     'this.workspaceSkillService.list(root)',
     'protected async setWorkspaceSkillEnabled(',
@@ -1209,7 +1226,7 @@ for (const marker of [
     'await this.openWorkspaceSkillInline(this.workspaceSkillService.parse',
     'protected async openWorkspaceSkillInline(skill: WorkspaceSkillDefinition): Promise<void>',
     'protected async saveWorkspaceSkill(): Promise<void>',
-    'protected installWorkspaceSkillSaveShortcut(): void',
+    'public installWorkspaceSkillSaveShortcut(): void',
     'protected requestCloseWorkspaceSkill(): void',
     'protected async openWorkspaceSkillInCode(rawUri: string): Promise<void>',
     'const PoiesisSelect = (',
@@ -1219,16 +1236,16 @@ for (const marker of [
     'ReactDOM.createPortal(',
     'protected rolePillOptions(role: AiRole): PoiesisSelectOption[]',
     'protected setRoleProviderModelChoice(role: AiRole, value: string): void',
-    'protected renderAiRolePill(role: AiRole, compact = false): React.ReactNode',
+    'public renderAiRolePill(role: AiRole, compact = false): React.ReactNode',
     "data-ai-role={role}",
-    "this.renderAiRolePill('agent')",
-    "this.renderAiRolePill('results', true)",
+    "this.host.renderAiRolePill('agent')",
+    "this.host.renderAiRolePill('results', true)",
     "ariaLabel={`${roleLabel} の AI とモデル`}",
     "aria-label={`${roleLabel} の AI カスタムモデルID`}",
     "detection.status === 'missing' ? '未検出' : '実行対応は今後'",
-    'protected async openCodeFile(rawUri: string): Promise<void>',
+    'public async openCodeFile(rawUri: string): Promise<void>',
     "message.role === 'agent'",
-    'this.renderMarkdown(entry.answer ?? \'\')',
+    'this.host.renderMarkdown(entry.answer ?? \'\')',
     'renderSafeMarkdown(content, workspaceUri, workspaceImageSources)',
     'POIESIS_FILE_LINK_ATTRIBUTE',
     'open(this.openerService, new URI(externalUri))',
@@ -1657,7 +1674,7 @@ for (const marker of [
     '<strong>要件の自動分類</strong>',
     '判定に迷う場合は現在の要件を継続します。',
     "aria-label='要件の自動分類'",
-    'automaticRequirementClassification: this.automaticRequirementClassification'
+    'automaticRequirementClassification: this.host.state.automaticRequirementClassification'
 ]) {
     assert.ok(agentWidget.includes(marker), `Requirement classification setting is missing ${marker}`);
 }
@@ -1729,7 +1746,7 @@ for (const marker of [
     assert.ok(globalStorageService.includes(marker), `Global session storage is missing ${marker}`);
 }
 const railSource = agentWidget.match(
-    /protected renderRail\(\): React\.ReactNode \{[\s\S]*?\n    protected readonly setSessionSearchInput/
+    /public renderRail\(\): React\.ReactNode \{[\s\S]*?\n    protected readonly setSessionSearchInput/
 )?.[0];
 assert.ok(railSource, 'Agent rail render source is missing');
 const newChatPosition = railSource.indexOf("<span className='poiesis-agent-window__rail-action-label'>新しいチャット</span>");
@@ -1737,14 +1754,14 @@ const searchPosition = railSource.indexOf("<span className='poiesis-agent-window
 assert.ok(newChatPosition !== -1, 'Agent rail must contain the localized New Chat action');
 assert.ok(searchPosition > newChatPosition, 'Localized conversation Search must sit directly under New Chat');
 for (const marker of [
-    'protected railCollapsed = false',
+    'railCollapsed: boolean;',
     'protected toggleRail(): void',
-    'this.railCollapsed = !this.railCollapsed',
-    "data-collapsed={this.railCollapsed ? 'true' : 'false'}",
-    'protected sessionSearchQuery = \'\'',
+    'this.host.state.railCollapsed = !this.host.state.railCollapsed',
+    "data-collapsed={this.host.state.railCollapsed ? 'true' : 'false'}",
+    'sessionSearchQuery: string;',
     "aria-label='会話を検索'",
     'session.title.toLocaleLowerCase().includes(query)',
-    'protected readonly expandedWorkspaceGroups = new Set<string>()',
+    'readonly expandedWorkspaceGroups: Set<string>;',
     'protected toggleWorkspaceGroup(groupKey: string): void',
     "<div className='poiesis-agent-window__rail-heading'>",
     '<span>ワークスペース</span>',
@@ -1752,11 +1769,11 @@ for (const marker of [
     '<small>Local · {group.branch}</small>',
     "className='poiesis-agent-window__session-title'",
     'poiesis-agent-window__session-meta',
-    'protected sessionMeta(session: WindowAgentSession): string',
+    'public sessionMeta(session: WindowAgentSession): string',
     'protected togglePinnedSession(sessionId: string): void',
     'protected beginSessionRename(sessionId: string): void',
     'protected async archiveSession(sessionId: string): Promise<void>',
-    'protected async deleteSession(sessionId: string): Promise<void>',
+    'public async deleteSession(sessionId: string): Promise<void>',
     'protected restoreSession(sessionId: string, select = false): void',
     "aria-label='サイドバーの幅を変更'",
     'protected startRailResize(event: React.PointerEvent<HTMLDivElement>): void',
@@ -1764,13 +1781,13 @@ for (const marker of [
     'public windowStatePersistence: Promise<void> = Promise.resolve()',
     'this.windowStatePersistence = this.windowStatePersistence',
     '.then(() => this.refreshCliDetection())',
-    '.then(() => this.initializeSessions())',
+    '.then(() => this.sessions.initializeSessions())',
     'public sessionsInitialized = false',
     'public findSessionForTask(task: ExecutionTask)',
-    'protected canonicalWorkspaceUri(workspaceUri: string | undefined)',
-    'protected sameWorkspaceUri(left: string | undefined, right: string | undefined)',
-    '? this.canonicalWorkspaceUri(candidate.workspaceUri)',
-    'await this.persistWindowState()',
+    'public canonicalWorkspaceUri(workspaceUri: string | undefined)',
+    'public sameWorkspaceUri(left: string | undefined, right: string | undefined)',
+    '? this.host.canonicalWorkspaceUri(candidate.workspaceUri)',
+    'await this.host.sessions.persistWindowState()',
     'ownerSessionId: session.id',
     'protected async recordPreSpawnFailure(',
     'const task = await this.taskService.failBeforeStart(',
@@ -1781,7 +1798,7 @@ for (const marker of [
     'SESSION_MIGRATION_MARKER_KEY',
     'GLOBAL_SESSION_STORAGE_KEY',
     'protected async openRepository(): Promise<void>',
-    'protected renderWorkspacePicker(): React.ReactNode',
+    'public renderWorkspacePicker(): React.ReactNode',
     "aria-label='ワークスペースを開く'",
     "aria-label='ワークスペースを検索'",
     'await this.openFolderExplorer()',
@@ -1796,10 +1813,10 @@ for (const marker of [
     'protected async openFolderExplorer(session?: WindowAgentSession, createFolder = false): Promise<void>',
     'onClick={() => void this.openFolderExplorer(session, true)}',
     'this.folderExplorerService.browse',
-    'protected renderFolderExplorer(): React.ReactNode',
+    'public renderFolderExplorer(): React.ReactNode',
     "aria-label='フォルダーを選択'",
-    'await this.ensureProviderSession(session, false, true)',
-    'onClick={() => this.openSettings()}'
+    'await this.host.sessions.ensureProviderSession(session, false, true)',
+    'onClick={() => this.host.openSettings()}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent rail is missing ${marker}`);
 }
@@ -1807,23 +1824,23 @@ assert.ok(!agentWidget.includes('FileDialogService'), 'Poiesis must not open sto
 assert.ok(!agentWidget.includes('showOpenDialog'), 'Folder selection must use the Poiesis explorer');
 assert.ok(!railSource.includes('<small>現在</small>'), 'Selected sessions must use quiet age metadata, not a current badge');
 assert.ok(
-    (agentWidget.match(/onClick=\{\(\) => this\.openSettings\(\)\}/g)?.length ?? 0) >= 2,
+    (agentWidget.match(/onClick=\{\(\) => this\.host\.openSettings\(\)\}/g)?.length ?? 0) >= 2,
     'Settings controls must open the Poiesis-owned settings modal'
 );
 assert.ok(!agentWidget.includes('poiesis-agent-window__composer-tools'), 'Deferred composer tools must not be shown');
 assert.ok(!agentWidget.includes('protected activeTab:'), 'Agent / Results selection must belong to each session');
 assert.ok(!agentWidget.includes('Widget.ResizeMessage.UnknownSize'), 'Code widgets must receive measured pixel resize messages');
 assert.equal(
-    agentWidget.match(/this\.selectTab\('results'\)/g)?.length,
+    agentWidget.match(/this\.host\.selectTab\('results'\)/g)?.length,
     2,
     'Only the explicit Results tab and completed-task action may switch to Results'
 );
-const codeToggle = agentWidget.match(/protected toggleCodeMode\(\): void \{[\s\S]*?\n    \}/)?.[0];
+const codeToggle = agentWidget.match(/public toggleCodeMode\(\): void \{[\s\S]*?\n    \}/)?.[0];
 assert.ok(codeToggle, 'Code mode toggle is missing');
 assert.ok(!codeToggle.includes('activeTab'), 'Code mode must preserve the previous Agent / Results tab');
 assert.match(
     codeToggle,
-    /if \(this\.codeMode\) \{\s*this\.detachCodeWidgets\(\);\s*this\.codeMode = false;/,
+    /if \(this\.state\.codeMode\) \{\s*this\.detachCodeWidgets\(\);\s*this\.state\.codeMode = false;/,
     'Leaving Code mode must detach direct Theia widgets before rendering Agent / Results'
 );
 for (const forbidden of [

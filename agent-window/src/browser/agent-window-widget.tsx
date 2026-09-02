@@ -83,7 +83,7 @@ import { PoiesisSelect, PoiesisSelectOption } from './components/poiesis-select'
 import { PoiesisTextArea, PoiesisTextInput } from './components/poiesis-inputs';
 import { PoiesisComposer } from './components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from './components/elapsed';
-import { AgentWindowHost, AgentWindowPartBase } from './agent-window/agent-window-host';
+import { AgentWindowHost, AgentWindowState } from './agent-window/agent-window-host';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from './agent-window/session-store';
 import { SettingsPart } from './agent-window/settings-part';
 import { CustomizePart } from './agent-window/customize-part';
@@ -102,56 +102,38 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     protected agentPart!: AgentPart;
     protected headerPart!: HeaderPart;
     protected railPart!: RailPart;
-    [name: string]: any;
+    public sessions!: SessionStore;
 
-    protected readonly agentWindowParts: AgentWindowPartBase[] = [];
-    protected sessionStore!: SessionStore;
-    declare protected readonly sessions: SessionStore['sessions'];
-    declare protected sessionsInitialized: SessionStore['sessionsInitialized'];
-    declare protected sessionsInitialization: SessionStore['sessionsInitialization'];
-    declare protected windowStatePersistence: SessionStore['windowStatePersistence'];
-    declare protected resultsQaPanelStatePersistence: SessionStore['resultsQaPanelStatePersistence'];
-    declare protected resultsTaskRailCollapsed: SessionStore['resultsTaskRailCollapsed'];
-    declare protected legacyErrorMessagesMigrated: SessionStore['legacyErrorMessagesMigrated'];
-    declare protected selectedSessionId: SessionStore['selectedSessionId'];
-    declare protected sessionSequence: SessionStore['sessionSequence'];
-    declare protected readonly watchedScmProviders: SessionStore['watchedScmProviders'];
-    declare protected readonly watchedScmHistoryProviders: SessionStore['watchedScmHistoryProviders'];
-    declare protected readonly selectedSession: SessionStore['selectedSession'];
-    declare protected readonly findSessionByAgentId: SessionStore['findSessionByAgentId'];
-    declare protected readonly findSessionForTask: SessionStore['findSessionForTask'];
-    declare protected readonly selectSession: SessionStore['selectSession'];
-    declare protected readonly workspaceRoot: SessionStore['workspaceRoot'];
-    declare protected readonly workspaceFolderName: SessionStore['workspaceFolderName'];
-    declare protected readonly workspaceContextLabel: SessionStore['workspaceContextLabel'];
-    declare protected readonly gitBranchForWorkspace: SessionStore['gitBranchForWorkspace'];
-    declare protected readonly currentGitBranch: SessionStore['currentGitBranch'];
-    declare protected readonly watchScmProvider: SessionStore['watchScmProvider'];
-    declare protected readonly watchScmHistoryProvider: SessionStore['watchScmHistoryProvider'];
-    declare protected readonly createSession: SessionStore['createSession'];
-    declare protected readonly ensureProviderSession: SessionStore['ensureProviderSession'];
-    declare protected readonly restoreWindowState: SessionStore['restoreWindowState'];
-    declare protected readonly migrateLegacyCliErrorMessage: SessionStore['migrateLegacyCliErrorMessage'];
-    declare protected readonly loadGlobalWindowState: SessionStore['loadGlobalWindowState'];
-    declare protected readonly mergePersistedWindowStates: SessionStore['mergePersistedWindowStates'];
-    declare protected readonly restoreResultsQaPanelState: SessionStore['restoreResultsQaPanelState'];
-    declare protected readonly persistResultsQaPanelState: SessionStore['persistResultsQaPanelState'];
-    declare protected readonly persistWindowState: SessionStore['persistWindowState'];
-    declare protected readonly titleForSession: SessionStore['titleForSession'];
-    declare protected readonly requirementsForSession: SessionStore['requirementsForSession'];
-    declare protected readonly resultsRequirements: SessionStore['resultsRequirements'];
-    declare protected readonly latestTaskForRequirement: SessionStore['latestTaskForRequirement'];
-    declare protected readonly latestRequirement: SessionStore['latestRequirement'];
-    declare protected readonly finishedTasksForRequirement: SessionStore['finishedTasksForRequirement'];
-    declare protected readonly fallbackRequirementChangeSet: SessionStore['fallbackRequirementChangeSet'];
-    declare protected readonly selectedResultsScopeKey: SessionStore['selectedResultsScopeKey'];
-    declare protected readonly persistedTasks: SessionStore['persistedTasks'];
-    declare protected readonly initializeSessions: SessionStore['initializeSessions'];
-    declare protected readonly runningTask: SessionStore['runningTask'];
-    declare protected readonly finishedTasks: SessionStore['finishedTasks'];
-    declare protected readonly isResultsTask: SessionStore['isResultsTask'];
-    declare protected readonly taskFinishedTime: SessionStore['taskFinishedTime'];
-    declare protected readonly taskStatusLabel: SessionStore['taskStatusLabel'];
+    public readonly state: AgentWindowState = {
+        codeMode: false,
+        customizeViewVisible: false,
+        settingsModalVisible: false,
+        shortcutsOverlayVisible: false,
+        uiFontScale: 'standard',
+        agentCli: DEFAULT_CLI_ID,
+        agentModel: '',
+        resultsCli: DEFAULT_CLI_ID,
+        resultsModel: '',
+        allowExternalResultsResources: false,
+        automaticRequirementClassification: true,
+        railCollapsed: false,
+        railWidth: DEFAULT_RAIL_WIDTH,
+        sessionSearchVisible: false,
+        sessionSearchQuery: '',
+        expandedWorkspaceGroups: new Set<string>(),
+        workspacePickerVisible: false,
+        workspaceSearchQuery: '',
+        repositoryPickerVisible: false,
+        repositorySearchQuery: '',
+        folderExplorerVisible: false,
+        creatingFolder: false,
+        newFolderName: '',
+        resultsTaskRailCollapsed: false,
+        resultsSkillNamesLoaded: false,
+        explorerMoreVisible: false,
+        workspaceSkillWatchRoots: [],
+        providerPreparationErrors: new Map<string, string>()
+    };
     static readonly ID = 'poiesis-agent-window';
     static readonly FILES_WIDGET_FACTORY_ID = 'files';
     static readonly SEARCH_WIDGET_FACTORY_ID = 'search-in-workspace';
@@ -160,7 +142,6 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     static readonly EDITOR_WIDGET_FACTORY_ID = 'code-editor-opener';
     static readonly SETTINGS_WIDGET_FACTORY_ID = 'settings_widget';
     static readonly EXTENSIONS_WIDGET_FACTORY_ID = 'vsx-extensions-view-container';
-    protected codeMode = false;
 
     constructor(
         @inject(AgentProvider) public readonly agentProvider: AgentProvider,
@@ -191,110 +172,154 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         super();
     }
 
-    protected registerAgentWindowPart<T extends AgentWindowPartBase>(part: T): T {
-        this.agentWindowParts.push(part);
-        for (const name of Reflect.ownKeys(part)) {
-            if (name === 'host' || name in this) {
-                continue;
-            }
-            Object.defineProperty(this, name, {
-                configurable: true,
-                get: () => Reflect.get(part, name, part),
-                set: value => { Reflect.set(part, name, value, part); }
-            });
-        }
-        let prototype = Object.getPrototypeOf(part);
-        while (prototype && prototype !== AgentWindowPartBase.prototype) {
-            for (const name of Reflect.ownKeys(prototype)) {
-                if (name === 'constructor' || name in this) {
-                    continue;
-                }
-                Object.defineProperty(this, name, {
-                    configurable: true,
-                    get: () => {
-                        const value = Reflect.get(part, name, part);
-                        return typeof value === 'function' ? (value as Function).bind(part) : value;
-                    }
-                });
-            }
-            prototype = Object.getPrototypeOf(prototype);
-        }
-        return part;
+    public addDisposable(disposable: Disposable): void {
+        this.toDispose.push(disposable);
     }
 
-    public resolveAgentWindowMember(name: PropertyKey): unknown {
-        if (name in this) {
-            const value = Reflect.get(this, name, this);
-            return typeof value === 'function' ? (value as Function).bind(this) : value;
-        }
-        for (const part of this.agentWindowParts) {
-            if (name in part) {
-                const value = Reflect.get(part, name, part);
-                return typeof value === 'function' ? value.bind(part) : value;
-            }
-        }
-        return undefined;
-    }
+    // HeaderPart.
+    public renderHeader(): React.ReactNode { return this.headerPart.renderHeader(); }
 
-    public assignAgentWindowMember(name: PropertyKey, value: unknown): boolean {
-        if (Object.prototype.hasOwnProperty.call(this, name)) {
-            return Reflect.set(this, name, value, this);
-        }
-        for (const part of this.agentWindowParts) {
-            if (Object.prototype.hasOwnProperty.call(part, name)) {
-                return Reflect.set(part, name, value, part);
-            }
-        }
-        return false;
+    // SettingsPart.
+    public renderSettingsModal(): React.ReactNode { return this.settingsPart.renderSettingsModal(); }
+    public renderShortcutsOverlay(): React.ReactNode { return this.settingsPart.renderShortcutsOverlay(); }
+    public renderAiRolePill(role: AiRole, compact = false): React.ReactNode {
+        return this.settingsPart.renderAiRolePill(role, compact);
     }
+    public openSettings(): void { this.settingsPart.openSettings(); }
+    public closeSettings(): void { this.settingsPart.closeSettings(); }
+    public openShortcutsOverlay(): void { this.settingsPart.openShortcutsOverlay(); }
+    public closeShortcutsOverlay(): void { this.settingsPart.closeShortcutsOverlay(); }
+    public uiFontScaleValue(): number { return this.settingsPart.uiFontScaleValue(); }
+    public refreshCliDetection(): Promise<void> { return this.settingsPart.refreshCliDetection(); }
+    public restorePoiesisSettings(): Promise<void> { return this.settingsPart.restorePoiesisSettings(); }
+
+    // RailPart.
+    public renderRail(): React.ReactNode { return this.railPart.renderRail(); }
+    public renderWorkspacePicker(): React.ReactNode { return this.railPart.renderWorkspacePicker(); }
+    public renderRepositoryPicker(session: WindowAgentSession): React.ReactNode {
+        return this.railPart.renderRepositoryPicker(session);
+    }
+    public renderFolderExplorer(): React.ReactNode { return this.railPart.renderFolderExplorer(); }
+    public refreshRecentWorkspaces(): Promise<void> { return this.railPart.refreshRecentWorkspaces(); }
+    public closeFolderExplorer(): void { this.railPart.closeFolderExplorer(); }
+    public repositoryLabel(workspaceUri: string | undefined): string { return this.railPart.repositoryLabel(workspaceUri); }
+    public toggleRepositoryPicker(anchor: HTMLElement): void { this.railPart.toggleRepositoryPicker(anchor); }
+    public sessionMeta(session: WindowAgentSession): string { return this.railPart.sessionMeta(session); }
+    public beginDeleteSession(sessionId: string): void { this.railPart.beginDeleteSession(sessionId); }
+    public cancelDeleteSession(): void { this.railPart.cancelDeleteSession(); }
+    public deleteSession(sessionId: string): Promise<void> { return this.railPart.deleteSession(sessionId); }
+    public canonicalWorkspaceUri(workspaceUri: string | undefined): string | undefined {
+        return this.railPart.canonicalWorkspaceUri(workspaceUri);
+    }
+    public sameWorkspaceUri(left: string | undefined, right: string | undefined): boolean {
+        return this.railPart.sameWorkspaceUri(left, right);
+    }
+    public workspaceGroupKey(workspaceUri: string | undefined): string { return this.railPart.workspaceGroupKey(workspaceUri); }
+    public filteredSessions(archived: boolean): WindowAgentSession[] { return this.railPart.filteredSessions(archived); }
+    public clampRailWidth(width: number): number { return this.railPart.clampRailWidth(width); }
+    public disposeRailResize(): void { this.railPart.disposeRailResize(); }
+
+    // AgentPart.
+    public renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
+        return this.agentPart.renderAgent(session, runningTask);
+    }
+    public renderMarkdown(
+        content: string,
+        workspaceImageSources?: ReadonlyMap<string, string>,
+        explicitWorkspaceUri?: string
+    ): React.ReactNode {
+        return this.agentPart.renderMarkdown(content, workspaceImageSources, explicitWorkspaceUri);
+    }
+    public sendAgentMessage(): Promise<void> { return this.agentPart.sendAgentMessage(); }
+    public handleAgentEvent(event: AgentEvent): void { this.agentPart.handleAgentEvent(event); }
+    public restoreAgentActivities(value: unknown): AgentActivity[] | undefined {
+        return this.agentPart.restoreAgentActivities(value);
+    }
+    public disposeAgentRichContentForSession(sessionId: string): void {
+        this.agentPart.disposeAgentRichContentForSession(sessionId);
+    }
+    public disposeAgentRichContent(): void { this.agentPart.disposeAgentRichContent(); }
+    public focusAgentComposer(): void { this.agentPart.focusAgentComposer(); }
+
+    // ResultsPart.
+    public renderResults(session: WindowAgentSession | undefined): React.ReactNode { return this.resultsPart.renderResults(session); }
+    public handleResultsFrameMessage(event: MessageEvent): void { this.resultsPart.handleResultsFrameMessage(event); }
+    public openResultsCitation(rawCitation: string): Promise<void> { return this.resultsPart.openResultsCitation(rawCitation); }
+    public selectResultsTask(taskId: string): void { this.resultsPart.selectResultsTask(taskId); }
+    public selectResultsRequirement(requirementId: string): void { this.resultsPart.selectResultsRequirement(requirementId); }
+    public undoAutomaticRequirementSplit(taskId: string): void { this.resultsPart.undoAutomaticRequirementSplit(taskId); }
+    public retryTask(taskId: string): Promise<void> { return this.resultsPart.retryTask(taskId); }
+    public ensureResultsSkillNames(): Promise<void> { return this.resultsPart.ensureResultsSkillNames(); }
+
+    // CustomizePart.
+    public renderCustomizeView(): React.ReactNode { return this.customizePart.renderCustomizeView(); }
+    public openCustomize(): void { this.customizePart.openCustomize(); }
+    public closeCustomize(update = true): void { this.customizePart.closeCustomize(update); }
+    public handleCustomizeEscape(): void { this.customizePart.handleCustomizeEscape(); }
+    public installWorkspaceSkillSaveShortcut(): void { this.customizePart.installWorkspaceSkillSaveShortcut(); }
+    public scheduleWorkspaceSkillsRefresh(): void { this.customizePart.scheduleWorkspaceSkillsRefresh(); }
+    public disposeWorkspaceSkillWatchers(): void { this.customizePart.disposeWorkspaceSkillWatchers(); }
+    public refreshWorkspaceSkills(): Promise<void> { return this.customizePart.refreshWorkspaceSkills(); }
+
+    // CodePart.
+    public renderCode(): React.ReactNode { return this.codePart.renderCode(); }
+    public registerCodeWidget(factoryId: string, widget: Widget, pinned = false): void {
+        this.codePart.registerCodeWidget(factoryId, widget, pinned);
+    }
+    public ensureCodeFileIcons(): void { this.codePart.ensureCodeFileIcons(); }
+    public ensureCodeTerminal(): Promise<void> { return this.codePart.ensureCodeTerminal(); }
+    public detachCodeWidgets(): void { this.codePart.detachCodeWidgets(); }
+    public installCodeEditorSaveShortcut(): void { this.codePart.installCodeEditorSaveShortcut(); }
+    public installCodeTerminalShortcut(): void { this.codePart.installCodeTerminalShortcut(); }
+    public installCodeTabDropTarget(): void { this.codePart.installCodeTabDropTarget(); }
+    public openCodeSettings(): Promise<void> { return this.codePart.openCodeSettings(); }
+    public openCodeFile(rawUri: string): Promise<void> { return this.codePart.openCodeFile(rawUri); }
+    public openCodeCitation(file: URI, startLine: number, endLine: number): Promise<void> {
+        return this.codePart.openCodeCitation(file, startLine, endLine);
+    }
+    public disposeCodeResources(): void { this.codePart.disposeCodeResources(); }
 
     @postConstruct()
     protected init(): void {
         getDesignVariant();
-        this.sessionStore = this.registerAgentWindowPart(new SessionStore(this));
-        this.settingsPart = this.registerAgentWindowPart(new SettingsPart(this));
-        this.customizePart = this.registerAgentWindowPart(new CustomizePart(this));
-        this.codePart = this.registerAgentWindowPart(new CodePart(this));
-        this.resultsPart = this.registerAgentWindowPart(new ResultsPart(this));
-        this.agentPart = this.registerAgentWindowPart(new AgentPart(this));
-        this.headerPart = this.registerAgentWindowPart(new HeaderPart(this));
-        this.railPart = this.registerAgentWindowPart(new RailPart(this));
+        this.sessions = new SessionStore(this);
+        this.settingsPart = new SettingsPart(this);
+        this.customizePart = new CustomizePart(this);
+        this.codePart = new CodePart(this);
+        this.resultsPart = new ResultsPart(this);
+        this.agentPart = new AgentPart(this);
+        this.headerPart = new HeaderPart(this);
+        this.railPart = new RailPart(this);
         this.id = AgentWindowWidget.ID;
         this.addClass('poiesis-agent-window');
-        this.toDispose.push(Disposable.create(() => {
-            for (const content of this.agentRichContent.values()) {
-                this.revokeAgentImageSources(content.imageSources);
-            }
-            this.agentRichContent.clear();
-            this.agentRichContentPending.clear();
-        }));
+        this.toDispose.push(Disposable.create(() => this.disposeAgentRichContent()));
 
         const closeSessionMenu = (event: PointerEvent): void => {
-            if (this.openSessionMenuId && !(event.target as Element | null)?.closest('.poiesis-agent-window__session-actions')) {
-                this.openSessionMenuId = undefined;
+            if (this.state.openSessionMenuId && !(event.target as Element | null)?.closest('.poiesis-agent-window__session-actions')) {
+                this.state.openSessionMenuId = undefined;
                 this.update();
             }
-            if (this.openResultsMenuKey && !(event.target as Element | null)?.closest('.poiesis-results__menu-host')) {
-                this.openResultsMenuKey = undefined;
+            if (this.state.openResultsMenuKey && !(event.target as Element | null)?.closest('.poiesis-results__menu-host')) {
+                this.state.openResultsMenuKey = undefined;
                 this.update();
             }
-            if (this.repositoryPickerVisible
+            if (this.state.repositoryPickerVisible
                 && !(event.target as Element | null)?.closest('.poiesis-agent-window__repository-picker, .poiesis-agent-window__context-pill.primary')) {
-                this.repositoryPickerVisible = false;
-                this.repositoryPickerAnchor = undefined;
-                this.repositorySearchQuery = '';
+                this.state.repositoryPickerVisible = false;
+                this.state.repositoryPickerAnchor = undefined;
+                this.state.repositorySearchQuery = '';
                 this.update();
             }
-            if (this.workspacePickerVisible
+            if (this.state.workspacePickerVisible
                 && !(event.target as Element | null)?.closest('.poiesis-agent-window__workspace-picker, .poiesis-agent-window__repository-open')) {
-                this.workspacePickerVisible = false;
-                this.workspacePickerAnchor = undefined;
-                this.workspaceSearchQuery = '';
+                this.state.workspacePickerVisible = false;
+                this.state.workspacePickerAnchor = undefined;
+                this.state.workspaceSearchQuery = '';
                 this.update();
             }
-            if (this.explorerMoreVisible
+            if (this.state.explorerMoreVisible
                 && !(event.target as Element | null)?.closest('.poiesis-agent-window__code-explorer-more')) {
-                this.explorerMoreVisible = false;
+                this.state.explorerMoreVisible = false;
                 this.update();
             }
         };
@@ -304,43 +329,43 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
             if (event.key !== 'Escape') {
                 return;
             }
-            if (this.shortcutsOverlayVisible) {
+            if (this.state.shortcutsOverlayVisible) {
                 event.preventDefault();
                 event.stopPropagation();
                 this.closeShortcutsOverlay();
-            } else if (this.folderExplorerVisible) {
+            } else if (this.state.folderExplorerVisible) {
                 event.preventDefault();
                 event.stopPropagation();
-                if (this.creatingFolder) {
-                    this.creatingFolder = false;
-                    this.newFolderName = '';
+                if (this.state.creatingFolder) {
+                    this.state.creatingFolder = false;
+                    this.state.newFolderName = '';
                     this.update();
                 } else {
                     this.closeFolderExplorer();
                 }
-            } else if (this.settingsModalVisible) {
+            } else if (this.state.settingsModalVisible) {
                 event.preventDefault();
                 event.stopPropagation();
                 this.closeSettings();
             } else if (document.querySelector('.poiesis-select__listbox')) {
                 return;
-            } else if (this.customizeViewVisible) {
+            } else if (this.state.customizeViewVisible) {
                 event.preventDefault();
                 event.stopPropagation();
                 this.handleCustomizeEscape();
-            } else if (this.workspacePickerVisible || this.repositoryPickerVisible) {
+            } else if (this.state.workspacePickerVisible || this.state.repositoryPickerVisible) {
                 event.preventDefault();
-                this.workspacePickerVisible = false;
-                this.workspacePickerAnchor = undefined;
-                this.repositoryPickerVisible = false;
-                this.repositoryPickerAnchor = undefined;
-                this.workspaceSearchQuery = '';
-                this.repositorySearchQuery = '';
+                this.state.workspacePickerVisible = false;
+                this.state.workspacePickerAnchor = undefined;
+                this.state.repositoryPickerVisible = false;
+                this.state.repositoryPickerAnchor = undefined;
+                this.state.workspaceSearchQuery = '';
+                this.state.repositorySearchQuery = '';
                 this.update();
-            } else if (this.explorerMoreVisible || this.openSessionMenuId) {
+            } else if (this.state.explorerMoreVisible || this.state.openSessionMenuId) {
                 event.preventDefault();
-                this.explorerMoreVisible = false;
-                this.openSessionMenuId = undefined;
+                this.state.explorerMoreVisible = false;
+                this.state.openSessionMenuId = undefined;
                 this.update();
             }
         };
@@ -354,8 +379,8 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         window.addEventListener('message', receiveResultsMessage);
         this.toDispose.push(Disposable.create(() => window.removeEventListener('message', receiveResultsMessage)));
         this.toDispose.push(this.fileService.onDidFilesChange(event => {
-            if (!this.customizeViewVisible || !event.changes.some(change =>
-                this.workspaceSkillWatchRoots.some((root: URI) => root.isEqualOrParent(change.resource, false)))) {
+            if (!this.state.customizeViewVisible || !event.changes.some(change =>
+                this.state.workspaceSkillWatchRoots.some((root: URI) => root.isEqualOrParent(change.resource, false)))) {
                 return;
             }
             this.scheduleWorkspaceSkillsRefresh();
@@ -363,43 +388,43 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         this.toDispose.push(Disposable.create(() => this.disposeWorkspaceSkillWatchers()));
 
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
-        this.toDispose.push(this.taskService.onDidChangeTask(event => this.sessionStore.handleTaskChange(event)));
-        this.toDispose.push(this.taskService.onDidRecordSkillProposals(() => this.sessionStore.handleSkillProposalsChanged()));
-        this.toDispose.push(this.resultsService.onDidChange(document => this.sessionStore.handleResultsDocumentChanged(document)));
-        this.toDispose.push(this.requirementService.onDidChange(event => this.sessionStore.handleRequirementChange(event)));
+        this.toDispose.push(this.taskService.onDidChangeTask(event => this.sessions.handleTaskChange(event)));
+        this.toDispose.push(this.taskService.onDidRecordSkillProposals(() => this.sessions.handleSkillProposalsChanged()));
+        this.toDispose.push(this.resultsService.onDidChange(document => this.sessions.handleResultsDocumentChanged(document)));
+        this.toDispose.push(this.requirementService.onDidChange(event => this.sessions.handleRequirementChange(event)));
         this.toDispose.push(this.requirementClassificationService.onDidClassify(task =>
-            this.sessionStore.handleRequirementClassified(task)));
+            this.sessions.handleRequirementClassified(task)));
         this.toDispose.push(this.workspaceService.onWorkspaceChanged(() => {
             void this.refreshRecentWorkspaces();
-            if (this.customizeViewVisible) {
+            if (this.state.customizeViewVisible) {
                 void this.refreshWorkspaceSkills();
             }
             this.update();
         }));
         this.toDispose.push(this.workspaceService.onWorkspaceLocationChanged(() => {
             void this.refreshRecentWorkspaces();
-            if (this.customizeViewVisible) {
+            if (this.state.customizeViewVisible) {
                 void this.refreshWorkspaceSkills();
             }
             this.update();
         }));
         this.toDispose.push(this.scmService.onDidAddRepository(repository => {
-            this.watchScmProvider(repository.provider);
+            this.sessions.watchScmProvider(repository.provider);
             this.update();
         }));
         this.toDispose.push(this.scmService.onDidRemoveRepository(() => this.update()));
         this.toDispose.push(this.scmService.onDidChangeSelectedRepository(() => this.update()));
         this.toDispose.push(this.scmService.onDidChangeStatusBarCommands(() => this.update()));
         for (const repository of this.scmService.repositories) {
-            this.watchScmProvider(repository.provider);
+            this.sessions.watchScmProvider(repository.provider);
         }
 
-        this.sessionsInitialization = this.restorePoiesisSettings()
+        this.sessions.sessionsInitialization = this.restorePoiesisSettings()
             .then(() => this.refreshCliDetection())
-            .then(() => this.initializeSessions()).catch((error: unknown) => {
+            .then(() => this.sessions.initializeSessions()).catch((error: unknown) => {
             console.error('[Poiesis] Could not initialize Agent Window sessions.', error);
         }).finally(() => {
-            this.sessionsInitialized = true;
+            this.sessions.sessionsInitialized = true;
             this.update();
         });
         void this.refreshRecentWorkspaces();
@@ -407,7 +432,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     }
 
     protected render(): React.ReactNode {
-        if (!this.sessionsInitialized) {
+        if (!this.sessions.sessionsInitialized) {
             return (
                 <div
                     className='poiesis-agent-window__content poiesis-agent-window__content--initializing'
@@ -422,26 +447,26 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 </div>
             );
         }
-        const session = this.selectedSession();
+        const session = this.sessions.selectedSession();
         const activeTab = session?.activeTab ?? 'agent';
-        const runningTask = this.runningTask(session);
+        const runningTask = this.sessions.runningTask(session);
         return (
             <div
                 className='poiesis-agent-window__content'
-                data-mode={this.codeMode ? 'code' : this.customizeViewVisible ? 'customize' : activeTab}
-                data-rail-collapsed={this.railCollapsed ? 'true' : 'false'}
+                data-mode={this.state.codeMode ? 'code' : this.state.customizeViewVisible ? 'customize' : activeTab}
+                data-rail-collapsed={this.state.railCollapsed ? 'true' : 'false'}
                 style={{
-                    '--poiesis-rail-width': `${this.railWidth}px`,
+                    '--poiesis-rail-width': `${this.state.railWidth}px`,
                     '--poiesis-ui-font-scale': this.uiFontScaleValue()
                 } as React.CSSProperties}
             >
-                {!this.codeMode && this.renderRail()}
+                {!this.state.codeMode && this.renderRail()}
                 <main className='poiesis-agent-window__workspace'>
                     {this.renderHeader()}
                     <div className='poiesis-agent-window__viewport'>
-                        {this.codeMode
+                        {this.state.codeMode
                             ? this.renderCode()
-                            : this.customizeViewVisible
+                            : this.state.customizeViewVisible
                                 ? this.renderCustomizeView()
                             : activeTab === 'agent'
                                 ? <>
@@ -466,82 +491,70 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                                 </>}
                     </div>
                 </main>
-                {this.workspacePickerVisible && this.workspacePickerAnchor && this.renderWorkspacePicker()}
-                {this.repositoryPickerVisible && this.repositoryPickerAnchor && session && this.renderRepositoryPicker(session)}
-                {this.folderExplorerVisible && this.renderFolderExplorer()}
-                {this.settingsModalVisible && this.renderSettingsModal()}
-                {this.shortcutsOverlayVisible && this.renderShortcutsOverlay()}
+                {this.state.workspacePickerVisible && this.state.workspacePickerAnchor && this.renderWorkspacePicker()}
+                {this.state.repositoryPickerVisible && this.state.repositoryPickerAnchor && session && this.renderRepositoryPicker(session)}
+                {this.state.folderExplorerVisible && this.renderFolderExplorer()}
+                {this.state.settingsModalVisible && this.renderSettingsModal()}
+                {this.state.shortcutsOverlayVisible && this.renderShortcutsOverlay()}
             </div>
         );
     }
 
     protected onBeforeDetach(message: Message): void {
-        this.railResizeCleanup?.dispose();
-        this.railResizeCleanup = undefined;
-        this.codeSidebarResizeCleanup?.dispose();
-        this.codeSidebarResizeCleanup = undefined;
-        this.codePanelResizeCleanup?.dispose();
-        this.codePanelResizeCleanup = undefined;
-        if (this.codeWidgetAttachmentFrame !== undefined) {
-            cancelAnimationFrame(this.codeWidgetAttachmentFrame);
-            this.codeWidgetAttachmentFrame = undefined;
-        }
-        this.codeSidebarResizeObserver?.disconnect();
-        this.codeEditorResizeObserver?.disconnect();
-        this.codeTerminalResizeObserver?.disconnect();
-        this.detachCodeWidgets();
+        this.disposeRailResize();
+        this.disposeCodeResources();
         super.onBeforeDetach(message);
     }
 
-    protected toggleCodeMode(): void {
-        if (this.codeMode) {
+    public toggleCodeMode(): void {
+        if (this.state.codeMode) {
             this.detachCodeWidgets();
-            this.codeMode = false;
+            this.state.codeMode = false;
         } else {
             this.closeCustomize(false);
             this.ensureCodeFileIcons();
-            this.codeMode = true;
+            this.state.codeMode = true;
             requestAnimationFrame(() => void this.ensureCodeTerminal());
         }
         this.update();
     }
 
-    protected selectTab(tab: AgentWindowTab): void {
-        const session = this.selectedSession();
+    public selectTab(tab: AgentWindowTab): void {
+        const session = this.sessions.selectedSession();
         if (session) {
             session.activeTab = tab;
-            if (tab === 'results' && !this.resultsRequirements(session)
+            if (tab === 'results' && !this.sessions.resultsRequirements(session)
                 .some(requirement => requirement.id === session.selectedResultsRequirementId)) {
-                session.selectedResultsRequirementId = this.latestRequirement(session)?.id;
+                session.selectedResultsRequirementId = this.sessions.latestRequirement(session)?.id;
                 session.selectedResultsTaskId = undefined;
-                this.persistResultsQaPanelState();
+                this.sessions.persistResultsQaPanelState();
             }
-            this.persistWindowState();
+            this.sessions.persistWindowState();
         }
         this.update();
     }
 
-    protected async newChat(): Promise<void> {
-        await this.sessionsInitialization;
+    public async newChat(): Promise<void> {
+        await this.sessions.sessionsInitialization;
         this.closeCustomize(false);
         this.detachCodeWidgets();
-        this.codeMode = false;
-        this.sessionSearchVisible = false;
-        this.sessionSearchQuery = '';
-        this.repositoryPickerVisible = false;
-        this.repositoryPickerAnchor = undefined;
-        this.repositorySearchQuery = '';
-        const current = this.selectedSession();
+        this.state.codeMode = false;
+        this.state.sessionSearchVisible = false;
+        this.state.sessionSearchQuery = '';
+        this.state.repositoryPickerVisible = false;
+        this.state.repositoryPickerAnchor = undefined;
+        this.state.repositorySearchQuery = '';
+        const current = this.sessions.selectedSession();
         if (current && !current.archived && !current.hasUserMessage) {
             current.activeTab = 'agent';
-            this.persistWindowState();
+            this.sessions.persistWindowState();
             this.update();
-            requestAnimationFrame(() => this.agentComposerInput?.focus());
+            requestAnimationFrame(() => this.focusAgentComposer());
             return;
         }
-        const creation = this.createSession();
-        requestAnimationFrame(() => this.agentComposerInput?.focus());
+        const creation = this.sessions.createSession();
+        requestAnimationFrame(() => this.focusAgentComposer());
         await creation;
-        requestAnimationFrame(() => this.agentComposerInput?.focus());
+        requestAnimationFrame(() => this.focusAgentComposer());
     }
 }

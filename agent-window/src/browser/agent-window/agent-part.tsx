@@ -92,8 +92,6 @@ interface AgentRichContentState {
 const MAX_AGENT_ACTIVITIES_PER_MESSAGE = 300;
 
 export class AgentPart extends AgentWindowPart {
-    protected readonly providerPreparationErrors = new Map<string, string>();
-
     protected readonly agentRichContent = new Map<string, AgentRichContentState>();
 
     protected readonly agentRichContentPending = new Map<string, string>();
@@ -104,7 +102,19 @@ export class AgentPart extends AgentWindowPart {
 
     protected agentComposerInput?: HTMLTextAreaElement;
 
-    protected renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
+    public disposeAgentRichContent(): void {
+        for (const content of this.agentRichContent.values()) {
+            this.revokeAgentImageSources(content.imageSources);
+        }
+        this.agentRichContent.clear();
+        this.agentRichContentPending.clear();
+    }
+
+    public focusAgentComposer(): void {
+        this.agentComposerInput?.focus();
+    }
+
+    public renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
         const newAgent = Boolean(session && !session.hasUserMessage);
         const latestAgentMessageId = [...(session?.messages ?? [])].reverse()
             .find(message => message.role === 'agent')?.id;
@@ -144,7 +154,7 @@ export class AgentPart extends AgentWindowPart {
                                             </details>
                                         )}
                                         {message.taskId && (
-                                            <button type='button' onClick={() => void this.retryTask(message.taskId!)}>再試行</button>
+                                            <button type='button' onClick={() => void this.host.retryTask(message.taskId!)}>再試行</button>
                                         )}
                                     </div>
                                 ) : message.role === 'agent'
@@ -187,7 +197,7 @@ export class AgentPart extends AgentWindowPart {
                     />
                     <div className='poiesis-agent-window__composer-footer'>
                         {session && newAgent && this.renderNewAgentContext(session)}
-                        {session && !newAgent && this.renderAiRolePill('agent')}
+                        {session && !newAgent && this.host.renderAiRolePill('agent')}
                         {session && this.renderRequirementPill(session)}
                         <button
                             className='poiesis-agent-window__send'
@@ -206,7 +216,7 @@ export class AgentPart extends AgentWindowPart {
     }
 
     protected renderRequirementPill(session: WindowAgentSession): React.ReactNode {
-        const requirements = this.requirementsForSession(session);
+        const requirements = this.host.sessions.requirementsForSession(session);
         const currentId = this.requirementService.currentRequirementId(session.id);
         const selected = session.requirementDraft && (session.requirementDraft === 'new'
             || requirements.some(requirement => requirement.id === session.requirementDraft))
@@ -238,7 +248,7 @@ export class AgentPart extends AgentWindowPart {
                     onChange={value => {
                         session.requirementDraft = value === 'new' ? 'new' : value;
                         session.requirementDraftExplicit = true;
-                        void this.persistWindowState();
+                        void this.host.sessions.persistWindowState();
                         this.update();
                     }}
                 />
@@ -247,25 +257,25 @@ export class AgentPart extends AgentWindowPart {
     }
 
     protected renderNewAgentContext(session: WindowAgentSession): React.ReactNode {
-        const branch = session.branch ?? this.gitBranchForWorkspace(session.workspaceUri) ?? 'main';
+        const branch = session.branch ?? this.host.sessions.gitBranchForWorkspace(session.workspaceUri) ?? 'main';
         return (
             <div className='poiesis-agent-window__new-agent-context'>
                 <button
                     type='button'
                     className='poiesis-agent-window__context-pill primary'
-                    aria-expanded={this.repositoryPickerVisible}
+                    aria-expanded={this.host.state.repositoryPickerVisible}
                     aria-controls='poiesis-agent-window-repository-picker'
-                    onClick={event => this.toggleRepositoryPicker(event.currentTarget)}
+                    onClick={event => this.host.toggleRepositoryPicker(event.currentTarget)}
                 >
                     <span className='codicon codicon-folder' aria-hidden='true' />
-                    <span>{this.repositoryLabel(session.workspaceUri)}</span>
+                    <span>{this.host.repositoryLabel(session.workspaceUri)}</span>
                     <span className='codicon codicon-chevron-down' aria-hidden='true' />
                 </button>
                 <span className='poiesis-agent-window__context-pill static' title='現在のローカルブランチ'>
                     <span className='codicon codicon-git-branch' aria-hidden='true' />
                     <span>{branch}</span>
                 </span>
-                {this.renderAiRolePill('agent')}
+                {this.host.renderAiRolePill('agent')}
             </div>
         );
     }
@@ -275,7 +285,7 @@ export class AgentPart extends AgentWindowPart {
         message: ChatMessage,
         isMostRecentAgentMessage: boolean
     ): React.ReactNode {
-        const workspaceUri = session?.workspaceUri ?? this.workspaceRoot()?.resource.toString();
+        const workspaceUri = session?.workspaceUri ?? this.host.sessions.workspaceRoot()?.resource.toString();
         const messageKey = `${session?.id ?? 'workspace'}:${message.id}`;
         const signature = `${workspaceUri ?? ''}\0${message.content}`;
         const richContent = this.agentRichContent.get(messageKey);
@@ -304,9 +314,9 @@ export class AgentPart extends AgentWindowPart {
                             <button
                                 type='button'
                                 onClick={() => {
-                                    this.selectResultsTask(task.id);
-                                    this.selectResultsRequirement(task.requirementId);
-                                    this.selectTab('results');
+                                    this.host.selectResultsTask(task.id);
+                                    this.host.selectResultsRequirement(task.requirementId);
+                                    this.host.selectTab('results');
                                 }}
                             >
                                 Results で確認
@@ -315,7 +325,7 @@ export class AgentPart extends AgentWindowPart {
                         {skillProposalCount > 0 && (
                             <span className='poiesis-agent-window__skill-proposal-notice'>
                                 <span>Skill の提案が {skillProposalCount}件あります</span>
-                                <button type='button' onClick={() => this.openCustomize()}>カスタマイズで確認</button>
+                                <button type='button' onClick={() => this.host.openCustomize()}>カスタマイズで確認</button>
                             </span>
                         )}
                     </div>
@@ -344,7 +354,7 @@ export class AgentPart extends AgentWindowPart {
             <div className='poiesis-agent-window__requirement-classification'>
                 <span>新しい要件「{title}」として分けました</span>
                 <span aria-hidden='true'>·</span>
-                <button type='button' onClick={() => this.undoAutomaticRequirementSplit(task.id)}>戻す</button>
+                <button type='button' onClick={() => this.host.undoAutomaticRequirementSplit(task.id)}>戻す</button>
             </div>
         );
     }
@@ -471,12 +481,12 @@ export class AgentPart extends AgentWindowPart {
         this.update();
     }
 
-    protected renderMarkdown(
+    public renderMarkdown(
         content: string,
         workspaceImageSources?: ReadonlyMap<string, string>,
         explicitWorkspaceUri?: string
     ): React.ReactNode {
-        const workspaceUri = explicitWorkspaceUri ?? this.workspaceRoot()?.resource.toString();
+        const workspaceUri = explicitWorkspaceUri ?? this.host.sessions.workspaceRoot()?.resource.toString();
         return (
             <div
                 className='poiesis-markdown'
@@ -841,7 +851,7 @@ export class AgentPart extends AgentWindowPart {
         }
     }
 
-    protected disposeAgentRichContentForSession(sessionId: string): void {
+    public disposeAgentRichContentForSession(sessionId: string): void {
         const prefix = `${sessionId}:`;
         for (const [messageKey, content] of this.agentRichContent) {
             if (messageKey.startsWith(prefix)) {
@@ -893,7 +903,7 @@ export class AgentPart extends AgentWindowPart {
                 const citationSuffix = target.nextSibling?.textContent?.match(/^:(\d+)(?:\s*[-–—]\s*(\d+))?/);
                 const citationPath = target.textContent?.trim().replace(/\\/g, '/');
                 if (citationSuffix && citationPath && !citationPath.startsWith('/') && !/^[A-Za-z]:/.test(citationPath)) {
-                    void this.openResultsCitation(
+                    void this.host.openResultsCitation(
                         `${citationPath}:${citationSuffix[1]}${citationSuffix[2] ? `-${citationSuffix[2]}` : ''}`
                     );
                 } else {
@@ -911,12 +921,12 @@ export class AgentPart extends AgentWindowPart {
 
     protected async openMarkdownFile(rawUri: string): Promise<void> {
         try {
-            const workspace = this.workspaceRoot()?.resource.normalizePath();
+            const workspace = this.host.sessions.workspaceRoot()?.resource.normalizePath();
             const file = new URI(rawUri).withQuery('').withFragment('').normalizePath();
             if (!workspace?.isEqualOrParent(file, false) || !await this.fileService.exists(file)) {
                 return;
             }
-            await this.openCodeFile(file.toString());
+            await this.host.openCodeFile(file.toString());
         } catch (error) {
             console.error(`Poiesis could not open the Agent file link: ${rawUri}`, error);
         }
@@ -929,7 +939,7 @@ export class AgentPart extends AgentWindowPart {
         const requirementChoice: ExecutionTask['requirementChoice'] = session.requirementDraftExplicit
             ? 'explicit'
             : 'default';
-        const available = this.requirementsForSession(session);
+        const available = this.host.sessions.requirementsForSession(session);
         const selected = session.requirementDraft && session.requirementDraft !== 'new'
             ? available.find(requirement => requirement.id === session.requirementDraft)
             : undefined;
@@ -944,11 +954,11 @@ export class AgentPart extends AgentWindowPart {
         return { requirementId: requirement.id, requirementChoice };
     }
 
-    protected async sendAgentMessage(): Promise<void> {
-        await this.sessionsInitialization;
-        const session = this.selectedSession();
+    public async sendAgentMessage(): Promise<void> {
+        await this.host.sessions.sessionsInitialization;
+        const session = this.host.sessions.selectedSession();
         const content = session?.agentDraft.trim() ?? '';
-        if (!session || !session.workspaceUri || !content || this.runningTask(session)) {
+        if (!session || !session.workspaceUri || !content || this.host.sessions.runningTask(session)) {
             return;
         }
         const { requirementId, requirementChoice } = this.requirementForSend(session, content);
@@ -958,23 +968,23 @@ export class AgentPart extends AgentWindowPart {
         session.updatedAt = sentAt;
         if (!session.hasUserMessage) {
             session.createdAt = sentAt;
-            session.title = this.titleForSession(content);
+            session.title = this.host.sessions.titleForSession(content);
             session.hasUserMessage = true;
         }
         this.update();
-        await this.persistWindowState();
-        if (session.agentSession?.providerId && (session.agentSession.providerId !== this.agentCli
-            || (session.agentSession.model ?? '') !== this.agentModel.trim())) {
+        await this.host.sessions.persistWindowState();
+        if (session.agentSession?.providerId && (session.agentSession.providerId !== this.host.state.agentCli
+            || (session.agentSession.model ?? '') !== this.host.state.agentModel.trim())) {
             session.agentSession = undefined;
         }
-        if (!session.agentSession && !await this.ensureProviderSession(session, false, true)) {
+        if (!session.agentSession && !await this.host.sessions.ensureProviderSession(session, false, true)) {
             await this.recordPreSpawnFailure(
                 session,
                 content,
                 requirementId,
                 requirementChoice,
                 'Agentを開始できませんでした。',
-                this.providerPreparationErrors.get(session.id)
+                this.host.state.providerPreparationErrors.get(session.id)
             );
             return;
         }
@@ -1035,24 +1045,24 @@ export class AgentPart extends AgentWindowPart {
             errorDetails: details
         });
         session.updatedAt = Date.now();
-        await this.persistWindowState();
+        await this.host.sessions.persistWindowState();
         this.update();
     }
 
     protected async cancelRun(): Promise<void> {
-        const session = this.selectedSession()?.agentSession;
+        const session = this.host.sessions.selectedSession()?.agentSession;
         if (session) {
             await this.agentProvider.cancel(session.id);
         }
     }
 
-    protected handleAgentEvent(event: AgentEvent): void {
-        const session = this.findSessionByAgentId(event.sessionId);
+    public handleAgentEvent(event: AgentEvent): void {
+        const session = this.host.sessions.findSessionByAgentId(event.sessionId);
         if (!session) {
             return;
         }
         const autoFollowActivities = event.type === 'activity'
-            && session.id === this.selectedSessionId
+            && session.id === this.host.sessions.selectedSessionId
             && this.isAgentMessagesNearBottom();
         if (event.type === 'task-started') {
             session.messages.push({ id: `agent-${event.taskId}`, role: 'agent', content: '', complete: false, taskId: event.taskId });
@@ -1078,11 +1088,11 @@ export class AgentPart extends AgentWindowPart {
             }));
         }
         session.updatedAt = Date.now();
-        this.persistWindowState();
+        this.host.sessions.persistWindowState();
         this.update();
         if (autoFollowActivities) {
             requestAnimationFrame(() => {
-                if (session.id !== this.selectedSessionId) {
+                if (session.id !== this.host.sessions.selectedSessionId) {
                     return;
                 }
                 const messages = this.node.querySelector<HTMLElement>('.poiesis-agent-window__messages');
@@ -1122,7 +1132,7 @@ export class AgentPart extends AgentWindowPart {
         return capped;
     }
 
-    protected restoreAgentActivities(value: unknown): AgentActivity[] | undefined {
+    public restoreAgentActivities(value: unknown): AgentActivity[] | undefined {
         if (!Array.isArray(value)) {
             return undefined;
         }
@@ -1160,12 +1170,12 @@ export class AgentPart extends AgentWindowPart {
     }
 
     protected setAgentDraft(sessionId: string | undefined, value: string): void {
-        const session = this.selectedSession();
+        const session = this.host.sessions.selectedSession();
         if (!sessionId || session?.id !== sessionId) {
             return;
         }
         session.agentDraft = value;
-        this.persistWindowState();
+        this.host.sessions.persistWindowState();
         this.update();
     }
 

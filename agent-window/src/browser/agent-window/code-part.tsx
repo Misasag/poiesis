@@ -173,9 +173,22 @@ export class CodePart extends AgentWindowPart {
 
     protected suppressNextCodeFileClick = false;
 
-    protected explorerMoreVisible = false;
+    public disposeCodeResources(): void {
+        this.codeSidebarResizeCleanup?.dispose();
+        this.codeSidebarResizeCleanup = undefined;
+        this.codePanelResizeCleanup?.dispose();
+        this.codePanelResizeCleanup = undefined;
+        if (this.codeWidgetAttachmentFrame !== undefined) {
+            cancelAnimationFrame(this.codeWidgetAttachmentFrame);
+            this.codeWidgetAttachmentFrame = undefined;
+        }
+        this.codeSidebarResizeObserver?.disconnect();
+        this.codeEditorResizeObserver?.disconnect();
+        this.codeTerminalResizeObserver?.disconnect();
+        this.detachCodeWidgets();
+    }
 
-    protected renderCode(): React.ReactNode {
+    public renderCode(): React.ReactNode {
         const sidebarLabels: Record<CodeSidebarTab, string> = {
             files: 'Explorer',
             search: 'Search',
@@ -196,7 +209,7 @@ export class CodePart extends AgentWindowPart {
                         {this.renderCodeActivity('extensions', 'extensions', 'Extensions')}
                     </div>
                     <div className='poiesis-agent-window__code-activity-footer'>
-                        <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
+                        <button type='button' title='設定' aria-label='設定' onClick={() => this.host.openSettings()}>
                             <span className='codicon codicon-settings-gear' aria-hidden='true' />
                         </button>
                     </div>
@@ -240,15 +253,15 @@ export class CodePart extends AgentWindowPart {
                                         title='その他の操作'
                                         aria-label='その他の操作'
                                         aria-haspopup='menu'
-                                        aria-expanded={this.explorerMoreVisible}
+                                        aria-expanded={this.host.state.explorerMoreVisible}
                                         onClick={() => {
-                                            this.explorerMoreVisible = !this.explorerMoreVisible;
+                                            this.host.state.explorerMoreVisible = !this.host.state.explorerMoreVisible;
                                             this.update();
                                         }}
                                     >
                                         <span className='codicon codicon-ellipsis' aria-hidden='true' />
                                     </button>
-                                    {this.explorerMoreVisible && this.renderExplorerMoreMenu()}
+                                    {this.host.state.explorerMoreVisible && this.renderExplorerMoreMenu()}
                                 </div>
                             )}
                         </div>
@@ -256,7 +269,7 @@ export class CodePart extends AgentWindowPart {
                     {this.codeSidebarTab === 'files' && (
                         <div className='poiesis-agent-window__code-explorer-root'>
                             <span className='codicon codicon-chevron-down' aria-hidden='true' />
-                            <strong>{this.workspaceFolderName()}</strong>
+                            <strong>{this.host.sessions.workspaceFolderName()}</strong>
                         </div>
                     )}
                     {this.codeSidebarTab === 'git' ? (
@@ -460,7 +473,7 @@ export class CodePart extends AgentWindowPart {
     protected renderCodeScmStatusCommands(): React.ReactNode {
         const commands = this.scmService.statusBarCommands;
         if (commands.length === 0) {
-            return <span><span className='codicon codicon-source-control' aria-hidden='true' /> {this.currentGitBranch() ?? 'main'}</span>;
+            return <span><span className='codicon codicon-source-control' aria-hidden='true' /> {this.host.sessions.currentGitBranch() ?? 'main'}</span>;
         }
         return commands.map((command, index) => {
             const label = this.scmStatusCommandLabel(command.title);
@@ -592,7 +605,7 @@ export class CodePart extends AgentWindowPart {
         );
     }
 
-    protected ensureCodeFileIcons(): void {
+    public ensureCodeFileIcons(): void {
         if (this.iconThemeService.current === 'none' && this.iconThemeService.getDefinition('theia-file-icons')) {
             this.iconThemeService.current = 'theia-file-icons';
         }
@@ -642,7 +655,7 @@ export class CodePart extends AgentWindowPart {
                 type='button'
                 role='menuitem'
                 onClick={() => {
-                    this.explorerMoreVisible = false;
+                    this.host.state.explorerMoreVisible = false;
                     void this.commandService.executeCommand(command, this.codeFilesWidget);
                     this.update();
                 }}
@@ -718,10 +731,10 @@ export class CodePart extends AgentWindowPart {
                 dirtyListener?.dispose();
             });
             this.codeCenterWidgetListeners.set(widget, listeners);
-            this.toDispose.push(listeners);
+            this.host.addDisposable(listeners);
             requestAnimationFrame(() => this.revealCodeCenterTab(widget));
         }
-        if (changed && this.codeMode) {
+        if (changed && this.host.state.codeMode) {
             this.update();
             this.scheduleCodeWidgetAttachments();
         }
@@ -961,18 +974,18 @@ export class CodePart extends AgentWindowPart {
         }
         this.codeWidgetAttachmentFrame = requestAnimationFrame(() => {
             this.codeWidgetAttachmentFrame = undefined;
-            if (this.isDisposed) {
+            if (this.host.isDisposed) {
                 return;
             }
             this.syncCodeWidgetAttachments();
-            if (this.codeMode && this.codePanelVisible && this.codeTerminalHost) {
+            if (this.host.state.codeMode && this.codePanelVisible && this.codeTerminalHost) {
                 void this.ensureCodeTerminal();
             }
         });
     }
 
     protected syncCodeWidgetAttachments(): void {
-        if (!this.codeMode) {
+        if (!this.host.state.codeMode) {
             this.detachCodeWidgets();
             return;
         }
@@ -990,7 +1003,7 @@ export class CodePart extends AgentWindowPart {
         }
     }
 
-    protected async ensureCodeTerminal(): Promise<void> {
+    public async ensureCodeTerminal(): Promise<void> {
         if (!this.codeTerminalWidget) {
             if (!this.codeTerminalCreation) {
                 this.codeTerminalCreation = this.newCodeTerminal()
@@ -1004,7 +1017,7 @@ export class CodePart extends AgentWindowPart {
             }
             await this.codeTerminalCreation;
         }
-        if (this.codeMode && this.codePanelVisible) {
+        if (this.host.state.codeMode && this.codePanelVisible) {
             this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
         }
     }
@@ -1041,7 +1054,7 @@ export class CodePart extends AgentWindowPart {
             terminal.title.changed.disconnect(onTitleChanged);
         });
         this.codeTerminalWidgetListeners.set(terminal, listeners);
-        this.toDispose.push(listeners);
+        this.host.addDisposable(listeners);
         this.update();
     }
 
@@ -1162,7 +1175,7 @@ export class CodePart extends AgentWindowPart {
         }
     }
 
-    protected detachCodeWidgets(): void {
+    public detachCodeWidgets(): void {
         this.detachCodeWidget(this.activeCodeSidebarWidget());
         this.detachCodeWidget(this.codeGitGraphWidget);
         this.detachCodeWidget(this.activeCodeCenterWidget);
@@ -1172,7 +1185,7 @@ export class CodePart extends AgentWindowPart {
     protected selectCodeSidebarTab(tab: CodeSidebarTab): void {
         this.detachCodeWidget(this.activeCodeSidebarWidget());
         this.detachCodeWidget(this.codeGitGraphWidget);
-        this.explorerMoreVisible = false;
+        this.host.state.explorerMoreVisible = false;
         this.codeSidebarTab = tab;
         this.update();
         if (tab === 'extensions') {
@@ -1192,7 +1205,7 @@ export class CodePart extends AgentWindowPart {
                 this.extensionsSearchModel.query = BUILTIN_QUERY;
             }
         }
-        if (this.codeMode && this.codeSidebarTab === 'extensions') {
+        if (this.host.state.codeMode && this.codeSidebarTab === 'extensions') {
             this.scheduleCodeWidgetAttachments();
         }
     }
@@ -1280,7 +1293,7 @@ export class CodePart extends AgentWindowPart {
         }
     }
 
-    protected installCodeTabDropTarget(): void {
+    public installCodeTabDropTarget(): void {
         const onPointerDown = (event: PointerEvent): void => {
             if (event.button !== 0 || !(event.target instanceof Element)) {
                 return;
@@ -1359,7 +1372,7 @@ export class CodePart extends AgentWindowPart {
         document.addEventListener('keydown', onKeyDown, true);
         document.addEventListener('click', onClick, true);
         window.addEventListener('blur', onWindowBlur);
-        this.toDispose.push(Disposable.create(() => {
+        this.host.addDisposable(Disposable.create(() => {
             document.removeEventListener('pointerdown', onPointerDown, true);
             document.removeEventListener('pointermove', onPointerMove, true);
             document.removeEventListener('pointerup', onPointerUp, true);
@@ -1417,13 +1430,13 @@ export class CodePart extends AgentWindowPart {
         }
     }
 
-    protected installCodeEditorSaveShortcut(): void {
+    public installCodeEditorSaveShortcut(): void {
         const onKeyDown = (event: KeyboardEvent): void => {
             const savePressed = (event.ctrlKey || event.metaKey)
                 && !event.altKey
                 && !event.shiftKey
                 && (event.key.toLocaleLowerCase() === 's' || event.code === 'KeyS');
-            const widget = this.codeMode ? this.activeCodeCenterWidget : undefined;
+            const widget = this.host.state.codeMode ? this.activeCodeCenterWidget : undefined;
             if (!savePressed || !widget || !Saveable.get(widget)) {
                 return;
             }
@@ -1435,16 +1448,16 @@ export class CodePart extends AgentWindowPart {
             });
         };
         document.addEventListener('keydown', onKeyDown, true);
-        this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
+        this.host.addDisposable(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
     }
 
-    protected installCodeTerminalShortcut(): void {
+    public installCodeTerminalShortcut(): void {
         const onKeyDown = (event: KeyboardEvent): void => {
             const togglePressed = (event.ctrlKey || event.metaKey)
                 && !event.altKey
                 && !event.shiftKey
                 && (event.key === '`' || event.code === 'Backquote');
-            if (!this.codeMode || !togglePressed) {
+            if (!this.host.state.codeMode || !togglePressed) {
                 return;
             }
             event.preventDefault();
@@ -1452,7 +1465,7 @@ export class CodePart extends AgentWindowPart {
             this.toggleCodePanel();
         };
         document.addEventListener('keydown', onKeyDown, true);
-        this.toDispose.push(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
+        this.host.addDisposable(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
     }
 
     protected closeCodeCenterWidget(widget: Widget): void {
@@ -1569,17 +1582,47 @@ export class CodePart extends AgentWindowPart {
         return widget.title.label || widget.title.caption || 'Editor';
     }
 
-    protected async openCodeSettings(): Promise<void> {
+    public async openCodeSettings(): Promise<void> {
         const settings = await this.widgetManager.getOrCreateWidget(CodePart.SETTINGS_WIDGET_FACTORY_ID);
         this.registerCodeWidget(CodePart.SETTINGS_WIDGET_FACTORY_ID, settings);
         this.selectCodeCenterWidget(settings);
     }
 
-    protected async openCodeFile(rawUri: string): Promise<void> {
-        this.closeCustomize(false);
-        if (!this.codeMode) {
+    public async openCodeCitation(file: URI, startLine: number, endLine: number): Promise<void> {
+        this.host.closeCustomize(false);
+        if (!this.host.state.codeMode) {
             this.ensureCodeFileIcons();
-            this.codeMode = true;
+            this.host.state.codeMode = true;
+            this.update();
+            requestAnimationFrame(() => void this.ensureCodeTerminal());
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        }
+        const uriKey = file.toString();
+        this.pendingPinnedEditorUris.add(uriKey);
+        try {
+            await this.editorManager.open(file, {
+                mode: 'activate',
+                selection: {
+                    start: { line: startLine - 1, character: 0 },
+                    end: { line: endLine - 1, character: 0 }
+                }
+            });
+            const opened = this.codeCenterWidgets.find(candidate => candidate instanceof EditorWidget
+                && candidate.editor.uri.toString() === uriKey);
+            if (opened) {
+                this.pinCodeCenterWidget(opened);
+                this.selectCodeCenterWidget(opened);
+            }
+        } finally {
+            this.pendingPinnedEditorUris.delete(uriKey);
+        }
+    }
+
+    public async openCodeFile(rawUri: string): Promise<void> {
+        this.host.closeCustomize(false);
+        if (!this.host.state.codeMode) {
+            this.ensureCodeFileIcons();
+            this.host.state.codeMode = true;
             this.update();
             requestAnimationFrame(() => void this.ensureCodeTerminal());
             await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));

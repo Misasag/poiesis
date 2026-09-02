@@ -97,47 +97,17 @@ const MIN_RAIL_WIDTH = 196;
 const MAX_RAIL_WIDTH = 420;
 
 export class RailPart extends AgentWindowPart {
-    protected deleteSessionConfirmationId?: string;
-
-    protected railCollapsed = false;
-
-    protected railWidth = DEFAULT_RAIL_WIDTH;
-
-    protected openSessionMenuId?: string;
-
-    protected renamingSessionId?: string;
-
     protected renameDraft = '';
 
     protected showArchivedSessions = false;
 
-    protected sessionSearchVisible = false;
-
-    protected sessionSearchQuery = '';
-
-    protected readonly expandedWorkspaceGroups = new Set<string>();
-
     protected sessionSearchInput?: HTMLInputElement;
-
-    protected workspacePickerVisible = false;
-
-    protected workspacePickerAnchor?: PickerAnchor;
-
-    protected workspaceSearchQuery = '';
 
     protected workspaceSearchInput?: HTMLInputElement;
 
     protected recentWorkspaceUris: string[] = [];
 
-    protected repositoryPickerVisible = false;
-
-    protected repositoryPickerAnchor?: PickerAnchor;
-
-    protected repositorySearchQuery = '';
-
     protected repositorySearchInput?: HTMLInputElement;
-
-    protected folderExplorerVisible = false;
 
     protected folderExplorerSessionId?: string;
 
@@ -149,19 +119,20 @@ export class RailPart extends AgentWindowPart {
 
     protected folderExplorerAddress = '';
 
-    protected creatingFolder = false;
-
-    protected newFolderName = '';
-
     protected railResizeCleanup?: Disposable;
 
-    protected renderRail(): React.ReactNode {
+    public disposeRailResize(): void {
+        this.railResizeCleanup?.dispose();
+        this.railResizeCleanup = undefined;
+    }
+
+    public renderRail(): React.ReactNode {
         const workspaceGroups = this.workspaceSessionGroups();
-        const toggleLabel = this.railCollapsed ? '左サイドバーを展開' : '左サイドバーを折りたたむ';
+        const toggleLabel = this.host.state.railCollapsed ? '左サイドバーを展開' : '左サイドバーを折りたたむ';
         return (
             <aside
                 className='poiesis-agent-window__rail'
-                data-collapsed={this.railCollapsed ? 'true' : 'false'}
+                data-collapsed={this.host.state.railCollapsed ? 'true' : 'false'}
                 aria-label='セッションのサイドバー'
             >
                 <div className='poiesis-agent-window__rail-top'>
@@ -174,7 +145,7 @@ export class RailPart extends AgentWindowPart {
                             onClick={() => this.toggleRail()}
                         >
                             <span
-                                className={`codicon ${this.railCollapsed
+                                className={`codicon ${this.host.state.railCollapsed
                                     ? 'codicon-layout-sidebar-left'
                                     : 'codicon-layout-sidebar-left-off'}`}
                                 aria-hidden='true'
@@ -185,7 +156,7 @@ export class RailPart extends AgentWindowPart {
                         type='button'
                         className='poiesis-agent-window__rail-action'
                         title='新しいチャット'
-                        onClick={() => void this.newChat()}
+                        onClick={() => void this.host.newChat()}
                     >
                         <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
                             <span className='codicon codicon-comment-add' />
@@ -194,9 +165,9 @@ export class RailPart extends AgentWindowPart {
                     </button>
                     <button
                         type='button'
-                        className={`poiesis-agent-window__rail-action${this.sessionSearchVisible ? ' pressed' : ''}`}
-                        aria-pressed={this.sessionSearchVisible}
-                        aria-expanded={this.sessionSearchVisible && !this.railCollapsed}
+                        className={`poiesis-agent-window__rail-action${this.host.state.sessionSearchVisible ? ' pressed' : ''}`}
+                        aria-pressed={this.host.state.sessionSearchVisible}
+                        aria-expanded={this.host.state.sessionSearchVisible && !this.host.state.railCollapsed}
                         aria-controls='poiesis-agent-window-session-search'
                         title='検索'
                         onClick={() => this.showSessionSearch()}
@@ -208,23 +179,23 @@ export class RailPart extends AgentWindowPart {
                     </button>
                     <button
                         type='button'
-                        className={`poiesis-agent-window__rail-action${this.customizeViewVisible ? ' active' : ''}`}
+                        className={`poiesis-agent-window__rail-action${this.host.state.customizeViewVisible ? ' active' : ''}`}
                         title='カスタマイズ'
-                        aria-current={this.customizeViewVisible ? 'page' : undefined}
-                        onClick={() => this.openCustomize()}
+                        aria-current={this.host.state.customizeViewVisible ? 'page' : undefined}
+                        onClick={() => this.host.openCustomize()}
                     >
                         <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
                             <span className='codicon codicon-tools' />
                         </span>
                         <span className='poiesis-agent-window__rail-action-label'>カスタマイズ</span>
                     </button>
-                    {this.sessionSearchVisible && !this.railCollapsed && (
+                    {this.host.state.sessionSearchVisible && !this.host.state.railCollapsed && (
                         <label className='poiesis-agent-window__session-search' id='poiesis-agent-window-session-search'>
                             <span className='codicon codicon-search' aria-hidden='true' />
                             <PoiesisTextInput
                                 elementRef={this.setSessionSearchInput}
                                 type='search'
-                                value={this.sessionSearchQuery}
+                                value={this.host.state.sessionSearchQuery}
                                 placeholder='会話を検索'
                                 aria-label='会話を検索'
                                 onValueChange={value => this.setSessionSearchQuery(value)}
@@ -244,7 +215,7 @@ export class RailPart extends AgentWindowPart {
                         className='poiesis-agent-window__repository-open'
                         title='フォルダーを開く'
                         aria-label='フォルダーを開く'
-                        aria-expanded={this.workspacePickerVisible}
+                        aria-expanded={this.host.state.workspacePickerVisible}
                         aria-controls='poiesis-agent-window-workspace-picker'
                         onClick={event => this.toggleWorkspacePicker(event.currentTarget)}
                     >
@@ -257,12 +228,12 @@ export class RailPart extends AgentWindowPart {
                 <div className='poiesis-agent-window__rail-footer'>
                     <span className='poiesis-agent-window__rail-footer-label'>Poiesis</span>
                     <div className='poiesis-agent-window__rail-footer-actions'>
-                        <button type='button' title='設定' aria-label='設定' onClick={() => this.openSettings()}>
+                        <button type='button' title='設定' aria-label='設定' onClick={() => this.host.openSettings()}>
                             <span className='codicon codicon-settings-gear' aria-hidden='true' />
                         </button>
                     </div>
                 </div>
-                {!this.railCollapsed && (
+                {!this.host.state.railCollapsed && (
                     <div
                         className='poiesis-agent-window__rail-resize-handle'
                         role='separator'
@@ -270,7 +241,7 @@ export class RailPart extends AgentWindowPart {
                         aria-orientation='vertical'
                         aria-valuemin={MIN_RAIL_WIDTH}
                         aria-valuemax={MAX_RAIL_WIDTH}
-                        aria-valuenow={this.railWidth}
+                        aria-valuenow={this.host.state.railWidth}
                         tabIndex={0}
                         onPointerDown={event => this.startRailResize(event)}
                         onDoubleClick={() => this.resetRailWidth()}
@@ -282,7 +253,7 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected workspaceSessionGroups(): WorkspaceSessionGroup[] {
-        const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
+        const currentWorkspaceUri = this.host.sessions.workspaceRoot()?.resource.toString();
         const groups = new Map<string, WorkspaceSessionGroup>();
         const ensureGroup = (workspaceUri?: string): WorkspaceSessionGroup => {
             const key = this.workspaceGroupKey(workspaceUri);
@@ -294,7 +265,7 @@ export class RailPart extends AgentWindowPart {
                     workspaceUri,
                     name: resource?.path.base || resource?.displayName || 'ワークスペースなし',
                     branch: this.sameWorkspaceUri(workspaceUri, currentWorkspaceUri)
-                        ? this.gitBranchForWorkspace(workspaceUri) ?? this.currentGitBranch() ?? 'main'
+                        ? this.host.sessions.gitBranchForWorkspace(workspaceUri) ?? this.host.sessions.currentGitBranch() ?? 'main'
                         : 'main',
                     current: this.sameWorkspaceUri(workspaceUri, currentWorkspaceUri),
                     activeSessions: [],
@@ -331,7 +302,7 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected renderWorkspaceSessionGroup(group: WorkspaceSessionGroup): React.ReactNode {
-        const expanded = this.expandedWorkspaceGroups.has(group.key);
+        const expanded = this.host.state.expandedWorkspaceGroups.has(group.key);
         const pinnedSessions = group.activeSessions.filter(session => session.pinned);
         const recentSessions = group.activeSessions.filter(session => !session.pinned);
         return (
@@ -359,7 +330,7 @@ export class RailPart extends AgentWindowPart {
                 {expanded && recentSessions.map(session => this.renderSessionRow(session))}
                 {expanded && !group.activeSessions.length && (
                     <div className='poiesis-agent-window__session-empty'>
-                        {this.sessionSearchQuery.trim() ? '一致する会話はありません。' : 'セッションはありません。'}
+                        {this.host.state.sessionSearchQuery.trim() ? '一致する会話はありません。' : 'セッションはありません。'}
                     </div>
                 )}
                 {expanded && group.archivedSessions.length > 0 && (
@@ -381,11 +352,11 @@ export class RailPart extends AgentWindowPart {
         );
     }
 
-    protected workspaceGroupKey(workspaceUri: string | undefined): string {
+    public workspaceGroupKey(workspaceUri: string | undefined): string {
         return this.canonicalWorkspaceUri(workspaceUri) ?? '__no-workspace__';
     }
 
-    protected canonicalWorkspaceUri(workspaceUri: string | undefined): string | undefined {
+    public canonicalWorkspaceUri(workspaceUri: string | undefined): string | undefined {
         if (!workspaceUri) {
             return undefined;
         }
@@ -396,18 +367,18 @@ export class RailPart extends AgentWindowPart {
         }
     }
 
-    protected sameWorkspaceUri(left: string | undefined, right: string | undefined): boolean {
+    public sameWorkspaceUri(left: string | undefined, right: string | undefined): boolean {
         return this.canonicalWorkspaceUri(left) === this.canonicalWorkspaceUri(right);
     }
 
     protected renderSessionRow(session: WindowAgentSession): React.ReactNode {
-        const selected = session.id === this.selectedSessionId;
-        const renaming = session.id === this.renamingSessionId;
-        const menuOpen = session.id === this.openSessionMenuId;
+        const selected = session.id === this.host.sessions.selectedSessionId;
+        const renaming = session.id === this.host.state.renamingSessionId;
+        const menuOpen = session.id === this.host.state.openSessionMenuId;
         const state = this.sessionState(session);
         const running = state.kind === 'running';
         const switchesWorkspace = Boolean(session.workspaceUri
-            && !this.sameWorkspaceUri(session.workspaceUri, this.workspaceRoot()?.resource.toString()));
+            && !this.sameWorkspaceUri(session.workspaceUri, this.host.sessions.workspaceRoot()?.resource.toString()));
         return (
             <div
                 key={session.id}
@@ -445,7 +416,7 @@ export class RailPart extends AgentWindowPart {
                             ? `${session.title} ・ ${this.repositoryLabel(session.workspaceUri)}へ切り替え`
                             : session.title}
                         aria-current={selected ? 'true' : undefined}
-                        onClick={() => session.archived ? this.restoreSession(session.id, true) : this.selectSession(session.id)}
+                        onClick={() => session.archived ? this.restoreSession(session.id, true) : this.host.sessions.selectSession(session.id)}
                     >
                         {session.pinned && <span className='codicon codicon-pinned' aria-label='ピン留め済み' />}
                         <span className={`poiesis-agent-window__status-dot ${state.kind}`} aria-hidden='true' />
@@ -476,7 +447,7 @@ export class RailPart extends AgentWindowPart {
                                         <button type='button' role='menuitem' onClick={() => this.restoreSession(session.id)}>
                                             <span className='codicon codicon-archive' aria-hidden='true' />復元
                                         </button>
-                                        {this.deleteSessionConfirmationId === session.id ? (
+                                        {this.host.state.deleteSessionConfirmationId === session.id ? (
                                             <div className='poiesis-agent-window__inline-confirm' role='group' aria-label='完全削除の確認'>
                                                 <span>取り消せません</span>
                                                 <button type='button' className='danger' onClick={() => void this.deleteSession(session.id)}>削除</button>
@@ -515,9 +486,9 @@ export class RailPart extends AgentWindowPart {
         this.sessionSearchInput = input ?? undefined;
     };
 
-    protected filteredSessions(archived: boolean): WindowAgentSession[] {
-        const query = this.sessionSearchQuery.trim().toLocaleLowerCase();
-        return this.sessions
+    public filteredSessions(archived: boolean): WindowAgentSession[] {
+        const query = this.host.state.sessionSearchQuery.trim().toLocaleLowerCase();
+        return this.host.sessions.sessions
             .filter(session => session.archived === archived)
             .filter(session => !query
                 || session.title.toLocaleLowerCase().includes(query)
@@ -526,106 +497,106 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected toggleSessionMenu(sessionId: string): void {
-        this.openSessionMenuId = this.openSessionMenuId === sessionId ? undefined : sessionId;
+        this.host.state.openSessionMenuId = this.host.state.openSessionMenuId === sessionId ? undefined : sessionId;
         this.update();
     }
 
     protected beginSessionRename(sessionId: string): void {
-        const session = this.sessions.find(candidate => candidate.id === sessionId);
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId);
         if (!session) {
             return;
         }
-        this.openSessionMenuId = undefined;
-        this.renamingSessionId = sessionId;
+        this.host.state.openSessionMenuId = undefined;
+        this.host.state.renamingSessionId = sessionId;
         this.renameDraft = session.title;
         this.update();
     }
 
     protected commitSessionRename(sessionId: string): void {
-        if (this.renamingSessionId !== sessionId) {
+        if (this.host.state.renamingSessionId !== sessionId) {
             return;
         }
-        const session = this.sessions.find(candidate => candidate.id === sessionId);
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId);
         const title = this.renameDraft.replace(/\s+/g, ' ').trim();
         if (session && title) {
             session.title = title.slice(0, 80);
             session.updatedAt = Date.now();
         }
-        this.renamingSessionId = undefined;
+        this.host.state.renamingSessionId = undefined;
         this.renameDraft = '';
-        this.persistWindowState();
+        this.host.sessions.persistWindowState();
         this.update();
     }
 
     protected cancelSessionRename(): void {
-        this.renamingSessionId = undefined;
+        this.host.state.renamingSessionId = undefined;
         this.renameDraft = '';
         this.update();
     }
 
     protected togglePinnedSession(sessionId: string): void {
-        const session = this.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
         if (!session) {
             return;
         }
         session.pinned = !session.pinned;
         session.updatedAt = Date.now();
-        this.openSessionMenuId = undefined;
-        this.persistWindowState();
+        this.host.state.openSessionMenuId = undefined;
+        this.host.sessions.persistWindowState();
         this.update();
     }
 
     protected async archiveSession(sessionId: string): Promise<void> {
-        const session = this.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
-        if (!session || this.runningTask(session)) {
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
+        if (!session || this.host.sessions.runningTask(session)) {
             return;
         }
         session.archived = true;
         session.pinned = false;
         session.updatedAt = Date.now();
-        this.openSessionMenuId = undefined;
-        if (this.selectedSessionId === sessionId) {
+        this.host.state.openSessionMenuId = undefined;
+        if (this.host.sessions.selectedSessionId === sessionId) {
             const next = this.filteredSessions(false)[0];
-            this.selectedSessionId = next?.id;
+            this.host.sessions.selectedSessionId = next?.id;
             if (!next) {
-                await this.createSession();
+                await this.host.sessions.createSession();
                 return;
             }
         }
-        this.persistWindowState();
+        this.host.sessions.persistWindowState();
         this.update();
     }
 
     protected restoreSession(sessionId: string, select = false): void {
-        const session = this.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
         if (!session) {
             return;
         }
         session.archived = false;
         session.updatedAt = Date.now();
-        this.openSessionMenuId = undefined;
+        this.host.state.openSessionMenuId = undefined;
         if (select) {
             session.activeTab = 'agent';
-            this.selectSession(session.id);
+            this.host.sessions.selectSession(session.id);
             return;
         }
-        this.persistWindowState();
+        this.host.sessions.persistWindowState();
         this.update();
     }
 
-    protected beginDeleteSession(sessionId: string): void {
-        this.deleteSessionConfirmationId = sessionId;
+    public beginDeleteSession(sessionId: string): void {
+        this.host.state.deleteSessionConfirmationId = sessionId;
         this.update();
     }
 
-    protected cancelDeleteSession(): void {
-        this.deleteSessionConfirmationId = undefined;
+    public cancelDeleteSession(): void {
+        this.host.state.deleteSessionConfirmationId = undefined;
         this.update();
     }
 
-    protected async deleteSession(sessionId: string): Promise<void> {
-        const session = this.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
-        if (!session || this.deleteSessionConfirmationId !== sessionId) {
+    public async deleteSession(sessionId: string): Promise<void> {
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
+        if (!session || this.host.state.deleteSessionConfirmationId !== sessionId) {
             return;
         }
         for (const [taskId, notice] of session.resultsNotices) {
@@ -635,15 +606,15 @@ export class RailPart extends AgentWindowPart {
         }
         this.taskService.remove(session.taskIds);
         this.resultsService.remove(session.taskIds);
-        this.disposeAgentRichContentForSession(session.id);
-        const index = this.sessions.indexOf(session);
+        this.host.disposeAgentRichContentForSession(session.id);
+        const index = this.host.sessions.sessions.indexOf(session);
         if (index !== -1) {
-            this.sessions.splice(index, 1);
+            this.host.sessions.sessions.splice(index, 1);
         }
-        this.openSessionMenuId = undefined;
-        this.deleteSessionConfirmationId = undefined;
-        this.persistWindowState();
-        this.persistResultsQaPanelState();
+        this.host.state.openSessionMenuId = undefined;
+        this.host.state.deleteSessionConfirmationId = undefined;
+        this.host.sessions.persistWindowState();
+        this.host.sessions.persistResultsQaPanelState();
         this.update();
     }
 
@@ -658,15 +629,15 @@ export class RailPart extends AgentWindowPart {
         }
         event.preventDefault();
         const startX = event.clientX;
-        const startWidth = this.railWidth;
+        const startWidth = this.host.state.railWidth;
         const resize = (moveEvent: PointerEvent): void => {
-            this.railWidth = this.clampRailWidth(startWidth + moveEvent.clientX - startX);
+            this.host.state.railWidth = this.clampRailWidth(startWidth + moveEvent.clientX - startX);
             this.update();
         };
         const finish = (): void => {
             this.railResizeCleanup?.dispose();
             this.railResizeCleanup = undefined;
-            this.persistWindowState();
+            this.host.sessions.persistWindowState();
         };
         this.railResizeCleanup?.dispose();
         document.body.classList.add('poiesis-is-resizing-rail');
@@ -685,57 +656,57 @@ export class RailPart extends AgentWindowPart {
             return;
         }
         event.preventDefault();
-        this.railWidth = event.key === 'Home'
+        this.host.state.railWidth = event.key === 'Home'
             ? MIN_RAIL_WIDTH
             : event.key === 'End'
                 ? MAX_RAIL_WIDTH
-                : this.clampRailWidth(this.railWidth + delta);
-        this.persistWindowState();
+                : this.clampRailWidth(this.host.state.railWidth + delta);
+        this.host.sessions.persistWindowState();
         this.update();
     }
 
     protected resetRailWidth(): void {
-        this.railWidth = DEFAULT_RAIL_WIDTH;
-        this.persistWindowState();
+        this.host.state.railWidth = DEFAULT_RAIL_WIDTH;
+        this.host.sessions.persistWindowState();
         this.update();
     }
 
-    protected clampRailWidth(width: number): number {
+    public clampRailWidth(width: number): number {
         return Math.min(MAX_RAIL_WIDTH, Math.max(MIN_RAIL_WIDTH, Math.round(width)));
     }
 
     protected toggleRail(): void {
-        this.railCollapsed = !this.railCollapsed;
-        this.persistWindowState();
+        this.host.state.railCollapsed = !this.host.state.railCollapsed;
+        this.host.sessions.persistWindowState();
         this.update();
-        if (!this.railCollapsed && this.sessionSearchVisible) {
+        if (!this.host.state.railCollapsed && this.host.state.sessionSearchVisible) {
             requestAnimationFrame(() => this.sessionSearchInput?.focus());
         }
     }
 
     protected showSessionSearch(): void {
-        this.railCollapsed = false;
-        this.sessionSearchVisible = true;
+        this.host.state.railCollapsed = false;
+        this.host.state.sessionSearchVisible = true;
         this.update();
         requestAnimationFrame(() => this.sessionSearchInput?.focus());
     }
 
     protected closeSessionSearch(): void {
-        this.sessionSearchVisible = false;
-        this.sessionSearchQuery = '';
+        this.host.state.sessionSearchVisible = false;
+        this.host.state.sessionSearchQuery = '';
         this.update();
     }
 
     protected setSessionSearchQuery(value: string): void {
-        this.sessionSearchQuery = value;
+        this.host.state.sessionSearchQuery = value;
         this.update();
     }
 
     protected toggleWorkspaceGroup(groupKey: string): void {
-        if (this.expandedWorkspaceGroups.has(groupKey)) {
-            this.expandedWorkspaceGroups.delete(groupKey);
+        if (this.host.state.expandedWorkspaceGroups.has(groupKey)) {
+            this.host.state.expandedWorkspaceGroups.delete(groupKey);
         } else {
-            this.expandedWorkspaceGroups.add(groupKey);
+            this.host.state.expandedWorkspaceGroups.add(groupKey);
         }
         this.update();
     }
@@ -749,20 +720,20 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected toggleWorkspacePicker(anchor: HTMLElement): void {
-        this.workspacePickerVisible = !this.workspacePickerVisible;
-        this.repositoryPickerVisible = false;
-        this.repositoryPickerAnchor = undefined;
-        this.workspaceSearchQuery = '';
-        this.workspacePickerAnchor = this.workspacePickerVisible
+        this.host.state.workspacePickerVisible = !this.host.state.workspacePickerVisible;
+        this.host.state.repositoryPickerVisible = false;
+        this.host.state.repositoryPickerAnchor = undefined;
+        this.host.state.workspaceSearchQuery = '';
+        this.host.state.workspacePickerAnchor = this.host.state.workspacePickerVisible
             ? this.pickerAnchor(anchor, 'right')
             : undefined;
         this.update();
-        if (this.workspacePickerVisible) {
+        if (this.host.state.workspacePickerVisible) {
             requestAnimationFrame(() => this.workspaceSearchInput?.focus());
         }
     }
 
-    protected async refreshRecentWorkspaces(): Promise<void> {
+    public async refreshRecentWorkspaces(): Promise<void> {
         try {
             this.recentWorkspaceUris = await this.workspaceService.recentWorkspaces();
             this.update();
@@ -790,7 +761,7 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected setWorkspaceSearchQuery(value: string): void {
-        this.workspaceSearchQuery = value;
+        this.host.state.workspaceSearchQuery = value;
         this.update();
         requestAnimationFrame(() => {
             this.workspaceSearchInput?.focus();
@@ -798,8 +769,8 @@ export class RailPart extends AgentWindowPart {
         });
     }
 
-    protected renderWorkspacePicker(): React.ReactNode {
-        const query = this.workspaceSearchQuery.trim().toLocaleLowerCase();
+    public renderWorkspacePicker(): React.ReactNode {
+        const query = this.host.state.workspaceSearchQuery.trim().toLocaleLowerCase();
         const choices = this.workspaceChoices().filter(choice => !query
             || choice.name.toLocaleLowerCase().includes(query)
             || choice.path.toLocaleLowerCase().includes(query));
@@ -811,22 +782,22 @@ export class RailPart extends AgentWindowPart {
                 id='poiesis-agent-window-workspace-picker'
                 role='dialog'
                 aria-label='ワークスペースを開く'
-                style={this.workspacePickerAnchor}
+                style={this.host.state.workspacePickerAnchor}
             >
                 <div className='poiesis-agent-window__workspace-picker-title'>ワークスペースを開く</div>
                 <label className='poiesis-agent-window__workspace-picker-search'>
                     <span className='codicon codicon-search' aria-hidden='true' />
                     <PoiesisTextInput
                         elementRef={input => { this.workspaceSearchInput = input ?? undefined; }}
-                        value={this.workspaceSearchQuery}
+                        value={this.host.state.workspaceSearchQuery}
                         placeholder='ワークスペースを検索'
                         aria-label='ワークスペースを検索'
                         onValueChange={value => this.setWorkspaceSearchQuery(value)}
                         onKeyDown={event => {
                             if (event.key === 'Escape') {
-                                this.workspacePickerVisible = false;
-                                this.workspacePickerAnchor = undefined;
-                                this.workspaceSearchQuery = '';
+                                this.host.state.workspacePickerVisible = false;
+                                this.host.state.workspacePickerAnchor = undefined;
+                                this.host.state.workspaceSearchQuery = '';
                                 this.update();
                             }
                         }}
@@ -883,13 +854,13 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected openKnownWorkspace(workspaceUri: string): void {
-        this.workspacePickerVisible = false;
-        this.workspacePickerAnchor = undefined;
-        this.workspaceSearchQuery = '';
+        this.host.state.workspacePickerVisible = false;
+        this.host.state.workspacePickerAnchor = undefined;
+        this.host.state.workspaceSearchQuery = '';
         this.workspaceService.open(new URI(workspaceUri), { preserveWindow: true });
     }
 
-    protected repositoryLabel(workspaceUri: string | undefined): string {
+    public repositoryLabel(workspaceUri: string | undefined): string {
         if (!workspaceUri) {
             return 'Repositoryを選択';
         }
@@ -897,24 +868,24 @@ export class RailPart extends AgentWindowPart {
         return known?.name ?? new URI(workspaceUri).path.base ?? 'Repository';
     }
 
-    protected toggleRepositoryPicker(anchor: HTMLElement): void {
-        this.repositoryPickerVisible = !this.repositoryPickerVisible;
-        this.workspacePickerVisible = false;
-        this.workspacePickerAnchor = undefined;
-        this.repositorySearchQuery = '';
-        this.repositoryPickerAnchor = this.repositoryPickerVisible
+    public toggleRepositoryPicker(anchor: HTMLElement): void {
+        this.host.state.repositoryPickerVisible = !this.host.state.repositoryPickerVisible;
+        this.host.state.workspacePickerVisible = false;
+        this.host.state.workspacePickerAnchor = undefined;
+        this.host.state.repositorySearchQuery = '';
+        this.host.state.repositoryPickerAnchor = this.host.state.repositoryPickerVisible
             ? this.pickerAnchor(anchor, 'above')
             : undefined;
         this.update();
-        if (this.repositoryPickerVisible) {
+        if (this.host.state.repositoryPickerVisible) {
             requestAnimationFrame(() => this.repositorySearchInput?.focus());
         }
     }
 
     protected closeNewAgentPickers(): void {
-        this.repositoryPickerVisible = false;
-        this.repositoryPickerAnchor = undefined;
-        this.repositorySearchQuery = '';
+        this.host.state.repositoryPickerVisible = false;
+        this.host.state.repositoryPickerAnchor = undefined;
+        this.host.state.repositorySearchQuery = '';
         this.update();
     }
 
@@ -941,7 +912,7 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected setRepositorySearchQuery(value: string): void {
-        this.repositorySearchQuery = value;
+        this.host.state.repositorySearchQuery = value;
         this.update();
         requestAnimationFrame(() => {
             this.repositorySearchInput?.focus();
@@ -954,22 +925,22 @@ export class RailPart extends AgentWindowPart {
             return;
         }
         session.workspaceUri = workspaceUri;
-        session.branch = this.gitBranchForWorkspace(workspaceUri) ?? 'main';
+        session.branch = this.host.sessions.gitBranchForWorkspace(workspaceUri) ?? 'main';
         session.updatedAt = Date.now();
         this.closeNewAgentPickers();
-        this.persistWindowState();
+        this.host.sessions.persistWindowState();
     }
 
     protected async openFolderExplorer(session?: WindowAgentSession, createFolder = false): Promise<void> {
-        this.folderExplorerVisible = true;
+        this.host.state.folderExplorerVisible = true;
         this.folderExplorerSessionId = session?.id;
         this.folderExplorerError = undefined;
-        this.creatingFolder = createFolder;
-        this.newFolderName = '';
+        this.host.state.creatingFolder = createFolder;
+        this.host.state.newFolderName = '';
         this.update();
         await this.loadFolderExplorer(session?.workspaceUri
             ? new URI(session.workspaceUri).path.fsPath()
-            : this.workspaceRoot()?.resource.path.fsPath());
+            : this.host.sessions.workspaceRoot()?.resource.path.fsPath());
     }
 
     protected async loadFolderExplorer(path?: string): Promise<void> {
@@ -987,17 +958,17 @@ export class RailPart extends AgentWindowPart {
         }
     }
 
-    protected closeFolderExplorer(): void {
-        this.folderExplorerVisible = false;
+    public closeFolderExplorer(): void {
+        this.host.state.folderExplorerVisible = false;
         this.folderExplorerSessionId = undefined;
         this.folderExplorerError = undefined;
-        this.creatingFolder = false;
+        this.host.state.creatingFolder = false;
         this.update();
     }
 
     protected async createFolderInExplorer(): Promise<void> {
         const parentPath = this.folderExplorerResult?.path;
-        const name = this.newFolderName.trim();
+        const name = this.host.state.newFolderName.trim();
         if (!parentPath || !name) {
             return;
         }
@@ -1006,8 +977,8 @@ export class RailPart extends AgentWindowPart {
         this.update();
         try {
             const folderPath = await this.folderExplorerService.create(parentPath, name);
-            this.creatingFolder = false;
-            this.newFolderName = '';
+            this.host.state.creatingFolder = false;
+            this.host.state.newFolderName = '';
             await this.loadFolderExplorer(folderPath);
         } catch (error) {
             this.folderExplorerLoading = false;
@@ -1018,7 +989,7 @@ export class RailPart extends AgentWindowPart {
 
     protected selectFolderFromExplorer(): void {
         const session = this.folderExplorerSessionId
-            ? this.sessions.find(candidate => candidate.id === this.folderExplorerSessionId)
+            ? this.host.sessions.sessions.find(candidate => candidate.id === this.folderExplorerSessionId)
             : undefined;
         const selectedPath = this.folderExplorerResult?.path;
         if (!selectedPath || (this.folderExplorerSessionId && !session)) {
@@ -1030,22 +1001,22 @@ export class RailPart extends AgentWindowPart {
             session.branch = 'main';
             session.updatedAt = Date.now();
         }
-        this.repositoryPickerVisible = false;
-        this.repositoryPickerAnchor = undefined;
-        this.repositorySearchQuery = '';
+        this.host.state.repositoryPickerVisible = false;
+        this.host.state.repositoryPickerAnchor = undefined;
+        this.host.state.repositorySearchQuery = '';
         this.closeFolderExplorer();
-        this.persistWindowState();
+        this.host.sessions.persistWindowState();
         this.workspaceService.open(folder, { preserveWindow: true });
     }
 
     protected async openRepository(): Promise<void> {
-        this.workspacePickerVisible = false;
-        this.workspacePickerAnchor = undefined;
-        this.workspaceSearchQuery = '';
+        this.host.state.workspacePickerVisible = false;
+        this.host.state.workspacePickerAnchor = undefined;
+        this.host.state.workspaceSearchQuery = '';
         await this.openFolderExplorer();
     }
 
-    protected sessionMeta(session: WindowAgentSession): string {
+    public sessionMeta(session: WindowAgentSession): string {
         const ageInMinutes = Math.floor(Math.max(0, Date.now() - session.createdAt) / 60_000);
         if (ageInMinutes < 1) {
             return '今';
@@ -1061,7 +1032,7 @@ export class RailPart extends AgentWindowPart {
         kind: 'running' | 'failed' | 'unread' | 'cancelled' | 'idle';
         label: string;
     } {
-        if (this.runningTask(session)) {
+        if (this.host.sessions.runningTask(session)) {
             return { kind: 'running', label: '実行中' };
         }
         if (session.lastTaskStatus === 'failed') {
@@ -1079,7 +1050,7 @@ export class RailPart extends AgentWindowPart {
         return { kind: 'idle', label: '' };
     }
 
-    protected renderFolderExplorer(): React.ReactNode {
+    public renderFolderExplorer(): React.ReactNode {
         const result = this.folderExplorerResult;
         return (
             <section className='poiesis-folder-explorer' role='dialog' aria-modal='true' aria-label='フォルダーを選択'>
@@ -1125,16 +1096,16 @@ export class RailPart extends AgentWindowPart {
                 </div>
                 <main className='poiesis-folder-explorer__body'>
                     <div className='poiesis-folder-explorer__column-heading'><span>名前</span><span>種類</span></div>
-                    {this.creatingFolder && (
+                    {this.host.state.creatingFolder && (
                         <div className='poiesis-folder-explorer__new-folder-row'>
                             <span className='codicon codicon-folder' aria-hidden='true' />
                             <PoiesisTextInput
                                 autoFocus
-                                value={this.newFolderName}
+                                value={this.host.state.newFolderName}
                                 placeholder='新しいフォルダー'
                                 aria-label='新しいフォルダー名'
                                 onValueChange={value => {
-                                    this.newFolderName = value;
+                                    this.host.state.newFolderName = value;
                                     this.update();
                                 }}
                                 onKeyDown={event => {
@@ -1142,13 +1113,13 @@ export class RailPart extends AgentWindowPart {
                                         event.preventDefault();
                                         void this.createFolderInExplorer();
                                     } else if (event.key === 'Escape') {
-                                        this.creatingFolder = false;
-                                        this.newFolderName = '';
+                                        this.host.state.creatingFolder = false;
+                                        this.host.state.newFolderName = '';
                                         this.update();
                                     }
                                 }}
                             />
-                            <button type='button' disabled={!this.newFolderName.trim()} onClick={() => void this.createFolderInExplorer()}>作成</button>
+                            <button type='button' disabled={!this.host.state.newFolderName.trim()} onClick={() => void this.createFolderInExplorer()}>作成</button>
                         </div>
                     )}
                     {this.folderExplorerLoading && <div className='poiesis-folder-explorer__state'>フォルダーを読み込み中…</div>}
@@ -1175,8 +1146,8 @@ export class RailPart extends AgentWindowPart {
                         type='button'
                         className='poiesis-folder-explorer__new-folder'
                         onClick={() => {
-                            this.creatingFolder = true;
-                            this.newFolderName = '';
+                            this.host.state.creatingFolder = true;
+                            this.host.state.newFolderName = '';
                             this.update();
                         }}
                     >
@@ -1191,9 +1162,9 @@ export class RailPart extends AgentWindowPart {
         );
     }
 
-    protected renderRepositoryPicker(session: WindowAgentSession): React.ReactNode {
+    public renderRepositoryPicker(session: WindowAgentSession): React.ReactNode {
         const repositoryChoices = this.repositoryChoices();
-        const query = this.repositorySearchQuery.trim().toLocaleLowerCase();
+        const query = this.host.state.repositorySearchQuery.trim().toLocaleLowerCase();
         const filteredChoices = repositoryChoices.filter(choice => !query
             || choice.name.toLocaleLowerCase().includes(query)
             || choice.path.toLocaleLowerCase().includes(query));
@@ -1203,13 +1174,13 @@ export class RailPart extends AgentWindowPart {
                 id='poiesis-agent-window-repository-picker'
                 role='dialog'
                 aria-label='Repositoryを選択'
-                style={this.repositoryPickerAnchor}
+                style={this.host.state.repositoryPickerAnchor}
             >
                 <label className='poiesis-agent-window__repository-search'>
                     <span className='codicon codicon-search' aria-hidden='true' />
                     <PoiesisTextInput
                         elementRef={input => { this.repositorySearchInput = input ?? undefined; }}
-                        value={this.repositorySearchQuery}
+                        value={this.host.state.repositorySearchQuery}
                         placeholder='Repositoryを検索'
                         aria-label='Repositoryを検索'
                         onValueChange={value => this.setRepositorySearchQuery(value)}

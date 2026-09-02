@@ -73,9 +73,7 @@ import { PoiesisTextArea, PoiesisTextInput } from '../components/poiesis-inputs'
 import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
-import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
-
-type UiFontScale = 'small' | 'standard' | 'large';
+import { AgentWindowHost, AgentWindowPart, UiFontScale } from './agent-window-host';
 
 interface PersistedPoiesisSettings {
     version: 4;
@@ -102,34 +100,14 @@ interface LegacyPoiesisSettings {
 const SETTINGS_STORAGE_KEY = 'poiesis.settings.v1';
 
 export class SettingsPart extends AgentWindowPart {
-    protected settingsModalVisible = false;
-
-    protected shortcutsOverlayVisible = false;
-
-    protected uiFontScale: UiFontScale = 'standard';
-
-    protected agentCli: KnownCliId = DEFAULT_CLI_ID;
-
-    protected agentModel = '';
-
-    protected resultsCli: KnownCliId = DEFAULT_CLI_ID;
-
-    protected resultsModel = '';
-
     protected readonly customModelRoles = new Set<AiRole>();
-
-    protected allowExternalResultsResources = false;
-
-    protected automaticRequirementClassification = true;
-
-    protected cliDetectionReport?: CliDetectionReport;
 
     protected cliDetectionLoading = false;
 
     protected clearDataConfirmation = false;
 
-    protected renderSettingsModal(): React.ReactNode {
-        const archivedSessions = this.sessions
+    public renderSettingsModal(): React.ReactNode {
+        const archivedSessions = this.host.sessions.sessions
             .filter(session => session.archived && session.hasUserMessage)
             .sort((left, right) => right.updatedAt - left.updatedAt);
         return (
@@ -163,8 +141,8 @@ export class SettingsPart extends AgentWindowPart {
                                 <div><strong>UI文字サイズ</strong><small>Poiesisのサイドバー、会話、Resultsの表示スケールを変更します。</small></div>
                                 <div className='poiesis-settings-modal__segmented' role='radiogroup' aria-label='UI文字サイズ'>
                                     {([['small', '小'], ['standard', '標準'], ['large', '大']] as Array<[UiFontScale, string]>).map(([scale, label]) => (
-                                        <label key={scale} className={this.uiFontScale === scale ? 'active' : ''}>
-                                            <input type='radio' name='poiesis-ui-scale' value={scale} checked={this.uiFontScale === scale} onChange={() => this.setUiFontScale(scale)} />
+                                        <label key={scale} className={this.host.state.uiFontScale === scale ? 'active' : ''}>
+                                            <input type='radio' name='poiesis-ui-scale' value={scale} checked={this.host.state.uiFontScale === scale} onChange={() => this.setUiFontScale(scale)} />
                                             <span>{label}</span>
                                         </label>
                                     ))}
@@ -178,7 +156,7 @@ export class SettingsPart extends AgentWindowPart {
                                 <label className='poiesis-agent-window__switch'>
                                     <input
                                         type='checkbox'
-                                        checked={this.automaticRequirementClassification}
+                                        checked={this.host.state.automaticRequirementClassification}
                                         aria-label='要件の自動分類'
                                         onChange={event => this.setAutomaticRequirementClassification(event.currentTarget.checked)}
                                     />
@@ -196,8 +174,8 @@ export class SettingsPart extends AgentWindowPart {
                                 <h2 id='poiesis-settings-cli'>AI の役割と Model</h2>
                                 <button type='button' className='poiesis-settings-modal__text-button' disabled={this.cliDetectionLoading} onClick={() => void this.refreshCliDetection()}>再検出</button>
                             </div>
-                            {this.renderCliRoleSelector('agent', 'Agent の AI', this.agentCli)}
-                            {this.renderCliRoleSelector('results', 'Results の AI', this.resultsCli)}
+                            {this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)}
+                            {this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)}
                         </section>
 
                         <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-results'>
@@ -206,7 +184,7 @@ export class SettingsPart extends AgentWindowPart {
                             <div className='poiesis-settings-modal__row'>
                                 <div><strong>成果文書の外部リソース読み込みを許可</strong><small>OFFではResults HTMLからのネットワーク画像や外部スタイルをブロックします。</small></div>
                                 <label className='poiesis-agent-window__switch'>
-                                    <input type='checkbox' checked={this.allowExternalResultsResources} aria-label='成果文書の外部リソースを許可' onChange={event => this.setAllowExternalResultsResources(event.currentTarget.checked)} />
+                                    <input type='checkbox' checked={this.host.state.allowExternalResultsResources} aria-label='成果文書の外部リソースを許可' onChange={event => this.setAllowExternalResultsResources(event.currentTarget.checked)} />
                                     <span aria-hidden='true' />
                                 </label>
                             </div>
@@ -219,15 +197,15 @@ export class SettingsPart extends AgentWindowPart {
                                 {archivedSessions.length === 0 && <p>アーカイブ済みのセッションはありません。</p>}
                                 {archivedSessions.map(session => (
                                     <div className='poiesis-settings-modal__archived-row' key={session.id}>
-                                        <span><strong>{session.title}</strong><small>{this.sessionMeta(session)}</small></span>
-                                        {this.deleteSessionConfirmationId === session.id ? (
+                                        <span><strong>{session.title}</strong><small>{this.host.sessionMeta(session)}</small></span>
+                                        {this.host.state.deleteSessionConfirmationId === session.id ? (
                                             <div className='poiesis-settings-modal__confirm' role='group' aria-label={`${session.title}の完全削除を確認`}>
                                                 <span>完全に削除しますか？</span>
-                                                <button type='button' className='danger' onClick={() => void this.deleteSession(session.id)}>削除</button>
-                                                <button type='button' onClick={() => this.cancelDeleteSession()}>戻る</button>
+                                                <button type='button' className='danger' onClick={() => void this.host.deleteSession(session.id)}>削除</button>
+                                                <button type='button' onClick={() => this.host.cancelDeleteSession()}>戻る</button>
                                             </div>
                                         ) : (
-                                            <button type='button' className='danger ghost' onClick={() => this.beginDeleteSession(session.id)}>完全削除</button>
+                                            <button type='button' className='danger ghost' onClick={() => this.host.beginDeleteSession(session.id)}>完全削除</button>
                                         )}
                                     </div>
                                 ))}
@@ -255,7 +233,7 @@ export class SettingsPart extends AgentWindowPart {
         );
     }
 
-    protected renderShortcutsOverlay(): React.ReactNode {
+    public renderShortcutsOverlay(): React.ReactNode {
         const shortcuts = [
             { label: 'Agentへ送信', keys: ['Ctrl / ⌘', 'Enter'] },
             { label: 'Resultsへ質問を送信', keys: ['Enter'] },
@@ -295,7 +273,7 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected renderCliRoleSelector(role: AiRole, label: string, selected: KnownCliId): React.ReactNode {
-        const detections = this.cliDetectionReport?.detections ?? [];
+        const detections = this.host.state.cliDetectionReport?.detections ?? [];
         const selectedDetection = detections.find(detection => detection.id === selected);
         const model = this.roleModel(role);
         const modelIds = selectedDetection?.models.map(option => option.id) ?? [];
@@ -369,16 +347,16 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected roleModelIsCustom(role: AiRole): boolean {
-        const detection = this.cliDetectionReport?.detections.find(item => item.id === (role === 'agent' ? this.agentCli : this.resultsCli));
+        const detection = this.host.state.cliDetectionReport?.detections.find(item => item.id === (role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli));
         const model = this.roleModel(role);
         return this.customModelRoles.has(role) || Boolean(detection && !detection.models.some(option => option.id === model));
     }
 
     protected rolePillOptions(role: AiRole): PoiesisSelectOption[] {
-        const selectedProvider = role === 'agent' ? this.agentCli : this.resultsCli;
+        const selectedProvider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
         const selectedModel = this.roleModel(role);
         const selectedCustom = this.roleModelIsCustom(role);
-        const detections = this.cliDetectionReport?.detections ?? [];
+        const detections = this.host.state.cliDetectionReport?.detections ?? [];
         if (!detections.length) {
             const name = selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1);
             return [{
@@ -430,18 +408,18 @@ export class SettingsPart extends AgentWindowPart {
         }
         const provider = match[1];
         const modelChoice = decodeURIComponent(match[2]);
-        const detection = this.cliDetectionReport?.detections.find(item => item.id === provider);
+        const detection = this.host.state.cliDetectionReport?.detections.find(item => item.id === provider);
         if (detection?.status !== 'found' || !detection.executableRoles.includes(role)
             || (modelChoice !== '__custom__' && !detection.models.some(option => option.id === modelChoice))) {
             return;
         }
         const model = modelChoice === '__custom__' ? '' : modelChoice;
         if (role === 'agent') {
-            this.agentCli = provider;
-            this.agentModel = model;
+            this.host.state.agentCli = provider;
+            this.host.state.agentModel = model;
         } else {
-            this.resultsCli = provider;
-            this.resultsModel = model;
+            this.host.state.resultsCli = provider;
+            this.host.state.resultsModel = model;
             this.resultsGenerationContext.providerId = provider;
             this.resultsGenerationContext.model = model;
         }
@@ -454,13 +432,13 @@ export class SettingsPart extends AgentWindowPart {
         this.update();
     }
 
-    protected renderAiRolePill(role: AiRole, compact = false): React.ReactNode {
-        const selectedProvider = role === 'agent' ? this.agentCli : this.resultsCli;
+    public renderAiRolePill(role: AiRole, compact = false): React.ReactNode {
+        const selectedProvider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
         const selectedModel = this.roleModel(role);
         const custom = this.roleModelIsCustom(role);
-        const detection = this.cliDetectionReport?.detections.find(item => item.id === selectedProvider);
+        const detection = this.host.state.cliDetectionReport?.detections.find(item => item.id === selectedProvider);
         const executable = detection?.status === 'found' && detection.executableRoles.includes(role);
-        const loading = !this.cliDetectionReport || this.cliDetectionLoading;
+        const loading = !this.host.state.cliDetectionReport || this.cliDetectionLoading;
         const warning = !loading && !executable;
         const value = this.roleChoiceValue(selectedProvider, custom ? '__custom__' : selectedModel);
         const roleLabel = role === 'agent' ? 'Agent' : 'Results';
@@ -495,63 +473,63 @@ export class SettingsPart extends AgentWindowPart {
         );
     }
 
-    protected openSettings(): void {
-        this.closeCustomize(false);
-        this.settingsModalVisible = true;
-        this.shortcutsOverlayVisible = false;
-        this.deleteSessionConfirmationId = undefined;
+    public openSettings(): void {
+        this.host.closeCustomize(false);
+        this.host.state.settingsModalVisible = true;
+        this.host.state.shortcutsOverlayVisible = false;
+        this.host.state.deleteSessionConfirmationId = undefined;
         this.clearDataConfirmation = false;
         this.update();
         void this.refreshCliDetection();
     }
 
-    protected closeSettings(): void {
-        this.settingsModalVisible = false;
-        this.shortcutsOverlayVisible = false;
-        this.deleteSessionConfirmationId = undefined;
+    public closeSettings(): void {
+        this.host.state.settingsModalVisible = false;
+        this.host.state.shortcutsOverlayVisible = false;
+        this.host.state.deleteSessionConfirmationId = undefined;
         this.clearDataConfirmation = false;
         this.update();
     }
 
-    protected openShortcutsOverlay(): void {
-        this.shortcutsOverlayVisible = true;
+    public openShortcutsOverlay(): void {
+        this.host.state.shortcutsOverlayVisible = true;
         this.update();
     }
 
-    protected closeShortcutsOverlay(): void {
-        this.shortcutsOverlayVisible = false;
+    public closeShortcutsOverlay(): void {
+        this.host.state.shortcutsOverlayVisible = false;
         this.update();
     }
 
     protected async openTheiaSettings(): Promise<void> {
         this.closeSettings();
-        if (!this.codeMode) {
-            this.ensureCodeFileIcons();
-            this.codeMode = true;
+        if (!this.host.state.codeMode) {
+            this.host.ensureCodeFileIcons();
+            this.host.state.codeMode = true;
             this.update();
             await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
         }
-        await this.openCodeSettings();
+        await this.host.openCodeSettings();
     }
 
-    protected uiFontScaleValue(): number {
-        return this.uiFontScale === 'small' ? 0.92 : this.uiFontScale === 'large' ? 1.12 : 1;
+    public uiFontScaleValue(): number {
+        return this.host.state.uiFontScale === 'small' ? 0.92 : this.host.state.uiFontScale === 'large' ? 1.12 : 1;
     }
 
     protected setUiFontScale(scale: UiFontScale): void {
-        this.uiFontScale = scale;
+        this.host.state.uiFontScale = scale;
         this.persistPoiesisSettings();
         this.update();
     }
 
     protected setRoleCli(role: AiRole, cli: KnownCliId): void {
-        const defaultModel = this.cliDetectionReport?.detections.find(detection => detection.id === cli)?.defaultModel ?? '';
+        const defaultModel = this.host.state.cliDetectionReport?.detections.find(detection => detection.id === cli)?.defaultModel ?? '';
         if (role === 'agent') {
-            this.agentCli = cli;
-            this.agentModel = defaultModel;
+            this.host.state.agentCli = cli;
+            this.host.state.agentModel = defaultModel;
         } else {
-            this.resultsCli = cli;
-            this.resultsModel = defaultModel;
+            this.host.state.resultsCli = cli;
+            this.host.state.resultsModel = defaultModel;
             this.resultsGenerationContext.providerId = cli;
             this.resultsGenerationContext.model = defaultModel;
         }
@@ -561,7 +539,7 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected roleModel(role: AiRole): string {
-        return role === 'agent' ? this.agentModel : this.resultsModel;
+        return role === 'agent' ? this.host.state.agentModel : this.host.state.resultsModel;
     }
 
     protected setRoleModelChoice(role: AiRole, value: string): void {
@@ -576,9 +554,9 @@ export class SettingsPart extends AgentWindowPart {
 
     protected setRoleModel(role: AiRole, model: string): void {
         if (role === 'agent') {
-            this.agentModel = model;
+            this.host.state.agentModel = model;
         } else {
-            this.resultsModel = model;
+            this.host.state.resultsModel = model;
             this.resultsGenerationContext.model = model.trim();
         }
         this.persistPoiesisSettings();
@@ -586,36 +564,36 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected setAllowExternalResultsResources(allow: boolean): void {
-        this.allowExternalResultsResources = allow;
+        this.host.state.allowExternalResultsResources = allow;
         this.persistPoiesisSettings();
         this.update();
     }
 
     protected setAutomaticRequirementClassification(enabled: boolean): void {
-        this.automaticRequirementClassification = enabled;
+        this.host.state.automaticRequirementClassification = enabled;
         this.requirementClassificationService.enabled = enabled;
         this.persistPoiesisSettings();
         this.update();
     }
 
-    protected async refreshCliDetection(): Promise<void> {
+    public async refreshCliDetection(): Promise<void> {
         if (this.cliDetectionLoading) {
             return;
         }
         this.cliDetectionLoading = true;
         this.update();
         try {
-            this.cliDetectionReport = await this.agentRuntimeServer.detectClis();
+            this.host.state.cliDetectionReport = await this.agentRuntimeServer.detectClis();
             let settingsChanged = false;
             for (const role of ['agent', 'results'] as const) {
-                const selected = role === 'agent' ? this.agentCli : this.resultsCli;
+                const selected = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
                 const currentModel = this.roleModel(role);
-                const detection = this.cliDetectionReport.detections.find(item => item.id === selected);
+                const detection = this.host.state.cliDetectionReport.detections.find(item => item.id === selected);
                 if (!currentModel && detection?.defaultModel) {
                     if (role === 'agent') {
-                        this.agentModel = detection.defaultModel;
+                        this.host.state.agentModel = detection.defaultModel;
                     } else {
-                        this.resultsModel = detection.defaultModel;
+                        this.host.state.resultsModel = detection.defaultModel;
                         this.resultsGenerationContext.model = detection.defaultModel;
                     }
                     settingsChanged = true;
@@ -630,52 +608,52 @@ export class SettingsPart extends AgentWindowPart {
         }
     }
 
-    protected async restorePoiesisSettings(): Promise<void> {
+    public async restorePoiesisSettings(): Promise<void> {
         try {
             const state = await this.storageService.getData<Partial<PersistedPoiesisSettings> | LegacyPoiesisSettings>(SETTINGS_STORAGE_KEY);
             if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4) {
-                this.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
+                this.host.state.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
                     ? state.uiFontScale
                     : 'standard';
                 const legacyCli = state.version === 1 && isKnownCliId(state.preferredCli)
                     ? state.preferredCli
                     : DEFAULT_CLI_ID;
-                this.agentCli = state.version !== 1 && isKnownCliId(state.agentCli)
+                this.host.state.agentCli = state.version !== 1 && isKnownCliId(state.agentCli)
                     ? state.agentCli
                     : legacyCli;
-                this.resultsCli = state.version !== 1 && isKnownCliId(state.resultsCli)
+                this.host.state.resultsCli = state.version !== 1 && isKnownCliId(state.resultsCli)
                     ? state.resultsCli
                     : legacyCli;
-                this.agentModel = (state.version === 3 || state.version === 4) && typeof state.agentModel === 'string'
+                this.host.state.agentModel = (state.version === 3 || state.version === 4) && typeof state.agentModel === 'string'
                     ? state.agentModel
                     : '';
-                this.resultsModel = (state.version === 3 || state.version === 4) && typeof state.resultsModel === 'string'
+                this.host.state.resultsModel = (state.version === 3 || state.version === 4) && typeof state.resultsModel === 'string'
                     ? state.resultsModel
                     : '';
-                this.allowExternalResultsResources = state.allowExternalResultsResources === true;
-                this.automaticRequirementClassification = state.version === 4
+                this.host.state.allowExternalResultsResources = state.allowExternalResultsResources === true;
+                this.host.state.automaticRequirementClassification = state.version === 4
                     ? state.automaticRequirementClassification !== false
                     : true;
             }
         } catch (error) {
             console.warn('[Poiesis] Could not restore settings.', error);
         }
-        this.resultsGenerationContext.providerId = this.resultsCli;
-        this.resultsGenerationContext.model = this.resultsModel.trim();
-        this.requirementClassificationService.enabled = this.automaticRequirementClassification;
+        this.resultsGenerationContext.providerId = this.host.state.resultsCli;
+        this.resultsGenerationContext.model = this.host.state.resultsModel.trim();
+        this.requirementClassificationService.enabled = this.host.state.automaticRequirementClassification;
         this.update();
     }
 
     protected persistPoiesisSettings(): void {
         void this.storageService.setData<PersistedPoiesisSettings>(SETTINGS_STORAGE_KEY, {
             version: 4,
-            uiFontScale: this.uiFontScale,
-            agentCli: this.agentCli,
-            agentModel: this.agentModel,
-            resultsCli: this.resultsCli,
-            resultsModel: this.resultsModel,
-            allowExternalResultsResources: this.allowExternalResultsResources,
-            automaticRequirementClassification: this.automaticRequirementClassification
+            uiFontScale: this.host.state.uiFontScale,
+            agentCli: this.host.state.agentCli,
+            agentModel: this.host.state.agentModel,
+            resultsCli: this.host.state.resultsCli,
+            resultsModel: this.host.state.resultsModel,
+            allowExternalResultsResources: this.host.state.allowExternalResultsResources,
+            automaticRequirementClassification: this.host.state.automaticRequirementClassification
         });
     }
 
@@ -683,7 +661,7 @@ export class SettingsPart extends AgentWindowPart {
         if (!this.clearDataConfirmation) {
             return;
         }
-        for (const session of [...this.sessions]) {
+        for (const session of [...this.host.sessions.sessions]) {
             for (const [taskId, notice] of session.resultsNotices) {
                 if (notice.status === 'sending') {
                     await this.resultsQuestionService.cancel(taskId);
@@ -698,13 +676,13 @@ export class SettingsPart extends AgentWindowPart {
             }
             this.taskService.remove(session.taskIds);
             this.resultsService.remove(session.taskIds);
-            this.disposeAgentRichContentForSession(session.id);
+            this.host.disposeAgentRichContentForSession(session.id);
         }
-        this.sessions.splice(0, this.sessions.length);
-        this.selectedSessionId = undefined;
-        this.deleteSessionConfirmationId = undefined;
+        this.host.sessions.sessions.splice(0, this.host.sessions.sessions.length);
+        this.host.sessions.selectedSessionId = undefined;
+        this.host.state.deleteSessionConfirmationId = undefined;
         this.clearDataConfirmation = false;
-        await this.createSession();
+        await this.host.sessions.createSession();
     }
 
     constructor(host: AgentWindowHost) {

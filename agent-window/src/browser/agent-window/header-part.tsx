@@ -76,8 +76,8 @@ import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSe
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
 
 export class HeaderPart extends AgentWindowPart {
-    protected renderHeader(): React.ReactNode {
-        if (this.codeMode) {
+    public renderHeader(): React.ReactNode {
+        if (this.host.state.codeMode) {
             return (
                 <header className='poiesis-agent-window__header poiesis-agent-window__code-header'>
                     <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
@@ -86,23 +86,23 @@ export class HeaderPart extends AgentWindowPart {
                         className='poiesis-agent-window__code-control active'
                         aria-pressed='true'
                         aria-label='Agentへ戻る'
-                        onClick={() => this.toggleCodeMode()}
+                        onClick={() => this.host.toggleCodeMode()}
                     >
                         <span className='codicon codicon-code' aria-hidden='true' />
                         <span>Code</span>
                     </button>
-                    <span className='poiesis-agent-window__code-workspace'>{this.workspaceContextLabel()}</span>
+                    <span className='poiesis-agent-window__code-workspace'>{this.host.sessions.workspaceContextLabel()}</span>
                 </header>
             );
         }
-        if (this.customizeViewVisible) {
+        if (this.host.state.customizeViewVisible) {
             return (
                 <header className='poiesis-agent-window__header poiesis-agent-window__customize-header'>
                     <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
                     <div className='poiesis-agent-window__context'>
                         <div className='poiesis-agent-window__context-scope'>
-                            <small>{this.workspaceContextLabel()}</small>
-                            <button type='button' className='poiesis-agent-window__code-control' onClick={() => this.toggleCodeMode()}>
+                            <small>{this.host.sessions.workspaceContextLabel()}</small>
+                            <button type='button' className='poiesis-agent-window__code-control' onClick={() => this.host.toggleCodeMode()}>
                                 <span className='codicon codicon-code' aria-hidden='true' />
                                 <span>Code</span>
                             </button>
@@ -114,7 +114,7 @@ export class HeaderPart extends AgentWindowPart {
                             type='button'
                             className='poiesis-agent-window__customize-close'
                             aria-label='カスタマイズを閉じる'
-                            onClick={() => this.closeCustomize()}
+                            onClick={() => this.host.closeCustomize()}
                         >
                             <span className='codicon codicon-close' aria-hidden='true' />
                         </button>
@@ -122,27 +122,27 @@ export class HeaderPart extends AgentWindowPart {
                 </header>
             );
         }
-        const session = this.selectedSession();
+        const session = this.host.sessions.selectedSession();
         const activeTab = session?.activeTab ?? 'agent';
         return (
             <header className='poiesis-agent-window__header'>
                 <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
                 <div className='poiesis-agent-window__context'>
                     <div className='poiesis-agent-window__context-scope'>
-                        <small>{this.workspaceContextLabel()}</small>
+                        <small>{this.host.sessions.workspaceContextLabel()}</small>
                         <button
                             type='button'
-                            className={`poiesis-agent-window__code-control${this.codeMode ? ' active' : ''}`}
-                            aria-pressed={this.codeMode}
-                            onClick={() => this.toggleCodeMode()}
+                            className={`poiesis-agent-window__code-control${this.host.state.codeMode ? ' active' : ''}`}
+                            aria-pressed={this.host.state.codeMode}
+                            onClick={() => this.host.toggleCodeMode()}
                         >
                             <span className='codicon codicon-code' aria-hidden='true' />
                             <span>Code</span>
                         </button>
                     </div>
-                    <strong>{this.codeMode ? 'Code' : session?.hasUserMessage ? session.title : '新しいチャット'}</strong>
+                    <strong>{this.host.state.codeMode ? 'Code' : session?.hasUserMessage ? session.title : '新しいチャット'}</strong>
                 </div>
-                {!this.codeMode && session?.hasUserMessage && (
+                {!this.host.state.codeMode && session?.hasUserMessage && (
                     <nav className='poiesis-agent-window__tabs' role='tablist' aria-label='Agent と Results の切り替え'>
                         <button
                             id='poiesis-agent-tab'
@@ -152,7 +152,7 @@ export class HeaderPart extends AgentWindowPart {
                             aria-selected={activeTab === 'agent'}
                             aria-controls='poiesis-agent-panel'
                             tabIndex={activeTab === 'agent' ? 0 : -1}
-                            onClick={() => this.selectTab('agent')}
+                            onClick={() => this.host.selectTab('agent')}
                         >
                             Agent
                         </button>
@@ -164,7 +164,7 @@ export class HeaderPart extends AgentWindowPart {
                             aria-selected={activeTab === 'results'}
                             aria-controls='poiesis-results-panel'
                             tabIndex={activeTab === 'results' ? 0 : -1}
-                            onClick={() => this.selectTab('results')}
+                            onClick={() => this.host.selectTab('results')}
                         >
                             Results
                         </button>

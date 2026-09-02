@@ -87,11 +87,7 @@ export class ResultsPart extends AgentWindowPart {
 
     protected resultsSkillNamesLoading?: Promise<void>;
 
-    protected resultsSkillNamesLoaded = false;
-
     protected deleteTaskConfirmationId?: string;
-
-    protected openResultsMenuKey?: string;
 
     protected renamingRequirementId?: string;
 
@@ -100,20 +96,20 @@ export class ResultsPart extends AgentWindowPart {
     protected readonly expandedRequirementIds = new Set<string>();
 
     protected toggleResultsTaskRail(): void {
-        this.resultsTaskRailCollapsed = !this.resultsTaskRailCollapsed;
-        this.persistResultsQaPanelState();
+        this.host.state.resultsTaskRailCollapsed = !this.host.state.resultsTaskRailCollapsed;
+        this.host.sessions.persistResultsQaPanelState();
         this.update();
     }
 
-    protected renderResults(session: WindowAgentSession | undefined): React.ReactNode {
-        const requirements = this.resultsRequirements(session);
+    public renderResults(session: WindowAgentSession | undefined): React.ReactNode {
+        const requirements = this.host.sessions.resultsRequirements(session);
         const selectedRequirement = requirements.find(requirement => requirement.id === session?.selectedResultsRequirementId)
             ?? requirements[0];
         const selectedTask = selectedRequirement && session?.selectedResultsTaskId
                 ? selectedRequirement.taskIds.map(taskId => this.taskService.get(taskId))
                 .find(task => task?.id === session.selectedResultsTaskId && task?.status !== 'running')
             : undefined;
-        const latestTask = selectedRequirement ? this.latestTaskForRequirement(selectedRequirement) : undefined;
+        const latestTask = selectedRequirement ? this.host.sessions.latestTaskForRequirement(selectedRequirement) : undefined;
         const scopeKey = selectedTask?.id ?? (selectedRequirement ? `requirement:${selectedRequirement.id}` : undefined);
         const document = selectedTask
             ? this.resultsService.get(selectedTask.id)
@@ -131,7 +127,7 @@ export class ResultsPart extends AgentWindowPart {
             <section
                 id='poiesis-results-panel'
                 className='poiesis-results'
-                data-task-rail-collapsed={this.resultsTaskRailCollapsed ? 'true' : 'false'}
+                data-task-rail-collapsed={this.host.state.resultsTaskRailCollapsed ? 'true' : 'false'}
                 role='tabpanel'
                 aria-labelledby='poiesis-results-tab'
             >
@@ -186,7 +182,7 @@ export class ResultsPart extends AgentWindowPart {
                         )}
                         {selectedRequirement && document?.status === 'ready' && document.html && (
                             <iframe
-                                key={`${scopeKey}-${this.allowExternalResultsResources ? 'external' : 'isolated'}`}
+                                key={`${scopeKey}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}
                                 className='poiesis-results__document'
                                 title={`${selectedTitle}の成果`}
                                 sandbox='allow-scripts'
@@ -223,15 +219,15 @@ export class ResultsPart extends AgentWindowPart {
                         >
                             <span className='codicon codicon-arrow-up' aria-hidden='true' />
                         </button>
-                        {scopeKey && document?.status === 'ready' && this.renderAiRolePill('results', true)}
+                        {scopeKey && document?.status === 'ready' && this.host.renderAiRolePill('results', true)}
                     </section>
                 </div>
                 <aside
                     className='poiesis-results__task-switcher'
-                    data-collapsed={this.resultsTaskRailCollapsed ? 'true' : 'false'}
+                    data-collapsed={this.host.state.resultsTaskRailCollapsed ? 'true' : 'false'}
                     aria-label='同じセッションの要件'
                 >
-                    {this.resultsTaskRailCollapsed ? (
+                    {this.host.state.resultsTaskRailCollapsed ? (
                         <button
                             type='button'
                             className='poiesis-agent-window__rail-toggle poiesis-results__task-switcher-collapsed-button'
@@ -283,7 +279,7 @@ export class ResultsPart extends AgentWindowPart {
         selected: boolean,
         selectedTaskId: string | undefined
     ): React.ReactNode {
-        const latestTask = this.latestTaskForRequirement(requirement);
+        const latestTask = this.host.sessions.latestTaskForRequirement(requirement);
         const expanded = this.expandedRequirementIds.has(requirement.id);
         const menuKey = `requirement:${requirement.id}`;
         const renaming = this.renamingRequirementId === requirement.id;
@@ -348,8 +344,8 @@ export class ResultsPart extends AgentWindowPart {
                             <span title={requirement.title}>{requirement.title}</span>
                             <small>
                                 タスク {tasks.length}件
-                                {latestTask ? ` · ${this.taskStatusLabel(latestTask)}` : ''}
-                                {latestTask?.endedAt ? ` · ${this.taskFinishedTime(latestTask)}` : ''}
+                                {latestTask ? ` · ${this.host.sessions.taskStatusLabel(latestTask)}` : ''}
+                                {latestTask?.endedAt ? ` · ${this.host.sessions.taskFinishedTime(latestTask)}` : ''}
                             </small>
                         </button>
                     )}
@@ -359,15 +355,15 @@ export class ResultsPart extends AgentWindowPart {
                                 type='button'
                                 className='poiesis-results__more'
                                 aria-label={`${requirement.title}のメニュー`}
-                                aria-expanded={this.openResultsMenuKey === menuKey}
+                                aria-expanded={this.host.state.openResultsMenuKey === menuKey}
                                 onClick={() => {
-                                    this.openResultsMenuKey = this.openResultsMenuKey === menuKey ? undefined : menuKey;
+                                    this.host.state.openResultsMenuKey = this.host.state.openResultsMenuKey === menuKey ? undefined : menuKey;
                                     this.update();
                                 }}
                             >
                                 <span className='codicon codicon-ellipsis' aria-hidden='true' />
                             </button>
-                            {this.openResultsMenuKey === menuKey && (
+                            {this.host.state.openResultsMenuKey === menuKey && (
                                 <div className='poiesis-results__card-menu' role='menu'>
                                     <button type='button' role='menuitem' onClick={() => this.beginRequirementRename(requirement)}>名前を変更</button>
                                 </div>
@@ -399,7 +395,7 @@ export class ResultsPart extends AgentWindowPart {
         const menuKey = `task:${task.id}`;
         const confirmingDelete = this.deleteTaskConfirmationId === task.id;
         const finalizing = task.status === 'running' || this.taskService.isFinalizing(task.id);
-        const otherRequirements = this.requirementsForSession(this.findSessionForTask(task))
+        const otherRequirements = this.host.sessions.requirementsForSession(this.host.sessions.findSessionForTask(task))
             .filter(candidate => candidate.id !== requirement.id);
         return (
             <div className={`poiesis-results__history-row${selected ? ' active' : ''}`} key={task.id}>
@@ -413,7 +409,7 @@ export class ResultsPart extends AgentWindowPart {
                     onClick={() => this.selectResultsTask(task.id)}
                 >
                     <span title={task.title}>{task.title}</span>
-                    <small>{this.taskStatusLabel(task)}{task.endedAt ? ` · ${this.taskFinishedTime(task)}` : ''}</small>
+                    <small>{this.host.sessions.taskStatusLabel(task)}{task.endedAt ? ` · ${this.host.sessions.taskFinishedTime(task)}` : ''}</small>
                 </button>
                 {!finalizing && (
                     <div className='poiesis-results__menu-host'>
@@ -421,15 +417,15 @@ export class ResultsPart extends AgentWindowPart {
                             type='button'
                             className='poiesis-results__more'
                             aria-label={`${task.title}のメニュー`}
-                            aria-expanded={this.openResultsMenuKey === menuKey}
+                            aria-expanded={this.host.state.openResultsMenuKey === menuKey}
                             onClick={() => {
-                                this.openResultsMenuKey = this.openResultsMenuKey === menuKey ? undefined : menuKey;
+                                this.host.state.openResultsMenuKey = this.host.state.openResultsMenuKey === menuKey ? undefined : menuKey;
                                 this.update();
                             }}
                         >
                             <span className='codicon codicon-ellipsis' aria-hidden='true' />
                         </button>
-                        {this.openResultsMenuKey === menuKey && (
+                        {this.host.state.openResultsMenuKey === menuKey && (
                             <div className='poiesis-results__card-menu task-menu' role='menu'>
                                 {otherRequirements.length > 0 && (
                                     <details className='poiesis-results__move-submenu'>
@@ -511,9 +507,9 @@ export class ResultsPart extends AgentWindowPart {
 
     protected renderRequirementResultsHeader(requirement: Requirement, latestTask: ExecutionTask): React.ReactNode {
         const changeSet = this.resultsService.getRequirementChangeSet(requirement.id)
-            ?? this.fallbackRequirementChangeSet(requirement);
+            ?? this.host.sessions.fallbackRequirementChangeSet(requirement);
         const diffstat = summarizeTaskChangeSet(changeSet);
-        const status = this.taskStatusLabel(latestTask);
+        const status = this.host.sessions.taskStatusLabel(latestTask);
         const completedAtJst = formatTaskEndedAtJst(latestTask.endedAt);
         const document = this.resultsService.getRequirement(requirement.id);
         const generationBadge = this.resultsGenerationBadge(document);
@@ -562,8 +558,8 @@ export class ResultsPart extends AgentWindowPart {
             return undefined;
         }
         if (document.generator === 'ai') {
-            const providerId: KnownCliId = isKnownCliId(document.providerId) ? document.providerId : this.resultsCli;
-            const provider = this.cliDetectionReport?.detections.find((candidate: CliDetectionReport['detections'][number]) => candidate.id === providerId)?.name
+            const providerId: KnownCliId = isKnownCliId(document.providerId) ? document.providerId : this.host.state.resultsCli;
+            const provider = this.host.state.cliDetectionReport?.detections.find((candidate: CliDetectionReport['detections'][number]) => candidate.id === providerId)?.name
                 ?? ({ codex: 'Codex', claude: 'Claude Code', grok: 'Grok', gemini: 'Gemini CLI' } satisfies Record<KnownCliId, string>)[providerId];
             return `AI 生成 · ${provider}`;
         }
@@ -599,8 +595,8 @@ export class ResultsPart extends AgentWindowPart {
         );
     }
 
-    protected ensureResultsSkillNames(): Promise<void> {
-        const root = this.workspaceRoot()?.resource;
+    public ensureResultsSkillNames(): Promise<void> {
+        const root = this.host.sessions.workspaceRoot()?.resource;
         const workspaceUri = root?.toString();
         if (!root || !workspaceUri) {
             return Promise.resolve();
@@ -608,11 +604,11 @@ export class ResultsPart extends AgentWindowPart {
         if (this.resultsSkillNamesWorkspaceUri === workspaceUri && this.resultsSkillNamesLoading) {
             return this.resultsSkillNamesLoading;
         }
-        if (this.resultsSkillNamesWorkspaceUri === workspaceUri && this.resultsSkillNamesLoaded) {
+        if (this.resultsSkillNamesWorkspaceUri === workspaceUri && this.host.state.resultsSkillNamesLoaded) {
             return Promise.resolve();
         }
         this.resultsSkillNamesWorkspaceUri = workspaceUri;
-        this.resultsSkillNamesLoaded = false;
+        this.host.state.resultsSkillNamesLoaded = false;
         this.resultsSkillNames.clear();
         const loading = this.workspaceSkillService.list(root).then(skills => {
             if (this.resultsSkillNamesWorkspaceUri !== workspaceUri) {
@@ -621,7 +617,7 @@ export class ResultsPart extends AgentWindowPart {
             for (const skill of skills) {
                 this.resultsSkillNames.set(skill.id, skill.name || skill.id);
             }
-            this.resultsSkillNamesLoaded = true;
+            this.host.state.resultsSkillNamesLoaded = true;
             this.update();
         }).catch(error => {
             console.warn('[Poiesis] Could not resolve applied Workspace Skill names.', error);
@@ -683,7 +679,7 @@ export class ResultsPart extends AgentWindowPart {
                                     <strong>{entry.error ? '回答に失敗' : '回答'}</strong>
                                     {entry.error
                                         ? <p>{entry.error}</p>
-                                        : this.renderMarkdown(entry.answer ?? '')}
+                                        : this.host.renderMarkdown(entry.answer ?? '')}
                                     {entry.error && (
                                         <button type='button' onClick={() => void this.submitResultsQuestion(scopeKey, entry.question)}>再試行</button>
                                     )}
@@ -725,7 +721,7 @@ export class ResultsPart extends AgentWindowPart {
             .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
             .replace(/<script\b[^>]*\/\s*>/gi, '')
             .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
-        const policy = this.allowExternalResultsResources
+        const policy = this.host.state.allowExternalResultsResources
             ? ''
             : `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">`;
         const baseStyle = `<style data-poiesis-base>
@@ -774,20 +770,20 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
             : `${withHead}\n${bridge}`;
     }
 
-    protected handleResultsFrameMessage(event: MessageEvent): void {
+    public handleResultsFrameMessage(event: MessageEvent): void {
         const frame = this.node.querySelector<HTMLIFrameElement>('.poiesis-results__document');
         if (!frame?.contentWindow || event.source !== frame.contentWindow || !event.data || typeof event.data !== 'object') {
             return;
         }
         const message = event.data as Partial<ResultsFrameMessage>;
         if (message.type === 'poiesis:retry-ai-results') {
-            const session = this.selectedSession();
+            const session = this.host.sessions.selectedSession();
             if (session?.selectedResultsTaskId) {
                 void this.retryResults(session.selectedResultsTaskId);
             } else if (session?.selectedResultsRequirementId) {
                 const requirement = this.requirementService.get(session.selectedResultsRequirementId);
-                const onlyTask = requirement && this.finishedTasksForRequirement(requirement).length === 1
-                    ? this.finishedTasksForRequirement(requirement)[0]
+                const onlyTask = requirement && this.host.sessions.finishedTasksForRequirement(requirement).length === 1
+                    ? this.host.sessions.finishedTasksForRequirement(requirement)[0]
                     : undefined;
                 if (onlyTask) {
                     void this.retryResults(onlyTask.id);
@@ -800,7 +796,7 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
         }
     }
 
-    protected async openResultsCitation(rawCitation: string): Promise<void> {
+    public async openResultsCitation(rawCitation: string): Promise<void> {
         const match = rawCitation.trim().match(/^(.*):(\d+)(?:\s*[-–—]\s*(\d+))?$/);
         const path = match?.[1].trim().replace(/^`|`$/g, '').replace(/\\/g, '/');
         const startLine = Number(match?.[2]);
@@ -815,7 +811,7 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
             this.messageService.error('引用先を開けません。ワークスペース内のファイルと行番号を確認してください。');
             return;
         }
-        const workspace = this.workspaceRoot()?.resource.normalizePath();
+        const workspace = this.host.sessions.workspaceRoot()?.resource.normalizePath();
         const file = workspace?.resolve(path).normalizePath();
         try {
             if (!workspace || !file || !workspace.isEqualOrParent(file, false) || !await this.fileService.exists(file)) {
@@ -827,58 +823,28 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
                 this.messageService.error('引用先はファイルではありません。');
                 return;
             }
-            await this.openCodeCitation(file, startLine, endLine);
+            await this.host.openCodeCitation(file, startLine, endLine);
         } catch (error) {
             console.warn(`[Poiesis] Could not open Results citation: ${rawCitation}`, error);
             this.messageService.error('引用先を Editor で開けませんでした。');
         }
     }
 
-    protected async openCodeCitation(file: URI, startLine: number, endLine: number): Promise<void> {
-        this.closeCustomize(false);
-        if (!this.codeMode) {
-            this.ensureCodeFileIcons();
-            this.codeMode = true;
-            this.update();
-            requestAnimationFrame(() => void this.ensureCodeTerminal());
-            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-        }
-        const uriKey = file.toString();
-        this.pendingPinnedEditorUris.add(uriKey);
-        try {
-            await this.editorManager.open(file, {
-                mode: 'activate',
-                selection: {
-                    start: { line: startLine - 1, character: 0 },
-                    end: { line: endLine - 1, character: 0 }
-                }
-            });
-            const opened = (this.codeCenterWidgets as Widget[]).find((candidate: Widget) => candidate instanceof EditorWidget
-                && candidate.editor.uri.toString() === uriKey);
-            if (opened) {
-                this.pinCodeCenterWidget(opened);
-                this.selectCodeCenterWidget(opened);
-            }
-        } finally {
-            this.pendingPinnedEditorUris.delete(uriKey);
-        }
-    }
-
-    protected selectResultsTask(taskId: string): void {
-        const session = this.selectedSession();
+    public selectResultsTask(taskId: string): void {
+        const session = this.host.sessions.selectedSession();
         const task = this.taskService.get(taskId);
         if (session && task && task.status !== 'running') {
             session.selectedResultsRequirementId = task.requirementId;
             session.selectedResultsTaskId = taskId;
             this.deleteTaskConfirmationId = undefined;
-            this.persistWindowState();
-            this.persistResultsQaPanelState();
+            this.host.sessions.persistWindowState();
+            this.host.sessions.persistResultsQaPanelState();
         }
         this.update();
     }
 
-    protected selectResultsRequirement(requirementId: string): void {
-        const session = this.selectedSession();
+    public selectResultsRequirement(requirementId: string): void {
+        const session = this.host.sessions.selectedSession();
         const requirement = this.requirementService.get(requirementId);
         if (!session || requirement?.sessionId !== session.id) {
             return;
@@ -886,8 +852,8 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
         session.selectedResultsRequirementId = requirementId;
         session.selectedResultsTaskId = undefined;
         this.deleteTaskConfirmationId = undefined;
-        void this.persistWindowState();
-        void this.persistResultsQaPanelState();
+        void this.host.sessions.persistWindowState();
+        void this.host.sessions.persistResultsQaPanelState();
         this.update();
     }
 
@@ -901,7 +867,7 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
     }
 
     protected beginRequirementRename(requirement: Requirement): void {
-        this.openResultsMenuKey = undefined;
+        this.host.state.openResultsMenuKey = undefined;
         this.renamingRequirementId = requirement.id;
         this.requirementRenameDraft = requirement.title;
         this.update();
@@ -934,22 +900,22 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
 
     protected moveTaskToRequirement(taskId: string, targetRequirementId: string): void {
         const moved = this.requirementService.moveTask(taskId, targetRequirementId);
-        const session = this.selectedSession();
+        const session = this.host.sessions.selectedSession();
         if (!moved || !session) {
             return;
         }
         session.selectedResultsRequirementId = moved.id;
         session.selectedResultsTaskId = taskId;
         this.expandedRequirementIds.add(moved.id);
-        this.openResultsMenuKey = undefined;
-        void this.persistWindowState();
-        void this.persistResultsQaPanelState();
+        this.host.state.openResultsMenuKey = undefined;
+        void this.host.sessions.persistWindowState();
+        void this.host.sessions.persistResultsQaPanelState();
         this.update();
     }
 
     protected splitTaskToNewRequirement(taskId: string): void {
         const requirement = this.requirementService.splitTaskToNew(taskId);
-        const session = this.selectedSession();
+        const session = this.host.sessions.selectedSession();
         if (!requirement || !session) {
             return;
         }
@@ -957,24 +923,24 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
         session.selectedResultsTaskId = undefined;
         session.requirementDraft = requirement.id;
         this.expandedRequirementIds.add(requirement.id);
-        this.openResultsMenuKey = undefined;
-        void this.persistWindowState();
-        void this.persistResultsQaPanelState();
+        this.host.state.openResultsMenuKey = undefined;
+        void this.host.sessions.persistWindowState();
+        void this.host.sessions.persistResultsQaPanelState();
         this.beginSplitRequirementRename(requirement);
     }
 
-    protected undoAutomaticRequirementSplit(taskId: string): void {
+    public undoAutomaticRequirementSplit(taskId: string): void {
         if (!this.requirementClassificationService.undo(taskId)) {
             return;
         }
-        void this.persistWindowState();
-        void this.persistResultsQaPanelState();
+        void this.host.sessions.persistWindowState();
+        void this.host.sessions.persistResultsQaPanelState();
         this.update();
     }
 
     protected setResultsQuestionPanelExpanded(scopeKey: string, expanded: boolean, revealLatest = false): void {
-        const session = this.selectedSession();
-        if (!session || this.selectedResultsScopeKey(session) !== scopeKey) {
+        const session = this.host.sessions.selectedSession();
+        if (!session || this.host.sessions.selectedResultsScopeKey(session) !== scopeKey) {
             return;
         }
         if (expanded) {
@@ -982,11 +948,11 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
         } else {
             session.resultsQaExpanded.delete(scopeKey);
         }
-        this.persistResultsQaPanelState();
+        this.host.sessions.persistResultsQaPanelState();
         this.update();
         if (expanded && revealLatest) {
             requestAnimationFrame(() => {
-                if (this.selectedSessionId !== session.id || this.selectedResultsScopeKey(this.selectedSession()) !== scopeKey) {
+                if (this.host.sessions.selectedSessionId !== session.id || this.host.sessions.selectedResultsScopeKey(this.host.sessions.selectedSession()) !== scopeKey) {
                     return;
                 }
                 const history = this.node.querySelector<HTMLElement>('.poiesis-results__qa-history');
@@ -998,11 +964,11 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
     }
 
     protected beginDeleteResultsTask(taskId: string): void {
-        if (!this.finishedTasks().some(task => task.id === taskId)) {
+        if (!this.host.sessions.finishedTasks().some(task => task.id === taskId)) {
             return;
         }
         this.deleteTaskConfirmationId = taskId;
-        this.openResultsMenuKey = undefined;
+        this.host.state.openResultsMenuKey = undefined;
         this.update();
     }
 
@@ -1012,10 +978,10 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
     }
 
     protected async deleteResultsTask(taskId: string): Promise<void> {
-        const session = this.selectedSession();
+        const session = this.host.sessions.selectedSession();
         if (!session
             || this.deleteTaskConfirmationId !== taskId
-            || !this.finishedTasks(session).some(task => task.id === taskId)) {
+            || !this.host.sessions.finishedTasks(session).some(task => task.id === taskId)) {
             return;
         }
         const deletedWasSelected = session.selectedResultsTaskId === taskId;
@@ -1027,15 +993,15 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
         session.resultsQaExpanded.delete(taskId);
         this.resultsService.remove([taskId]);
         this.taskService.remove([taskId]);
-        const newestRemainingTask = this.finishedTasks(session).at(-1);
+        const newestRemainingTask = this.host.sessions.finishedTasks(session).at(-1);
         if (deletedWasSelected) {
             session.selectedResultsTaskId = undefined;
             session.selectedResultsRequirementId = previousRequirementId && this.requirementService.get(previousRequirementId)
                 ? previousRequirementId
-                : this.latestRequirement(session)?.id;
+                : this.host.sessions.latestRequirement(session)?.id;
         } else if (session.selectedResultsRequirementId
             && !this.requirementService.get(session.selectedResultsRequirementId)) {
-            session.selectedResultsRequirementId = this.latestRequirement(session)?.id;
+            session.selectedResultsRequirementId = this.host.sessions.latestRequirement(session)?.id;
         }
         session.lastTaskStatus = newestRemainingTask?.status === 'running'
             ? undefined
@@ -1045,23 +1011,23 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
         }
         session.updatedAt = Date.now();
         this.deleteTaskConfirmationId = undefined;
-        await Promise.all([this.persistWindowState(), this.persistResultsQaPanelState()]);
+        await Promise.all([this.host.sessions.persistWindowState(), this.host.sessions.persistResultsQaPanelState()]);
         this.update();
     }
 
     protected setResultsDraft(scopeKey: string, value: string): void {
-        const session = this.selectedSession();
+        const session = this.host.sessions.selectedSession();
         session?.resultsDrafts.set(scopeKey, value);
         session?.resultsNotices.delete(scopeKey);
-        this.persistWindowState();
+        this.host.sessions.persistWindowState();
         this.update();
     }
 
     protected async submitResultsQuestion(scopeKey: string, retryQuestion?: string): Promise<void> {
-        const session = this.selectedSession();
+        const session = this.host.sessions.selectedSession();
         const requirementId = scopeKey.startsWith('requirement:') ? scopeKey.slice('requirement:'.length) : undefined;
         const requirement = requirementId ? this.requirementService.get(requirementId) : undefined;
-        const task = requirement ? this.finishedTasksForRequirement(requirement).at(-1) : this.taskService.get(scopeKey);
+        const task = requirement ? this.host.sessions.finishedTasksForRequirement(requirement).at(-1) : this.taskService.get(scopeKey);
         const document = requirement
             ? this.resultsService.getRequirement(requirement.id)
             : this.resultsService.get(scopeKey);
@@ -1075,7 +1041,7 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
             || !task
             || task.status === 'running'
             || requirement && requirement.sessionId !== session.id
-            || !requirement && !this.finishedTasks(session).some(candidate => candidate.id === scopeKey)
+            || !requirement && !this.host.sessions.finishedTasks(session).some(candidate => candidate.id === scopeKey)
             || document?.status !== 'ready'
             || !document.html
             || !question
@@ -1088,12 +1054,12 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
         session.resultsDrafts.set(scopeKey, '');
         session.resultsNotices.set(scopeKey, { question, status: 'sending', text: '' });
         session.resultsQaExpanded.set(scopeKey, true);
-        this.persistWindowState();
-        this.persistResultsQaPanelState();
+        this.host.sessions.persistWindowState();
+        this.host.sessions.persistResultsQaPanelState();
         this.update();
         requestAnimationFrame(() => {
             const history = this.node.querySelector<HTMLElement>('.poiesis-results__qa-history');
-            if (this.selectedSessionId === session.id && this.selectedResultsScopeKey(session) === scopeKey && history) {
+            if (this.host.sessions.selectedSessionId === session.id && this.host.sessions.selectedResultsScopeKey(session) === scopeKey && history) {
                 history.scrollTop = history.scrollHeight;
             }
         });
@@ -1101,8 +1067,8 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
             const result = await this.resultsQuestionService.ask(question, {
                 taskId: scopeKey,
                 requirementTitle: requirement?.title,
-                providerId: this.resultsCli,
-                model: this.resultsModel.trim() || undefined,
+                providerId: this.host.state.resultsCli,
+                model: this.host.state.resultsModel.trim() || undefined,
                 workspaceUri: session.workspaceUri,
                 taskMetadata: {
                     title: task.title,
@@ -1119,7 +1085,7 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
                 }, undefined, 2),
                 diff: this.truncateResultsReference(changeSet?.diff ?? '', 40_000, 'Diff'),
                 executionEvidence: requirement
-                    ? formatRequirementExecutionEvidence(this.finishedTasksForRequirement(requirement), 16_000) || undefined
+                    ? formatRequirementExecutionEvidence(this.host.sessions.finishedTasksForRequirement(requirement), 16_000) || undefined
                     : formatExecutionEvidence(task.activities, 8_000) || undefined,
                 resultsHtml: document.html,
                 history: (requirement?.resultsQuestions ?? task.resultsQuestions ?? []).slice(-6)
@@ -1177,12 +1143,12 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
             });
             session.resultsQaExpanded.set(scopeKey, true);
         }
-        this.persistWindowState();
-        this.persistResultsQaPanelState();
+        this.host.sessions.persistWindowState();
+        this.host.sessions.persistResultsQaPanelState();
         this.update();
         requestAnimationFrame(() => {
             const history = this.node.querySelector<HTMLElement>('.poiesis-results__qa-history');
-            if (this.selectedSessionId === session.id && this.selectedResultsScopeKey(session) === scopeKey && history) {
+            if (this.host.sessions.selectedSessionId === session.id && this.host.sessions.selectedResultsScopeKey(session) === scopeKey && history) {
                 history.scrollTop = history.scrollHeight;
             }
         });
@@ -1196,24 +1162,24 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
         await this.resultsService.retryRequirement(requirementId);
     }
 
-    protected async retryTask(taskId: string): Promise<void> {
+    public async retryTask(taskId: string): Promise<void> {
         const task = this.taskService.get(taskId);
-        const session = task ? this.sessions.find(candidate => candidate.taskIds.includes(task.id)) : undefined;
-        if (!task || !session || this.runningTask(session)) {
+        const session = task ? this.host.sessions.sessions.find(candidate => candidate.taskIds.includes(task.id)) : undefined;
+        if (!task || !session || this.host.sessions.runningTask(session)) {
             return;
         }
-        this.detachCodeWidgets();
-        this.closeCustomize(false);
-        this.codeMode = false;
-        this.selectedSessionId = session.id;
+        this.host.detachCodeWidgets();
+        this.host.closeCustomize(false);
+        this.host.state.codeMode = false;
+        this.host.sessions.selectedSessionId = session.id;
         session.activeTab = 'agent';
         session.selectedResultsTaskId = undefined;
         session.requirementDraft = task.requirementId;
-        this.persistResultsQaPanelState();
+        this.host.sessions.persistResultsQaPanelState();
         session.agentDraft = task.request;
-        this.persistWindowState();
+        this.host.sessions.persistWindowState();
         this.update();
-        await this.sendAgentMessage();
+        await this.host.sendAgentMessage();
     }
 
     protected truncateResultsReference(value: string, maxChars: number, label: string): string | undefined {
