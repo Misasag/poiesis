@@ -45,7 +45,7 @@ interface SkillBundleManifest {
 └── SKILL.md
 ```
 
-entryはAgent Skills標準の`SKILL.md`と従来互換の`skill.md`を大文字小文字を区別せず探索する。同じbundleに両方ある場合は`SKILL.md`を優先し、warningを表示する。entryはYAML frontmatterとMarkdown本文で構成する。frontmatterの値は第一完成点では1行のscalarとし、未知のtop-level keyは無視する。
+entryはAgent Skills標準の`SKILL.md`と従来互換の`skill.md`を大文字小文字を区別せず探索する。同じbundleに両方ある場合は`SKILL.md`を優先し、warningを表示する。entryはYAML frontmatterとMarkdown本文で構成する。frontmatterの値は、Results Skillの`assertions`リストを除き、第一完成点では1行のscalarとする。未知のtop-level keyは無視する。
 
 ```markdown
 ---
@@ -66,9 +66,11 @@ interface SkillDocumentFrontmatter {
   name: string;
   description: string;
   kind?: 'agent' | 'results';
+  assertions?: string[];
   metadata?: {
     poiesis?: {
       kind?: 'agent' | 'results';
+      assertions?: string[];
     };
   };
 }
@@ -128,6 +130,29 @@ Results skillは終了済みTaskと確定済みChange Setを入力に、一つ�
 Skill HTMLへApplication内部のTask ID、Taskタイトル、状態、完了時刻、集計diffstatを表示しない。これらはApplicationがSkill HTML外の固定ヘッダーへ表示する。
 
 有効でshadowされていないResults skillも生成開始時に毎回読み直し、同じ区切り・rank順・文字数上限でAI Resultsのpromptへ成果文書の追加ガイダンスとして加える。静的な`builtin.results` templateはUser Skillを解釈しないため、AI生成からtemplateへfallbackした場合はこの追加ガイダンスを反映しない。
+
+Results Skillは、期待する成果文書を検証可能な必須条件としてfrontmatterのtop-level `assertions:`、または`metadata.poiesis.assertions:`へ宣言できる。値は`- `で始まる1行文字列（引用符付きも可）とし、1 Skillあたり最大12件、1件160文字までとする。上限を超える項目はwarningを表示して無視する。Agent Skillに宣言されたassertionsはwarningを表示してすべて無視する。
+
+```yaml
+metadata:
+  poiesis:
+    kind: results
+    assertions:
+      - "変更の要点が短く説明されている"
+      - "読者が実行できる確認手順がある"
+```
+
+ApplicationはAI成果文書を正規化した後、Skill assertionsとは別に次の決定的な条件を必ず検証する。
+
+- Change Setに変更ファイルがある場合、本文に`data-poiesis-citation`が1件以上ある。
+- 本文に`h2`〜`h4`の見出しが1件以上ある。
+- 空の見出しがない。
+
+Skill assertionsは、HTMLからタグを除去し見出しだけを`## `で示した最大60,000文字のテキスト、assertions一覧、Change Set summaryを、選択中のResults AIへ1回のread-only判定として渡す。各条件はpass／failと短いevidenceで保存する。応答が不正または判定を開始できない場合はunknownとして記録し、その理由だけで成果文書を失敗扱いにしない。
+
+ApplicationまたはSkillの条件にfailが1件でもあれば、不合格条件をResults prompt末尾へ追加してAI生成を1回だけ再試行し、再度検証する。失敗件数が少ない文書を採用し、同数なら2回目を採用する。再試行は最大1回で、キャンセルは生成と判定の両方へ引き続き適用する。template／fallback文書にはassertionsを付けない。
+
+assertionsは成果文書の検証条件だけを表し、AI provider、model、sandbox、Application所有の出力契約を変更できない。
 
 Execution evidenceは、ApplicationがTask実行中に観測して保存したコマンド、ファイル変更、読み取り、tool、messageの記録である。Applicationはこの記録をApplication-owned inputとしてResults skillとResults Q&Aへ渡し、Skillは記録にある実行結果だけを検証済みとして扱う。記録がない確認は未検証であり、Skillによる自己申告で補完しない。
 

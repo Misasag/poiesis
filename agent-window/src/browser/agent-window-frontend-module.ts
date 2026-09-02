@@ -32,6 +32,7 @@ import {
     requirementClassificationServerPath
 } from '../common/requirement-classification-protocol';
 import { RequirementClassificationService } from './requirement-classification-service';
+import { ResultsAssertionServer, resultsAssertionServerPath } from '../common/results-assertion-protocol';
 import '../../src/browser/style/index.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
@@ -49,6 +50,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     }).inSingletonScope();
     bind(ResultsQuestionServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
         .createProxy<ResultsQuestionServer>(resultsQuestionServerPath)).inSingletonScope();
+    bind(ResultsAssertionServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
+        .createProxy<ResultsAssertionServer>(resultsAssertionServerPath)).inSingletonScope();
     bind(RequirementClassificationServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
         .createProxy<RequirementClassificationServer>(requirementClassificationServerPath)).inSingletonScope();
     bind(ResultsGenerationServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)

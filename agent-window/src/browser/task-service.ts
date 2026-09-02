@@ -9,6 +9,7 @@ import {
     KnownCliId
 } from '../common/agent-runtime-protocol';
 import type { AgentActivity, AgentActivityKind } from '../common/agent-provider';
+import type { ResultsAssertionResult } from './results-assertions';
 
 export type ExecutionTaskStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -118,6 +119,8 @@ export interface TaskResultDocument {
     providerId?: KnownCliId;
     model?: string;
     fallbackReason?: string;
+    assertions?: ResultsAssertionResult[];
+    assertionAttempts?: 1 | 2;
     generatedAt?: string;
     durationMs?: number;
 }

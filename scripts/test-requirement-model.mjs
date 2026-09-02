@@ -18,6 +18,7 @@ const nextId = () => `requirement-${++sequence}`;
 const migrated = migrateRequirementModel(tasks, [], nextId);
 assert.equal(migrated.requirements.length, 3);
 assert.deepEqual(migrated.requirements.map(requirement => requirement.title), ['A', 'B', 'C']);
+assert(migrated.requirements.every(requirement => requirement.titleSource === 'task'));
 
 const assignedTasks = tasks.map(task => ({ ...task, requirementId: migrated.assignments.get(task.id) }));
 const target = migrated.assignments.get('task-a');

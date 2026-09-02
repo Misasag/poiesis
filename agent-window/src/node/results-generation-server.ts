@@ -31,6 +31,7 @@ const DIFF_MAX_CHARS = 80_000;
 const EXECUTION_EVIDENCE_MAX_CHARS = 16_000;
 const REQUIREMENT_METADATA_MAX_CHARS = 30_000;
 const WORKSPACE_SKILL_GUIDANCE_MAX_CHARS = 26_000;
+const ASSERTION_RETRY_GUIDANCE_MAX_CHARS = 4_000;
 const STDERR_MAX_CHARS = 8_000;
 
 /** Produces one static document through the selected Results-role CLI. */
@@ -265,7 +266,8 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             || typeof request.changeSetSummary !== 'string'
             || typeof request.diff !== 'string'
             || request.executionEvidence !== undefined && typeof request.executionEvidence !== 'string'
-            || request.workspaceSkillGuidance !== undefined && typeof request.workspaceSkillGuidance !== 'string') {
+            || request.workspaceSkillGuidance !== undefined && typeof request.workspaceSkillGuidance !== 'string'
+            || request.assertionRetryGuidance !== undefined && typeof request.assertionRetryGuidance !== 'string') {
             return { code: 'invalid-scope', message: '成果文書の生成に必要なTask情報が揃っていません。' };
         }
         return undefined;
@@ -323,7 +325,12 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             '内部Task ID、UTC時刻、ISO時刻を文書へ出さないでください。',
             'script、イベントハンドラ、外部URL、外部font、外部stylesheetを使わないでください。画像が必要ならdata: URIだけを使ってください。'
         ].join('\n');
-        return `${skillGuidance}${userGuidance}\n${applicationContract}`;
+        const assertionRetryGuidance = this.truncate(
+            request.assertionRetryGuidance?.trim() ?? '',
+            ASSERTION_RETRY_GUIDANCE_MAX_CHARS,
+            'Assertion retry guidance'
+        );
+        return `${skillGuidance}${userGuidance}\n${applicationContract}${assertionRetryGuidance ? `\n\n${assertionRetryGuidance}` : ''}`;
     }
 
     protected truncate(value: string, limit: number, label: string): string {

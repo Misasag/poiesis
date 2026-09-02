@@ -8,6 +8,7 @@ export interface ParsedSkillDocument {
     name: string;
     description: string;
     kind: SkillDocumentKind;
+    assertions: string[];
     instructions: string;
     error?: string;
     warnings: string[];
@@ -23,6 +24,9 @@ export interface RankedSkill {
 const MISSING_FRONTMATTER_ERROR = 'frontmatterがありません。name、description、kindを定義してください。';
 const INVALID_FRONTMATTER_ERROR = 'frontmatterのname、description、kind（agent／results）を確認してください。';
 const DEFAULT_KIND_WARNING = 'kind が未指定のため Agent Skill として扱います';
+const AGENT_ASSERTIONS_WARNING = 'assertions は Results Skill だけが使えます';
+const ASSERTIONS_MAX_ITEMS = 12;
+const ASSERTION_MAX_CHARS = 160;
 
 /** Parses the compatible subset of Agent Skills frontmatter without browser or Theia dependencies. */
 export function parseSkillDocument(
@@ -38,6 +42,7 @@ export function parseSkillDocument(
             name: id,
             description: '',
             kind: 'agent',
+            assertions: [],
             instructions: '',
             error: MISSING_FRONTMATTER_ERROR,
             warnings
@@ -66,14 +71,91 @@ export function parseSkillDocument(
     const error = !name || !description || (rawKind !== undefined && rawKind !== 'agent' && rawKind !== 'results')
         ? INVALID_FRONTMATTER_ERROR
         : undefined;
+    const declaredAssertions = frontmatterAssertions(lines);
+    let assertions: string[] = [];
+    if (declaredAssertions.length > 0 && kind === 'agent') {
+        warnings.push(AGENT_ASSERTIONS_WARNING);
+    } else if (kind === 'results') {
+        if (declaredAssertions.length > ASSERTIONS_MAX_ITEMS) {
+            warnings.push(`assertions は最大${ASSERTIONS_MAX_ITEMS}件のため、超過分を無視しました`);
+        }
+        for (const assertion of declaredAssertions.slice(0, ASSERTIONS_MAX_ITEMS)) {
+            if (assertion.length > ASSERTION_MAX_CHARS) {
+                warnings.push(`assertion は${ASSERTION_MAX_CHARS}文字以内のため、長すぎる項目を無視しました`);
+                continue;
+            }
+            if (assertion) {
+                assertions.push(assertion);
+            }
+        }
+    }
     return {
         name: name || id,
         description: description || '',
         kind,
+        assertions,
         instructions: content.slice(frontmatter[0].length).trim(),
         error,
         warnings
     };
+}
+
+function frontmatterAssertions(lines: readonly string[]): string[] {
+    const topLevel = assertionListAt(lines, /^assertions\s*:\s*(?:#.*)?$/, /^\s*-\s+(.*)$/);
+    if (topLevel.found) {
+        return topLevel.values;
+    }
+    let inMetadata = false;
+    let inPoiesis = false;
+    for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
+        if (/^metadata\s*:\s*(?:#.*)?$/.test(line)) {
+            inMetadata = true;
+            inPoiesis = false;
+            continue;
+        }
+        if (inMetadata && /^\S/.test(line)) {
+            break;
+        }
+        if (!inMetadata) {
+            continue;
+        }
+        if (/^ {2}poiesis\s*:\s*(?:#.*)?$/.test(line)) {
+            inPoiesis = true;
+            continue;
+        }
+        if (inPoiesis && /^ {2}\S/.test(line)) {
+            break;
+        }
+        if (inPoiesis && /^ {4}assertions\s*:\s*(?:#.*)?$/.test(line)) {
+            return assertionListAt(lines.slice(index), /^ {4}assertions\s*:\s*(?:#.*)?$/, /^\s*-\s+(.*)$/).values;
+        }
+    }
+    return [];
+}
+
+function assertionListAt(
+    lines: readonly string[],
+    headerPattern: RegExp,
+    itemPattern: RegExp
+): { found: boolean; values: string[] } {
+    const headerIndex = lines.findIndex(line => headerPattern.test(line));
+    if (headerIndex < 0) {
+        return { found: false, values: [] };
+    }
+    const values: string[] = [];
+    for (const line of lines.slice(headerIndex + 1)) {
+        const item = line.match(itemPattern);
+        if (item) {
+            values.push(frontmatterScalar(item[1]));
+            continue;
+        }
+        if (/^\s*$/.test(line)) {
+            continue;
+        }
+        break;
+    }
+    return { found: true, values };
 }
 
 /** Sorts every candidate and marks lower-priority duplicate ids with the winning document URI. */

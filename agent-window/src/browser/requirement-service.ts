@@ -7,6 +7,7 @@ import {
     moveTaskInRequirementModel,
     removeTaskFromRequirementModel,
     Requirement,
+    RequirementTitleSource,
     splitTaskInRequirementModel
 } from './requirement-model';
 import { ExecutionTask, TaskResultDocument, TaskResultsQuestion, TaskService } from './task-service';
@@ -84,6 +85,7 @@ export class RequirementService {
             id: this.nextId(),
             sessionId,
             title: title.trim() || '新しい要件',
+            titleSource: 'task',
             createdAt: now,
             updatedAt: now,
             taskIds: []
@@ -93,13 +95,13 @@ export class RequirementService {
         return requirement;
     }
 
-    rename(id: string, title: string): Requirement | undefined {
+    rename(id: string, title: string, source: RequirementTitleSource = 'user'): Requirement | undefined {
         const current = this.requirements.get(id);
         const normalizedTitle = title.trim();
-        if (!current || !normalizedTitle) {
+        if (!current || !normalizedTitle || source === 'ai' && current.titleSource === 'user') {
             return current;
         }
-        const updated = { ...current, title: normalizedTitle, updatedAt: new Date().toISOString() };
+        const updated = { ...current, title: normalizedTitle, titleSource: source, updatedAt: new Date().toISOString() };
         this.requirements.set(id, updated);
         this.changed('renamed', [id]);
         return updated;
@@ -244,6 +246,7 @@ export class RequirementService {
         return {
             ...requirement,
             title: typeof requirement.title === 'string' && requirement.title.trim() ? requirement.title.trim() : '要件',
+            titleSource: requirement.titleSource === 'ai' || requirement.titleSource === 'user' ? requirement.titleSource : 'task',
             taskIds: Array.isArray(requirement.taskIds)
                 ? [...new Set(requirement.taskIds.filter(id => typeof id === 'string'))]
                 : [],

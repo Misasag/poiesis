@@ -17,10 +17,18 @@ import {
     requirementClassificationServerPath
 } from '../common/requirement-classification-protocol';
 import { RequirementClassificationServerImpl } from './requirement-classification-server';
+import { ResultsAssertionServer, resultsAssertionServerPath } from '../common/results-assertion-protocol';
+import { ResultsAssertionServerImpl } from './results-assertion-server';
 
 export default new ContainerModule(bind => {
     bind(CliDetector).toSelf().inSingletonScope();
     bind(CliProviderRegistry).toSelf().inSingletonScope();
+    bind(ResultsAssertionServer).to(ResultsAssertionServerImpl).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(context =>
+        new RpcConnectionHandler(resultsAssertionServerPath, () =>
+            context.container.get<ResultsAssertionServer>(ResultsAssertionServer)
+        )
+    ).inSingletonScope();
     bind(RequirementClassificationServer).to(RequirementClassificationServerImpl).inSingletonScope();
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler(requirementClassificationServerPath, () =>

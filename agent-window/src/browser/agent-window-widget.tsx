@@ -2086,6 +2086,8 @@ export class AgentWindowWidget extends ReactWidget {
 
     protected renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
         const newAgent = Boolean(session && !session.hasUserMessage);
+        const latestAgentMessageId = [...(session?.messages ?? [])].reverse()
+            .find(message => message.role === 'agent')?.id;
         return (
             <section
                 id={session?.hasUserMessage ? 'poiesis-agent-panel' : undefined}
@@ -2126,7 +2128,7 @@ export class AgentWindowWidget extends ReactWidget {
                                         )}
                                     </div>
                                 ) : message.role === 'agent'
-                                    ? this.renderAgentMessage(session, message)
+                                    ? this.renderAgentMessage(session, message, message.id === latestAgentMessageId)
                                     : <p>{message.content || '…'}</p>}
                                 {!message.complete && runningTask && runningTask.id === message.taskId && (
                                     <small className='poiesis-agent-window__message-state'>
@@ -2824,6 +2826,7 @@ export class AgentWindowWidget extends ReactWidget {
                         <small>{this.workspaceSkillPath(skill.source, skill.id, entryName)}</small>
                         <div className='poiesis-customize-view__skill-size'>
                             <span>{characters.toLocaleString('ja-JP')} 文字</span>
+                            {skill.kind === 'results' && <span>条件 {previewItem?.assertions ?? skill.assertions.length}件</span>}
                             {previewItem?.reason === '合計上限により未注入' && <span>合計上限により未注入</span>}
                             {previewItem?.included && characters > (preview?.limits.perSkill ?? 8_000) && <span>8,000 文字で切り詰め</span>}
                         </div>
@@ -3568,6 +3571,7 @@ export class AgentWindowWidget extends ReactWidget {
         const completedAtJst = formatTaskEndedAtJst(task.endedAt);
         const document = this.resultsService.get(task.id);
         const generationBadge = this.resultsGenerationBadge(document);
+        const assertionBadge = this.renderResultsAssertionBadge(document);
         const appliedSkillIds = [...new Set([
             ...task.appliedSkills?.agent ?? [],
             ...task.appliedSkills?.results ?? []
@@ -3590,9 +3594,10 @@ export class AgentWindowWidget extends ReactWidget {
                         <ins>+{diffstat.additions}</ins>
                         <del>−{diffstat.deletions}</del>
                     </span>
-                    {(generationBadge || appliedSkillIds.length > 0) && (
+                    {(generationBadge || assertionBadge || appliedSkillIds.length > 0) && (
                         <span className='poiesis-results__badges' aria-label='成果文書の生成情報'>
                             {generationBadge && <span>{generationBadge}</span>}
+                            {assertionBadge}
                             {appliedSkillIds.length > 0 && (
                                 <span title={`適用 Skills: ${appliedSkillNames.join('、')}`}>
                                     適用 Skills: {appliedSkillNames.join('、')}
@@ -3613,6 +3618,7 @@ export class AgentWindowWidget extends ReactWidget {
         const completedAtJst = formatTaskEndedAtJst(latestTask.endedAt);
         const document = this.resultsService.getRequirement(requirement.id);
         const generationBadge = this.resultsGenerationBadge(document);
+        const assertionBadge = this.renderResultsAssertionBadge(document);
         const tasks = requirement.taskIds.map(taskId => this.taskService.get(taskId))
             .filter((task): task is ExecutionTask => Boolean(task));
         const appliedSkillIds = [...new Set(tasks.flatMap(task => [
@@ -3639,6 +3645,7 @@ export class AgentWindowWidget extends ReactWidget {
                     </span>
                     <span className='poiesis-results__badges' aria-label='要件成果文書の生成情報'>
                         {generationBadge && <span>{generationBadge}</span>}
+                        {assertionBadge}
                         {appliedSkillIds.length > 0 && (
                             <span title={`適用 Skills: ${appliedSkillNames.join('、')}`}>
                                 適用 Skills: {appliedSkillNames.join('、')}
@@ -3669,6 +3676,28 @@ export class AgentWindowWidget extends ReactWidget {
                     ? 'AI 生成に失敗'
                     : undefined;
         return `テンプレート表示${fallbackLabel ? ` · ${fallbackLabel}` : ''}`;
+    }
+
+    protected renderResultsAssertionBadge(document: TaskResultDocument | undefined): React.ReactNode {
+        const assertions = document?.status === 'ready' && Array.isArray(document.assertions)
+            ? document.assertions
+            : [];
+        if (!assertions.length) {
+            return undefined;
+        }
+        const passed = assertions.filter(assertion => assertion.status === 'pass').length;
+        const unresolved = assertions.filter(assertion => assertion.status !== 'pass');
+        const title = unresolved.length > 0
+            ? unresolved.map(assertion => `${assertion.status === 'fail' ? '不合格' : '未判定'}: ${assertion.text}`).join('\n')
+            : undefined;
+        return (
+            <span
+                className={`poiesis-results__assertion-badge ${unresolved.length === 0 ? 'passed' : 'warning'}`}
+                title={title}
+            >
+                Skill 条件 {passed}/{assertions.length} 合格
+            </span>
+        );
     }
 
     protected ensureResultsSkillNames(): Promise<void> {
@@ -3792,7 +3821,11 @@ export class AgentWindowWidget extends ReactWidget {
         return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
     }
 
-    protected renderAgentMessage(session: WindowAgentSession | undefined, message: ChatMessage): React.ReactNode {
+    protected renderAgentMessage(
+        session: WindowAgentSession | undefined,
+        message: ChatMessage,
+        isMostRecentAgentMessage: boolean
+    ): React.ReactNode {
         const workspaceUri = session?.workspaceUri ?? this.workspaceRoot()?.resource.toString();
         const messageKey = `${session?.id ?? 'workspace'}:${message.id}`;
         const signature = `${workspaceUri ?? ''}\0${message.content}`;
@@ -3811,7 +3844,8 @@ export class AgentWindowWidget extends ReactWidget {
         return (
             <>
                 {this.renderMarkdown(message.content, current?.imageSources, workspaceUri)}
-                {current?.htmlPreviews.map((preview, index) => this.renderAgentHtmlPreview(messageKey, preview, index))}
+                {current?.htmlPreviews.map((preview, index) =>
+                    this.renderAgentHtmlPreview(messageKey, preview, index, isMostRecentAgentMessage))}
                 {showResultsAction && (
                     <div className='poiesis-agent-window__message-actions'>
                         <button
@@ -3993,9 +4027,14 @@ export class AgentWindowWidget extends ReactWidget {
         );
     }
 
-    protected renderAgentHtmlPreview(messageKey: string, preview: AgentHtmlPreview, index: number): React.ReactNode {
+    protected renderAgentHtmlPreview(
+        messageKey: string,
+        preview: AgentHtmlPreview,
+        index: number,
+        isMostRecentAgentMessage: boolean
+    ): React.ReactNode {
         const previewKey = `${messageKey}:${preview.uri}`;
-        const expanded = this.agentHtmlPreviewExpanded.get(previewKey) ?? index === 0;
+        const expanded = this.agentHtmlPreviewExpanded.get(previewKey) ?? (isMostRecentAgentMessage && index === 0);
         return (
             <section className={`poiesis-agent-html-preview${expanded ? ' expanded' : ' collapsed'}`} key={preview.uri}>
                 <header className='poiesis-agent-html-preview__header'>

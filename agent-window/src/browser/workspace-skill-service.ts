@@ -28,6 +28,7 @@ export interface WorkspaceSkillDefinition {
     name: string;
     description: string;
     kind: SkillBundleKind;
+    assertions: string[];
     uri: string;
     instructions?: string;
     enabled: boolean;
@@ -42,6 +43,7 @@ export interface WorkspaceSkillPrompt {
     content: string;
     diagnostics: string[];
     includedSkillIds: string[];
+    assertions: Array<{ text: string; skillId: string }>;
 }
 
 export interface WorkspaceSkillPreview {
@@ -51,6 +53,7 @@ export interface WorkspaceSkillPreview {
         name: string;
         source: WorkspaceSkillSource;
         chars: number;
+        assertions: number;
         included: boolean;
         reason?: string;
     }>;
@@ -101,6 +104,7 @@ export class WorkspaceSkillService {
             name: parsed.name,
             description: parsed.description,
             kind: parsed.kind,
+            assertions: parsed.assertions,
             uri: uri.toString(),
             instructions: parsed.instructions,
             enabled,
@@ -128,7 +132,7 @@ export class WorkspaceSkillService {
         } as const;
         if (!workspaceUri) {
             return {
-                prompt: { content: '', diagnostics: [], includedSkillIds: [] },
+                prompt: { content: '', diagnostics: [], includedSkillIds: [], assertions: [] },
                 perSkill: [],
                 limits
             };
@@ -142,7 +146,8 @@ export class WorkspaceSkillService {
                 prompt: {
                     content: '',
                     diagnostics: [`Workspace Skillsを読み込めないためスキップしました: ${this.errorMessage(error)}`],
-                    includedSkillIds: []
+                    includedSkillIds: [],
+                    assertions: []
                 },
                 perSkill: [],
                 limits
@@ -152,11 +157,13 @@ export class WorkspaceSkillService {
         const diagnostics: string[] = [];
         const sections: string[] = [];
         const includedSkillIds: string[] = [];
+        const assertions: WorkspaceSkillPrompt['assertions'] = [];
         const perSkill: WorkspaceSkillPreview['perSkill'] = skills.map(skill => ({
             id: skill.id,
             name: skill.name,
             source: skill.source,
             chars: (skill.instructions ?? '').length,
+            assertions: skill.assertions.length,
             included: false
         }));
         const skillByUri = new Map(skills.map(skill => [skill.uri, skill]));
@@ -215,6 +222,7 @@ export class WorkspaceSkillService {
             }
             sections.push(`### ${skill.name}\n${instructions}`);
             includedSkillIds.push(skill.id);
+            assertions.push(...skill.assertions.map(text => ({ text, skillId: skill.id })));
         }
         return {
             prompt: {
@@ -222,7 +230,8 @@ export class WorkspaceSkillService {
                     ? `\n\n## Workspace skills (user-defined instructions)\n${sections.join('\n\n')}`
                     : '',
                 diagnostics,
-                includedSkillIds
+                includedSkillIds,
+                assertions
             },
             perSkill,
             limits
@@ -266,6 +275,7 @@ export class WorkspaceSkillService {
                 name: id,
                 description: '',
                 kind: 'agent',
+                assertions: [],
                 uri: rawUri,
                 enabled,
                 error: 'skill.mdまたはSKILL.mdがありません。',
@@ -283,6 +293,7 @@ export class WorkspaceSkillService {
                 name: id,
                 description: '',
                 kind: 'agent',
+                assertions: [],
                 uri: rawUri,
                 enabled,
                 error: `${preferred.name}を読み込めませんでした: ${this.errorMessage(error)}`,

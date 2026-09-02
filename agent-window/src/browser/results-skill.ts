@@ -11,9 +11,11 @@ import {
 } from './task-service';
 import { ResultsSkillBundle } from '../common/skill-bundle';
 import {
+    ResultsGenerationRequest,
     ResultsGenerationRequirementMetadata,
     ResultsGenerationServer
 } from '../common/results-generation-protocol';
+import { ResultsAssertionServer } from '../common/results-assertion-protocol';
 import { AgentRuntimeServer } from '../common/agent-runtime-protocol';
 import { ResultsGenerationContext } from './results-generation-context';
 import { WorkspaceSkillService } from './workspace-skill-service';
@@ -21,6 +23,15 @@ import { formatExecutionEvidence, normalizeAiResultsHtml } from './results-docum
 import { Requirement } from './requirement-model';
 import { RequirementService } from './requirement-service';
 import { RequirementClassificationService } from './requirement-classification-service';
+import {
+    buildFailedAssertionPromptSection,
+    checkAppResultsAssertions,
+    extractResultsAssertionText,
+    parseResultsAssertionJudgement,
+    ResultsAssertionDefinition,
+    ResultsAssertionResult,
+    selectBetterResultsAssertionCandidate
+} from './results-assertions';
 
 export const ResultsSkill = Symbol('ResultsSkill');
 
@@ -46,6 +57,8 @@ export interface ResultsSkillDocument {
     providerId?: TaskResultDocument['providerId'];
     model?: string;
     fallbackReason?: string;
+    assertions?: ResultsAssertionResult[];
+    assertionAttempts?: 1 | 2;
 }
 
 export function formatRequirementExecutionEvidence(tasks: readonly ExecutionTask[], maxChars = 16_000): string {
@@ -209,6 +222,7 @@ export class AiResultsSkill implements ResultsSkill {
         kind: 'results' as const,
         entry: 'builtin:ai-results'
     };
+    protected readonly cancelledDocumentIds = new Set<string>();
 
     constructor(
         @inject(ResultsGenerationServer) protected readonly generationServer: ResultsGenerationServer,
@@ -216,7 +230,8 @@ export class AiResultsSkill implements ResultsSkill {
         @inject(ResultsGenerationContext) protected readonly context: ResultsGenerationContext,
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
         @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService,
-        @inject(TaskService) protected readonly taskService: TaskService
+        @inject(TaskService) protected readonly taskService: TaskService,
+        @inject(ResultsAssertionServer) protected readonly assertionServer: ResultsAssertionServer
     ) { }
 
     async generate(input: ResultsSkillInput): Promise<ResultsSkillDocument> {
@@ -225,6 +240,8 @@ export class AiResultsSkill implements ResultsSkill {
         }
         const providerId = this.context.providerId;
         const model = this.context.model.trim() || undefined;
+        const documentId = input.documentId ?? input.task.id;
+        this.cancelledDocumentIds.delete(documentId);
         const workspace = this.workspaceService.tryGetRoots()[0]
             ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
         if (!workspace) {
@@ -240,8 +257,12 @@ export class AiResultsSkill implements ResultsSkill {
             for (const diagnostic of workspaceSkills.diagnostics) {
                 console.warn(`[Poiesis] ${diagnostic}`);
             }
-            const result = await this.generationServer.generate({
-                taskId: input.documentId ?? input.task.id,
+            const changeSetSummary = JSON.stringify({
+                files: summarizeTaskChangeSet(input.changeSet).files,
+                captureError: input.changeSet.error
+            }, undefined, 2);
+            const request: ResultsGenerationRequest = {
+                taskId: documentId,
                 providerId,
                 model,
                 workspaceUri: workspace.resource.toString(),
@@ -255,16 +276,14 @@ export class AiResultsSkill implements ResultsSkill {
                     failureSummary: input.task.failure?.summary
                 },
                 requirement: input.requirement ? this.requirementMetadata(input.requirement) : undefined,
-                changeSetSummary: JSON.stringify({
-                    files: summarizeTaskChangeSet(input.changeSet).files,
-                    captureError: input.changeSet.error
-                }, undefined, 2),
+                changeSetSummary,
                 diff: input.changeSet.diff,
                 executionEvidence: input.requirement
                     ? formatRequirementExecutionEvidence(input.requirement.tasks, 16_000) || undefined
                     : formatExecutionEvidence(input.task.activities, 12_000) || undefined,
                 workspaceSkillGuidance: workspaceSkills.content || undefined
-            });
+            };
+            const result = await this.generationServer.generate(request);
             if (result.status === 'cancelled') {
                 throw new ResultsGenerationCancelledError(result.error.message);
             }
@@ -275,12 +294,45 @@ export class AiResultsSkill implements ResultsSkill {
                 const fallback = await this.fallbackSkill.generate(input, { fallback: true });
                 return { ...fallback, fallbackReason: result.error.code === 'timeout' ? 'timeout' : 'generation-failed' };
             }
-            return {
-                html: this.normalizeAndValidate(result.html, input.requirement?.title ?? input.task.title),
-                generator: 'ai',
-                providerId,
-                model
-            };
+            const first = await this.assertCandidate(
+                result.html,
+                input,
+                workspaceSkills.assertions,
+                request,
+                changeSetSummary
+            );
+            if (!first.assertions.some(assertion => assertion.status === 'fail')) {
+                return { ...first.document, assertions: [...first.assertions], assertionAttempts: 1 };
+            }
+
+            const retryGuidance = buildFailedAssertionPromptSection(first.assertions);
+            this.throwIfCancelled(documentId);
+            const retryResult = await this.generationServer.generate({ ...request, assertionRetryGuidance: retryGuidance });
+            if (retryResult.status === 'cancelled') {
+                throw new ResultsGenerationCancelledError(retryResult.error.message);
+            }
+            if (retryResult.status === 'failed') {
+                console.warn('[Poiesis][Results diagnostics] Assertion regeneration failed; keeping the first document.',
+                    `${retryResult.error.code}: ${retryResult.error.message}`);
+                return { ...first.document, assertions: [...first.assertions], assertionAttempts: 2 };
+            }
+            try {
+                const second = await this.assertCandidate(
+                    retryResult.html,
+                    input,
+                    workspaceSkills.assertions,
+                    request,
+                    changeSetSummary
+                );
+                const selected = selectBetterResultsAssertionCandidate(first, second);
+                return { ...selected.document, assertions: [...selected.assertions], assertionAttempts: 2 };
+            } catch (error) {
+                if (error instanceof ResultsGenerationCancelledError) {
+                    throw error;
+                }
+                console.warn('[Poiesis][Results diagnostics] Assertion regeneration was invalid; keeping the first document.', error);
+                return { ...first.document, assertions: [...first.assertions], assertionAttempts: 2 };
+            }
         } catch (error) {
             if (error instanceof ResultsGenerationCancelledError) {
                 throw error;
@@ -292,8 +344,72 @@ export class AiResultsSkill implements ResultsSkill {
         }
     }
 
-    cancel(taskId: string): Promise<void> {
-        return this.generationServer.cancel(taskId);
+    async cancel(taskId: string): Promise<void> {
+        this.cancelledDocumentIds.add(taskId);
+        await Promise.all([
+            this.generationServer.cancel(taskId),
+            this.assertionServer.cancel(taskId)
+        ]);
+    }
+
+    protected throwIfCancelled(taskId: string): void {
+        if (this.cancelledDocumentIds.has(taskId)) {
+            throw new ResultsGenerationCancelledError('Results generation was cancelled.');
+        }
+    }
+
+    protected async assertCandidate(
+        output: string,
+        input: ResultsSkillInput,
+        definitions: readonly ResultsAssertionDefinition[],
+        request: ResultsGenerationRequest,
+        changeSetSummary: string
+    ): Promise<{
+        document: ResultsSkillDocument;
+        assertions: ResultsAssertionResult[];
+    }> {
+        const html = this.normalizeAndValidate(output, input.requirement?.title ?? input.task.title);
+        const appAssertions = checkAppResultsAssertions(html, input.changeSet.files);
+        let skillAssertions: ResultsAssertionResult[] = [];
+        if (definitions.length > 0) {
+            try {
+                const judged = await this.assertionServer.judge({
+                    taskId: request.taskId,
+                    providerId: request.providerId,
+                    model: request.model,
+                    workspaceUri: request.workspaceUri,
+                    documentText: extractResultsAssertionText(html),
+                    assertions: definitions.map(definition => definition.text),
+                    changeSetSummary
+                });
+                if (judged.status === 'cancelled') {
+                    throw new ResultsGenerationCancelledError(judged.error.message);
+                }
+                if (judged.status === 'failed') {
+                    console.warn('[Poiesis][Results diagnostics] Skill assertions could not be judged; recording unknown.',
+                        `${judged.error.code}: ${judged.error.message}`);
+                    skillAssertions = parseResultsAssertionJudgement('', definitions);
+                } else {
+                    skillAssertions = parseResultsAssertionJudgement(judged.output, definitions);
+                }
+            } catch (error) {
+                this.throwIfCancelled(request.taskId);
+                if (error instanceof ResultsGenerationCancelledError) {
+                    throw error;
+                }
+                console.warn('[Poiesis][Results diagnostics] Skill assertion judging failed unexpectedly; recording unknown.', error);
+                skillAssertions = parseResultsAssertionJudgement('', definitions);
+            }
+        }
+        return {
+            document: {
+                html,
+                generator: 'ai',
+                providerId: request.providerId,
+                model: request.model
+            },
+            assertions: [...appAssertions, ...skillAssertions]
+        };
     }
 
     protected normalizeAndValidate(output: string, taskTitle: string): string {
@@ -501,6 +617,10 @@ export class ResultsService {
 
     protected startGeneration(task: ExecutionTask): Promise<void> {
         const generation = this.generateTask(task).then(() => {
+            void this.requirementClassificationService.suggestTitle(task.id)
+                .catch(error =>
+                    console.warn('[Poiesis][Requirement title] Suggestion failed unexpectedly.', error)
+                );
             void this.requirementClassificationService.classify(task.id)
                 .catch(error =>
                     console.warn('[Poiesis][Requirement classification] Classification failed unexpectedly.', error)

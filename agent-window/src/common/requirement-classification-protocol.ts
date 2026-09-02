@@ -19,6 +19,16 @@ export interface RequirementClassificationScope {
     task: RequirementClassificationTaskData;
 }
 
+export interface RequirementTitleSuggestionScope {
+    taskId: string;
+    providerId: KnownCliId;
+    model?: string;
+    workspaceUri: string;
+    request: string;
+    completionSummary?: string;
+    changedFiles: string[];
+}
+
 export type RequirementClassificationErrorCode =
     | 'invalid-scope'
     | 'already-running'
@@ -39,6 +49,11 @@ export type RequirementClassificationResult =
     | { status: 'classified'; output: string }
     | { status: 'failed'; error: RequirementClassificationError };
 
+export type RequirementTitleSuggestionResult =
+    | { status: 'suggested'; output: string }
+    | { status: 'failed'; error: RequirementClassificationError };
+
 export interface RequirementClassificationServer {
     classify(scope: RequirementClassificationScope): Promise<RequirementClassificationResult>;
+    suggestTitle(scope: RequirementTitleSuggestionScope): Promise<RequirementTitleSuggestionResult>;
 }

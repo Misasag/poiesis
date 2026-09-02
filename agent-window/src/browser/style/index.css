@@ -2556,6 +2556,17 @@
     gap: 5px;
 }
 
+.poiesis-results__badges > .poiesis-results__assertion-badge.passed {
+    border-color: #3f5a46;
+    color: #afd0b7;
+}
+
+.poiesis-results__badges > .poiesis-results__assertion-badge.warning {
+    background: #332f27;
+    border-color: #5f5543;
+    color: #c8b995;
+}
+
 .poiesis-results__requirement-card {
     background: #20211f;
     border: 1px solid transparent;

@@ -53,6 +53,7 @@
     "test:composer": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-composer-behavior.mjs",
     "test:agent-activity": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-agent-activity-parser.mjs",
     "test:results-normalizer": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-normalizer.mjs",
+    "test:results-assertions": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-assertions.mjs",
     "test:results-prompt-transport": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-prompt-transport.mjs",
     "test:requirements": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-requirement-model.mjs",
     "test:requirement-classifier": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-requirement-classifier.mjs",

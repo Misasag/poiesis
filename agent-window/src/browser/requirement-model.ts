@@ -1,9 +1,12 @@
 import type { TaskResultDocument, TaskResultsQuestion } from './task-service';
 
+export type RequirementTitleSource = 'task' | 'ai' | 'user';
+
 export interface Requirement {
     id: string;
     sessionId: string;
     title: string;
+    titleSource: RequirementTitleSource;
     createdAt: string;
     updatedAt: string;
     taskIds: string[];
@@ -40,6 +43,7 @@ export function migrateRequirementModel(
         }
         return [{
             ...candidate,
+            titleSource: candidate.titleSource === 'ai' || candidate.titleSource === 'user' ? candidate.titleSource : 'task',
             createdAt: validDate(candidate.createdAt) ? candidate.createdAt : now,
             updatedAt: validDate(candidate.updatedAt) ? candidate.updatedAt : now,
             taskIds: [] as string[]
@@ -77,6 +81,7 @@ export function migrateRequirementModel(
             id: createId(),
             sessionId: task.sessionId,
             title: task.title,
+            titleSource: 'task',
             createdAt: validDate(task.startedAt) ? task.startedAt : now,
             updatedAt: now,
             taskIds: [task.id]
@@ -144,6 +149,7 @@ export function splitTaskInRequirementModel(
         id: createId(),
         sessionId: task.sessionId,
         title: task.title,
+        titleSource: 'task',
         createdAt: now,
         updatedAt: now,
         taskIds: []

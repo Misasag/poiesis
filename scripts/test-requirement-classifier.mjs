@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
     heuristicDecision,
     parseClassification,
+    parseSuggestedRequirementTitle,
     shouldClassify
 } from '../agent-window/lib/browser/requirement-classifier.js';
 
@@ -63,5 +64,9 @@ const parsedNew = parseClassification(
 assert.equal(parsedNew.decision, 'new');
 assert.equal(parsedNew.title, longTitle.slice(0, 24));
 assert.equal(parsedNew.title?.length, 24);
+
+assert.equal(parseSuggestedRequirementTitle('{"title":"成果文書の条件検証"}'), '成果文書の条件検証');
+assert.equal(parseSuggestedRequirementTitle('prefix {"title":"不正"}'), undefined);
+assert.equal(parseSuggestedRequirementTitle('{"title":"これは二十四文字を超える要件名の候補なので切り詰められます"}')?.length, 24);
 
 console.log('requirement-classifier tests passed');

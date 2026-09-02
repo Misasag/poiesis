@@ -2,14 +2,17 @@ import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable } from '@theia/core/shared/inversify';
 import {
     RequirementClassificationScope,
-    RequirementClassificationServer
+    RequirementClassificationServer,
+    RequirementTitleSuggestionScope
 } from '../common/requirement-classification-protocol';
 import {
     heuristicDecision,
     INVALID_CLASSIFICATION_REASON,
     parseClassification,
+    parseSuggestedRequirementTitle,
     shouldClassify
 } from './requirement-classifier';
+import { shortRequirementTitleFallback } from './results-assertions';
 import { RequirementService } from './requirement-service';
 import { ResultsGenerationContext } from './results-generation-context';
 import {
@@ -22,6 +25,7 @@ import {
 export class RequirementClassificationService {
     enabled = true;
     protected readonly classifyingTaskIds = new Set<string>();
+    protected readonly suggestingTitleTaskIds = new Set<string>();
     protected readonly onDidClassifyEmitter = new Emitter<ExecutionTask>();
     readonly onDidClassify: Event<ExecutionTask> = this.onDidClassifyEmitter.event;
 
@@ -144,7 +148,7 @@ export class RequirementClassificationService {
                 });
                 return;
             }
-            this.requirementService.rename(split.id, parsed.title || task.title);
+            this.requirementService.rename(split.id, parsed.title || task.title, 'ai');
             this.record(task.id, {
                 decision: 'new',
                 source: 'ai',
@@ -166,6 +170,70 @@ export class RequirementClassificationService {
             }
         } finally {
             this.classifyingTaskIds.delete(taskId);
+        }
+    }
+
+    async suggestTitle(taskId: string): Promise<void> {
+        const task = this.taskService.get(taskId);
+        if (!task
+            || task.status !== 'completed'
+            || !task.changeSet
+            || this.suggestingTitleTaskIds.has(taskId)) {
+            return;
+        }
+        const requirement = this.requirementService.get(task.requirementId);
+        const firstTaskId = requirement?.taskIds
+            .map(id => this.taskService.get(id))
+            .filter((candidate): candidate is ExecutionTask => Boolean(candidate))
+            .sort((left, right) => left.startedAt.localeCompare(right.startedAt))[0]?.id;
+        if (!requirement
+            || firstTaskId !== task.id
+            || requirement.title !== task.title
+            || requirement.titleSource === 'user') {
+            return;
+        }
+
+        this.suggestingTitleTaskIds.add(taskId);
+        const originalTitle = task.title;
+        try {
+            let suggested: string | undefined;
+            if (isLocalWorkspace(task.workspaceUri)) {
+                const scope: RequirementTitleSuggestionScope = {
+                    taskId: task.id,
+                    providerId: this.resultsContext.providerId,
+                    model: this.resultsContext.model.trim() || undefined,
+                    workspaceUri: task.workspaceUri!,
+                    request: task.request,
+                    completionSummary: task.completionSummary?.slice(0, 2_000),
+                    changedFiles: [...task.changeSet.files]
+                };
+                const result = await this.server.suggestTitle(scope);
+                if (result.status === 'suggested') {
+                    suggested = parseSuggestedRequirementTitle(result.output);
+                    if (!suggested) {
+                        console.warn('[Poiesis][Requirement title] Could not parse the AI response; using the fallback title.');
+                    }
+                } else {
+                    console.warn('[Poiesis][Requirement title] Suggestion failed; using the fallback title.',
+                        `${result.error.code}: ${result.error.message}`);
+                }
+            }
+            const title = suggested ?? shortRequirementTitleFallback(originalTitle);
+            const current = this.requirementService.get(task.requirementId);
+            if (current
+                && current.title === originalTitle
+                && current.titleSource !== 'user'
+                && current.taskIds.includes(task.id)) {
+                this.requirementService.rename(current.id, title, 'ai');
+            }
+        } catch (error) {
+            console.warn('[Poiesis][Requirement title] Suggestion failed unexpectedly; using the fallback title.', error);
+            const current = this.requirementService.get(task.requirementId);
+            if (current && current.title === originalTitle && current.titleSource !== 'user') {
+                this.requirementService.rename(current.id, shortRequirementTitleFallback(originalTitle), 'ai');
+            }
+        } finally {
+            this.suggestingTitleTaskIds.delete(taskId);
         }
     }
 

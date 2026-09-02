@@ -12,20 +12,27 @@ const document = (frontmatter, body = '# Instructions\n\nFollow this skill.') =>
 const topLevel = parseSkillDocument('results-top-level', document([
     'name: Results top level',
     'description: Formats results',
-    'kind: results'
+    'kind: results',
+    'assertions:',
+    '- "要約がある"',
+    "- '確認手順がある'"
 ].join('\n')), {});
 assert.equal(topLevel.kind, 'results');
 assert.equal(topLevel.error, undefined);
+assert.deepEqual(topLevel.assertions, ['要約がある', '確認手順がある']);
 
 const metadata = parseSkillDocument('results-metadata', document([
     'name: Results metadata',
     'description: Formats results through metadata',
     'metadata:',
     '  poiesis:',
-    '    kind: results'
+    '    kind: results',
+    '    assertions:',
+    '      - 根拠引用がある'
 ].join('\n')), {});
 assert.equal(metadata.kind, 'results');
 assert.equal(metadata.error, undefined);
+assert.deepEqual(metadata.assertions, ['根拠引用がある']);
 
 const defaultKind = parseSkillDocument('default-agent', document([
     'name: Default agent',
@@ -57,5 +64,35 @@ const quoted = parseSkillDocument('quoted', document([
 assert.equal(quoted.name, 'Quoted name');
 assert.equal(quoted.description, 'Quoted description');
 assert.equal(quoted.kind, 'results');
+
+const tooManyAssertions = parseSkillDocument('too-many', document([
+    'name: Too many',
+    'description: Tests assertion limits',
+    'kind: results',
+    'assertions:',
+    ...Array.from({ length: 14 }, (_, index) => `  - 条件${index + 1}`)
+].join('\n')), {});
+assert.equal(tooManyAssertions.assertions.length, 12);
+assert(tooManyAssertions.warnings.some(warning => warning.includes('最大12件')));
+
+const longAssertion = parseSkillDocument('long-assertion', document([
+    'name: Long assertion',
+    'description: Tests the character limit',
+    'kind: results',
+    'assertions:',
+    `  - ${'長'.repeat(161)}`
+].join('\n')), {});
+assert.deepEqual(longAssertion.assertions, []);
+assert(longAssertion.warnings.some(warning => warning.includes('160文字以内')));
+
+const agentAssertions = parseSkillDocument('agent-assertions', document([
+    'name: Agent assertions',
+    'description: Assertions are ignored',
+    'kind: agent',
+    'assertions:',
+    '  - この条件は無視される'
+].join('\n')), {});
+assert.deepEqual(agentAssertions.assertions, []);
+assert(agentAssertions.warnings.includes('assertions は Results Skill だけが使えます'));
 
 console.log('skill-document tests passed');

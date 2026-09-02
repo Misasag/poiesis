@@ -112,6 +112,19 @@ export function parseClassification(text: string): ParsedRequirementClassificati
     }
 }
 
+export function parseSuggestedRequirementTitle(text: string): string | undefined {
+    try {
+        const parsed = JSON.parse(text.trim()) as Record<string, unknown> | null;
+        if (!parsed || Object.keys(parsed).length !== 1 || typeof parsed.title !== 'string') {
+            return undefined;
+        }
+        const title = parsed.title.replace(/\s+/g, ' ').trim();
+        return title ? title.slice(0, 24) : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 function invalidClassification(): ParsedRequirementClassification {
     return { decision: 'continue', reason: INVALID_CLASSIFICATION_REASON };
 }

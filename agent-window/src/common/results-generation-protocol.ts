@@ -30,6 +30,7 @@ export interface ResultsGenerationRequest {
     diff: string;
     executionEvidence?: string;
     workspaceSkillGuidance?: string;
+    assertionRetryGuidance?: string;
 }
 
 export type ResultsGenerationErrorCode =

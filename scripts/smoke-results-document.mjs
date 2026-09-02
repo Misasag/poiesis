@@ -162,7 +162,13 @@ async function smokeCitation(page, workspacePath) {
                     taskId: fixture.taskId,
                     status: 'ready',
                     generator: 'ai',
-                    html: '<!doctype html><html><head><title>Citation</title></head><body><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></body></html>'
+                    html: '<!doctype html><html><head><title>Citation</title></head><body><h2>根拠</h2><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></body></html>',
+                    assertions: [
+                        { text: '変更ファイルがある場合、本文に根拠引用がある', source: 'app', status: 'pass' },
+                        { text: '本文に見出し（h2〜h4）がある', source: 'app', status: 'pass' },
+                        { text: '空の見出しがない', source: 'app', status: 'pass' }
+                    ],
+                    assertionAttempts: 1
                 }]
             }]
         }));
@@ -176,6 +182,23 @@ async function smokeCitation(page, workspacePath) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
     await page.waitForSelector('.poiesis-results__document');
+    const assertionState = await page.evaluate(taskId => {
+        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
+        const state = raw ? JSON.parse(raw) : undefined;
+        const session = state?.sessions?.find(candidate => (candidate.tasks ?? []).some(task => task.id === taskId));
+        const task = session?.tasks?.find(candidate => candidate.id === taskId);
+        const resultDocument = task?.resultsDocument ?? session?.resultsDocuments?.find(candidate => candidate.taskId === taskId);
+        return {
+            badge: document.querySelector('.poiesis-results__assertion-badge')?.textContent?.replace(/\s+/g, ' ').trim(),
+            assertions: resultDocument?.assertions,
+            attempts: resultDocument?.assertionAttempts
+        };
+    }, taskId);
+    assert(assertionState.badge === 'Skill 条件 3/3 合格'
+        && assertionState.assertions?.length === 3
+        && assertionState.assertions.every(result => result.source === 'app' && result.status === 'pass')
+        && assertionState.attempts === 1,
+    `AI assertion results were not persisted and rendered: ${JSON.stringify(assertionState)}`);
     const frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-citation="citation-target.txt:4"]');
     await frame.click('[data-poiesis-citation="citation-target.txt:4"]');
@@ -250,6 +273,7 @@ async function smokeFallback(page, diagnostics) {
         && fixedHeader.diffstat.includes('+2')
         && fixedHeader.diffstat.includes('−0')
         && fixedHeader.badges?.includes('テンプレート表示 · AI 生成に失敗')
+        && !fixedHeader.badges.includes('Skill 条件')
         && fixedHeader.badges.includes('タスク 1件'),
     `The fixed Results metadata is incomplete: ${JSON.stringify(fixedHeader)}`);
     let frame = await resultsFrame(page);
