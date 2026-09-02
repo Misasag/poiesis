@@ -27,6 +27,11 @@ import { FileResourceResolver } from '@theia/filesystem/lib/browser/file-resourc
 import { PoiesisFileResourceResolver } from './poiesis-file-resource-resolver';
 import { WorkspaceSkillService } from './workspace-skill-service';
 import { RequirementService } from './requirement-service';
+import {
+    RequirementClassificationServer,
+    requirementClassificationServerPath
+} from '../common/requirement-classification-protocol';
+import { RequirementClassificationService } from './requirement-classification-service';
 import '../../src/browser/style/index.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
@@ -44,12 +49,15 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     }).inSingletonScope();
     bind(ResultsQuestionServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
         .createProxy<ResultsQuestionServer>(resultsQuestionServerPath)).inSingletonScope();
+    bind(RequirementClassificationServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
+        .createProxy<RequirementClassificationServer>(requirementClassificationServerPath)).inSingletonScope();
     bind(ResultsGenerationServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
         .createProxy<ResultsGenerationServer>(resultsGenerationServerPath)).inSingletonScope();
     bind(ResultsGenerationContext).toSelf().inSingletonScope();
     bind(ResultsQuestionService).toSelf().inSingletonScope();
     bind(TaskService).toSelf().inSingletonScope();
     bind(RequirementService).toSelf().inSingletonScope();
+    bind(RequirementClassificationService).toSelf().inSingletonScope();
     bind(MockAgentProvider).toSelf().inSingletonScope();
     bind(CliAgentProvider).toSelf().inSingletonScope();
     bind(AgentProvider).toService(CliAgentProvider);

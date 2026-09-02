@@ -122,12 +122,25 @@ export interface TaskResultDocument {
     durationMs?: number;
 }
 
+export interface TaskRequirementClassification {
+    decision: 'continue' | 'new';
+    source: 'heuristic' | 'ai' | 'skipped';
+    confidence?: number;
+    reason: string;
+    decidedAt: string;
+    appliedNewRequirementId?: string;
+    previousRequirementId?: string;
+    undone?: boolean;
+}
+
 export interface ExecutionTask {
     id: string;
     sessionId: string;
     requirementId: string;
     title: string;
     request: string;
+    requirementChoice: 'explicit' | 'default';
+    workspaceUri?: string;
     status: ExecutionTaskStatus;
     startedAt: string;
     endedAt?: string;
@@ -144,6 +157,7 @@ export interface ExecutionTask {
     resultsQuestions?: TaskResultsQuestion[];
     /** New Results documents are persisted with their owning Task. */
     resultsDocument?: TaskResultDocument;
+    requirementClassification?: TaskRequirementClassification;
 }
 
 export interface TaskEvent {
@@ -206,7 +220,14 @@ export class TaskService {
             });
     }
 
-    start(sessionId: string, request: string, workspacePath: string | undefined, requirementId: string): ExecutionTask {
+    start(
+        sessionId: string,
+        request: string,
+        workspacePath: string | undefined,
+        requirementId: string,
+        requirementChoice: ExecutionTask['requirementChoice'] = 'default',
+        workspaceUri?: string
+    ): ExecutionTask {
         const startedAt = new Date().toISOString();
         const task: ExecutionTask = {
             id: `task-${Date.now()}-${++this.sequence}`,
@@ -214,6 +235,8 @@ export class TaskService {
             requirementId,
             title: this.titleFor(request),
             request,
+            requirementChoice,
+            workspaceUri,
             status: 'running',
             startedAt,
             baseline: {
@@ -238,7 +261,9 @@ export class TaskService {
         sessionId: string,
         request: string,
         requirementId: string,
-        failure: TaskFailure
+        failure: TaskFailure,
+        requirementChoice: ExecutionTask['requirementChoice'] = 'default',
+        workspaceUri?: string
     ): Promise<ExecutionTask> {
         const startedAt = new Date().toISOString();
         const task: ExecutionTask = {
@@ -247,6 +272,8 @@ export class TaskService {
             requirementId,
             title: this.titleFor(request),
             request,
+            requirementChoice,
+            workspaceUri,
             status: 'failed',
             startedAt,
             endedAt: startedAt,
@@ -292,6 +319,20 @@ export class TaskService {
             return current;
         }
         const updated = { ...current, requirementId };
+        this.tasks.set(taskId, updated);
+        return updated;
+    }
+
+    setRequirementClassification(
+        taskId: string,
+        classification: TaskRequirementClassification
+    ): ExecutionTask | undefined {
+        const current = this.tasks.get(taskId);
+        const normalized = this.normalizeRequirementClassification(classification);
+        if (!current || !normalized) {
+            return current;
+        }
+        const updated = { ...current, requirementClassification: normalized };
         this.tasks.set(taskId, updated);
         return updated;
     }
@@ -378,25 +419,31 @@ export class TaskService {
             const resultsDocument = this.normalizeResultsDocument(candidate.resultsDocument, candidate.id);
             const activities = this.normalizeActivities(candidate.activities);
             const appliedSkills = this.normalizeAppliedSkills(candidate.appliedSkills);
+            const requirementClassification = this.normalizeRequirementClassification(candidate.requirementClassification);
+            const requirementChoice = candidate.requirementChoice === 'explicit' ? 'explicit' : 'default';
             const task: ExecutionTask = candidate.status === 'running'
                 ? {
                     ...candidate,
                     requirementId: typeof candidate.requirementId === 'string' ? candidate.requirementId : '',
+                    requirementChoice,
                     status: 'failed',
                     endedAt: new Date().toISOString(),
                     failure: { summary: 'アプリ終了により中断されました' },
                     activities,
                     appliedSkills,
                     resultsQuestions,
-                    resultsDocument
+                    resultsDocument,
+                    requirementClassification
                 }
                 : {
                     ...candidate,
                     requirementId: typeof candidate.requirementId === 'string' ? candidate.requirementId : '',
+                    requirementChoice,
                     activities,
                     appliedSkills,
                     resultsQuestions,
-                    resultsDocument
+                    resultsDocument,
+                    requirementClassification
                 };
             this.tasks.set(task.id, task);
             if (legacyResultsQuestions.length > 0) {
@@ -638,6 +685,39 @@ export class TaskService {
         const normalize = (ids: readonly string[]): string[] =>
             [...new Set(ids.filter(id => typeof id === 'string' && id.trim()).map(id => id.trim()))];
         return { agent: normalize(appliedSkills.agent), results: normalize(appliedSkills.results) };
+    }
+
+    protected normalizeRequirementClassification(
+        classification: TaskRequirementClassification | undefined
+    ): TaskRequirementClassification | undefined {
+        if (!classification
+            || !['continue', 'new'].includes(classification.decision)
+            || !['heuristic', 'ai', 'skipped'].includes(classification.source)
+            || typeof classification.reason !== 'string'
+            || typeof classification.decidedAt !== 'string'
+            || !Number.isFinite(Date.parse(classification.decidedAt))
+            || classification.confidence !== undefined && (
+                typeof classification.confidence !== 'number'
+                || !Number.isFinite(classification.confidence)
+                || classification.confidence < 0
+                || classification.confidence > 1
+            )) {
+            return undefined;
+        }
+        return {
+            decision: classification.decision,
+            source: classification.source,
+            confidence: classification.confidence,
+            reason: classification.reason.slice(0, 300),
+            decidedAt: classification.decidedAt,
+            appliedNewRequirementId: typeof classification.appliedNewRequirementId === 'string'
+                ? classification.appliedNewRequirementId
+                : undefined,
+            previousRequirementId: typeof classification.previousRequirementId === 'string'
+                ? classification.previousRequirementId
+                : undefined,
+            undone: classification.undone === true
+        };
     }
 
     protected normalizeResultsQuestionTasks(

@@ -1777,6 +1777,33 @@
     padding: 5px 8px;
 }
 
+.poiesis-agent-window__requirement-classification {
+    align-items: center;
+    color: #8f928b;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 12px;
+    gap: 5px;
+    margin-top: 8px;
+}
+
+.poiesis-agent-window__requirement-classification button,
+.poiesis-results__automatic-requirement-note button {
+    background: transparent;
+    border: 0;
+    color: #aeb0aa;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.poiesis-agent-window__requirement-classification button:hover,
+.poiesis-results__automatic-requirement-note button:hover {
+    color: var(--poiesis-chrome-text);
+}
+
 .poiesis-agent-window__task-state {
     align-items: center;
     background: #21221f;
@@ -2547,6 +2574,15 @@
     display: grid;
     grid-template-columns: 24px minmax(0, 1fr) 27px;
     min-width: 0;
+}
+
+.poiesis-results__automatic-requirement-note {
+    align-items: center;
+    color: var(--poiesis-chrome-muted);
+    display: flex;
+    font-size: 12px;
+    gap: 4px;
+    padding: 0 10px 8px 28px;
 }
 
 .poiesis-results__requirement-expand,

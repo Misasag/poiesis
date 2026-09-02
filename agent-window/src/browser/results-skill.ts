@@ -20,6 +20,7 @@ import { WorkspaceSkillService } from './workspace-skill-service';
 import { formatExecutionEvidence, normalizeAiResultsHtml } from './results-document-normalizer';
 import { Requirement } from './requirement-model';
 import { RequirementService } from './requirement-service';
+import { RequirementClassificationService } from './requirement-classification-service';
 
 export const ResultsSkill = Symbol('ResultsSkill');
 
@@ -381,6 +382,7 @@ export class ResultsService {
         @inject(TaskService) protected readonly taskService: TaskService,
         @inject(ResultsSkill) protected readonly resultsSkill: ResultsSkill,
         @inject(RequirementService) protected readonly requirementService: RequirementService,
+        @inject(RequirementClassificationService) protected readonly requirementClassificationService: RequirementClassificationService,
         @inject(AgentRuntimeServer) protected readonly runtimeServer: AgentRuntimeServer
     ) { }
 
@@ -499,9 +501,15 @@ export class ResultsService {
 
     protected startGeneration(task: ExecutionTask): Promise<void> {
         const generation = this.generateTask(task).then(() => {
-            void this.startRequirementGeneration(task.requirementId).catch(error =>
-                console.warn('[Poiesis] Could not generate Requirement Results in the background.', error)
-            );
+            void this.requirementClassificationService.classify(task.id)
+                .catch(error =>
+                    console.warn('[Poiesis][Requirement classification] Classification failed unexpectedly.', error)
+                ).finally(() => {
+                    const requirementId = this.taskService.get(task.id)?.requirementId ?? task.requirementId;
+                    void this.startRequirementGeneration(requirementId).catch(error =>
+                        console.warn('[Poiesis] Could not generate Requirement Results in the background.', error)
+                    );
+                });
         });
         this.generationPromises.set(task.id, generation);
         return generation;

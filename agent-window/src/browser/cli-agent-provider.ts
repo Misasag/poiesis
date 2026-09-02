@@ -102,7 +102,9 @@ export class CliAgentProvider implements AgentProvider {
             message.ownerSessionId,
             message.content,
             session.workspacePath,
-            message.requirementId
+            message.requirementId,
+            message.requirementChoice,
+            message.workspaceUri
         );
         const run: CodexRun = {
             sessionId,

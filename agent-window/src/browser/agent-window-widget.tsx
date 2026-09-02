@@ -64,6 +64,7 @@ import { formatTaskElapsedTime, shouldSubmitComposer } from './composer-behavior
 import { formatExecutionEvidence } from './results-document-normalizer';
 import { Requirement } from './requirement-model';
 import { RequirementService } from './requirement-service';
+import { RequirementClassificationService } from './requirement-classification-service';
 
 type AgentWindowTab = 'agent' | 'results';
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
@@ -142,6 +143,7 @@ interface WindowAgentSession {
     messages: ChatMessage[];
     taskIds: string[];
     requirementDraft?: string | 'new';
+    requirementDraftExplicit?: boolean;
     selectedResultsRequirementId?: string;
     selectedResultsTaskId?: string;
     readonly resultsDrafts: Map<string, string>;
@@ -172,21 +174,24 @@ interface PersistedResultsQaPanelState {
 }
 
 interface PersistedPoiesisSettings {
-    version: 3;
+    version: 4;
     uiFontScale: UiFontScale;
     agentCli: KnownCliId;
     agentModel: string;
     resultsCli: KnownCliId;
     resultsModel: string;
     allowExternalResultsResources: boolean;
+    automaticRequirementClassification: boolean;
 }
 
 interface LegacyPoiesisSettings {
-    version?: 1 | 2;
+    version?: 1 | 2 | 3;
     uiFontScale?: UiFontScale;
     preferredCli?: KnownCliId;
     agentCli?: KnownCliId;
     resultsCli?: KnownCliId;
+    agentModel?: string;
+    resultsModel?: string;
     allowExternalResultsResources?: boolean;
 }
 
@@ -653,6 +658,7 @@ export class AgentWindowWidget extends ReactWidget {
     protected resultsModel = '';
     protected readonly customModelRoles = new Set<AiRole>();
     protected allowExternalResultsResources = false;
+    protected automaticRequirementClassification = true;
     protected cliDetectionReport?: CliDetectionReport;
     protected cliDetectionLoading = false;
     protected deleteSessionConfirmationId?: string;
@@ -758,6 +764,7 @@ export class AgentWindowWidget extends ReactWidget {
         @inject(TaskService) protected readonly taskService: TaskService,
         @inject(ResultsService) protected readonly resultsService: ResultsService,
         @inject(RequirementService) protected readonly requirementService: RequirementService,
+        @inject(RequirementClassificationService) protected readonly requirementClassificationService: RequirementClassificationService,
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
         @inject(ScmService) protected readonly scmService: ScmService,
         @inject(TerminalService) protected readonly terminalService: TerminalService,
@@ -930,6 +937,16 @@ export class AgentWindowWidget extends ReactWidget {
                 }
                 void this.persistWindowState();
             }
+            this.update();
+        }));
+        this.toDispose.push(this.requirementClassificationService.onDidClassify(task => {
+            const session = this.findSessionForTask(task);
+            if (session
+                && !session.requirementDraftExplicit
+                && this.requirementService.currentRequirementId(session.id) === task.requirementId) {
+                session.requirementDraft = task.requirementId;
+            }
+            void this.persistWindowState();
             this.update();
         }));
         this.toDispose.push(this.workspaceService.onWorkspaceChanged(() => {
@@ -2320,6 +2337,21 @@ export class AgentWindowWidget extends ReactWidget {
                                     ))}
                                 </div>
                             </div>
+                            <div className='poiesis-settings-modal__row'>
+                                <div>
+                                    <strong>要件の自動分類</strong>
+                                    <small>タスク完了後、直前の要件と関係が薄いと高い確信で判定できた場合だけ、新しい要件として分けます。判定に迷う場合は現在の要件を継続します。</small>
+                                </div>
+                                <label className='poiesis-agent-window__switch'>
+                                    <input
+                                        type='checkbox'
+                                        checked={this.automaticRequirementClassification}
+                                        aria-label='要件の自動分類'
+                                        onChange={event => this.setAutomaticRequirementClassification(event.currentTarget.checked)}
+                                    />
+                                    <span aria-hidden='true' />
+                                </label>
+                            </div>
                             <div className='poiesis-settings-modal__row poiesis-settings-modal__shortcuts-row'>
                                 <div><strong>キーボードショートカット</strong><small>Poiesisで実際に使えるキー操作を確認します。</small></div>
                                 <button type='button' className='poiesis-settings-modal__text-button' aria-haspopup='dialog' onClick={() => this.openShortcutsOverlay()}>一覧を開く</button>
@@ -3069,6 +3101,7 @@ export class AgentWindowWidget extends ReactWidget {
                     leadingIconClass='codicon-tag'
                     onChange={value => {
                         session.requirementDraft = value === 'new' ? 'new' : value;
+                        session.requirementDraftExplicit = true;
                         void this.persistWindowState();
                         this.update();
                     }}
@@ -3355,6 +3388,13 @@ export class AgentWindowWidget extends ReactWidget {
         const tasks = requirement.taskIds.map(taskId => this.taskService.get(taskId))
             .filter((task): task is ExecutionTask => Boolean(task))
             .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+        const automaticSplitTask = tasks.length === 1
+            && tasks[0].requirementClassification?.decision === 'new'
+            && tasks[0].requirementClassification?.source === 'ai'
+            && tasks[0].requirementClassification?.appliedNewRequirementId === requirement.id
+            && !tasks[0].requirementClassification?.undone
+            ? tasks[0]
+            : undefined;
         return (
             <article
                 key={requirement.id}
@@ -3433,6 +3473,13 @@ export class AgentWindowWidget extends ReactWidget {
                         </div>
                     )}
                 </div>
+                {automaticSplitTask && (
+                    <div className='poiesis-results__automatic-requirement-note'>
+                        <span>自動で分けました</span>
+                        <span aria-hidden='true'>·</span>
+                        <button type='button' onClick={() => this.undoAutomaticRequirementSplit(automaticSplitTask.id)}>戻す</button>
+                    </div>
+                )}
                 {expanded && (
                     <div className='poiesis-results__requirement-tasks' role='group' aria-label={`${requirement.title}のタスク履歴`}>
                         {tasks.map(task => this.renderRequirementTaskRow(requirement, task, selectedTaskId === task.id))}
@@ -3779,7 +3826,32 @@ export class AgentWindowWidget extends ReactWidget {
                         </button>
                     </div>
                 )}
+                {task && this.renderAutomaticRequirementClassification(task)}
             </>
+        );
+    }
+
+    protected renderAutomaticRequirementClassification(task: ExecutionTask): React.ReactNode {
+        const classification = task.requirementClassification;
+        if (classification?.decision !== 'new'
+            || classification.source !== 'ai'
+            || !classification.appliedNewRequirementId) {
+            return undefined;
+        }
+        if (classification.undone) {
+            return (
+                <div className='poiesis-agent-window__requirement-classification undone'>
+                    元の要件に戻しました
+                </div>
+            );
+        }
+        const title = this.requirementService.get(classification.appliedNewRequirementId)?.title ?? task.title;
+        return (
+            <div className='poiesis-agent-window__requirement-classification'>
+                <span>新しい要件「{title}」として分けました</span>
+                <span aria-hidden='true'>·</span>
+                <button type='button' onClick={() => this.undoAutomaticRequirementSplit(task.id)}>戻す</button>
+            </div>
         );
     }
 
@@ -6240,6 +6312,13 @@ export class AgentWindowWidget extends ReactWidget {
         this.update();
     }
 
+    protected setAutomaticRequirementClassification(enabled: boolean): void {
+        this.automaticRequirementClassification = enabled;
+        this.requirementClassificationService.enabled = enabled;
+        this.persistPoiesisSettings();
+        this.update();
+    }
+
     protected async refreshCliDetection(): Promise<void> {
         if (this.cliDetectionLoading) {
             return;
@@ -6275,40 +6354,49 @@ export class AgentWindowWidget extends ReactWidget {
     protected async restorePoiesisSettings(): Promise<void> {
         try {
             const state = await this.storageService.getData<Partial<PersistedPoiesisSettings> | LegacyPoiesisSettings>(SETTINGS_STORAGE_KEY);
-            if (state?.version === 1 || state?.version === 2 || state?.version === 3) {
+            if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4) {
                 this.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
                     ? state.uiFontScale
                     : 'standard';
                 const legacyCli = state.version === 1 && isKnownCliId(state.preferredCli)
                     ? state.preferredCli
                     : DEFAULT_CLI_ID;
-                this.agentCli = (state.version === 2 || state.version === 3) && isKnownCliId(state.agentCli)
+                this.agentCli = state.version !== 1 && isKnownCliId(state.agentCli)
                     ? state.agentCli
                     : legacyCli;
-                this.resultsCli = (state.version === 2 || state.version === 3) && isKnownCliId(state.resultsCli)
+                this.resultsCli = state.version !== 1 && isKnownCliId(state.resultsCli)
                     ? state.resultsCli
                     : legacyCli;
-                this.agentModel = state.version === 3 && typeof state.agentModel === 'string' ? state.agentModel : '';
-                this.resultsModel = state.version === 3 && typeof state.resultsModel === 'string' ? state.resultsModel : '';
+                this.agentModel = (state.version === 3 || state.version === 4) && typeof state.agentModel === 'string'
+                    ? state.agentModel
+                    : '';
+                this.resultsModel = (state.version === 3 || state.version === 4) && typeof state.resultsModel === 'string'
+                    ? state.resultsModel
+                    : '';
                 this.allowExternalResultsResources = state.allowExternalResultsResources === true;
+                this.automaticRequirementClassification = state.version === 4
+                    ? state.automaticRequirementClassification !== false
+                    : true;
             }
         } catch (error) {
             console.warn('[Poiesis] Could not restore settings.', error);
         }
         this.resultsGenerationContext.providerId = this.resultsCli;
         this.resultsGenerationContext.model = this.resultsModel.trim();
+        this.requirementClassificationService.enabled = this.automaticRequirementClassification;
         this.update();
     }
 
     protected persistPoiesisSettings(): void {
         void this.storageService.setData<PersistedPoiesisSettings>(SETTINGS_STORAGE_KEY, {
-            version: 3,
+            version: 4,
             uiFontScale: this.uiFontScale,
             agentCli: this.agentCli,
             agentModel: this.agentModel,
             resultsCli: this.resultsCli,
             resultsModel: this.resultsModel,
-            allowExternalResultsResources: this.allowExternalResultsResources
+            allowExternalResultsResources: this.allowExternalResultsResources,
+            automaticRequirementClassification: this.automaticRequirementClassification
         });
     }
 
@@ -6607,6 +6695,7 @@ export class AgentWindowWidget extends ReactWidget {
             agentDraft: '',
             messages: [],
             taskIds: [],
+            requirementDraftExplicit: false,
             resultsDrafts: new Map<string, string>(),
             resultsNotices: new Map<string, ResultsNotice>(),
             resultsQaExpanded: new Map<string, boolean>()
@@ -6743,6 +6832,7 @@ export class AgentWindowWidget extends ReactWidget {
                     requirementDraft: candidate.requirementDraft === 'new' || typeof candidate.requirementDraft === 'string'
                         ? candidate.requirementDraft
                         : undefined,
+                    requirementDraftExplicit: candidate.requirementDraftExplicit === true,
                     selectedResultsRequirementId: typeof candidate.selectedResultsRequirementId === 'string'
                         ? candidate.selectedResultsRequirementId
                         : undefined,
@@ -6978,7 +7068,13 @@ export class AgentWindowWidget extends ReactWidget {
         return taskTitleForRequest(message);
     }
 
-    protected requirementForSend(session: WindowAgentSession, request: string): string {
+    protected requirementForSend(
+        session: WindowAgentSession,
+        request: string
+    ): { requirementId: string; requirementChoice: ExecutionTask['requirementChoice'] } {
+        const requirementChoice: ExecutionTask['requirementChoice'] = session.requirementDraftExplicit
+            ? 'explicit'
+            : 'default';
         const available = this.requirementsForSession(session);
         const selected = session.requirementDraft && session.requirementDraft !== 'new'
             ? available.find(requirement => requirement.id === session.requirementDraft)
@@ -6990,7 +7086,8 @@ export class AgentWindowWidget extends ReactWidget {
                 ?? available.find(candidate => candidate.id === current)
                 ?? this.requirementService.create(session.id, taskTitleForRequest(request));
         session.requirementDraft = requirement.id;
-        return requirement.id;
+        session.requirementDraftExplicit = false;
+        return { requirementId: requirement.id, requirementChoice };
     }
 
     protected requirementsForSession(session: WindowAgentSession | undefined): Requirement[] {
@@ -7106,7 +7203,7 @@ export class AgentWindowWidget extends ReactWidget {
         if (!session || !session.workspaceUri || !content || this.runningTask(session)) {
             return;
         }
-        const requirementId = this.requirementForSend(session, content);
+        const { requirementId, requirementChoice } = this.requirementForSend(session, content);
         session.agentDraft = '';
         const sentAt = Date.now();
         session.messages.push({ id: `user-${sentAt}`, role: 'user', content, complete: true });
@@ -7127,13 +7224,20 @@ export class AgentWindowWidget extends ReactWidget {
                 session,
                 content,
                 requirementId,
+                requirementChoice,
                 'Agentを開始できませんでした。',
                 this.providerPreparationErrors.get(session.id)
             );
             return;
         }
         if (!session.agentSession) {
-            await this.recordPreSpawnFailure(session, content, requirementId, 'Agentを開始できませんでした。');
+            await this.recordPreSpawnFailure(
+                session,
+                content,
+                requirementId,
+                requirementChoice,
+                'Agentを開始できませんでした。'
+            );
             return;
         }
         try {
@@ -7141,13 +7245,16 @@ export class AgentWindowWidget extends ReactWidget {
                 role: 'user',
                 content,
                 ownerSessionId: session.id,
-                requirementId
+                requirementId,
+                requirementChoice,
+                workspaceUri: session.workspaceUri
             });
         } catch (error) {
             await this.recordPreSpawnFailure(
                 session,
                 content,
                 requirementId,
+                requirementChoice,
                 'Agentを開始できませんでした。',
                 error instanceof Error ? error.message : String(error)
             );
@@ -7158,10 +7265,18 @@ export class AgentWindowWidget extends ReactWidget {
         session: WindowAgentSession,
         request: string,
         requirementId: string,
+        requirementChoice: ExecutionTask['requirementChoice'],
         summary: string,
         details?: string
     ): Promise<void> {
-        const task = await this.taskService.failBeforeStart(session.id, request, requirementId, { summary, details });
+        const task = await this.taskService.failBeforeStart(
+            session.id,
+            request,
+            requirementId,
+            { summary, details },
+            requirementChoice,
+            session.workspaceUri
+        );
         session.messages.push({
             id: `agent-${task.id}`,
             role: 'agent',
@@ -7490,6 +7605,15 @@ export class AgentWindowWidget extends ReactWidget {
         void this.persistWindowState();
         void this.persistResultsQaPanelState();
         this.beginSplitRequirementRename(requirement);
+    }
+
+    protected undoAutomaticRequirementSplit(taskId: string): void {
+        if (!this.requirementClassificationService.undo(taskId)) {
+            return;
+        }
+        void this.persistWindowState();
+        void this.persistResultsQaPanelState();
+        this.update();
     }
 
     protected setResultsQuestionPanelExpanded(scopeKey: string, expanded: boolean, revealLatest = false): void {

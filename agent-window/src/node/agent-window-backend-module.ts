@@ -12,10 +12,21 @@ import { ResultsQuestionServer, resultsQuestionServerPath } from '../common/resu
 import { ResultsQuestionServerImpl } from './results-question-server';
 import { ResultsGenerationServer, resultsGenerationServerPath } from '../common/results-generation-protocol';
 import { ResultsGenerationServerImpl } from './results-generation-server';
+import {
+    RequirementClassificationServer,
+    requirementClassificationServerPath
+} from '../common/requirement-classification-protocol';
+import { RequirementClassificationServerImpl } from './requirement-classification-server';
 
 export default new ContainerModule(bind => {
     bind(CliDetector).toSelf().inSingletonScope();
     bind(CliProviderRegistry).toSelf().inSingletonScope();
+    bind(RequirementClassificationServer).to(RequirementClassificationServerImpl).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(context =>
+        new RpcConnectionHandler(requirementClassificationServerPath, () =>
+            context.container.get<RequirementClassificationServer>(RequirementClassificationServer)
+        )
+    ).inSingletonScope();
     bind(ResultsQuestionServer).to(ResultsQuestionServerImpl).inSingletonScope();
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler(resultsQuestionServerPath, () =>

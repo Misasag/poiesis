@@ -24,6 +24,8 @@ export interface AgentMessage {
     ownerSessionId: string;
     /** Application-owned manual grouping selected by the Agent composer. */
     requirementId: string;
+    requirementChoice: 'explicit' | 'default';
+    workspaceUri?: string;
 }
 
 export type AgentActivityKind = 'command' | 'file-change' | 'read' | 'reasoning' | 'message' | 'tool';

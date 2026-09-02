@@ -55,6 +55,7 @@
     "test:results-normalizer": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-normalizer.mjs",
     "test:results-prompt-transport": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-prompt-transport.mjs",
     "test:requirements": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-requirement-model.mjs",
+    "test:requirement-classifier": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-requirement-classifier.mjs",
     "test:snapshot-store": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-snapshot-store.mjs",
     "test:skill-document": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-skill-document.mjs",
     "validate:source": "node scripts/validate-source.mjs"
