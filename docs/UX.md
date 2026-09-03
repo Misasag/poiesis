@@ -13,8 +13,8 @@ Decided for First Completion (2026-08-23).
 Poiesisは一つのWindow内に次の3モードを持つ。
 
 ```text
-Agent   作業者AIへ依頼し、実行状態と短い結果を見る
-Results 完了・失敗・キャンセルされたTaskの成果を確認し、その成果について質問する
+Agent   作業者AIへ依頼し、実行状態と完了報告全文を見る
+Results 変更を伴う完了Task・失敗・キャンセルTaskの成果を確認し、その成果について質問する
 Code    Files／Gitと既存Editorで実コードを確認・編集する
 ```
 

@@ -17,7 +17,10 @@
         grid-template-columns: minmax(0, 1fr) 128px;
     }
 
-    .poiesis-results__canvas,
+    .poiesis-results__canvas {
+        margin-inline: 8px;
+    }
+
     .poiesis-results__qa-panel,
     .poiesis-results__composer {
         margin-inline: 10px;
@@ -30,10 +33,6 @@
     }
 
     .poiesis-results__fixed-meta {
-        justify-content: flex-start;
-    }
-
-    .poiesis-results__badges {
         justify-content: flex-start;
     }
 

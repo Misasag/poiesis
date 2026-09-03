@@ -27,10 +27,30 @@ const theiaConfig = resolve(runDirectory, 'theia-config');
 const theiaCli = resolve(root, 'node_modules', '@theia', 'cli', 'bin', 'theia.js');
 const longCompletionReply = [
     'Fallback smoke completed.',
-    'Detailed implementation notes that must stay out of the Agent completion message.',
-    'Verification command output that belongs in Results instead of the conversation.',
-    'Additional explanation returned by the mock runtime to exercise UI-side enforcement.'
+    'Detailed implementation notes remain in the Agent completion message.',
+    'Verification command output remains available in the conversation.',
+    'Additional explanation returned by the mock runtime exercises full-report rendering.'
 ].join('\n');
+const nestedAiDocument = `<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <style>
+    main.paper { padding: 48px; }
+    article.column { max-width: 1040px; margin: 0 auto; padding: 56px 48px 80px; }
+    h2 { margin: 48px 0 16px; }
+  </style>
+</head>
+<body>
+  <main class="paper">
+    <article class="column">
+      <h2 data-live-check-heading>Live check heading</h2>
+      <p>Application-owned page margins remain compact.</p>
+    </article>
+  </main>
+</body>
+</html>`;
+const denseHeaderSkills = ['implementation-harness', 'verification-recipe', 'results-evidence', 'results-structure'];
 mkdirSync(workspace, { recursive: true });
 mkdirSync(emptyPlugins, { recursive: true });
 writeFileSync(resolve(workspace, 'citation-target.txt'), 'one\ntwo\nthree\nfour\nfive\n', 'utf8');
@@ -101,7 +121,10 @@ try {
             fileStats: true,
             fixedHeader: true,
             generatedBeforeOpen: true,
-            shortConversationReport: true
+            fullConversationReport: true,
+            compactResultsCanvas: true,
+            denseAiHeader: true,
+            aiDocumentMargins: true
         })}`);
     }
 } catch (error) {
@@ -239,8 +262,6 @@ async function smokeFallback(page, diagnostics) {
             activeResults: document.querySelector('#poiesis-results-tab')?.getAttribute('aria-selected') === 'true',
             iframeCount: document.querySelectorAll('.poiesis-results__document').length,
             task,
-            // Application-owned rich-content cards sit below the completion
-            // markdown and are not part of the Agent's 1-2 line report.
             conversation: agentMessages.at(-1)?.querySelector('.poiesis-markdown')?.textContent?.trim() ?? ''
         };
     });
@@ -253,12 +274,10 @@ async function smokeFallback(page, diagnostics) {
         && typeof beforeOpen.task.resultsDocument.generatedAt === 'string'
         && Number.isFinite(beforeOpen.task.resultsDocument.durationMs),
     `Results generation metadata was not persisted: ${JSON.stringify(beforeOpen.task?.resultsDocument)}`);
-    const conversationLines = beforeOpen.conversation.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    assert(conversationLines.length <= 2
-        && beforeOpen.conversation.includes('fallback-new.html')
-        && beforeOpen.conversation.includes('詳細は Results を確認してください。')
-        && !beforeOpen.conversation.includes('Detailed implementation notes'),
-    `The Agent completion report was not shortened by the Application: ${JSON.stringify(beforeOpen.conversation)}`);
+    assert(beforeOpen.conversation === longCompletionReply
+        && !beforeOpen.conversation.includes('詳細は Results を確認してください')
+        && !beforeOpen.conversation.includes('変更ファイル: なし'),
+    `The Agent completion report was not preserved verbatim: ${JSON.stringify(beforeOpen.conversation)}`);
     await page.click('#poiesis-results-tab');
     await page.waitForSelector('.poiesis-results__document');
     const fixedHeader = await page.evaluate(() => {
@@ -283,6 +302,26 @@ async function smokeFallback(page, diagnostics) {
         && !fixedHeader.badges.includes('Skill 条件')
         && fixedHeader.badges.includes('タスク 1件'),
     `The fixed Results metadata is incomplete: ${JSON.stringify(fixedHeader)}`);
+    const canvasLayout = await page.evaluate(() => {
+        const bounds = selector => {
+            const element = document.querySelector(selector);
+            if (!element) return undefined;
+            const rect = element.getBoundingClientRect();
+            return { top: rect.top, width: rect.width, height: rect.height };
+        };
+        return {
+            panel: bounds('#poiesis-results-panel'),
+            canvas: bounds('.poiesis-results__canvas'),
+            header: bounds('.poiesis-results__fixed-header'),
+            frame: bounds('.poiesis-results__document')
+        };
+    });
+    assert(canvasLayout.header?.height <= 52,
+        `The Results fixed header is taller than 52px at 1280x720: ${JSON.stringify(canvasLayout)}`);
+    assert(canvasLayout.frame && canvasLayout.panel && canvasLayout.frame.top - canvasLayout.panel.top <= 70,
+        `The Results document starts too far below the panel top: ${JSON.stringify(canvasLayout)}`);
+    assert(canvasLayout.frame && canvasLayout.canvas && canvasLayout.frame.width >= canvasLayout.canvas.width - 2,
+        `The Results document does not use the canvas width: ${JSON.stringify(canvasLayout)}`);
     let frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-action="retry-ai-results"]');
     const fallback = await frame.evaluate(() => {
@@ -293,7 +332,8 @@ async function smokeFallback(page, diagnostics) {
             rawError: (document.body.textContent ?? '').includes('テスト用失敗'),
             baseStyle: Boolean(baseStyle),
             baseStyleText: baseStyle?.textContent ?? '',
-            bodyFontFamily: getComputedStyle(document.body).fontFamily
+            bodyFontFamily: getComputedStyle(document.body).fontFamily,
+            cardPaddingTop: parseFloat(getComputedStyle(document.querySelector('.paper article')).paddingTop)
         };
     });
     assert(fallback.text.includes('AI 生成に失敗したため簡易表示'), `Fallback annotation is missing: ${JSON.stringify(fallback)}`);
@@ -307,6 +347,8 @@ async function smokeFallback(page, diagnostics) {
         `The Application-owned Results typography override was not injected: ${JSON.stringify(fallback)}`);
     assert(fallback.bodyFontFamily.trim().startsWith('Inter'),
         `The fallback document did not compute the Application sans stack: ${JSON.stringify(fallback)}`);
+    assert(fallback.cardPaddingTop >= 16,
+        `The bundled template card lost its own top padding: ${JSON.stringify(fallback)}`);
     await page.waitForFunction(() => document.querySelector('.poiesis-results__document') !== null);
     const attemptsBefore = diagnostics.length;
     await frame.click('[data-poiesis-action="retry-ai-results"]');
@@ -318,6 +360,93 @@ async function smokeFallback(page, diagnostics) {
     await page.waitForSelector('.poiesis-results__document');
     frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-action="retry-ai-results"]');
+    await page.waitForFunction(() => {
+        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
+        const state = raw ? JSON.parse(raw) : undefined;
+        return state?.sessions?.[0]?.tasks?.at(-1)?.resultsDocument?.status === 'ready';
+    });
+    await page.evaluate(fixture => {
+        const key = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
+        const raw = localStorage.getItem(key);
+        const state = raw ? JSON.parse(raw) : undefined;
+        const session = state?.sessions?.[0];
+        const task = session?.tasks?.at(-1);
+        if (!session || !task) throw new Error('Fallback Task state was not available for the dense header fixture.');
+        task.appliedSkills = { agent: fixture.skills, results: [] };
+        task.resultsDocument = {
+            ...task.resultsDocument,
+            status: 'ready',
+            generator: 'ai',
+            providerId: 'codex',
+            fallbackReason: undefined,
+            html: fixture.html,
+            assertions: Array.from({ length: 7 }, (_, index) => ({
+                text: `Dense header assertion ${index + 1}`,
+                source: 'app',
+                status: 'pass'
+            })),
+            assertionAttempts: 1
+        };
+        session.activeTab = 'results';
+        localStorage.setItem(key, JSON.stringify(state));
+    }, { html: nestedAiDocument, skills: denseHeaderSkills });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForApp(page);
+    await page.waitForSelector('.poiesis-results__document');
+    const denseHeader = await page.evaluate(() => {
+        const header = document.querySelector('.poiesis-results__fixed-header');
+        const badgeNodes = [...header?.querySelectorAll('.poiesis-results__badges > span') ?? []];
+        const skillsBadge = badgeNodes.find(node => node.textContent?.trim().startsWith('Skills '));
+        const rowCenters = [...header?.querySelectorAll('.poiesis-results__status, time, .poiesis-results__diffstat, .poiesis-results__badges > span') ?? []]
+            .map(node => {
+                const bounds = node.getBoundingClientRect();
+                return Math.round(bounds.top + bounds.height / 2);
+            });
+        return {
+            height: header?.getBoundingClientRect().height,
+            badges: badgeNodes.map(node => node.textContent?.replace(/\s+/g, ' ').trim()),
+            skillsTitle: skillsBadge?.getAttribute('title'),
+            skillsAriaLabel: skillsBadge?.getAttribute('aria-label'),
+            metadataRows: new Set(rowCenters).size
+        };
+    });
+    assert(denseHeader.height <= 56 && denseHeader.metadataRows <= 2,
+        `The dense AI Results header exceeded two compact rows at 1280x720: ${JSON.stringify(denseHeader)}`);
+    assert(denseHeader.badges.includes('AI 生成 · Codex')
+        && denseHeader.badges.includes('Skill 条件 7/7 合格')
+        && denseHeader.badges.includes('Skills 4')
+        && denseHeader.badges.includes('タスク 1件')
+        && denseHeader.skillsTitle?.startsWith('適用 Skills: ')
+        && denseHeader.skillsAriaLabel === denseHeader.skillsTitle,
+    `The compact Results badges are incomplete: ${JSON.stringify(denseHeader)}`);
+    const aiFrame = await resultsFrame(page);
+    await aiFrame.waitForSelector('[data-live-check-heading]');
+    const aiLayout = await aiFrame.evaluate(() => {
+        const outer = document.querySelector('body > main');
+        const inner = document.querySelector('body > main > article');
+        const heading = document.querySelector('[data-live-check-heading]');
+        const outerStyle = getComputedStyle(outer);
+        const innerStyle = getComputedStyle(inner);
+        const headingStyle = getComputedStyle(heading);
+        return {
+            outerPaddingTop: parseFloat(outerStyle.paddingTop),
+            outerPaddingInline: parseFloat(outerStyle.paddingLeft),
+            outerMaxWidth: outerStyle.maxWidth,
+            outerMarginInline: outerStyle.marginLeft,
+            innerPaddingTop: parseFloat(innerStyle.paddingTop),
+            innerPaddingInline: parseFloat(innerStyle.paddingLeft),
+            innerMaxWidth: innerStyle.maxWidth,
+            innerMarginInline: innerStyle.marginLeft,
+            headingMarginTop: parseFloat(headingStyle.marginTop),
+            headingTop: heading.getBoundingClientRect().top
+        };
+    });
+    assert(aiLayout.outerPaddingTop <= 20 && aiLayout.outerPaddingInline <= 28
+        && aiLayout.outerMaxWidth === 'none' && aiLayout.outerMarginInline === '0px'
+        && aiLayout.innerPaddingTop === 0 && aiLayout.innerPaddingInline === 0
+        && aiLayout.innerMaxWidth === 'none' && aiLayout.innerMarginInline === '0px'
+        && aiLayout.headingMarginTop === 0 && aiLayout.headingTop <= 22,
+    `The Application-owned AI document margins were not enforced: ${JSON.stringify(aiLayout)}`);
 }
 
 async function resultsFrame(page) {

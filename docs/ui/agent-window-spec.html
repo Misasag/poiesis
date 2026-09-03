@@ -1977,13 +1977,13 @@
 
       <section class="document-section">
         <h3>Resultsの単位と表示契約</h3>
-        <p>Resultsは、終了またはキャンセルされた実行Taskを手掛かりに成果を確認するSession内の画面である。アプリが固定する枠は、実行Taskの切替リスト、本体キャンバス1つ、その下の短いComposerだけ。同じSessionの他Taskは切替リストから選び、左サイドバーのSession一覧とは分ける。第一完成点では、本体キャンバスの中身はSkillsが返すHTML文書1つとし、アプリはその文書を表示する枠だけを持つ。HTMLを節やカードへ分解せず、見出し、図、比較、引用などの内部構成を強制しない。</p>
+        <p>Resultsは、変更を伴う完了Taskまたは失敗・キャンセルTaskを手掛かりに成果を確認するSession内の画面である。変更なしで完了したTaskは要件レールにも文書にも出さない。アプリが固定する枠は、実行Taskの切替リスト、本体キャンバス1つ、その下の短いComposerだけ。同じSessionの他Taskは切替リストから選び、左サイドバーのSession一覧とは分ける。第一完成点では、本体キャンバスの中身はSkillsが返すHTML文書1つとし、アプリはその文書を表示する枠だけを持つ。HTMLを節やカードへ分解せず、見出し、図、比較、引用などの内部構成を強制しない。</p>
         <p>Resultsで何を一つの見どころとして分類するかはSkillsが決める。その分類は実行Taskの境界を写す必要がなく、複数Taskをまとめても、一つのTaskを複数の見どころに分けてもよい。Markdownは第一完成の必須形式にしない。将来の入力形式、またはMarkdownをHTMLへ変換するSkillとして追加できる。</p>
         <p>質問スレッドは選択中の実行Taskと表示中のSkill HTMLをscopeに持ち、HTML文書やアプリが確定したBaseline／Change Setを書き換えない。質問と回答はResults内だけに置き、Agent会話へ複製・転送しない。</p>
         <table>
           <thead><tr><th>深さ</th><th>出すもの</th></tr></thead>
           <tbody>
-            <tr><td>Agent</td><td>短い結果と検証。本体キャンバスの詳細は出さない</td></tr>
+            <tr><td>Agent</td><td>作業者AIの最終報告をMarkdown全文で表示し、変更規模はApplication所有のdiffstatで示す</td></tr>
             <tr><td>Results / アプリ枠</td><td>実行Task切替リスト、Skill HTMLを表示する本体キャンバス1つ、短いComposer</td></tr>
             <tr><td>Results / 本体キャンバス</td><td>Skillsが返すHTML文書1つ。何を見どころとするかも文書の内部構成もSkillsが決める</td></tr>
             <tr><td>Code</td><td>Codeモードへ切り替え、左にFiles／Source Control、中央に通常のEditorを表示する。引用時はそのファイルの位置を開く</td></tr>

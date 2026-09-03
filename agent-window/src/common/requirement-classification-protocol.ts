@@ -13,6 +13,7 @@ export interface RequirementClassificationScope {
     taskId: string;
     providerId: KnownCliId;
     model?: string;
+    effort?: string;
     workspaceUri: string;
     currentRequirementTitle: string;
     previousTasks: Array<Pick<RequirementClassificationTaskData, 'request' | 'changedFiles'>>;
@@ -23,6 +24,7 @@ export interface RequirementTitleSuggestionScope {
     taskId: string;
     providerId: KnownCliId;
     model?: string;
+    effort?: string;
     workspaceUri: string;
     request: string;
     completionSummary?: string;

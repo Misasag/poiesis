@@ -201,7 +201,7 @@ Customizeは組み込みbundleを説明し、WorkspaceのUser Skillを走査・s
 - Results本文の見出し構成、語り口、言語、図解、動作確認手順の粒度はResults skillが所有する。
 - Taskタイトル、状態、JST完了時刻、変更ファイル数と追加／削除行数はApplicationがSkill HTML外の固定ヘッダーとして所有する。
 - ApplicationはTask終了時（完了／失敗／キャンセル）にResults生成を開始し、生成済み文書を所有Taskへ保存してから外部向け完了イベントを確定する。生成中にResultsを開いた場合だけ進捗を表示する。
-- Agent会話の完了報告はApplication所有の変更不能なprompt契約と表示整形により1〜2行の要約と変更ファイル名に限定し、詳細はResultsへ誘導する。Workspace Agent skillはこの契約を上書きできない。
+- Agent会話の完了報告はAgentが返したMarkdown全文をApplicationが省略せず表示する。変更規模は会話本文へ付け足さず、Application所有のdiffstat chipとして表示する。
 - ApplicationはTask lifecycle、Change Set、生成タイミング、sandboxed canvasを所有する。
 - Agent会話の画像とHTMLプレビューはApplicationが検証したWorkspace内の実在ファイルだけを表示し、外部URLは既定ブロック、生HTML本文は描画しない。この境界をSkillから緩和することはできない。
 - bundleはWorkspace外の権限や、選択されたAI providerを暗黙に拡張しない。

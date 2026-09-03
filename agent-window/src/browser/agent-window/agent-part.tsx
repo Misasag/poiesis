@@ -116,6 +116,7 @@ export class AgentPart extends AgentWindowPart {
 
     public renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
         const newAgent = Boolean(session && !session.hasUserMessage);
+        const finalizingTask = Boolean(runningTask && this.taskService.isFinalizing(runningTask.id));
         const latestAgentMessageId = [...(session?.messages ?? [])].reverse()
             .find(message => message.role === 'agent')?.id;
         return (
@@ -161,9 +162,20 @@ export class AgentPart extends AgentWindowPart {
                                     ? this.renderAgentMessage(session, message, message.id === latestAgentMessageId)
                                     : <p>{message.content || '…'}</p>}
                                 {!message.complete && runningTask && runningTask.id === message.taskId && (
-                                    <small className='poiesis-agent-window__message-state'>
-                                        <PoiesisTaskElapsed startedAt={runningTask.startedAt} />
-                                    </small>
+                                    <div className='poiesis-agent-window__message-state'>
+                                        <PoiesisTaskElapsed
+                                            startedAt={runningTask.startedAt}
+                                            progress={message.runProgress}
+                                            activity={[...runningTask.activities ?? []].reverse().find(activity => activity.status === 'running')}
+                                            finalizing={finalizingTask}
+                                        />
+                                        {!finalizingTask && message.runProgress?.diagnostics && (
+                                            <details className='poiesis-agent-window__diagnostics'>
+                                                <summary>診断ログ</summary>
+                                                <pre>{message.runProgress.diagnostics.split(/\r?\n/).slice(-20).join('\n')}</pre>
+                                            </details>
+                                        )}
+                                    </div>
                                 )}
                             </section>
                         ))}
@@ -171,8 +183,8 @@ export class AgentPart extends AgentWindowPart {
                 </div>
                 {runningTask && (
                     <div className='poiesis-agent-window__task-state' role='status'>
-                        <span>{this.taskService.isFinalizing(runningTask.id) ? '成果を作成中' : 'タスクを実行中'} · {runningTask.title}</span>
-                        {!this.taskService.isFinalizing(runningTask.id) && (
+                        <span>{finalizingTask ? '成果を作成中' : 'タスクを実行中'} · {runningTask.title}</span>
+                        {!finalizingTask && (
                             <button type='button' onClick={() => void this.cancelRun()}>
                                 キャンセル
                             </button>
@@ -300,6 +312,7 @@ export class AgentPart extends AgentWindowPart {
             && task?.status === 'completed'
             && task.changeSet?.source === 'task-diff'
             && task.changeSet.files.length > 0;
+        const diffstat = showResultsAction ? summarizeTaskChangeSet(task.changeSet) : undefined;
         const skillProposalCount = message.complete && task?.status === 'completed'
             ? task.skillProposals?.length ?? 0
             : 0;
@@ -310,6 +323,11 @@ export class AgentPart extends AgentWindowPart {
                     this.renderAgentHtmlPreview(messageKey, preview, index, isMostRecentAgentMessage))}
                 {(showResultsAction || skillProposalCount > 0) && (
                     <div className='poiesis-agent-window__message-actions'>
+                        {showResultsAction && (
+                            <span className='poiesis-agent-window__diffstat-chip'>
+                                変更 {diffstat!.fileCount} ファイル · +{diffstat!.additions} −{diffstat!.deletions}
+                            </span>
+                        )}
                         {showResultsAction && (
                             <button
                                 type='button'
@@ -974,7 +992,8 @@ export class AgentPart extends AgentWindowPart {
         this.update();
         await this.host.sessions.persistWindowState();
         if (session.agentSession?.providerId && (session.agentSession.providerId !== this.host.state.agentCli
-            || (session.agentSession.model ?? '') !== this.host.state.agentModel.trim())) {
+            || (session.agentSession.model ?? '') !== this.host.state.agentModel.trim()
+            || (session.agentSession.effort ?? '') !== this.host.state.agentEffort)) {
             session.agentSession = undefined;
         }
         if (!session.agentSession && !await this.host.sessions.ensureProviderSession(session, false, true)) {
@@ -1068,15 +1087,18 @@ export class AgentPart extends AgentWindowPart {
             session.messages.push({ id: `agent-${event.taskId}`, role: 'agent', content: '', complete: false, taskId: event.taskId });
         } else if (event.type === 'activity') {
             this.taskService.recordActivity(event.taskId, event.activity);
+        } else if (event.type === 'progress') {
+            this.updateAgentMessage(session, event.taskId, message => ({ ...message, runProgress: event.progress }));
         } else if (event.type === 'message-delta') {
             this.updateAgentMessage(session, event.taskId, message => ({ ...message, content: message.content + event.delta }));
         } else if (event.type === 'message-completed') {
-            this.updateAgentMessage(session, event.taskId, message => ({ ...message, complete: true }));
+            this.updateAgentMessage(session, event.taskId, message => ({ ...message, complete: true, runProgress: undefined }));
         } else if (event.type === 'task-cancelled') {
             this.updateAgentMessage(session, event.taskId, message => ({
                 ...message,
                 content: `${message.content} 実行をキャンセルしました。`.trim(),
-                complete: true
+                complete: true,
+                runProgress: undefined
             }));
         } else if (event.type === 'task-failed') {
             this.updateAgentMessage(session, event.taskId, message => ({
@@ -1084,11 +1106,14 @@ export class AgentPart extends AgentWindowPart {
                 content: event.summary,
                 complete: true,
                 error: true,
-                errorDetails: event.details
+                errorDetails: event.details,
+                runProgress: undefined
             }));
         }
-        session.updatedAt = Date.now();
-        this.host.sessions.persistWindowState();
+        if (event.type !== 'progress') {
+            session.updatedAt = Date.now();
+            this.host.sessions.persistWindowState();
+        }
         this.update();
         if (autoFollowActivities) {
             requestAnimationFrame(() => {

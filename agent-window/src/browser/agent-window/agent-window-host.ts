@@ -42,8 +42,11 @@ export interface AgentWindowState {
     uiFontScale: UiFontScale;
     agentCli: KnownCliId;
     agentModel: string;
+    agentEffort: string;
     resultsCli: KnownCliId;
     resultsModel: string;
+    resultsEffort: string;
+    effortByModel: Record<AiRole, Record<string, string>>;
     allowExternalResultsResources: boolean;
     automaticRequirementClassification: boolean;
     cliDetectionReport?: CliDetectionReport;

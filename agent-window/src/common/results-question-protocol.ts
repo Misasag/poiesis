@@ -32,6 +32,7 @@ export interface ResultsQuestionScope {
     requirementTitle?: string;
     providerId: KnownCliId;
     model?: string;
+    effort?: string;
     workspaceUri: string;
     taskMetadata: ResultsQuestionTaskMetadata;
     changeSetSummary: string;

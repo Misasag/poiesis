@@ -90,12 +90,13 @@ export function formatTaskEndedAtJst(value: string | undefined): string {
     return `${part('year')}/${part('month')}/${part('day')} ${part('hour')}:${part('minute')} JST`;
 }
 
-/** A successfully captured Change Set with no changed files or diff content. */
-export function isEmptyTaskChangeSet(changeSet: TaskChangeSet | undefined): boolean {
-    return changeSet?.source === 'empty'
-        && !changeSet.error
-        && changeSet.files.length === 0
-        && !changeSet.diff.trim();
+/** A completed Task whose successfully captured Change Set contains no workspace changes. */
+export function isNoChangeTask(task: ExecutionTask): boolean {
+    return task.status === 'completed'
+        && Boolean(task.changeSet)
+        && !task.changeSet?.error
+        && task.changeSet?.files.length === 0
+        && !task.changeSet.diff.trim();
 }
 
 export interface TaskFailure {
@@ -118,6 +119,7 @@ export interface TaskResultDocument {
     generator?: 'ai' | 'template' | 'fallback';
     providerId?: KnownCliId;
     model?: string;
+    effort?: string;
     fallbackReason?: string;
     assertions?: ResultsAssertionResult[];
     assertionAttempts?: 1 | 2;
@@ -144,6 +146,9 @@ export interface ExecutionTask {
     request: string;
     requirementChoice: 'explicit' | 'default';
     workspaceUri?: string;
+    providerId?: KnownCliId;
+    model?: string;
+    effort?: string;
     status: ExecutionTaskStatus;
     startedAt: string;
     endedAt?: string;
@@ -232,7 +237,10 @@ export class TaskService {
         workspacePath: string | undefined,
         requirementId: string,
         requirementChoice: ExecutionTask['requirementChoice'] = 'default',
-        workspaceUri?: string
+        workspaceUri?: string,
+        providerId?: KnownCliId,
+        model?: string,
+        effort?: string
     ): ExecutionTask {
         const startedAt = new Date().toISOString();
         const task: ExecutionTask = {
@@ -243,6 +251,9 @@ export class TaskService {
             request,
             requirementChoice,
             workspaceUri,
+            providerId,
+            model,
+            effort,
             status: 'running',
             startedAt,
             baseline: {
@@ -543,7 +554,7 @@ export class TaskService {
             },
             endSnapshotId: capture.endSnapshotId,
             completionSummary: status === 'completed'
-                ? this.completionReport(completionSummary, capture.files)
+                ? completionSummary?.trim().slice(0, 12_000) || 'タスクを完了しました。'
                 : undefined,
             implementerReport: status === 'completed'
                 ? completionSummary?.trim().slice(0, 12_000) || undefined
@@ -627,25 +638,6 @@ export class TaskService {
 
     protected titleFor(request: string): string {
         return taskTitleForRequest(request);
-    }
-
-    protected completionReport(raw: string | undefined, files: readonly string[]): string {
-        const firstContentLine = (raw ?? '')
-            .split(/\r?\n/)
-            .map(line => line.trim())
-            .find(line => line && !/^```/.test(line));
-        const compact = (firstContentLine ?? 'タスクを完了しました。')
-            .replace(/^#{1,6}\s+/, '')
-            .replace(/^[-*+]\s+/, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-        const summary = compact.length > 140 ? `${compact.slice(0, 139)}…` : compact;
-        const visibleFiles = files.slice(0, 5).map(path => path.replace(/\\/g, '/'));
-        const remaining = files.length - visibleFiles.length;
-        const fileSummary = visibleFiles.length > 0
-            ? `変更ファイル: ${visibleFiles.join(', ')}${remaining > 0 ? `、ほか${remaining}件` : ''}。`
-            : '変更ファイル: なし。';
-        return `${summary}\n${fileSummary} 詳細は Results を確認してください。`;
     }
 
     protected normalizeResultsDocument(

@@ -5,6 +5,7 @@ export interface ActivityParseResult {
     activities: AgentActivity[];
     finalMessage?: string;
     diagnostics: string[];
+    heartbeat?: 'process' | 'turn';
 }
 
 export interface AgentActivityParser {
@@ -51,6 +52,12 @@ class CliActivityParser implements AgentActivityParser {
     protected consumeCodex(event: JsonObject, now: Date, sourceLine: string): ActivityParseResult {
         const result = this.emptyResult();
         const eventType = stringValue(event.type);
+        if (eventType === 'thread.started') {
+            return { ...result, heartbeat: 'process' };
+        }
+        if (eventType === 'turn.started') {
+            return { ...result, heartbeat: 'turn' };
+        }
         const item = isObject(event.item) ? event.item : undefined;
         if ((eventType === 'item.started' || eventType === 'item.completed') && item) {
             const activity = this.codexActivity(eventType, item, now);
@@ -147,7 +154,7 @@ class CliActivityParser implements AgentActivityParser {
         const result = this.emptyResult();
         const eventType = stringValue(event.type);
         if (eventType === 'system') {
-            return result;
+            return { ...result, heartbeat: 'process' };
         }
         const message = isObject(event.message) ? event.message : undefined;
         const content = Array.isArray(message?.content) ? message.content : [];

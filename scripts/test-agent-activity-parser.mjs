@@ -48,11 +48,20 @@ assert.equal(codex.activities.filter(activity => activity.kind === 'message').le
 assert.equal(codex.finalMessage, 'done', 'Last Codex agent message must remain the final report.');
 assert.deepEqual(codex.diagnostics, [], 'Codex fixture must not produce diagnostics.');
 
+const codexHeartbeatParser = createAgentActivityParser('codex');
+const threadHeartbeat = codexHeartbeatParser.consumeLine('{"type":"thread.started","thread_id":"thread-1"}');
+const turnHeartbeat = codexHeartbeatParser.consumeLine('{"type":"turn.started"}');
+assert.equal(threadHeartbeat.heartbeat, 'process', 'Codex thread.started must be heartbeat-only.');
+assert.equal(turnHeartbeat.heartbeat, 'turn', 'Codex turn.started must be heartbeat-only.');
+assert.deepEqual([...threadHeartbeat.activities, ...turnHeartbeat.activities], [],
+    'Codex lifecycle heartbeats must not create activity rows.');
+
 const claudeParser = createAgentActivityParser('claude', 'C:\\work\\probe');
 const claudeLines = fixtureLines('claude-stream-events.jsonl');
 const claudeSystem = claudeParser.consumeLine(claudeLines[0], new Date('2026-09-02T00:00:00.000Z'));
 assert.deepEqual(claudeSystem.activities, [], 'Claude system line must not produce activities.');
 assert.deepEqual(claudeSystem.diagnostics, [], 'Claude system line must not produce diagnostics.');
+assert.equal(claudeSystem.heartbeat, 'process', 'Claude system init must be heartbeat-only.');
 const claude = consumeFixture(claudeParser, claudeLines.slice(1));
 const claudeReads = claude.activities.filter(activity => activity.kind === 'read');
 assert.equal(claudeReads.length, 1, 'Claude Read must upsert by tool_use_id.');

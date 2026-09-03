@@ -14,9 +14,10 @@ const customizeWindowOnly = process.env.POIESIS_CUSTOMIZE_WINDOW_ONLY === '1';
 const settingsWindowOnly = process.env.POIESIS_SETTINGS_WINDOW_ONLY === '1';
 const composerOnly = process.env.POIESIS_COMPOSER_ONLY === '1';
 const taskFeedbackOnly = process.env.POIESIS_TASK_FEEDBACK_ONLY === '1';
+const noChangeOnly = process.env.POIESIS_NO_CHANGE_ONLY === '1';
 const modalWindowOnly = customizeWindowOnly || settingsWindowOnly || composerOnly;
 const lightweightElectron = windowDragOnly || modalWindowOnly;
-const interactionOnly = modalWindowOnly || taskFeedbackOnly;
+const interactionOnly = modalWindowOnly || taskFeedbackOnly || noChangeOnly;
 mkdirSync(runtimeDir, { recursive: true });
 const emptyPluginsDir = resolve(runtimeDir, 'empty-plugins');
 if (lightweightElectron) mkdirSync(emptyPluginsDir, { recursive: true });
@@ -30,6 +31,8 @@ if (scmFixtureOriginal.includes(scmFixtureMarker)) {
     throw new Error('SCM smoke fixture still contains a marker from an interrupted test.');
 }
 const terminalFixturePath = resolve(runtimeDir, 'terminal-smoke.txt');
+const agentTestFixturePath = resolve(repositoryRoot, 'round11-task-feedback-smoke.txt');
+if ((taskFeedbackOnly || noChangeOnly) && existsSync(agentTestFixturePath)) throw new Error('Agent test fixture already exists.');
 removeTerminalFixture();
 
 const electronExecutable = resolve(root, 'node_modules/electron/dist/electron.exe');
@@ -176,8 +179,9 @@ try {
         const initialElapsed = await page.$eval('.poiesis-agent-window__message-state [role="timer"]', node => node.textContent?.trim());
         await new Promise(resolveDelay => setTimeout(resolveDelay, 1_200));
         const updatedElapsed = await page.$eval('.poiesis-agent-window__message-state [role="timer"]', node => node.textContent?.trim());
-        assert(initialElapsed?.startsWith('作業中 · '), `Initial elapsed feedback is missing: ${initialElapsed}`);
-        assert(updatedElapsed?.startsWith('作業中 · ') && updatedElapsed !== initialElapsed,
+        assert(initialElapsed?.includes('Agent を起動しています') || initialElapsed?.includes('応答を待っています'),
+            `Initial live status is missing: ${initialElapsed}`);
+        assert(updatedElapsed && updatedElapsed !== initialElapsed,
             `Elapsed feedback did not update every second: ${JSON.stringify({ initialElapsed, updatedElapsed })}`);
         await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-activity__row').length >= 3
             && !document.querySelector('.poiesis-agent-window__composer textarea')?.disabled);
@@ -187,18 +191,71 @@ try {
         );
         assert(runningActivityRows >= 3, `Agent activity rows are missing during the run: ${runningActivityRows}`);
         assert(composerEnabledDuringRun, 'Agent Composer textarea is disabled during the run');
+        await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__message-state [role="timer"]')
+            ?.textContent?.includes('成果を作成しています'));
+        const finalizingStatus = await page.$eval(
+            '.poiesis-agent-window__message-state [role="timer"]', node => node.textContent?.trim()
+        );
+        assert(finalizingStatus?.startsWith('成果を作成しています · ')
+            && !finalizingStatus.includes('最終出力')
+            && !finalizingStatus.includes('60秒以上出力がありません'),
+        `Finalizing status is misleading: ${JSON.stringify(finalizingStatus)}`);
+        assert(!await page.$('.poiesis-agent-window__message-state .poiesis-agent-window__diagnostics'),
+            'Run diagnostics remained visible while Results were finalizing.');
         await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state [role="timer"]'));
         await page.waitForSelector('.poiesis-agent-activity__summary');
         const activitySummary = await page.$eval('.poiesis-agent-activity__summary', node => node.textContent?.trim() ?? '');
         assert(activitySummary.includes('作業ログ') && activitySummary.includes('コマンド 1'),
             `Collapsed activity summary is incomplete: ${activitySummary}`);
+        const completion = await page.$eval('[aria-label="Agent のメッセージ"]:last-of-type .poiesis-markdown',
+            node => node.textContent?.trim() ?? '');
+        assert(completion === process.env.POIESIS_AGENT_TEST_REPLY
+            && !completion.includes('詳細は Results を確認してください')
+            && !completion.includes('変更ファイル: なし'),
+        `Agent completion was not preserved verbatim: ${JSON.stringify(completion)}`);
+        assert(await page.$('.poiesis-agent-window__diffstat-chip'), 'Changed-file diffstat chip is missing.');
         console.log(`ELECTRON_TASK_FEEDBACK_SMOKE_RESULT=${JSON.stringify({
             elapsedVisible: true,
             elapsedUpdated: true,
+            finalizingStatus,
             runningActivityRows,
             composerEnabledDuringRun,
             activitySummaryVisible: true
         })}`);
+        break smokeRun;
+    }
+    if (noChangeOnly) {
+        await page.type('.poiesis-agent-window__composer textarea', 'Answer without changing files.');
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('.poiesis-agent-window__task-state');
+        await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
+        await page.waitForFunction(() => {
+            const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
+            const state = raw ? JSON.parse(raw) : undefined;
+            return state?.sessions?.[0]?.tasks?.at(-1)?.status === 'completed';
+        });
+        const noChange = await page.evaluate(() => {
+            const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
+            const state = raw ? JSON.parse(raw) : undefined;
+            const task = state?.sessions?.[0]?.tasks?.at(-1);
+            return {
+                task,
+                conversation: [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')]
+                    .at(-1)?.querySelector('.poiesis-markdown')?.textContent?.trim() ?? ''
+            };
+        });
+        assert(noChange.task?.changeSet?.files?.length === 0 && !noChange.task?.changeSet?.diff,
+            `No-change Task captured unexpected changes: ${JSON.stringify(noChange.task?.changeSet)}`);
+        assert(!noChange.task?.resultsDocument, 'No-change Task received a Results document.');
+        assert(noChange.conversation === process.env.POIESIS_AGENT_TEST_REPLY,
+            `No-change reply was not preserved verbatim: ${JSON.stringify(noChange.conversation)}`);
+        await page.click('#poiesis-results-tab');
+        await page.waitForSelector('.poiesis-results');
+        assert(await page.$$eval('.poiesis-results__requirement-card', nodes => nodes.length) === 0,
+            'No-change Task created a Results requirement card.');
+        assert(await page.$$eval('.poiesis-results__document', nodes => nodes.length) === 0,
+            'No-change Task created a Results document frame.');
+        console.log('ELECTRON_NO_CHANGE_SMOKE_RESULT={"requirementCards":0,"resultsDocuments":0}');
         break smokeRun;
     }
     if (settingsWindowOnly || composerOnly) {
@@ -410,6 +467,7 @@ try {
     assert(existsSync(terminalFixturePath) && readFileSync(terminalFixturePath, 'utf8').trim() === 'poiesis-terminal-smoke',
         'Terminal command did not write its Electron output fixture');
     removeTerminalFixture();
+    if (taskFeedbackOnly) removeAgentTestFixture();
 
     const terminalPanelHeight = await page.$eval('.poiesis-agent-window__code-panel', element => Math.round(element.getBoundingClientRect().height));
     await page.focus('.poiesis-agent-window__code-panel-resize');
@@ -572,6 +630,7 @@ try {
 } finally {
     restoreScmFixture();
     removeTerminalFixture();
+    removeAgentTestFixture();
     if (browser) {
         await browser.close().catch(error => console.warn(`CDP Browser.close failed: ${error}`));
     }
@@ -587,6 +646,12 @@ function restoreScmFixture() {
 function removeTerminalFixture() {
     if (existsSync(terminalFixturePath)) {
         unlinkSync(terminalFixturePath);
+    }
+}
+
+function removeAgentTestFixture() {
+    if (existsSync(agentTestFixturePath)) {
+        unlinkSync(agentTestFixturePath);
     }
 }
 

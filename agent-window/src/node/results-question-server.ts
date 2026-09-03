@@ -10,6 +10,7 @@ import {
 } from '../common/results-question-protocol';
 import { isKnownCliId, KnownCliId } from '../common/agent-runtime-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { oneShotCliArgs } from './cli-args';
 import { grokExecutionEnvironment } from './known-cli-registry';
 import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 import { isGitRepository } from './snapshot-store';
@@ -70,39 +71,14 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(workspace);
             const prompt = this.buildPrompt(question.trim(), scope);
-            const args = provider.id === 'claude'
-                ? [
-                    '-p', prompt,
-                    ...(provider.model ? ['--model', provider.model] : []),
-                    '--output-format', 'text',
-                    '--permission-mode', 'plan',
-                    '--tools=',
-                    '--no-session-persistence',
-                    '--safe-mode',
-                    '--disable-slash-commands',
-                    '--strict-mcp-config',
-                    '--mcp-config', '{"mcpServers":{}}'
-                ]
-                : provider.id === 'grok'
-                    ? [
-                        '-p', prompt,
-                        '--cwd', workspace,
-                        ...(provider.model ? ['--model', provider.model] : []),
-                        '--output-format', 'plain',
-                        '--permission-mode', 'plan',
-                        '--sandbox', 'read-only',
-                        '--disable-web-search',
-                        '--no-subagents',
-                        '--max-turns', '1'
-                    ]
-                    : [
-                    'exec',
-                    ...(provider.model ? ['-m', provider.model] : []),
-                    ...(skipGitRepositoryCheck ? ['--skip-git-repo-check'] : []),
-                    '--sandbox', 'read-only',
-                    '-C', workspace,
-                    '--', prompt
-                ];
+            const args = oneShotCliArgs({
+                providerId: provider.id,
+                model: provider.model,
+                effort: scope.effort,
+                workspace,
+                prompt,
+                skipGitRepositoryCheck
+            });
             const child = this.spawnCli(provider.id, provider.path, args, workspace);
             const run: ResultsQuestionRun = {
                 process: child,
@@ -217,6 +193,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             || !scope.taskId.trim()
             || !isKnownCliId(scope.providerId)
             || scope.model !== undefined && typeof scope.model !== 'string'
+            || scope.effort !== undefined && typeof scope.effort !== 'string'
             || typeof scope.workspaceUri !== 'string'
             || !scope.workspaceUri.trim()
             || !scope.taskMetadata

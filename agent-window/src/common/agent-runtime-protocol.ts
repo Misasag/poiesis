@@ -9,6 +9,14 @@ export const DEFAULT_CLI_ID: KnownCliId = 'codex';
 export type AiRole = 'agent' | 'results';
 export type CliLocationSource = 'PATH' | 'well-known';
 
+/** Curated CLI values exposed by Poiesis and accepted by the backend argv boundary. */
+export const CLI_EFFORT_LEVELS: Readonly<Record<KnownCliId, readonly string[]>> = {
+    claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+    codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+    grok: ['low', 'high'],
+    gemini: []
+};
+
 export function isKnownCliId(value: unknown): value is KnownCliId {
     return typeof value === 'string' && (KNOWN_CLI_IDS as readonly string[]).includes(value);
 }
@@ -69,6 +77,7 @@ export interface CodexExecutionRequest {
     executionId: string;
     providerId: KnownCliId;
     model?: string;
+    effort?: string;
     workspacePath?: string;
     prompt: string;
 }

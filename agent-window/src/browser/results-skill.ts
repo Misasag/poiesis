@@ -4,6 +4,7 @@ import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import {
     ExecutionTask,
+    isNoChangeTask,
     summarizeTaskChangeSet,
     TaskChangeSet,
     TaskChangedFileSummary,
@@ -58,6 +59,7 @@ export interface ResultsSkillDocument {
     generator: 'ai' | 'template' | 'fallback';
     providerId?: TaskResultDocument['providerId'];
     model?: string;
+    effort?: string;
     fallbackReason?: string;
     assertions?: ResultsAssertionResult[];
     assertionAttempts?: 1 | 2;
@@ -127,7 +129,8 @@ export class BundledResultsSkill implements ResultsSkill {
     * { box-sizing: border-box; }
     html, body { min-height: 100%; }
     body { margin: 0; min-height: 100vh; background: #f1efe8; }
-    .paper { width: 100%; min-height: 100vh; display: grid; align-content: start; gap: 22px; padding: clamp(22px, 4vw, 44px); background: #f1efe8; }
+    .paper { width: 100%; max-width: none; min-height: 100vh; display: grid; align-content: start; gap: 22px; margin-inline: 0; padding: clamp(14px, 1.2vw, 20px) clamp(16px, 2vw, 28px); background: #f1efe8; }
+    .paper > :first-child { margin-top: 0; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9a9183; background-clip: padding-box; }
@@ -159,7 +162,7 @@ export class BundledResultsSkill implements ResultsSkill {
     .task-item { grid-template-columns: 32px minmax(0, 1fr) auto; }
     .task-item > span, .task-item small { color: #686b63; }
     @media (max-width: 640px) {
-      .paper { gap: 16px; padding: 22px 18px; }
+      .paper { gap: 16px; padding: 14px 16px; }
       .overview { grid-template-columns: 1fr; }
       .fallback { align-items: stretch; flex-direction: column; }
       li { grid-template-columns: 64px minmax(0, 1fr); }
@@ -242,6 +245,7 @@ export class AiResultsSkill implements ResultsSkill {
         }
         const providerId = this.context.providerId;
         const model = this.context.model.trim() || undefined;
+        const effort = this.context.effort || undefined;
         const documentId = input.documentId ?? input.task.id;
         this.cancelledDocumentIds.delete(documentId);
         const workspace = this.workspaceService.tryGetRoots()[0]
@@ -267,6 +271,7 @@ export class AiResultsSkill implements ResultsSkill {
                 taskId: documentId,
                 providerId,
                 model,
+                effort,
                 workspaceUri: workspace.resource.toString(),
                 taskMetadata: {
                     status: input.task.status,
@@ -294,7 +299,13 @@ export class AiResultsSkill implements ResultsSkill {
                     `${result.error.code}: ${result.error.message}${result.error.stderr ? `\n${result.error.stderr}` : ''}`);
                 this.taskService.setAppliedSkills(input.task.id, 'results', []);
                 const fallback = await this.fallbackSkill.generate(input, { fallback: true });
-                return { ...fallback, fallbackReason: result.error.code === 'timeout' ? 'timeout' : 'generation-failed' };
+                return {
+                    ...fallback,
+                    providerId,
+                    model,
+                    effort,
+                    fallbackReason: result.error.code === 'timeout' ? 'timeout' : 'generation-failed'
+                };
             }
             const first = await this.assertCandidate(
                 result.html,
@@ -342,7 +353,7 @@ export class AiResultsSkill implements ResultsSkill {
             this.taskService.setAppliedSkills(input.task.id, 'results', []);
             console.warn('[Poiesis][Results diagnostics] AI generation failed; using bundled template.', error);
             const fallback = await this.fallbackSkill.generate(input, { fallback: true });
-            return { ...fallback, fallbackReason: 'generation-failed' };
+            return { ...fallback, providerId, model, effort, fallbackReason: 'generation-failed' };
         }
     }
 
@@ -379,6 +390,7 @@ export class AiResultsSkill implements ResultsSkill {
                     taskId: request.taskId,
                     providerId: request.providerId,
                     model: request.model,
+                    effort: request.effort,
                     workspaceUri: request.workspaceUri,
                     documentText: extractResultsAssertionText(html),
                     assertions: definitions.map(definition => definition.text),
@@ -408,7 +420,8 @@ export class AiResultsSkill implements ResultsSkill {
                 html,
                 generator: 'ai',
                 providerId: request.providerId,
-                model: request.model
+                model: request.model,
+                effort: request.effort
             },
             assertions: [...appAssertions, ...skillAssertions]
         };
@@ -512,7 +525,8 @@ export class ResultsService {
             if (event.type === 'tasks-changed') {
                 for (const requirementId of event.requirementIds) {
                     const requirement = this.requirementService.get(requirementId);
-                    const tasks = requirement?.taskIds.map(taskId => this.taskService.get(taskId)).filter(Boolean) ?? [];
+                    const tasks = requirement?.taskIds.map(taskId => this.taskService.get(taskId))
+                        .filter(task => task && !isNoChangeTask(task)) ?? [];
                     if (requirement && !tasks.some(task => task?.status === 'running')) {
                         void this.startRequirementGeneration(requirementId);
                     } else if (!requirement) {
@@ -619,6 +633,11 @@ export class ResultsService {
     }
 
     protected startGeneration(task: ExecutionTask): Promise<void> {
+        if (!this.shouldGenerate(task)) {
+            this.documents.delete(task.id);
+            this.taskService.setResultsDocument(task.id, undefined);
+            return Promise.resolve();
+        }
         const generation = this.generateTask(task).then(() => {
             void this.recordPendingSkillProposals(task).catch(error =>
                 console.warn('[Poiesis] Could not record pending Skill proposals.', error)
@@ -813,7 +832,7 @@ export class ResultsService {
     protected finishedRequirementTasks(requirement: Requirement): ExecutionTask[] {
         return requirement.taskIds
             .map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task && task.status !== 'running' && task.changeSet))
+            .filter((task): task is ExecutionTask => Boolean(task && task.status !== 'running' && task.changeSet && !isNoChangeTask(task)))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
     }
 
@@ -839,6 +858,7 @@ export class ResultsService {
 
     protected shouldGenerate(task: ExecutionTask): boolean {
         return task.status !== 'running'
-            && Boolean(task.changeSet);
+            && Boolean(task.changeSet)
+            && !isNoChangeTask(task);
     }
 }

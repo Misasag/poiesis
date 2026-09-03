@@ -7,6 +7,7 @@ export interface CreateSessionInput {
     workspaceUri?: string;
     providerId?: KnownCliId;
     model?: string;
+    effort?: string;
 }
 
 export interface AgentSession {
@@ -14,6 +15,7 @@ export interface AgentSession {
     providerName: string;
     providerId?: KnownCliId;
     model?: string;
+    effort?: string;
     workspaceUri?: string;
 }
 
@@ -41,8 +43,15 @@ export interface AgentActivity {
     endedAt?: string;
 }
 
+export interface AgentRunProgress {
+    phase: 'starting' | 'waiting' | 'activity';
+    lastOutputAt?: string;
+    diagnostics?: string;
+}
+
 export type AgentEvent =
     | { type: 'task-started'; sessionId: string; taskId: string }
+    | { type: 'progress'; sessionId: string; taskId: string; progress: AgentRunProgress }
     | { type: 'activity'; sessionId: string; taskId: string; activity: AgentActivity }
     | { type: 'message-delta'; sessionId: string; taskId: string; delta: string }
     | { type: 'message-completed'; sessionId: string; taskId: string }

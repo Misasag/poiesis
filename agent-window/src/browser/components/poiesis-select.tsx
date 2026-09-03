@@ -124,6 +124,13 @@ export const PoiesisSelect = ({
         });
         const closeOutside = (event: PointerEvent): void => {
             const target = event.target as Node | null;
+            const nestedListbox = target instanceof Element ? target.closest<HTMLElement>('.poiesis-select__listbox') : null;
+            const nestedTrigger = nestedListbox?.id
+                ? popoverRef.current?.querySelector(`[aria-controls="${nestedListbox.id}"]`)
+                : undefined;
+            if (nestedTrigger) {
+                return;
+            }
             if (target && !triggerRef.current?.contains(target) && !popoverRef.current?.contains(target)) {
                 close();
             }
@@ -252,4 +259,3 @@ export const PoiesisSelect = ({
         </div>
     );
 };
-

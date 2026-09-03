@@ -19,7 +19,7 @@ import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget
 import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-contribution';
 import { SearchInWorkspaceCommands } from '@theia/search-in-workspace/lib/browser/search-in-workspace-frontend-contribution';
 import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
-import { AgentActivity, AgentActivityKind, AgentEvent, AgentProvider, AgentSession } from '../../common/agent-provider';
+import { AgentActivity, AgentActivityKind, AgentEvent, AgentProvider, AgentRunProgress, AgentSession } from '../../common/agent-provider';
 import {
     AgentRuntimeServer,
     AiRole,
@@ -33,6 +33,7 @@ import { formatRequirementExecutionEvidence, ResultsService } from '../results-s
 import {
     ExecutionTask,
     formatTaskEndedAtJst,
+    isNoChangeTask,
     summarizeTaskChangeSet,
     TaskChangeSet,
     TaskResultDocument,
@@ -102,6 +103,7 @@ export interface ChatMessage {
     error?: boolean;
     errorDetails?: string;
     activities?: AgentActivity[];
+    runProgress?: AgentRunProgress;
 }
 
 export interface ResultsNotice {
@@ -314,7 +316,8 @@ export class SessionStore extends AgentWindowPartBase {
             session.agentSession = await this.agentProvider.createSession({
                 workspaceUri: session.workspaceUri,
                 providerId: this.host.state.agentCli,
-                model: this.host.state.agentModel.trim() || undefined
+                model: this.host.state.agentModel.trim() || undefined,
+                effort: this.host.state.agentEffort || undefined
             });
             this.host.state.providerPreparationErrors.delete(session.id);
             if (!silent && (replaceStatus || session.messages.length === 0 || session.messages.every(message => message.id.startsWith('provider-')))) {
@@ -378,11 +381,11 @@ export class SessionStore extends AgentWindowPartBase {
                     message && typeof message.id === 'string'
                     && (message.role === 'user' || message.role === 'agent')
                     && typeof message.content === 'string'
-                ).map(message => this.migrateLegacyCliErrorMessage({
+                ).map(message => this.withoutRunProgress(this.migrateLegacyCliErrorMessage({
                     ...message,
                     complete: Boolean(message.complete),
                     activities: this.host.restoreAgentActivities(message.activities)
-                })) : []).map(message => {
+                }))) : []).map(message => {
                     const task = message.taskId ? taskById.get(message.taskId) : undefined;
                     if (message.complete || task?.status !== 'failed') {
                         return message;
@@ -493,6 +496,12 @@ export class SessionStore extends AgentWindowPartBase {
             error: true,
             errorDetails: content
         };
+    }
+
+    protected withoutRunProgress(message: ChatMessage): ChatMessage {
+        const persistedMessage = { ...message };
+        delete persistedMessage.runProgress;
+        return persistedMessage;
     }
 
     public async loadGlobalWindowState(): Promise<Partial<PersistedAgentWindowState> | undefined> {
@@ -641,6 +650,7 @@ export class SessionStore extends AgentWindowPartBase {
                     } = session;
                     return {
                         ...persisted,
+                        messages: session.messages.map(message => this.withoutRunProgress(message)),
                         resultsDrafts: [...resultsDrafts.entries()],
                         tasks
                     };
@@ -677,13 +687,13 @@ export class SessionStore extends AgentWindowPartBase {
         return this.requirementsForSession(session).filter(requirement => requirement.taskIds
             .some(taskId => {
                 const task = this.taskService.get(taskId);
-                return task && task.status !== 'running';
+                return task && task.status !== 'running' && !isNoChangeTask(task);
             }));
     }
 
     public latestTaskForRequirement(requirement: Requirement): ExecutionTask | undefined {
         return requirement.taskIds.map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task))
+            .filter((task): task is ExecutionTask => Boolean(task && !isNoChangeTask(task)))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
             .at(-1);
     }
@@ -694,7 +704,7 @@ export class SessionStore extends AgentWindowPartBase {
 
     public finishedTasksForRequirement(requirement: Requirement): ExecutionTask[] {
         return requirement.taskIds.map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task && task.status !== 'running'))
+            .filter((task): task is ExecutionTask => Boolean(task && task.status !== 'running' && !isNoChangeTask(task)))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
     }
 
@@ -782,7 +792,7 @@ export class SessionStore extends AgentWindowPartBase {
     }
 
     public isResultsTask(task: ExecutionTask): boolean {
-        return task.status !== 'running';
+        return task.status !== 'running' && !isNoChangeTask(task);
     }
 
     public taskFinishedTime(task: ExecutionTask): string {

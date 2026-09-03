@@ -17,6 +17,7 @@ import { RequirementService } from './requirement-service';
 import { ResultsGenerationContext } from './results-generation-context';
 import {
     ExecutionTask,
+    isNoChangeTask,
     TaskRequirementClassification,
     TaskService
 } from './task-service';
@@ -38,7 +39,7 @@ export class RequirementClassificationService {
 
     async classify(taskId: string): Promise<void> {
         const task = this.taskService.get(taskId);
-        if (!task || task.requirementClassification || this.classifyingTaskIds.has(taskId)) {
+        if (!task || isNoChangeTask(task) || task.requirementClassification || this.classifyingTaskIds.has(taskId)) {
             return;
         }
         this.classifyingTaskIds.add(taskId);
@@ -46,7 +47,7 @@ export class RequirementClassificationService {
             const requirement = this.requirementService.get(task.requirementId);
             const requirementTasks = requirement?.taskIds
                 .map(id => this.taskService.get(id))
-                .filter((candidate): candidate is ExecutionTask => Boolean(candidate));
+                .filter((candidate): candidate is ExecutionTask => Boolean(candidate && !isNoChangeTask(candidate)));
             const workspaceIsLocal = isLocalWorkspace(task.workspaceUri);
             if (!shouldClassify(task, requirement ? {
                 taskIds: requirement.taskIds,
@@ -84,6 +85,7 @@ export class RequirementClassificationService {
                 taskId: task.id,
                 providerId: this.resultsContext.providerId,
                 model: this.resultsContext.model.trim() || undefined,
+                effort: this.resultsContext.effort || undefined,
                 workspaceUri: task.workspaceUri!,
                 currentRequirementTitle: requirement!.title,
                 previousTasks: previousTasks.map(candidate => ({
@@ -178,13 +180,14 @@ export class RequirementClassificationService {
         if (!task
             || task.status !== 'completed'
             || !task.changeSet
+            || isNoChangeTask(task)
             || this.suggestingTitleTaskIds.has(taskId)) {
             return;
         }
         const requirement = this.requirementService.get(task.requirementId);
         const firstTaskId = requirement?.taskIds
             .map(id => this.taskService.get(id))
-            .filter((candidate): candidate is ExecutionTask => Boolean(candidate))
+            .filter((candidate): candidate is ExecutionTask => Boolean(candidate && !isNoChangeTask(candidate)))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt))[0]?.id;
         if (!requirement
             || firstTaskId !== task.id
@@ -202,6 +205,7 @@ export class RequirementClassificationService {
                     taskId: task.id,
                     providerId: this.resultsContext.providerId,
                     model: this.resultsContext.model.trim() || undefined,
+                    effort: this.resultsContext.effort || undefined,
                     workspaceUri: task.workspaceUri!,
                     request: task.request,
                     completionSummary: task.completionSummary?.slice(0, 2_000),

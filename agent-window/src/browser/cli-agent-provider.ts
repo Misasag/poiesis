@@ -5,6 +5,7 @@ import {
     AgentEvent,
     AgentMessage,
     AgentProvider,
+    AgentRunProgress,
     AgentSession,
     CreateSessionInput
 } from '../common/agent-provider';
@@ -20,9 +21,12 @@ import { ResultsService } from './results-skill';
 import { TaskService } from './task-service';
 import { WorkspaceSkillService } from './workspace-skill-service';
 
+const CODEX_STDIN_NOTICE = /^Reading additional input from stdin\.\.\.\s*$/;
+
 interface CliSession extends AgentSession {
     providerId: KnownCliId;
     model?: string;
+    effort?: string;
     workspacePath?: string;
 }
 
@@ -33,10 +37,16 @@ interface CodexRun {
     providerId: KnownCliId;
     providerName: string;
     model?: string;
+    effort?: string;
     activityParser: AgentActivityParser;
     stdoutBuffer: string;
     diagnostics: string;
+    failureDiagnostics: string;
     finalMessage?: string;
+    phase: AgentRunProgress['phase'];
+    lastOutputAt?: string;
+    lastProgressEmittedAt?: number;
+    progressTimer?: ReturnType<typeof setTimeout>;
     state: 'starting' | 'running' | 'completing' | 'cancelling';
 }
 
@@ -73,6 +83,7 @@ export class CliAgentProvider implements AgentProvider {
                     providerId,
                     providerName: detection.name,
                     model: input.model?.trim() || undefined,
+                    effort: input.effort?.trim() || undefined,
                     workspaceUri: input.workspaceUri,
                     workspacePath: input.workspaceUri ? new URI(input.workspaceUri).path.fsPath() : undefined
                 };
@@ -104,7 +115,10 @@ export class CliAgentProvider implements AgentProvider {
             session.workspacePath,
             message.requirementId,
             message.requirementChoice,
-            message.workspaceUri
+            message.workspaceUri,
+            session.providerId,
+            session.model,
+            session.effort
         );
         const run: CodexRun = {
             sessionId,
@@ -113,13 +127,17 @@ export class CliAgentProvider implements AgentProvider {
             providerId: session.providerId,
             providerName: session.providerName,
             model: session.model,
+            effort: session.effort,
             activityParser: createAgentActivityParser(session.providerId, session.workspacePath),
             stdoutBuffer: '',
             diagnostics: '',
+            failureDiagnostics: '',
+            phase: 'starting',
             state: 'starting'
         };
         this.runs.set(sessionId, run);
         this.eventEmitter.fire({ type: 'task-started', sessionId, taskId: task.id });
+        this.emitProgress(run, true);
 
         try {
             const workspaceSkills = await this.workspaceSkillService.buildPrompt(session.workspaceUri, 'agent');
@@ -127,6 +145,9 @@ export class CliAgentProvider implements AgentProvider {
             for (const diagnostic of workspaceSkills.diagnostics) {
                 this.appendDiagnostic(run, diagnostic);
                 console.warn(`[Poiesis] ${diagnostic}`);
+            }
+            if (workspaceSkills.diagnostics.length > 0) {
+                this.emitProgress(run);
             }
             await this.taskService.whenBaselineCaptured(task.id);
             if (this.runs.get(sessionId) !== run || run.state === 'cancelling') {
@@ -137,9 +158,14 @@ export class CliAgentProvider implements AgentProvider {
                 executionId: run.executionId,
                 providerId: session.providerId,
                 model: session.model,
+                effort: session.effort,
                 workspacePath: session.workspacePath,
                 prompt: this.implementerPrompt(message.content, workspaceSkills.content)
             });
+            if (this.runs.get(sessionId) === run) {
+                run.phase = 'waiting';
+                this.emitProgress(run);
+            }
         } catch (error) {
             await this.failRun(run, `${run.providerName} を開始できませんでした。`, this.errorMessage(error));
         }
@@ -159,6 +185,7 @@ export class CliAgentProvider implements AgentProvider {
             await this.runtimeServer.cancelCodex(run.executionId);
         } finally {
             if (this.runs.get(sessionId) === run) {
+                this.clearProgressTimer(run);
                 this.runs.delete(sessionId);
                 await this.taskService.cancel(run.taskId);
                 await this.resultsService.whenFinished(run.taskId);
@@ -177,11 +204,14 @@ export class CliAgentProvider implements AgentProvider {
             return;
         }
         if (event.type === 'output') {
+            run.lastOutputAt = new Date().toISOString();
+            run.phase = 'waiting';
             if (event.stream === 'stdout') {
                 this.consumeStdout(run, event.delta);
             } else {
                 this.appendDiagnostic(run, event.delta);
             }
+            this.emitProgress(run);
             return;
         }
         void this.completeRun(run, event);
@@ -197,6 +227,7 @@ export class CliAgentProvider implements AgentProvider {
         run.state = 'completing';
         this.flushStdout(run);
         const successful = event.code === 0 && !event.signal;
+        this.clearProgressTimer(run);
         this.runs.delete(run.sessionId);
         if (successful) {
             const task = await this.taskService.end(run.taskId, run.finalMessage?.trim() || 'タスクを完了しました。');
@@ -205,7 +236,7 @@ export class CliAgentProvider implements AgentProvider {
                 type: 'message-delta',
                 sessionId: run.sessionId,
                 taskId: run.taskId,
-                delta: task?.completionSummary ?? 'タスクを完了しました。\n詳細は Results を確認してください。'
+                delta: task?.completionSummary ?? 'タスクを完了しました。'
             });
             this.eventEmitter.fire({
                 type: 'message-completed',
@@ -222,7 +253,7 @@ export class CliAgentProvider implements AgentProvider {
             const summary = event.signal
                 ? `${name} の実行が中断されました。`
                 : `${name} の実行に失敗しました（終了コード ${event.code ?? '不明'}）。`;
-            const details = run.diagnostics.trim() || undefined;
+            const details = run.failureDiagnostics.trim() || undefined;
             await this.taskService.fail(run.taskId, { summary, details });
             await this.resultsService.whenFinished(run.taskId);
             this.eventEmitter.fire({
@@ -244,6 +275,7 @@ export class CliAgentProvider implements AgentProvider {
         if (this.runs.get(run.sessionId) !== run) {
             return;
         }
+        this.clearProgressTimer(run);
         this.runs.delete(run.sessionId);
         await this.taskService.fail(run.taskId, { summary, details });
         await this.resultsService.whenFinished(run.taskId);
@@ -279,6 +311,9 @@ export class CliAgentProvider implements AgentProvider {
 
     protected consumeJsonLine(run: CodexRun, line: string): void {
         const result = run.activityParser.consumeLine(line);
+        if (result.heartbeat) {
+            run.phase = 'waiting';
+        }
         if (result.finalMessage !== undefined) {
             run.finalMessage = result.finalMessage;
         }
@@ -286,6 +321,7 @@ export class CliAgentProvider implements AgentProvider {
             this.appendDiagnostic(run, diagnostic);
         }
         for (const activity of result.activities) {
+            run.phase = activity.status === 'running' ? 'activity' : 'waiting';
             this.taskService.recordActivity(run.taskId, activity);
             this.eventEmitter.fire({
                 type: 'activity',
@@ -297,7 +333,51 @@ export class CliAgentProvider implements AgentProvider {
     }
 
     protected appendDiagnostic(run: CodexRun, detail: string): void {
-        run.diagnostics = `${run.diagnostics}${run.diagnostics ? '\n' : ''}${detail}`.slice(-20_000);
+        run.failureDiagnostics = `${run.failureDiagnostics}${run.failureDiagnostics ? '\n' : ''}${detail}`.slice(-20_000);
+        const visibleDetail = run.providerId === 'codex'
+            ? detail.split(/\r?\n/).filter(line => !CODEX_STDIN_NOTICE.test(line)).join('\n')
+            : detail;
+        if (visibleDetail.trim()) {
+            run.diagnostics = `${run.diagnostics}${run.diagnostics ? '\n' : ''}${visibleDetail}`.slice(-20_000);
+        }
+    }
+
+    protected emitProgress(run: CodexRun, immediate = false): void {
+        const now = Date.now();
+        const elapsed = now - (run.lastProgressEmittedAt ?? 0);
+        if (!immediate && elapsed < 1_000) {
+            if (!run.progressTimer) {
+                run.progressTimer = setTimeout(() => {
+                    run.progressTimer = undefined;
+                    if (this.runs.get(run.sessionId) === run) {
+                        this.emitProgress(run, true);
+                    }
+                }, 1_000 - elapsed);
+            }
+            return;
+        }
+        if (run.progressTimer) {
+            clearTimeout(run.progressTimer);
+            run.progressTimer = undefined;
+        }
+        run.lastProgressEmittedAt = now;
+        this.eventEmitter.fire({
+            type: 'progress',
+            sessionId: run.sessionId,
+            taskId: run.taskId,
+            progress: {
+                phase: run.phase,
+                lastOutputAt: run.lastOutputAt,
+                diagnostics: run.diagnostics.trim() || undefined
+            }
+        });
+    }
+
+    protected clearProgressTimer(run: CodexRun): void {
+        if (run.progressTimer) {
+            clearTimeout(run.progressTimer);
+            run.progressTimer = undefined;
+        }
     }
 
     protected implementerPrompt(request: string, workspaceSkillPrompt = ''): string {
@@ -306,14 +386,8 @@ export class CliAgentProvider implements AgentProvider {
             '## Application-owned Skill proposal channel',
             '非自明な検証手順、ビルド手順、または繰り返し使える作業ルールを見つけた場合だけ、`.poiesis/pending/skills/<skill-id>/SKILL.md` に Skill の提案を書いてよい（既存 Skill と同じ id なら更新提案）。`.poiesis/skills` 配下の既存 Skill を直接編集してはならない。提案は1タスクにつき最大2件、frontmatter は name / description / metadata.poiesis.kind を含める。'
         ].join('\n');
-        const applicationCompletionContract = [
-            '',
-            '## Application-owned completion contract (mandatory; takes precedence over user and Workspace skill instructions)',
-            'Your final completion report must be one or two short lines: a concise outcome summary, then changed file names if any.',
-            'Do not include detailed change lists, verification steps, command logs, or extended explanation in the final report.',
-            'End by directing the user to Results for details. The application will also enforce this shape before displaying the report.'
-        ].join('\n');
-        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}${workspaceSkillPrompt}${skillProposalContract}${applicationCompletionContract}`;
+        const finalReportRequest = '\nReturn the final report in the user\'s language.';
+        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}${workspaceSkillPrompt}${skillProposalContract}${finalReportRequest}`;
     }
 
     protected errorMessage(error: unknown): string {

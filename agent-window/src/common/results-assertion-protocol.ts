@@ -7,6 +7,7 @@ export interface ResultsAssertionScope {
     taskId: string;
     providerId: KnownCliId;
     model?: string;
+    effort?: string;
     workspaceUri: string;
     documentText: string;
     assertions: string[];

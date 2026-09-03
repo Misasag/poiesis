@@ -1,5 +1,5 @@
-import { mkdir, readdir, stat } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import {
     AgentRuntimeClient,
@@ -18,6 +18,7 @@ import {
 } from '../common/agent-runtime-protocol';
 import { CliDetector } from './cli-detector';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { agentCliArgs, validateCliEffort } from './cli-args';
 import { grokExecutionEnvironment } from './known-cli-registry';
 import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 import { isGitRepository, SnapshotStore } from './snapshot-store';
@@ -104,10 +105,11 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         return this.snapshotStore.captureBetween(request);
     }
 
-    async runCodex({ executionId, providerId, model, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
+    async runCodex({ executionId, providerId, model, effort, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
         if (process.platform !== 'win32') {
             throw new Error('This implementation slice runs Codex only on Windows.');
         }
+        validateCliEffort(providerId, effort);
         if (this.codexRuns.has(executionId)) {
             throw new Error(`Codex execution already exists: ${executionId}`);
         }
@@ -119,6 +121,18 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         }
         const testReply = process.env.POIESIS_AGENT_TEST_REPLY;
         if (testReply !== undefined) {
+            const testWritePath = process.env.POIESIS_AGENT_TEST_WRITE_FILE?.trim();
+            if (testWritePath) {
+                const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
+                const target = resolve(resolvedWorkspace, testWritePath);
+                const relativeTarget = relative(resolvedWorkspace, target);
+                if (!relativeTarget || relativeTarget === '..' || relativeTarget.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`)
+                    || isAbsolute(relativeTarget)) {
+                    throw new Error('Agent test write path must stay within the Workspace.');
+                }
+                await mkdir(dirname(target), { recursive: true });
+                await writeFile(target, 'Poiesis Agent test change.\n', 'utf8');
+            }
             const configuredDelay = Number(process.env.POIESIS_AGENT_TEST_DELAY_MS);
             const testDelay = Number.isFinite(configuredDelay) ? Math.max(0, Math.min(configuredDelay, 10_000)) : 0;
             if (process.env.POIESIS_AGENT_TEST_ACTIVITIES === '1') {
@@ -199,41 +213,14 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
 
         const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
         const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(resolvedWorkspace);
-        const args = provider.id === 'claude'
-            ? [
-                '-p', prompt,
-                ...(provider.model ? ['--model', provider.model] : []),
-                '--output-format', 'stream-json',
-                '--verbose',
-                '--permission-mode', 'acceptEdits',
-                '--no-session-persistence',
-                '--safe-mode',
-                '--disable-slash-commands',
-                '--strict-mcp-config',
-                '--mcp-config', '{"mcpServers":{}}'
-            ]
-            : provider.id === 'grok'
-                ? [
-                    '-p', prompt,
-                    '--cwd', resolvedWorkspace,
-                    ...(provider.model ? ['--model', provider.model] : []),
-                    '--output-format', 'plain',
-                    '--permission-mode', 'acceptEdits',
-                    '--sandbox', 'workspace',
-                    '--disable-web-search',
-                    '--no-subagents',
-                    '--no-plan'
-                ]
-                : [
-                'exec',
-                ...(provider.model ? ['-m', provider.model] : []),
-                ...(skipGitRepositoryCheck ? ['--skip-git-repo-check'] : []),
-                '--json',
-                '--color', 'never',
-                '--sandbox', 'workspace-write',
-                '-C', resolvedWorkspace,
-                '--', prompt
-            ];
+        const args = agentCliArgs({
+            providerId: provider.id,
+            model: provider.model,
+            effort,
+            workspace: resolvedWorkspace,
+            prompt,
+            skipGitRepositoryCheck
+        });
         const child = this.spawnCli(provider.id, provider.path, args, resolvedWorkspace);
         const run: CodexRun = { process: child, cancelled: false };
         this.codexRuns.set(executionId, run);

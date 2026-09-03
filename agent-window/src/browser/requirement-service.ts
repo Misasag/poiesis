@@ -10,7 +10,7 @@ import {
     RequirementTitleSource,
     splitTaskInRequirementModel
 } from './requirement-model';
-import { ExecutionTask, TaskResultDocument, TaskResultsQuestion, TaskService } from './task-service';
+import { ExecutionTask, isNoChangeTask, TaskResultDocument, TaskResultsQuestion, TaskService } from './task-service';
 import { shortenLegacyRequirementTitle } from './requirement-title-migration';
 
 const REQUIREMENTS_STORAGE_KEY = 'poiesis.requirements.sessions.v1';
@@ -61,6 +61,9 @@ export class RequirementService {
         this.taskService.onDidChangeTask(event => {
             if (event.type === 'started' || !this.requirements.has(event.task.requirementId)) {
                 this.attachTask(event.task);
+            }
+            if (event.type === 'ended' && !isNoChangeTask(event.task)) {
+                this.retitleFromFirstChangedTask(event.task);
             }
         });
         this.taskService.onDidRemoveTask(task => this.detachTask(task));
@@ -235,6 +238,23 @@ export class RequirementService {
         }
         this.replace(after);
         this.changed('tasks-changed', affected);
+    }
+
+    protected retitleFromFirstChangedTask(task: ExecutionTask): void {
+        const requirement = this.requirements.get(task.requirementId);
+        if (!requirement || requirement.titleSource !== 'task') {
+            return;
+        }
+        const firstChangedTask = requirement.taskIds
+            .map(taskId => this.taskService.get(taskId))
+            .filter((candidate): candidate is ExecutionTask => Boolean(candidate
+                && candidate.status === 'completed'
+                && !candidate.changeSet?.error
+                && (candidate.changeSet?.files.length || candidate.changeSet?.diff.trim())))
+            .sort((left, right) => left.startedAt.localeCompare(right.startedAt))[0];
+        if (firstChangedTask?.id === task.id && requirement.title !== task.title) {
+            this.rename(requirement.id, task.title, 'task');
+        }
     }
 
     protected replace(requirements: readonly Requirement[]): void {

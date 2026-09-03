@@ -6,4 +6,5 @@ import { KnownCliId } from '../common/agent-runtime-protocol';
 export class ResultsGenerationContext {
     providerId: KnownCliId = 'codex';
     model = '';
+    effort = '';
 }

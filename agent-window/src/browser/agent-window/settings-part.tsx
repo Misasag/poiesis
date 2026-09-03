@@ -23,6 +23,7 @@ import { AgentActivity, AgentActivityKind, AgentEvent, AgentProvider, AgentSessi
 import {
     AgentRuntimeServer,
     AiRole,
+    CLI_EFFORT_LEVELS,
     CliDetectionReport,
     DEFAULT_CLI_ID,
     FolderBrowserResult,
@@ -76,18 +77,21 @@ import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSe
 import { AgentWindowHost, AgentWindowPart, UiFontScale } from './agent-window-host';
 
 interface PersistedPoiesisSettings {
-    version: 4;
+    version: 5;
     uiFontScale: UiFontScale;
     agentCli: KnownCliId;
     agentModel: string;
+    agentEffort: string;
     resultsCli: KnownCliId;
     resultsModel: string;
+    resultsEffort: string;
+    effortByModel: Record<AiRole, Record<string, string>>;
     allowExternalResultsResources: boolean;
     automaticRequirementClassification: boolean;
 }
 
 interface LegacyPoiesisSettings {
-    version?: 1 | 2 | 3;
+    version?: 1 | 2 | 3 | 4;
     uiFontScale?: UiFontScale;
     preferredCli?: KnownCliId;
     agentCli?: KnownCliId;
@@ -95,6 +99,7 @@ interface LegacyPoiesisSettings {
     agentModel?: string;
     resultsModel?: string;
     allowExternalResultsResources?: boolean;
+    automaticRequirementClassification?: boolean;
 }
 
 const SETTINGS_STORAGE_KEY = 'poiesis.settings.v1';
@@ -279,6 +284,7 @@ export class SettingsPart extends AgentWindowPart {
         const modelIds = selectedDetection?.models.map(option => option.id) ?? [];
         const customModel = this.customModelRoles.has(role) || !modelIds.includes(model);
         const modelSelection = customModel ? '__custom__' : model;
+        const effortOptions = this.effortOptions(selected);
         return (
             <div className='poiesis-settings-modal__cli-role'>
                 <h3>{label}</h3>
@@ -336,6 +342,18 @@ export class SettingsPart extends AgentWindowPart {
                                 />
                             </label>
                         )}
+                        {effortOptions.length > 0 && (
+                            <label>
+                                <span>effort</span>
+                                <PoiesisSelect
+                                    ariaLabel={`${label} effort`}
+                                    value={this.roleEffort(role)}
+                                    disabled={selectedDetection.status !== 'found' || !selectedDetection.executableRoles.includes(role)}
+                                    options={effortOptions}
+                                    onChange={value => this.setRoleEffort(role, value)}
+                                />
+                            </label>
+                        )}
                     </div>
                 )}
             </div>
@@ -356,13 +374,14 @@ export class SettingsPart extends AgentWindowPart {
         const selectedProvider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
         const selectedModel = this.roleModel(role);
         const selectedCustom = this.roleModelIsCustom(role);
+        const selectedEffort = this.roleEffort(role);
         const detections = this.host.state.cliDetectionReport?.detections ?? [];
         if (!detections.length) {
             const name = selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1);
             return [{
                 value: this.roleChoiceValue(selectedProvider, selectedCustom ? '__custom__' : selectedModel),
                 label: '検出中…',
-                triggerLabel: `${name} · ${selectedModel || '既定'} · 検出中…`,
+                triggerLabel: `${name} · ${selectedModel || '既定'}${selectedEffort ? ` · ${selectedEffort}` : ''} · 検出中…`,
                 group: name,
                 disabled: true
             }];
@@ -377,7 +396,7 @@ export class SettingsPart extends AgentWindowPart {
                         ? this.roleChoiceValue(detection.id, selectedCustom ? '__custom__' : selectedModel)
                         : `unavailable:${role}:${detection.id}`,
                     label: status,
-                    triggerLabel: `${detection.name} · ${selectedModel || '既定'} · ${status}`,
+                    triggerLabel: `${detection.name} · ${selectedModel || '既定'}${selectedEffort ? ` · ${selectedEffort}` : ''} · ${status}`,
                     group: detection.name,
                     disabled: true
                 }];
@@ -387,13 +406,13 @@ export class SettingsPart extends AgentWindowPart {
                 ...detection.models.map(option => ({
                     value: this.roleChoiceValue(detection.id, option.id),
                     label: option.label,
-                    triggerLabel: `${detection.name} · ${option.id || '既定'}`,
+                    triggerLabel: `${detection.name} · ${option.id ? option.label : '既定'}${this.effortFor(role, detection.id, option.id) ? ` · ${this.effortFor(role, detection.id, option.id)}` : ''}`,
                     group
                 })),
                 {
                     value: this.roleChoiceValue(detection.id, '__custom__'),
                     label: 'カスタム…',
-                    triggerLabel: `${detection.name} · ${selected && selectedCustom && selectedModel ? selectedModel : 'カスタム…'}`,
+                    triggerLabel: `${detection.name} · ${selected && selectedCustom && selectedModel ? selectedModel : 'カスタム…'}${selected && selectedCustom && selectedEffort ? ` · ${selectedEffort}` : ''}`,
                     group,
                     keepOpen: true
                 }
@@ -414,14 +433,18 @@ export class SettingsPart extends AgentWindowPart {
             return;
         }
         const model = modelChoice === '__custom__' ? '' : modelChoice;
+        const effort = this.effortFor(role, provider, model);
         if (role === 'agent') {
             this.host.state.agentCli = provider;
             this.host.state.agentModel = model;
+            this.host.state.agentEffort = effort;
         } else {
             this.host.state.resultsCli = provider;
             this.host.state.resultsModel = model;
+            this.host.state.resultsEffort = effort;
             this.resultsGenerationContext.providerId = provider;
             this.resultsGenerationContext.model = model;
+            this.resultsGenerationContext.effort = effort;
         }
         if (modelChoice === '__custom__') {
             this.customModelRoles.add(role);
@@ -436,6 +459,7 @@ export class SettingsPart extends AgentWindowPart {
         const selectedProvider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
         const selectedModel = this.roleModel(role);
         const custom = this.roleModelIsCustom(role);
+        const effortOptions = this.effortOptions(selectedProvider);
         const detection = this.host.state.cliDetectionReport?.detections.find(item => item.id === selectedProvider);
         const executable = detection?.status === 'found' && detection.executableRoles.includes(role);
         const loading = !this.host.state.cliDetectionReport || this.cliDetectionLoading;
@@ -454,18 +478,33 @@ export class SettingsPart extends AgentWindowPart {
                     popoverClassName='poiesis-ai-role-pill__popover'
                     popoverMinWidth={280}
                     leadingIconClass={warning ? 'codicon-warning' : 'codicon-sparkle'}
-                    popoverFooter={custom && executable ? (
-                        <label className='poiesis-ai-role-pill__custom-model'>
-                            <span>{detection?.name ?? selectedProvider} のカスタムモデルID</span>
-                            <PoiesisTextInput
-                                value={selectedModel}
-                                maxLength={160}
-                                placeholder='モデルIDを入力'
-                                aria-label={`${roleLabel} の AI カスタムモデルID`}
-                                autoFocus
-                                onValueChange={model => this.setRoleModel(role, model)}
-                            />
-                        </label>
+                    popoverFooter={executable && (custom || effortOptions.length > 0) ? (
+                        <div className='poiesis-ai-role-pill__controls'>
+                            {custom && (
+                                <label className='poiesis-ai-role-pill__custom-model'>
+                                    <span>{detection?.name ?? selectedProvider} のカスタムモデルID</span>
+                                    <PoiesisTextInput
+                                        value={selectedModel}
+                                        maxLength={160}
+                                        placeholder='モデルIDを入力'
+                                        aria-label={`${roleLabel} の AI カスタムモデルID`}
+                                        autoFocus
+                                        onValueChange={model => this.setRoleModel(role, model)}
+                                    />
+                                </label>
+                            )}
+                            {effortOptions.length > 0 && (
+                                <label className='poiesis-ai-role-pill__effort'>
+                                    <span>effort</span>
+                                    <PoiesisSelect
+                                        ariaLabel={`${roleLabel} の AI effort`}
+                                        value={this.roleEffort(role)}
+                                        options={effortOptions}
+                                        onChange={nextEffort => this.setRoleEffort(role, nextEffort)}
+                                    />
+                                </label>
+                            )}
+                        </div>
                     ) : undefined}
                     onChange={nextValue => this.setRoleProviderModelChoice(role, nextValue)}
                 />
@@ -524,14 +563,18 @@ export class SettingsPart extends AgentWindowPart {
 
     protected setRoleCli(role: AiRole, cli: KnownCliId): void {
         const defaultModel = this.host.state.cliDetectionReport?.detections.find(detection => detection.id === cli)?.defaultModel ?? '';
+        const effort = this.effortFor(role, cli, defaultModel);
         if (role === 'agent') {
             this.host.state.agentCli = cli;
             this.host.state.agentModel = defaultModel;
+            this.host.state.agentEffort = effort;
         } else {
             this.host.state.resultsCli = cli;
             this.host.state.resultsModel = defaultModel;
+            this.host.state.resultsEffort = effort;
             this.resultsGenerationContext.providerId = cli;
             this.resultsGenerationContext.model = defaultModel;
+            this.resultsGenerationContext.effort = effort;
         }
         this.customModelRoles.delete(role);
         this.persistPoiesisSettings();
@@ -540,6 +583,26 @@ export class SettingsPart extends AgentWindowPart {
 
     protected roleModel(role: AiRole): string {
         return role === 'agent' ? this.host.state.agentModel : this.host.state.resultsModel;
+    }
+
+    protected roleEffort(role: AiRole): string {
+        return role === 'agent' ? this.host.state.agentEffort : this.host.state.resultsEffort;
+    }
+
+    protected effortKey(provider: KnownCliId, model: string): string {
+        return `${provider}:${model.trim()}`;
+    }
+
+    protected effortFor(role: AiRole, provider: KnownCliId, model: string): string {
+        const effort = this.host.state.effortByModel[role][this.effortKey(provider, model)] ?? '';
+        return CLI_EFFORT_LEVELS[provider].includes(effort) ? effort : '';
+    }
+
+    protected effortOptions(provider: KnownCliId): PoiesisSelectOption[] {
+        return CLI_EFFORT_LEVELS[provider].length > 0 ? [
+            { value: '', label: '既定 (CLIの設定に従う)' },
+            ...CLI_EFFORT_LEVELS[provider].map(value => ({ value, label: value }))
+        ] : [];
     }
 
     protected setRoleModelChoice(role: AiRole, value: string): void {
@@ -553,11 +616,30 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected setRoleModel(role: AiRole, model: string): void {
+        const provider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
+        const effort = this.effortFor(role, provider, model);
         if (role === 'agent') {
             this.host.state.agentModel = model;
+            this.host.state.agentEffort = effort;
         } else {
             this.host.state.resultsModel = model;
+            this.host.state.resultsEffort = effort;
             this.resultsGenerationContext.model = model.trim();
+            this.resultsGenerationContext.effort = effort;
+        }
+        this.persistPoiesisSettings();
+        this.update();
+    }
+
+    protected setRoleEffort(role: AiRole, effort: string): void {
+        const provider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
+        const normalized = CLI_EFFORT_LEVELS[provider].includes(effort) ? effort : '';
+        this.host.state.effortByModel[role][this.effortKey(provider, this.roleModel(role))] = normalized;
+        if (role === 'agent') {
+            this.host.state.agentEffort = normalized;
+        } else {
+            this.host.state.resultsEffort = normalized;
+            this.resultsGenerationContext.effort = normalized;
         }
         this.persistPoiesisSettings();
         this.update();
@@ -590,11 +672,15 @@ export class SettingsPart extends AgentWindowPart {
                 const currentModel = this.roleModel(role);
                 const detection = this.host.state.cliDetectionReport.detections.find(item => item.id === selected);
                 if (!currentModel && detection?.defaultModel) {
+                    const effort = this.effortFor(role, selected, detection.defaultModel);
                     if (role === 'agent') {
                         this.host.state.agentModel = detection.defaultModel;
+                        this.host.state.agentEffort = effort;
                     } else {
                         this.host.state.resultsModel = detection.defaultModel;
+                        this.host.state.resultsEffort = effort;
                         this.resultsGenerationContext.model = detection.defaultModel;
+                        this.resultsGenerationContext.effort = effort;
                     }
                     settingsChanged = true;
                 }
@@ -611,7 +697,7 @@ export class SettingsPart extends AgentWindowPart {
     public async restorePoiesisSettings(): Promise<void> {
         try {
             const state = await this.storageService.getData<Partial<PersistedPoiesisSettings> | LegacyPoiesisSettings>(SETTINGS_STORAGE_KEY);
-            if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4) {
+            if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4 || state?.version === 5) {
                 this.host.state.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
                     ? state.uiFontScale
                     : 'standard';
@@ -624,14 +710,27 @@ export class SettingsPart extends AgentWindowPart {
                 this.host.state.resultsCli = state.version !== 1 && isKnownCliId(state.resultsCli)
                     ? state.resultsCli
                     : legacyCli;
-                this.host.state.agentModel = (state.version === 3 || state.version === 4) && typeof state.agentModel === 'string'
+                this.host.state.agentModel = (state.version === 3 || state.version === 4 || state.version === 5) && typeof state.agentModel === 'string'
                     ? state.agentModel
                     : '';
-                this.host.state.resultsModel = (state.version === 3 || state.version === 4) && typeof state.resultsModel === 'string'
+                this.host.state.resultsModel = (state.version === 3 || state.version === 4 || state.version === 5) && typeof state.resultsModel === 'string'
                     ? state.resultsModel
                     : '';
+                this.host.state.effortByModel = state.version === 5
+                    ? this.normalizeEffortByModel(state.effortByModel)
+                    : { agent: {}, results: {} };
+                this.host.state.agentEffort = state.version === 5
+                    ? this.normalizeEffort(this.host.state.agentCli, state.agentEffort)
+                    : '';
+                this.host.state.resultsEffort = state.version === 5
+                    ? this.normalizeEffort(this.host.state.resultsCli, state.resultsEffort)
+                    : '';
+                this.host.state.effortByModel.agent[this.effortKey(this.host.state.agentCli, this.host.state.agentModel)]
+                    = this.host.state.agentEffort;
+                this.host.state.effortByModel.results[this.effortKey(this.host.state.resultsCli, this.host.state.resultsModel)]
+                    = this.host.state.resultsEffort;
                 this.host.state.allowExternalResultsResources = state.allowExternalResultsResources === true;
-                this.host.state.automaticRequirementClassification = state.version === 4
+                this.host.state.automaticRequirementClassification = state.version === 4 || state.version === 5
                     ? state.automaticRequirementClassification !== false
                     : true;
             }
@@ -640,21 +739,45 @@ export class SettingsPart extends AgentWindowPart {
         }
         this.resultsGenerationContext.providerId = this.host.state.resultsCli;
         this.resultsGenerationContext.model = this.host.state.resultsModel.trim();
+        this.resultsGenerationContext.effort = this.host.state.resultsEffort;
         this.requirementClassificationService.enabled = this.host.state.automaticRequirementClassification;
         this.update();
     }
 
     protected persistPoiesisSettings(): void {
         void this.storageService.setData<PersistedPoiesisSettings>(SETTINGS_STORAGE_KEY, {
-            version: 4,
+            version: 5,
             uiFontScale: this.host.state.uiFontScale,
             agentCli: this.host.state.agentCli,
             agentModel: this.host.state.agentModel,
+            agentEffort: this.host.state.agentEffort,
             resultsCli: this.host.state.resultsCli,
             resultsModel: this.host.state.resultsModel,
+            resultsEffort: this.host.state.resultsEffort,
+            effortByModel: this.host.state.effortByModel,
             allowExternalResultsResources: this.host.state.allowExternalResultsResources,
             automaticRequirementClassification: this.host.state.automaticRequirementClassification
         });
+    }
+
+    protected normalizeEffort(provider: KnownCliId, value: unknown): string {
+        return typeof value === 'string' && CLI_EFFORT_LEVELS[provider].includes(value) ? value : '';
+    }
+
+    protected normalizeEffortByModel(value: unknown): Record<AiRole, Record<string, string>> {
+        const source = value && typeof value === 'object' ? value as Partial<Record<AiRole, unknown>> : {};
+        const normalizeRole = (role: AiRole): Record<string, string> => Object.fromEntries(
+            Object.entries(source[role] && typeof source[role] === 'object' ? source[role] as Record<string, unknown> : {})
+                .flatMap(([key, effort]) => {
+                    const separator = key.indexOf(':');
+                    const provider = separator > 0 ? key.slice(0, separator) : '';
+                    return isKnownCliId(provider) && typeof effort === 'string'
+                        && CLI_EFFORT_LEVELS[provider].includes(effort)
+                        ? [[key, effort]]
+                        : [];
+                })
+        );
+        return { agent: normalizeRole('agent'), results: normalizeRole('results') };
     }
 
     protected async clearSavedSessionData(): Promise<void> {

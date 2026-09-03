@@ -33,7 +33,7 @@ AIによる開発では、コード生成速度が人間の理解速度を上回
 
 人間に理解を強制しない。
 
-通常時はAgentだけを使う。AIが作業を終えても、現在のfocusを奪わず、短い結果だけを会話へ残す。
+通常時はAgentだけを使う。AIが作業を終えても現在のfocusを奪わず、作業者AIの最終報告を省略せず会話へ残す。変更規模は本文へ定型文として付け足さず、Application所有のdiffstatで示す。
 
 ```text
 Agent  作業を依頼する
@@ -43,7 +43,7 @@ Results 確定した成果を見ながら質問する
 Code   Git差分や根拠コードを確認する
 ```
 
-Taskが終了・失敗・キャンセルされたら、アプリが実WorkspaceのBaselineとの差からChange Setを確定し、Results skillを開始する。Skillは完成済みHTML文書を一つ返し、Resultsはその文書を表示する枠だけを持つ。
+Taskが終了・失敗・キャンセルされたら、アプリが実WorkspaceのBaselineとの差からChange Setを確定する。変更を伴う完了Taskと、失敗・キャンセルTaskだけでResults skillを開始する。変更なしで完了した質問などはResultsへ追加しない。Skillは完成済みHTML文書を一つ返し、Resultsはその文書を表示する枠だけを持つ。
 
 ユーザーは必要なときだけResultsを開く。成果について質問したい場合はResults Composerを使い、その質問と回答をAgent会話や新しい実行Taskへ混ぜない。
 
@@ -51,7 +51,7 @@ Taskが終了・失敗・キャンセルされたら、アプリが実Workspace�
 
 ## Results
 
-Resultsは、終了した実行Taskを手掛かりに成果を確認するSession内の画面である。
+Resultsは、変更を伴う完了Taskまたは失敗・キャンセルTaskを手掛かりに成果を確認するSession内の画面である。
 
 アプリが固定するのは次の要素だけとする。
 

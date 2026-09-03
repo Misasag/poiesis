@@ -11,6 +11,7 @@ import {
     ResultsAssertionServer
 } from '../common/results-assertion-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { oneShotCliArgs } from './cli-args';
 import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 import { grokExecutionEnvironment } from './known-cli-registry';
 import { isGitRepository } from './snapshot-store';
@@ -55,44 +56,22 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                 return this.cancelled();
             }
             const prompt = this.buildPrompt(scope);
-            const args = provider.id === 'claude'
-                ? [
-                    '-p',
-                    ...(provider.model ? ['--model', provider.model] : []),
-                    '--output-format', 'text',
-                    '--permission-mode', 'plan',
-                    '--tools=',
-                    '--no-session-persistence',
-                    '--safe-mode',
-                    '--disable-slash-commands',
-                    '--strict-mcp-config',
-                    '--mcp-config', '{"mcpServers":{}}'
-                ]
-                : provider.id === 'grok'
-                    ? await (async () => {
-                        pendingPromptDirectory = await mkdtemp(join(tmpdir(), 'poiesis-results-assertion-'));
-                        const promptFile = join(pendingPromptDirectory, 'prompt.txt');
-                        await writeFile(promptFile, prompt, 'utf8');
-                        return [
-                            '--prompt-file', promptFile,
-                            '--cwd', workspace,
-                            ...(provider.model ? ['--model', provider.model] : []),
-                            '--output-format', 'plain',
-                            '--permission-mode', 'plan',
-                            '--sandbox', 'read-only',
-                            '--disable-web-search',
-                            '--no-subagents',
-                            '--max-turns', '1'
-                        ];
-                    })()
-                    : [
-                        'exec',
-                        ...(provider.model ? ['-m', provider.model] : []),
-                        ...(skipGitRepositoryCheck ? ['--skip-git-repo-check'] : []),
-                        '--sandbox', 'read-only',
-                        '-C', workspace,
-                        '-'
-                    ];
+            let promptFile: string | undefined;
+            if (provider.id === 'grok') {
+                pendingPromptDirectory = await mkdtemp(join(tmpdir(), 'poiesis-results-assertion-'));
+                promptFile = join(pendingPromptDirectory, 'prompt.txt');
+                await writeFile(promptFile, prompt, 'utf8');
+            }
+            const args = oneShotCliArgs({
+                providerId: provider.id,
+                model: provider.model,
+                effort: scope.effort,
+                workspace,
+                prompt,
+                promptFile,
+                promptViaStdin: true,
+                skipGitRepositoryCheck
+            });
             const child = this.spawnCli(
                 provider.id,
                 provider.path,
@@ -226,6 +205,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
             && scope.taskId.trim()
             && isKnownCliId(scope.providerId)
             && (scope.model === undefined || typeof scope.model === 'string')
+            && (scope.effort === undefined || typeof scope.effort === 'string')
             && typeof scope.workspaceUri === 'string'
             && scope.workspaceUri.trim()
             && typeof scope.documentText === 'string'

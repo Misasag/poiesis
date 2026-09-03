@@ -23,6 +23,7 @@ export interface ResultsGenerationRequest {
     taskId: string;
     providerId: KnownCliId;
     model?: string;
+    effort?: string;
     workspaceUri: string;
     taskMetadata: ResultsGenerationTaskMetadata;
     requirement?: ResultsGenerationRequirementMetadata;

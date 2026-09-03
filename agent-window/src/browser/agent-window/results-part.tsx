@@ -33,6 +33,7 @@ import { formatRequirementExecutionEvidence, ResultsService } from '../results-s
 import {
     ExecutionTask,
     formatTaskEndedAtJst,
+    isNoChangeTask,
     summarizeTaskChangeSet,
     TaskChangeSet,
     TaskResultDocument,
@@ -284,7 +285,7 @@ export class ResultsPart extends AgentWindowPart {
         const menuKey = `requirement:${requirement.id}`;
         const renaming = this.renamingRequirementId === requirement.id;
         const tasks = requirement.taskIds.map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task))
+            .filter((task): task is ExecutionTask => Boolean(task && !isNoChangeTask(task)))
             .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
         const automaticSplitTask = tasks.length === 1
             && tasks[0].requirementClassification?.decision === 'new'
@@ -478,7 +479,6 @@ export class ResultsPart extends AgentWindowPart {
         return (
             <header className='poiesis-results__fixed-header' data-task-status={task.status}>
                 <div className='poiesis-results__fixed-title'>
-                    <small>タスク単体の成果</small>
                     <h1 data-task-title={task.title} title={task.title}>{task.title}</h1>
                 </div>
                 <div className='poiesis-results__fixed-meta' aria-label='タスクの状態と変更規模'>
@@ -494,8 +494,11 @@ export class ResultsPart extends AgentWindowPart {
                             {generationBadge && <span>{generationBadge}</span>}
                             {assertionBadge}
                             {appliedSkillIds.length > 0 && (
-                                <span title={`適用 Skills: ${appliedSkillNames.join('、')}`}>
-                                    適用 Skills: {appliedSkillNames.join('、')}
+                                <span
+                                    title={`適用 Skills: ${appliedSkillNames.join('、')}`}
+                                    aria-label={`適用 Skills: ${appliedSkillNames.join('、')}`}
+                                >
+                                    Skills {appliedSkillIds.length}
                                 </span>
                             )}
                         </span>
@@ -514,8 +517,7 @@ export class ResultsPart extends AgentWindowPart {
         const document = this.resultsService.getRequirement(requirement.id);
         const generationBadge = this.resultsGenerationBadge(document);
         const assertionBadge = this.renderResultsAssertionBadge(document);
-        const tasks = requirement.taskIds.map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task));
+        const tasks = this.host.sessions.finishedTasksForRequirement(requirement);
         const appliedSkillIds = [...new Set(tasks.flatMap(task => [
             ...task.appliedSkills?.agent ?? [],
             ...task.appliedSkills?.results ?? []
@@ -527,7 +529,6 @@ export class ResultsPart extends AgentWindowPart {
         return (
             <header className='poiesis-results__fixed-header' data-task-status={latestTask.status}>
                 <div className='poiesis-results__fixed-title'>
-                    <small>要件の成果</small>
                     <h1 title={requirement.title}>{requirement.title}</h1>
                 </div>
                 <div className='poiesis-results__fixed-meta' aria-label='要件の状態と変更規模'>
@@ -542,8 +543,11 @@ export class ResultsPart extends AgentWindowPart {
                         {generationBadge && <span>{generationBadge}</span>}
                         {assertionBadge}
                         {appliedSkillIds.length > 0 && (
-                            <span title={`適用 Skills: ${appliedSkillNames.join('、')}`}>
-                                適用 Skills: {appliedSkillNames.join('、')}
+                            <span
+                                title={`適用 Skills: ${appliedSkillNames.join('、')}`}
+                                aria-label={`適用 Skills: ${appliedSkillNames.join('、')}`}
+                            >
+                                Skills {appliedSkillIds.length}
                             </span>
                         )}
                         <span>タスク {tasks.length}件</span>
@@ -561,7 +565,7 @@ export class ResultsPart extends AgentWindowPart {
             const providerId: KnownCliId = isKnownCliId(document.providerId) ? document.providerId : this.host.state.resultsCli;
             const provider = this.host.state.cliDetectionReport?.detections.find((candidate: CliDetectionReport['detections'][number]) => candidate.id === providerId)?.name
                 ?? ({ codex: 'Codex', claude: 'Claude Code', grok: 'Grok', gemini: 'Gemini CLI' } satisfies Record<KnownCliId, string>)[providerId];
-            return `AI 生成 · ${provider}`;
+            return `AI 生成 · ${provider}${document.effort ? ` · ${document.effort}` : ''}`;
         }
         const fallbackLabel = document.fallbackReason === 'no-workspace'
             ? 'Workspace 未選択'
@@ -729,6 +733,10 @@ export class ResultsPart extends AgentWindowPart {
 html, body { font-family: ${POIESIS_FONT_SANS}; }
 body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }
 code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
+body { padding: 0 !important; }
+body > :not(script):not(style) { max-width: none !important; margin-inline: 0 !important; padding-top: clamp(14px, 1.2vw, 20px) !important; padding-inline: clamp(16px, 2vw, 28px) !important; }
+body > :not(script):not(style) > :only-child:not(code):not(pre):not(table):not(img) { max-width: none !important; margin-inline: 0 !important; padding-top: 0 !important; padding-inline: 0 !important; }
+body > :first-child, body > * > :first-child, body > * > * > :first-child { margin-top: 0 !important; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9a9183; background-clip: padding-box; }
@@ -1069,6 +1077,7 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
                 requirementTitle: requirement?.title,
                 providerId: this.host.state.resultsCli,
                 model: this.host.state.resultsModel.trim() || undefined,
+                effort: this.host.state.resultsEffort || undefined,
                 workspaceUri: session.workspaceUri,
                 taskMetadata: {
                     title: task.title,
@@ -1079,7 +1088,7 @@ code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
                 },
                 changeSetSummary: JSON.stringify({
                     requirement: requirement?.title,
-                    tasks: requirement?.taskIds.length,
+                    tasks: requirement ? this.host.sessions.finishedTasksForRequirement(requirement).length : undefined,
                     files: summarizeTaskChangeSet(changeSet).files,
                     captureError: changeSet?.error
                 }, undefined, 2),

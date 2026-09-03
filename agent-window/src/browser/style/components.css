@@ -162,6 +162,27 @@
     gap: 5px;
 }
 
+.poiesis-ai-role-pill__controls {
+    display: grid;
+    gap: 9px;
+}
+
+.poiesis-ai-role-pill__effort {
+    display: grid;
+    gap: 5px;
+}
+
+.poiesis-ai-role-pill__effort > span {
+    color: #b8bab3;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.poiesis-ai-role-pill__effort .poiesis-select,
+.poiesis-ai-role-pill__effort .poiesis-select__trigger {
+    width: 100%;
+}
+
 .poiesis-ai-role-pill__custom-model > span {
     color: #b8bab3;
     font-size: 12px;
