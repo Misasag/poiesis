@@ -23,13 +23,16 @@ import { AgentActivity, AgentActivityKind, AgentEvent, AgentProvider, AgentSessi
 import {
     AgentRuntimeServer,
     AiRole,
+    CLI_DISPLAY_NAMES,
     CLI_EFFORT_LEVELS,
     CliDetectionReport,
     DEFAULT_CLI_ID,
     FolderBrowserResult,
     isKnownCliId,
+    KNOWN_CLI_IDS,
     KnownCliId
 } from '../../common/agent-runtime-protocol';
+import { cliRoleAvailability, cliRoleAvailabilityLabel, CliRoleAvailability } from '../../common/cli-detection-lifecycle';
 import { formatRequirementExecutionEvidence, ResultsService } from '../results-skill';
 import {
     ExecutionTask,
@@ -108,6 +111,8 @@ export class SettingsPart extends AgentWindowPart {
     protected readonly customModelRoles = new Set<AiRole>();
 
     protected cliDetectionLoading = false;
+
+    protected cliDetectionCompletion: Promise<void> = Promise.resolve();
 
     protected clearDataConfirmation = false;
 
@@ -278,7 +283,8 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected renderCliRoleSelector(role: AiRole, label: string, selected: KnownCliId): React.ReactNode {
-        const detections = this.host.state.cliDetectionReport?.detections ?? [];
+        const report = this.host.state.cliDetectionReport;
+        const detections = report?.detections ?? [];
         const selectedDetection = detections.find(detection => detection.id === selected);
         const model = this.roleModel(role);
         const modelIds = selectedDetection?.models.map(option => option.id) ?? [];
@@ -289,28 +295,38 @@ export class SettingsPart extends AgentWindowPart {
             <div className='poiesis-settings-modal__cli-role'>
                 <h3>{label}</h3>
                 <div className='poiesis-settings-modal__cli-list' role='radiogroup' aria-label={label}>
-                    {detections.map(detection => {
-                        const executable = detection.status === 'found' && detection.executableRoles.includes(role);
-                        const status = this.cliDetectionLoading && !detection.path
-                            ? '検出中…'
-                            : detection.status === 'missing'
-                                ? '未検出'
-                                : executable ? '検出済み（実行可）' : '検出済み（実行対応は今後）';
+                    {KNOWN_CLI_IDS.map(providerId => {
+                        const detection = detections.find(candidate => candidate.id === providerId);
+                        const availability = cliRoleAvailability(
+                            this.host.state.cliDetectionPhase,
+                            report,
+                            providerId,
+                            role
+                        );
+                        const executable = availability === 'available';
+                        const status = cliRoleAvailabilityLabel(availability, true);
+                        const detail = availability === 'pending'
+                            ? 'CLI を確認しています'
+                            : availability === 'error'
+                                ? '再検出してください'
+                                : detection?.path ?? `${providerId} CLI`;
                         return (
-                            <label key={`${role}-${detection.id}`} className={`poiesis-settings-modal__cli-row${executable ? '' : ' unavailable'}`}>
+                            <label key={`${role}-${providerId}`} className={`poiesis-settings-modal__cli-row${executable ? '' : ' unavailable'}`}>
                                 <input
                                     type='radio'
                                     name={`poiesis-${role}-cli`}
-                                    value={detection.id}
-                                    checked={selected === detection.id}
+                                    value={providerId}
+                                    checked={selected === providerId}
                                     disabled={!executable}
-                                    onChange={() => this.setRoleCli(role, detection.id)}
+                                    onChange={() => this.setRoleCli(role, providerId)}
                                 />
                                 <span className='poiesis-settings-modal__cli-copy'>
-                                    <strong>{detection.name}</strong>
-                                    <small title={detection.path}>{detection.path ?? `${detection.id} CLI`}{detection.version ? ` · ${detection.version}` : ''}</small>
+                                    <strong>{detection?.name ?? CLI_DISPLAY_NAMES[providerId]}</strong>
+                                    <small title={availability === 'available' ? detection?.path : undefined}>
+                                        {detail}{availability === 'available' && detection?.version ? ` · ${detection.version}` : ''}
+                                    </small>
                                 </span>
-                                <span className={`poiesis-settings-modal__cli-status ${executable ? 'found' : detection.status === 'found' ? 'unsupported' : 'missing'}`}>{status}</span>
+                                <span className={`poiesis-settings-modal__cli-status ${this.cliAvailabilityClass(availability)}`}>{status}</span>
                             </label>
                         );
                     })}
@@ -322,7 +338,7 @@ export class SettingsPart extends AgentWindowPart {
                             <PoiesisSelect
                                 ariaLabel={`${label} モデル`}
                                 value={modelSelection}
-                                disabled={selectedDetection.status !== 'found' || !selectedDetection.executableRoles.includes(role)}
+                                disabled={cliRoleAvailability(this.host.state.cliDetectionPhase, report, selected, role) !== 'available'}
                                 options={[
                                     ...selectedDetection.models.map(option => ({ value: option.id, label: option.label })),
                                     { value: '__custom__', label: 'カスタム…' }
@@ -348,7 +364,7 @@ export class SettingsPart extends AgentWindowPart {
                                 <PoiesisSelect
                                     ariaLabel={`${label} effort`}
                                     value={this.roleEffort(role)}
-                                    disabled={selectedDetection.status !== 'found' || !selectedDetection.executableRoles.includes(role)}
+                                    disabled={cliRoleAvailability(this.host.state.cliDetectionPhase, report, selected, role) !== 'available'}
                                     options={effortOptions}
                                     onChange={value => this.setRoleEffort(role, value)}
                                 />
@@ -375,44 +391,37 @@ export class SettingsPart extends AgentWindowPart {
         const selectedModel = this.roleModel(role);
         const selectedCustom = this.roleModelIsCustom(role);
         const selectedEffort = this.roleEffort(role);
-        const detections = this.host.state.cliDetectionReport?.detections ?? [];
-        if (!detections.length) {
-            const name = selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1);
-            return [{
-                value: this.roleChoiceValue(selectedProvider, selectedCustom ? '__custom__' : selectedModel),
-                label: '検出中…',
-                triggerLabel: `${name} · ${selectedModel || '既定'}${selectedEffort ? ` · ${selectedEffort}` : ''} · 検出中…`,
-                group: name,
-                disabled: true
-            }];
-        }
-        return detections.flatMap(detection => {
-            const executable = detection.status === 'found' && detection.executableRoles.includes(role);
-            const selected = detection.id === selectedProvider;
-            if (!executable) {
-                const status = detection.status === 'missing' ? '未検出' : '実行対応は今後';
+        const report = this.host.state.cliDetectionReport;
+        const detections = report?.detections ?? [];
+        return KNOWN_CLI_IDS.flatMap(providerId => {
+            const detection = detections.find(candidate => candidate.id === providerId);
+            const availability = cliRoleAvailability(this.host.state.cliDetectionPhase, report, providerId, role);
+            const selected = providerId === selectedProvider;
+            const name = detection?.name ?? CLI_DISPLAY_NAMES[providerId];
+            if (availability !== 'available' || !detection) {
+                const status = cliRoleAvailabilityLabel(availability);
                 return [{
                     value: selected
-                        ? this.roleChoiceValue(detection.id, selectedCustom ? '__custom__' : selectedModel)
-                        : `unavailable:${role}:${detection.id}`,
+                        ? this.roleChoiceValue(providerId, selectedCustom ? '__custom__' : selectedModel)
+                        : `unavailable:${role}:${providerId}`,
                     label: status,
-                    triggerLabel: `${detection.name} · ${selectedModel || '既定'}${selectedEffort ? ` · ${selectedEffort}` : ''} · ${status}`,
-                    group: detection.name,
+                    triggerLabel: `${name} · ${selectedModel || '既定'}${selectedEffort ? ` · ${selectedEffort}` : ''} · ${status}`,
+                    group: name,
                     disabled: true
                 }];
             }
-            const group = `${detection.name} · 実行可`;
+            const group = `${name} · 実行可`;
             return [
                 ...detection.models.map(option => ({
-                    value: this.roleChoiceValue(detection.id, option.id),
+                    value: this.roleChoiceValue(providerId, option.id),
                     label: option.label,
-                    triggerLabel: `${detection.name} · ${option.id ? option.label : '既定'}${this.effortFor(role, detection.id, option.id) ? ` · ${this.effortFor(role, detection.id, option.id)}` : ''}`,
+                    triggerLabel: `${name} · ${option.id ? option.label : '既定'}${this.effortFor(role, providerId, option.id) ? ` · ${this.effortFor(role, providerId, option.id)}` : ''}`,
                     group
                 })),
                 {
-                    value: this.roleChoiceValue(detection.id, '__custom__'),
+                    value: this.roleChoiceValue(providerId, '__custom__'),
                     label: 'カスタム…',
-                    triggerLabel: `${detection.name} · ${selected && selectedCustom && selectedModel ? selectedModel : 'カスタム…'}${selected && selectedCustom && selectedEffort ? ` · ${selectedEffort}` : ''}`,
+                    triggerLabel: `${name} · ${selected && selectedCustom && selectedModel ? selectedModel : 'カスタム…'}${selected && selectedCustom && selectedEffort ? ` · ${selectedEffort}` : ''}`,
                     group,
                     keepOpen: true
                 }
@@ -460,10 +469,12 @@ export class SettingsPart extends AgentWindowPart {
         const selectedModel = this.roleModel(role);
         const custom = this.roleModelIsCustom(role);
         const effortOptions = this.effortOptions(selectedProvider);
-        const detection = this.host.state.cliDetectionReport?.detections.find(item => item.id === selectedProvider);
-        const executable = detection?.status === 'found' && detection.executableRoles.includes(role);
-        const loading = !this.host.state.cliDetectionReport || this.cliDetectionLoading;
-        const warning = !loading && !executable;
+        const report = this.host.state.cliDetectionReport;
+        const detection = report?.detections.find(item => item.id === selectedProvider);
+        const availability = cliRoleAvailability(this.host.state.cliDetectionPhase, report, selectedProvider, role);
+        const executable = availability === 'available';
+        const loading = availability === 'pending';
+        const warning = availability === 'missing' || availability === 'unsupported' || availability === 'error';
         const value = this.roleChoiceValue(selectedProvider, custom ? '__custom__' : selectedModel);
         const roleLabel = role === 'agent' ? 'Agent' : 'Results';
         return (
@@ -658,14 +669,25 @@ export class SettingsPart extends AgentWindowPart {
         this.update();
     }
 
-    public async refreshCliDetection(): Promise<void> {
+    public refreshCliDetection(): Promise<void> {
         if (this.cliDetectionLoading) {
-            return;
+            return this.cliDetectionCompletion;
         }
+        this.cliDetectionCompletion = this.performCliDetection();
+        return this.cliDetectionCompletion;
+    }
+
+    public waitForCurrentCliDetection(): Promise<void> {
+        return this.cliDetectionCompletion;
+    }
+
+    protected async performCliDetection(): Promise<void> {
         this.cliDetectionLoading = true;
+        this.host.state.cliDetectionPhase = 'pending';
         this.update();
         try {
             this.host.state.cliDetectionReport = await this.agentRuntimeServer.detectClis();
+            this.host.state.cliDetectionPhase = 'ready';
             let settingsChanged = false;
             for (const role of ['agent', 'results'] as const) {
                 const selected = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
@@ -688,9 +710,22 @@ export class SettingsPart extends AgentWindowPart {
             if (settingsChanged) {
                 this.persistPoiesisSettings();
             }
+        } catch (error) {
+            this.host.state.cliDetectionPhase = 'error';
+            console.warn('[Poiesis] Could not detect Agent CLIs.', error);
         } finally {
             this.cliDetectionLoading = false;
             this.update();
+        }
+    }
+
+    protected cliAvailabilityClass(availability: CliRoleAvailability): string {
+        switch (availability) {
+            case 'pending': return 'pending';
+            case 'available': return 'found';
+            case 'unsupported': return 'unsupported';
+            case 'missing': return 'missing';
+            case 'error': return 'error';
         }
     }
 

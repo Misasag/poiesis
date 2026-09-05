@@ -72,6 +72,7 @@ import { PoiesisSelect, PoiesisSelectOption } from '../components/poiesis-select
 import { PoiesisTextArea, PoiesisTextInput } from '../components/poiesis-inputs';
 import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
+import { cliRoleAvailability } from '../../common/cli-detection-lifecycle';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
 
@@ -92,6 +93,8 @@ interface AgentRichContentState {
 const MAX_AGENT_ACTIVITIES_PER_MESSAGE = 300;
 
 export class AgentPart extends AgentWindowPart {
+    protected readonly pendingSends = new Set<string>();
+
     protected readonly agentRichContent = new Map<string, AgentRichContentState>();
 
     protected readonly agentRichContentPending = new Map<string, string>();
@@ -976,9 +979,19 @@ export class AgentPart extends AgentWindowPart {
         await this.host.sessions.sessionsInitialization;
         const session = this.host.sessions.selectedSession();
         const content = session?.agentDraft.trim() ?? '';
-        if (!session || !session.workspaceUri || !content || this.host.sessions.runningTask(session)) {
+        if (!session || !session.workspaceUri || !content || this.pendingSends.has(session.id)
+            || this.host.sessions.runningTask(session)) {
             return;
         }
+        this.pendingSends.add(session.id);
+        try {
+            await this.sendPreparedAgentMessage(session, content);
+        } finally {
+            this.pendingSends.delete(session.id);
+        }
+    }
+
+    protected async sendPreparedAgentMessage(session: WindowAgentSession, content: string): Promise<void> {
         const { requirementId, requirementChoice } = this.requirementForSend(session, content);
         session.agentDraft = '';
         const sentAt = Date.now();
@@ -991,12 +1004,27 @@ export class AgentPart extends AgentWindowPart {
         }
         this.update();
         await this.host.sessions.persistWindowState();
-        if (session.agentSession?.providerId && (session.agentSession.providerId !== this.host.state.agentCli
+        await this.host.waitForCurrentCliDetection();
+        if (!this.host.sessions.sessions.includes(session) || session.archived) {
+            return;
+        }
+        const selectedCliAvailability = cliRoleAvailability(
+            this.host.state.cliDetectionPhase,
+            this.host.state.cliDetectionReport,
+            this.host.state.agentCli,
+            'agent'
+        );
+        if (session.agentSession && (selectedCliAvailability !== 'available'
+            || session.agentSession.providerId !== this.host.state.agentCli
             || (session.agentSession.model ?? '') !== this.host.state.agentModel.trim()
             || (session.agentSession.effort ?? '') !== this.host.state.agentEffort)) {
             session.agentSession = undefined;
         }
-        if (!session.agentSession && !await this.host.sessions.ensureProviderSession(session, false, true)) {
+        const prepared = Boolean(session.agentSession) || await this.host.sessions.ensureProviderSession(session, false, true);
+        if (!this.host.sessions.sessions.includes(session) || session.archived) {
+            return;
+        }
+        if (!prepared) {
             await this.recordPreSpawnFailure(
                 session,
                 content,

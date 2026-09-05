@@ -9,11 +9,18 @@ export const DEFAULT_CLI_ID: KnownCliId = 'codex';
 export type AiRole = 'agent' | 'results';
 export type CliLocationSource = 'PATH' | 'well-known';
 
+export const CLI_DISPLAY_NAMES: Readonly<Record<KnownCliId, string>> = {
+    codex: 'Codex',
+    claude: 'Claude Code',
+    grok: 'Grok',
+    gemini: 'Gemini CLI'
+};
+
 /** Curated CLI values exposed by Poiesis and accepted by the backend argv boundary. */
 export const CLI_EFFORT_LEVELS: Readonly<Record<KnownCliId, readonly string[]>> = {
     claude: ['low', 'medium', 'high', 'xhigh', 'max'],
     codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
-    grok: ['low', 'high'],
+    grok: ['low', 'medium', 'high'],
     gemini: []
 };
 

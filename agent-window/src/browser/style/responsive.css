@@ -26,16 +26,6 @@
         margin-inline: 10px;
     }
 
-    .poiesis-results__fixed-header {
-        align-items: start;
-        gap: 8px;
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .poiesis-results__fixed-meta {
-        justify-content: flex-start;
-    }
-
     .poiesis-agent-window__app-page {
         grid-template-columns: 52px minmax(0, 1fr);
     }

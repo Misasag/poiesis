@@ -81,6 +81,11 @@ interface ResultsFrameMessage {
     citation?: string;
 }
 
+interface ResultsMetadataBadge {
+    label: string;
+    accessibleLabel: string;
+}
+
 export class ResultsPart extends AgentWindowPart {
     protected readonly resultsSkillNames = new Map<string, string>();
 
@@ -465,6 +470,7 @@ export class ResultsPart extends AgentWindowPart {
         const diffstat = summarizeTaskChangeSet(task.changeSet);
         const status = task.status === 'completed' ? '完了' : task.status === 'failed' ? '失敗' : 'キャンセル';
         const completedAtJst = formatTaskEndedAtJst(task.endedAt);
+        const compactCompletedAt = this.compactResultsDate(task.endedAt);
         const document = this.resultsService.get(task.id);
         const generationBadge = this.resultsGenerationBadge(document);
         const assertionBadge = this.renderResultsAssertionBadge(document);
@@ -476,6 +482,8 @@ export class ResultsPart extends AgentWindowPart {
             void this.ensureResultsSkillNames();
         }
         const appliedSkillNames = appliedSkillIds.map(id => this.resultsSkillNames.get(id) ?? id);
+        const requirement = this.requirementService.get(task.requirementId);
+        const taskCount = requirement ? this.host.sessions.finishedTasksForRequirement(requirement).length : 1;
         return (
             <header className='poiesis-results__fixed-header' data-task-status={task.status}>
                 <div className='poiesis-results__fixed-title'>
@@ -483,26 +491,33 @@ export class ResultsPart extends AgentWindowPart {
                 </div>
                 <div className='poiesis-results__fixed-meta' aria-label='タスクの状態と変更規模'>
                     <span className={`poiesis-results__status ${task.status}`}>{status}</span>
-                    {completedAtJst && <time dateTime={task.endedAt}>{completedAtJst}</time>}
+                    {completedAtJst && (
+                        <time dateTime={task.endedAt} title={completedAtJst} aria-label={`完了日時 ${completedAtJst}`}>
+                            {compactCompletedAt}
+                        </time>
+                    )}
                     <span className='poiesis-results__diffstat'>
                         <b>{diffstat.fileCount}ファイル</b>
                         <ins>+{diffstat.additions}</ins>
                         <del>−{diffstat.deletions}</del>
                     </span>
-                    {(generationBadge || assertionBadge || appliedSkillIds.length > 0) && (
-                        <span className='poiesis-results__badges' aria-label='成果文書の生成情報'>
-                            {generationBadge && <span>{generationBadge}</span>}
-                            {assertionBadge}
-                            {appliedSkillIds.length > 0 && (
-                                <span
-                                    title={`適用 Skills: ${appliedSkillNames.join('、')}`}
-                                    aria-label={`適用 Skills: ${appliedSkillNames.join('、')}`}
-                                >
-                                    Skills {appliedSkillIds.length}
-                                </span>
-                            )}
-                        </span>
-                    )}
+                    <span className='poiesis-results__badges' aria-label='成果文書の生成情報'>
+                        {generationBadge && (
+                            <span title={generationBadge.accessibleLabel} aria-label={generationBadge.accessibleLabel}>
+                                {generationBadge.label}
+                            </span>
+                        )}
+                        {assertionBadge}
+                        {appliedSkillIds.length > 0 && (
+                            <span
+                                title={`適用 Skills: ${appliedSkillNames.join('、')}`}
+                                aria-label={`適用 Skills: ${appliedSkillNames.join('、')}`}
+                            >
+                                Skills {appliedSkillIds.length}
+                            </span>
+                        )}
+                        <span title={`タスク ${taskCount}件`} aria-label={`タスク ${taskCount}件`}>タスク {taskCount}</span>
+                    </span>
                 </div>
             </header>
         );
@@ -514,6 +529,7 @@ export class ResultsPart extends AgentWindowPart {
         const diffstat = summarizeTaskChangeSet(changeSet);
         const status = this.host.sessions.taskStatusLabel(latestTask);
         const completedAtJst = formatTaskEndedAtJst(latestTask.endedAt);
+        const compactCompletedAt = this.compactResultsDate(latestTask.endedAt);
         const document = this.resultsService.getRequirement(requirement.id);
         const generationBadge = this.resultsGenerationBadge(document);
         const assertionBadge = this.renderResultsAssertionBadge(document);
@@ -533,14 +549,22 @@ export class ResultsPart extends AgentWindowPart {
                 </div>
                 <div className='poiesis-results__fixed-meta' aria-label='要件の状態と変更規模'>
                     <span className={`poiesis-results__status ${latestTask.status}`}>{status}</span>
-                    {completedAtJst && <time dateTime={latestTask.endedAt}>{completedAtJst}</time>}
+                    {completedAtJst && (
+                        <time dateTime={latestTask.endedAt} title={completedAtJst} aria-label={`完了日時 ${completedAtJst}`}>
+                            {compactCompletedAt}
+                        </time>
+                    )}
                     <span className='poiesis-results__diffstat'>
                         <b>{diffstat.fileCount}ファイル</b>
                         <ins>+{diffstat.additions}</ins>
                         <del>−{diffstat.deletions}</del>
                     </span>
                     <span className='poiesis-results__badges' aria-label='要件成果文書の生成情報'>
-                        {generationBadge && <span>{generationBadge}</span>}
+                        {generationBadge && (
+                            <span title={generationBadge.accessibleLabel} aria-label={generationBadge.accessibleLabel}>
+                                {generationBadge.label}
+                            </span>
+                        )}
                         {assertionBadge}
                         {appliedSkillIds.length > 0 && (
                             <span
@@ -550,14 +574,14 @@ export class ResultsPart extends AgentWindowPart {
                                 Skills {appliedSkillIds.length}
                             </span>
                         )}
-                        <span>タスク {tasks.length}件</span>
+                        <span title={`タスク ${tasks.length}件`} aria-label={`タスク ${tasks.length}件`}>タスク {tasks.length}</span>
                     </span>
                 </div>
             </header>
         );
     }
 
-    protected resultsGenerationBadge(document: TaskResultDocument | undefined): string | undefined {
+    protected resultsGenerationBadge(document: TaskResultDocument | undefined): ResultsMetadataBadge | undefined {
         if (document?.status !== 'ready') {
             return undefined;
         }
@@ -565,7 +589,11 @@ export class ResultsPart extends AgentWindowPart {
             const providerId: KnownCliId = isKnownCliId(document.providerId) ? document.providerId : this.host.state.resultsCli;
             const provider = this.host.state.cliDetectionReport?.detections.find((candidate: CliDetectionReport['detections'][number]) => candidate.id === providerId)?.name
                 ?? ({ codex: 'Codex', claude: 'Claude Code', grok: 'Grok', gemini: 'Gemini CLI' } satisfies Record<KnownCliId, string>)[providerId];
-            return `AI 生成 · ${provider}${document.effort ? ` · ${document.effort}` : ''}`;
+            const suffix = document.effort ? ` · ${document.effort}` : '';
+            return {
+                label: `AI · ${provider}${suffix}`,
+                accessibleLabel: `AI 生成 · ${provider}${suffix}`
+            };
         }
         const fallbackLabel = document.fallbackReason === 'no-workspace'
             ? 'Workspace 未選択'
@@ -574,7 +602,11 @@ export class ResultsPart extends AgentWindowPart {
                 : document.fallbackReason === 'generation-failed'
                     ? 'AI 生成に失敗'
                     : undefined;
-        return `テンプレート表示${fallbackLabel ? ` · ${fallbackLabel}` : ''}`;
+        const accessibleLabel = `テンプレート表示${fallbackLabel ? ` · ${fallbackLabel}` : ''}`;
+        return {
+            label: fallbackLabel ? `テンプレート · ${fallbackLabel.replace('AI 生成に', '生成')}` : 'テンプレート',
+            accessibleLabel
+        };
     }
 
     protected renderResultsAssertionBadge(document: TaskResultDocument | undefined): React.ReactNode {
@@ -586,17 +618,39 @@ export class ResultsPart extends AgentWindowPart {
         }
         const passed = assertions.filter(assertion => assertion.status === 'pass').length;
         const unresolved = assertions.filter(assertion => assertion.status !== 'pass');
+        const accessibleLabel = `Skill 条件 ${passed}/${assertions.length} 合格`;
         const title = unresolved.length > 0
-            ? unresolved.map(assertion => `${assertion.status === 'fail' ? '不合格' : '未判定'}: ${assertion.text}`).join('\n')
-            : undefined;
+            ? `${accessibleLabel}\n${unresolved.map(assertion => `${assertion.status === 'fail' ? '不合格' : '未判定'}: ${assertion.text}`).join('\n')}`
+            : accessibleLabel;
         return (
             <span
                 className={`poiesis-results__assertion-badge ${unresolved.length === 0 ? 'passed' : 'warning'}`}
                 title={title}
+                aria-label={accessibleLabel}
             >
-                Skill 条件 {passed}/{assertions.length} 合格
+                条件 {passed}/{assertions.length}
             </span>
         );
+    }
+
+    protected compactResultsDate(timestamp: string | undefined): string {
+        if (!timestamp) {
+            return '';
+        }
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) {
+            return '';
+        }
+        const parts = new Intl.DateTimeFormat('ja-JP', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'Asia/Tokyo'
+        }).formatToParts(date);
+        const part = (type: Intl.DateTimeFormatPartTypes): string => parts.find(candidate => candidate.type === type)?.value ?? '';
+        return `${part('month')}/${part('day')} ${part('hour')}:${part('minute')}`;
     }
 
     public ensureResultsSkillNames(): Promise<void> {

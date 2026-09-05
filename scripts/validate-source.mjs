@@ -64,6 +64,8 @@ const backendModule = await read('agent-window/src/node/agent-window-backend-mod
 const agentContribution = await read('agent-window/src/browser/agent-window-contribution.ts');
 const providerSource = await read('agent-window/src/common/agent-provider.ts');
 const runtimeProtocol = await read('agent-window/src/common/agent-runtime-protocol.ts');
+const cliDetectionLifecycle = await read('agent-window/src/common/cli-detection-lifecycle.ts');
+const cliDetectionLifecycleTest = await read('scripts/test-cli-detection-lifecycle.mjs');
 const runtimeClient = await read('agent-window/src/browser/agent-runtime-client.ts');
 const cliProvider = await read('agent-window/src/browser/cli-agent-provider.ts');
 const agentActivityParser = await read('agent-window/src/browser/agent-activity-parser.ts');
@@ -737,12 +739,13 @@ assert.ok(rootPackage.scripts['test:text-diff']?.includes('scripts/test-text-dif
 
 for (const marker of [
     "KNOWN_CLI_IDS = ['codex', 'claude', 'grok', 'gemini']",
+    'CLI_DISPLAY_NAMES',
     "AiRole = 'agent' | 'results'",
     "CliLocationSource = 'PATH' | 'well-known'",
     'CLI_EFFORT_LEVELS',
     "claude: ['low', 'medium', 'high', 'xhigh', 'max']",
     "codex: ['minimal', 'low', 'medium', 'high', 'xhigh']",
-    "grok: ['low', 'high']",
+    "grok: ['low', 'medium', 'high']",
     'gemini: []',
     "status: 'found' | 'missing'",
     'CodexExecutionRequest',
@@ -757,6 +760,33 @@ for (const marker of [
     assert.ok(runtimeProtocol.includes(marker), `Runtime protocol is missing ${marker}`);
 }
 for (const marker of [
+    "CliDetectionPhase = 'pending' | 'ready' | 'error'",
+    "CliRoleAvailability = 'pending' | 'available' | 'missing' | 'unsupported' | 'error'",
+    "if (phase === 'pending')",
+    "if (phase === 'error')",
+    "detection.status === 'missing'",
+    "detection.executableRoles.includes(role) ? 'available' : 'unsupported'",
+    "case 'pending': return '検出中…'",
+    "case 'missing': return '未検出'",
+    "case 'error': return '検出に失敗'"
+]) {
+    assert.ok(cliDetectionLifecycle.includes(marker), `CLI detection lifecycle is missing ${marker}`);
+}
+for (const marker of [
+    "cliRoleAvailability('pending', undefined, 'codex', 'agent')",
+    "cliRoleAvailability('pending', foundReport, 'codex', 'agent')",
+    "cliRoleAvailability('ready', missingReport, 'codex', 'agent')",
+    "cliRoleAvailability('error', foundReport, 'codex', 'agent')",
+    "cliRoleAvailabilityLabel('pending'), '検出中…'",
+    "cliRoleAvailabilityLabel('missing'), '未検出'",
+    "cliRoleAvailabilityLabel('error'), '検出に失敗'",
+    'CLI_DETECTION_LIFECYCLE_TEST=passed'
+]) {
+    assert.ok(cliDetectionLifecycleTest.includes(marker), `CLI detection lifecycle regression is missing ${marker}`);
+}
+assert.ok(rootPackage.scripts['test:cli-detection']?.includes('scripts/test-cli-detection-lifecycle.mjs'),
+    'The CLI detection lifecycle test script is not registered');
+for (const marker of [
     'endSnapshotId?: string',
     'captureGitChangeSetBetween(request: GitChangeSetBetweenRequest)'
 ]) {
@@ -765,6 +795,9 @@ for (const marker of [
 for (const marker of [
     "process.env.PATH",
     "process.env.POIESIS_DISABLE_CLI_DETECTION === '1'",
+    'POIESIS_CLI_DETECTION_TEST_DELAY_MS',
+    'POIESIS_CLI_DETECTION_TEST_FORCE_FOUND',
+    'POIESIS_CLI_DETECTION_TEST_FAIL_CALLS',
     'lastReport',
     "status: 'found'",
     "status: 'missing'",
@@ -854,8 +887,10 @@ for (const marker of [
     "providerId: 'claude', model: 'sonnet', effort: 'max'",
     "providerId: 'codex', model: 'gpt-5', effort: 'xhigh'",
     "providerId: 'grok', model: 'grok-4', effort: 'high'",
+    "providerId: 'grok', model: 'grok-4.5', effort: 'medium'",
     "providerId: 'codex', model: 'gpt-5', effort: 'minimal'",
     "providerId: 'grok', model: 'grok-4', effort: 'low'",
+    "['grok', 'max']",
     'assert.throws(',
     "console.log('CLI_ARGS_TEST=passed')"
 ]) {
@@ -1163,7 +1198,8 @@ for (const marker of [
     'summarizeTaskChangeSet(task.changeSet)',
     "srcDoc={this.resultsDocumentHtml(document.html)}",
     '<PoiesisResultsElapsed key={scopeKey} />',
-    "return `AI 生成 · ${provider}${document.effort ? ` · ${document.effort}` : ''}`",
+    "label: `AI · ${provider}${suffix}`",
+    "accessibleLabel: `AI 生成 · ${provider}${suffix}`",
     'isKnownCliId(document.providerId) ? document.providerId : this.host.state.resultsCli',
     'Skills {appliedSkillIds.length}',
     'title={`適用 Skills: ${appliedSkillNames.join(\'、\')}`}',
@@ -1311,8 +1347,6 @@ for (const marker of [
     'model: this.host.state.agentModel.trim() || undefined',
     'effort: this.host.state.agentEffort || undefined',
     'detection.executableRoles.includes(role)',
-    '検出済み（実行可）',
-    '検出済み（実行対応は今後）',
     'protected setRoleModelChoice(',
     'protected setRoleModel(',
     'protected setRoleEffort(role: AiRole, effort: string): void',
@@ -1354,7 +1388,12 @@ for (const marker of [
     "aria-label={`${roleLabel} の AI カスタムモデルID`}",
     "ariaLabel={`${roleLabel} の AI effort`}",
     "className='poiesis-ai-role-pill__effort'",
-    "detection.status === 'missing' ? '未検出' : '実行対応は今後'",
+    'cliRoleAvailability(this.host.state.cliDetectionPhase',
+    'cliRoleAvailabilityLabel(availability',
+    'public waitForCurrentCliDetection(): Promise<void>',
+    'this.cliDetectionCompletion = this.performCliDetection();',
+    'await this.host.waitForCurrentCliDetection();',
+    "selectedCliAvailability !== 'available'",
     'public async openCodeFile(rawUri: string): Promise<void>',
     "message.role === 'agent'",
     'this.host.renderMarkdown(entry.answer ?? \'\')',
@@ -1575,7 +1614,8 @@ for (const marker of [
     assert.ok(resultsSkill.includes(marker), `Post-Task Skill proposal recording is missing ${marker}`);
 }
 for (const marker of [
-    'Skill 条件 {passed}/{assertions.length} 合格',
+    'const accessibleLabel = `Skill 条件 ${passed}/${assertions.length} 合格`;',
+    '条件 {passed}/{assertions.length}',
     "className={`poiesis-results__assertion-badge ${unresolved.length === 0 ? 'passed' : 'warning'}`}",
     'isMostRecentAgentMessage && index === 0',
     '条件 {previewItem?.assertions ?? skill.assertions.length}件'
@@ -1638,6 +1678,7 @@ assert.equal(rootPackage.scripts['smoke:round20'], 'node scripts/smoke-round20-b
 assert.equal(rootPackage.scripts['smoke:results-citation'], 'npm run build && node scripts/smoke-results-document.mjs citation');
 assert.equal(rootPackage.scripts['smoke:results-document'], 'npm run build && node scripts/smoke-results-document.mjs citation && node scripts/smoke-results-document.mjs fallback');
 assert.equal(rootPackage.scripts['smoke:results-fallback'], 'npm run build && node scripts/smoke-results-document.mjs fallback');
+assert.equal(rootPackage.scripts['smoke:cli-detection-ui'], 'npm run build && node scripts/smoke-results-document.mjs detection');
 assert.equal(rootPackage.scripts['test:results-prompt-transport'], 'npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-prompt-transport.mjs');
 for (const marker of [
     "'x'.repeat(80_000)",
@@ -1649,7 +1690,7 @@ for (const marker of [
 }
 for (const marker of [
     "mode === 'citation'",
-    "['citation', 'fallback'].includes(mode)",
+    "['citation', 'fallback', 'detection'].includes(mode)",
     'data-poiesis-citation="citation-target.txt:4"',
     "textContent?.trim() === '4'",
     'POIESIS_RESULTS_GENERATION_FORCE_FAILURE',
@@ -1660,6 +1701,18 @@ for (const marker of [
     'RESULTS_FALLBACK_SMOKE_RESULT='
 ]) {
     assert.ok(resultsDocumentSmoke.includes(marker), `Results document smoke is missing ${marker}`);
+}
+for (const marker of [
+    'CLI_DETECTION_UI_SMOKE_RESULT=',
+    'First send escaped the pending detection barrier',
+    'First Task did not use the model completed by detection',
+    'Send reused a stale provider session after detection failure',
+    'Error-state send did not perform a delayed fresh runtime check',
+    "snapshot.statuses.every(status => status === '検出中…')",
+    "snapshot.statuses.every(status => status === '検出に失敗')",
+    "snapshot.results.status === '未検出'"
+]) {
+    assert.ok(resultsDocumentSmoke.includes(marker), `CLI detection UI smoke is missing ${marker}`);
 }
 for (const marker of [
     "export const POIESIS_FONT_SANS = 'Inter, ui-sans-serif, -apple-system",
@@ -1686,11 +1739,20 @@ for (const marker of [
     'canvasLayout.header?.height <= 52',
     'canvasLayout.frame.top - canvasLayout.panel.top <= 70',
     'canvasLayout.frame.width >= canvasLayout.canvas.width - 2',
-    'denseHeader.height <= 56',
-    "denseHeader.badges.includes('AI 生成 · Codex')",
-    "denseHeader.badges.includes('Skill 条件 7/7 合格')",
+    'denseHeader.height <= 40',
+    "denseHeader.badges.includes('AI · Codex')",
+    "denseHeader.badges.includes('条件 7/7')",
     "denseHeader.badges.includes('Skills 4')",
-    'denseHeader.metadataRows <= 2',
+    "denseHeader.badges.includes('タスク 10')",
+    'denseHeader.metadataRows === 1',
+    "setUiFontScale(page, 'large')",
+    'width: 1024, height: 720',
+    'assertResultsLayout(largeLayout',
+    'results-browser-1280x720-standard.png',
+    'results-browser-1024x720-large.png',
+    'waitForFinishedResultsContent(page',
+    'Number.parseFloat(getComputedStyle(preload).opacity) <= 0.01',
+    'background: #f4f0e6; color: #28251f;',
     'fallback.cardPaddingTop >= 16',
     'aiLayout.headingTop <= 22'
 ]) {
@@ -1705,6 +1767,20 @@ for (const marker of [
     'if (taskFeedbackOnly) removeAgentTestFixture();'
 ]) {
     assert.ok(electronSmoke.includes(marker), `No-change smoke is missing ${marker}`);
+}
+for (const marker of [
+    'installRound12DenseResultsFixture(page)',
+    "settleElectronWindowSize(page, startProcess.pid, 1280, 720)",
+    "settleElectronWindowSize(page, startProcess.pid, 1024, 720)",
+    "assertElectronResultsHeader(page, '1280x720 standard', true)",
+    "assertElectronResultsHeader(page, '1024x720 large', false)",
+    "data-window-action=\"maximize\"",
+    "data-window-action=\"restore\"",
+    'results-electron-1280x720-standard.png',
+    'results-electron-1024x720-large.png'
+    ,'waitForFinishedElectronResults(page)'
+]) {
+    assert.ok(electronSmoke.includes(marker), `Native Results resize regression is missing ${marker}`);
 }
 assert.ok(rootPackage.scripts['smoke:no-change']?.includes('POIESIS_NO_CHANGE_ONLY=1'),
     'The no-change smoke script is not registered');
@@ -1904,7 +1980,9 @@ assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openS
 assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Poiesis Customize must not manage Code extensions');
 for (const marker of [
     'margin: 6px 8px;',
-    'grid-template-columns: minmax(200px, 1fr) minmax(0, auto);',
+    'container-name: results-canvas;',
+    'grid-template-columns: minmax(160px, 1fr) minmax(0, auto);',
+    '@container results-canvas (max-width: 700px)',
     '-webkit-line-clamp: 1;',
     'padding: 6px 12px;'
 ]) {
@@ -2002,8 +2080,9 @@ for (const marker of [
     'public persistWindowState(): Promise<void>',
     'public windowStatePersistence: Promise<void> = Promise.resolve()',
     'this.windowStatePersistence = this.windowStatePersistence',
-    '.then(() => this.refreshCliDetection())',
-    '.then(() => this.sessions.initializeSessions())',
+    'void this.refreshCliDetection();',
+    'await this.sessions.initializeSessions();',
+    'public waitForCurrentCliDetection(): Promise<void>',
     'public sessionsInitialized = false',
     'public findSessionForTask(task: ExecutionTask)',
     'public canonicalWorkspaceUri(workspaceUri: string | undefined)',

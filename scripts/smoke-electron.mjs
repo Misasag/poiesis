@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import puppeteer from 'puppeteer-core';
 
 const root = process.cwd();
@@ -9,6 +9,9 @@ const userDataDir = resolve(runtimeDir, `user-data-${Date.now()}`);
 const debugPort = Number(process.env.THEIA_ELECTRON_DEBUG_PORT ?? 9334);
 const browserURL = `http://127.0.0.1:${debugPort}`;
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
+const round12ScreenshotDirectory = resolve(root, '_codex', 'round12-screenshots');
+const round12StandardScreenshotPath = resolve(round12ScreenshotDirectory, 'results-electron-1280x720-standard.png');
+const round12LargeScreenshotPath = resolve(round12ScreenshotDirectory, 'results-electron-1024x720-large.png');
 const windowDragOnly = process.env.POIESIS_WINDOW_DRAG_ONLY === '1';
 const customizeWindowOnly = process.env.POIESIS_CUSTOMIZE_WINDOW_ONLY === '1';
 const settingsWindowOnly = process.env.POIESIS_SETTINGS_WINDOW_ONLY === '1';
@@ -19,6 +22,7 @@ const modalWindowOnly = customizeWindowOnly || settingsWindowOnly || composerOnl
 const lightweightElectron = windowDragOnly || modalWindowOnly;
 const interactionOnly = modalWindowOnly || taskFeedbackOnly || noChangeOnly;
 mkdirSync(runtimeDir, { recursive: true });
+if (taskFeedbackOnly) mkdirSync(round12ScreenshotDirectory, { recursive: true });
 const emptyPluginsDir = resolve(runtimeDir, 'empty-plugins');
 if (lightweightElectron) mkdirSync(emptyPluginsDir, { recursive: true });
 
@@ -214,13 +218,40 @@ try {
             && !completion.includes('変更ファイル: なし'),
         `Agent completion was not preserved verbatim: ${JSON.stringify(completion)}`);
         assert(await page.$('.poiesis-agent-window__diffstat-chip'), 'Changed-file diffstat chip is missing.');
+        await installRound12DenseResultsFixture(page);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#poiesis-window-host .poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
+        await page.waitForSelector('.poiesis-results__document');
+
+        await settleElectronWindowSize(page, startProcess.pid, 1280, 720);
+        await waitForFinishedElectronResults(page);
+        const resultsStandard = await assertElectronResultsHeader(page, '1280x720 standard', true);
+        await page.screenshot({ path: round12StandardScreenshotPath });
+
+        await setElectronUiFontScale(page, 'large');
+        await settleElectronWindowSize(page, startProcess.pid, 1024, 720);
+        await waitForFinishedElectronResults(page);
+        const resultsLarge = await assertElectronResultsHeader(page, '1024x720 large', false);
+        await page.screenshot({ path: round12LargeScreenshotPath });
+
+        await page.click('.poiesis-window-controls__button[data-window-action="maximize"]');
+        await page.waitForSelector('.poiesis-window-controls__button[data-window-action="restore"]');
+        const resultsMaximized = await assertElectronResultsHeader(page, 'maximized large', true);
+        await page.click('.poiesis-window-controls__button[data-window-action="restore"]');
+        await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
+        const resultsRestored = await assertElectronResultsHeader(page, 'restored 1024x720 large', false);
         console.log(`ELECTRON_TASK_FEEDBACK_SMOKE_RESULT=${JSON.stringify({
             elapsedVisible: true,
             elapsedUpdated: true,
             finalizingStatus,
             runningActivityRows,
             composerEnabledDuringRun,
-            activitySummaryVisible: true
+            activitySummaryVisible: true,
+            resultsStandard,
+            resultsLarge,
+            resultsMaximized,
+            resultsRestored,
+            screenshots: [round12StandardScreenshotPath, round12LargeScreenshotPath]
         })}`);
         break smokeRun;
     }
@@ -636,6 +667,7 @@ try {
     }
     stopProcessTree(startProcess.pid);
     await waitForCdpToStop(browserURL, 30_000).catch(error => console.warn(error.message));
+    removeOwnedUserDataDir();
 }
 
 function restoreScmFixture() {
@@ -653,6 +685,15 @@ function removeAgentTestFixture() {
     if (existsSync(agentTestFixturePath)) {
         unlinkSync(agentTestFixturePath);
     }
+}
+
+function removeOwnedUserDataDir() {
+    const ownedRoot = `${resolve(runtimeDir)}${sep}`;
+    const target = resolve(userDataDir);
+    if (!target.startsWith(ownedRoot)) {
+        throw new Error(`Refusing to remove Electron user data outside ${runtimeDir}: ${target}`);
+    }
+    rmSync(target, { recursive: true, force: true });
 }
 
 async function waitForScmAction(page, label, action) {
@@ -753,6 +794,173 @@ async function clickScmAction(page, label, action) {
         target.click();
         return true;
     }, label, action);
+}
+
+async function installRound12DenseResultsFixture(page) {
+    await page.evaluate(() => {
+        const key = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
+        const raw = localStorage.getItem(key);
+        const state = raw ? JSON.parse(raw) : undefined;
+        const session = state?.sessions?.[0];
+        const task = session?.tasks?.at(-1);
+        if (!session || !task?.resultsDocument?.html) {
+            throw new Error('Task feedback Results were unavailable for the Round 12 fixture.');
+        }
+        const title = '長い日本語の成果タイトルでも状態と生成情報と検証結果を同じヘッダーで確認できることを検証するタスク';
+        const assertions = Array.from({ length: 7 }, (_, index) => ({
+            text: `Dense header assertion ${index + 1}`,
+            source: 'app',
+            status: 'pass'
+        }));
+        task.title = title;
+        task.appliedSkills = {
+            agent: ['implementation-harness', 'verification-recipe', 'results-evidence', 'results-structure'],
+            results: []
+        };
+        task.resultsDocument = {
+            ...task.resultsDocument,
+            status: 'ready',
+            generator: 'ai',
+            providerId: 'codex',
+            fallbackReason: undefined,
+            assertions,
+            assertionAttempts: 1
+        };
+        const originalStartedAt = new Date(task.startedAt).getTime();
+        const history = Array.from({ length: 9 }, (_, index) => {
+            const sequence = index + 1;
+            const timestamp = new Date(originalStartedAt - (10 - sequence) * 60_000).toISOString();
+            const id = `${task.id}-history-${sequence}`;
+            return {
+                ...task,
+                id,
+                title: `${title} ${sequence}`,
+                startedAt: timestamp,
+                endedAt: timestamp,
+                resultsDocument: { ...task.resultsDocument, taskId: id }
+            };
+        });
+        session.tasks = [...history, task];
+        session.activeTab = 'results';
+        session.selectedResultsTaskId = task.id;
+        localStorage.setItem(key, JSON.stringify(state));
+
+        for (const storageKey of Object.keys(localStorage)) {
+            if (!storageKey.includes('poiesis.requirements.sessions.v1')) continue;
+            try {
+                const stored = JSON.parse(localStorage.getItem(storageKey));
+                for (const requirements of Object.values(stored?.sessions ?? {})) {
+                    for (const requirement of Array.isArray(requirements) ? requirements : []) {
+                        if (!requirement.taskIds?.includes(task.id)) continue;
+                        requirement.title = title;
+                        requirement.taskIds = session.tasks.map(candidate => candidate.id);
+                        requirement.resultsDocument = {
+                            ...(requirement.resultsDocument ?? task.resultsDocument),
+                            status: 'ready',
+                            generator: 'ai',
+                            providerId: 'codex',
+                            fallbackReason: undefined,
+                            assertions,
+                            assertionAttempts: 1
+                        };
+                    }
+                }
+                localStorage.setItem(storageKey, JSON.stringify(stored));
+            } catch {
+                // Ignore unrelated storage values that happen to share the suffix.
+            }
+        }
+    });
+}
+
+async function setElectronUiFontScale(page, scale) {
+    await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
+    await page.waitForSelector('.poiesis-settings-modal');
+    await page.$eval(`input[name="poiesis-ui-scale"][value="${scale}"]`, input => input.click());
+    await page.click('.poiesis-settings-modal__header button[aria-label="設定を閉じる"]');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
+}
+
+async function waitForFinishedElectronResults(page) {
+    await page.waitForFunction(() => {
+        const preload = document.querySelector('.theia-preload');
+        const preloadHidden = !preload || Number.parseFloat(getComputedStyle(preload).opacity) <= 0.01;
+        return preloadHidden
+            && !document.querySelector('.poiesis-results__generating')
+            && Boolean(document.querySelector('.poiesis-results__document'));
+    });
+    const handle = await page.$('.poiesis-results__document');
+    const frame = await handle?.contentFrame();
+    if (!frame) throw new Error('Electron Results iframe was not attached.');
+    await frame.waitForFunction(() => document.readyState === 'complete'
+        && Boolean(document.body?.querySelector(':scope > :not(script):not(style)')));
+    await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+}
+
+async function assertElectronResultsHeader(page, label, singleRow) {
+    const layout = await assertElectronLayout(page, 'results');
+    const header = await page.evaluate(() => {
+        const rect = element => {
+            const bounds = element.getBoundingClientRect();
+            return {
+                left: Math.round(bounds.left),
+                top: Math.round(bounds.top),
+                right: Math.round(bounds.right),
+                bottom: Math.round(bounds.bottom),
+                width: Math.round(bounds.width),
+                height: Math.round(bounds.height)
+            };
+        };
+        const node = document.querySelector('.poiesis-results__fixed-header');
+        const title = node?.querySelector('h1');
+        const metaItems = [...node?.querySelectorAll('.poiesis-results__status, time, .poiesis-results__diffstat, .poiesis-results__badges > span') ?? []];
+        const badgeNodes = [...node?.querySelectorAll('.poiesis-results__badges > span') ?? []];
+        const rowCenter = item => {
+            const bounds = item.getBoundingClientRect();
+            return Math.round(bounds.top + bounds.height / 2);
+        };
+        return {
+            viewport: { width: innerWidth, height: innerHeight },
+            documentWidth: document.documentElement.scrollWidth,
+            main: rect(document.querySelector('.poiesis-results__main')),
+            canvas: rect(document.querySelector('.poiesis-results__canvas')),
+            header: rect(node),
+            title: rect(title),
+            titleAttribute: title?.getAttribute('title'),
+            metaItems: metaItems.map(rect),
+            metaRows: new Set(metaItems.map(rowCenter)).size,
+            headerRows: new Set([title, ...metaItems].filter(Boolean)
+                .map(rowCenter)).size,
+            badges: badgeNodes.map(item => item.textContent?.replace(/\s+/g, ' ').trim()),
+            badgeTitles: badgeNodes.map(item => item.getAttribute('title')),
+            timeTitle: node?.querySelector('time')?.getAttribute('title'),
+            fontScale: getComputedStyle(document.querySelector('.poiesis-agent-window__content'))
+                .getPropertyValue('--poiesis-ui-font-scale').trim()
+        };
+    });
+    assert(header.documentWidth <= header.viewport.width && header.main.width >= 300,
+        `${label} overflowed or collapsed the Results content column: ${JSON.stringify({ layout, header })}`);
+    assert(header.title.width >= 80
+        && header.metaItems.every(bounds => bounds.left >= header.header.left - 1 && bounds.right <= header.header.right + 1),
+    `${label} clipped fixed-header content: ${JSON.stringify({ layout, header })}`);
+    assert(header.titleAttribute?.startsWith('長い日本語の成果タイトル')
+        && header.badges.includes('AI · Codex')
+        && header.badges.includes('条件 7/7')
+        && header.badges.includes('Skills 4')
+        && header.badges.includes('タスク 10')
+        && header.badgeTitles.includes('AI 生成 · Codex')
+        && header.badgeTitles.includes('Skill 条件 7/7 合格')
+        && header.badgeTitles.includes('タスク 10件')
+        && header.timeTitle?.endsWith('JST'),
+    `${label} lost accessible Results metadata: ${JSON.stringify(header)}`);
+    if (singleRow) {
+        assert(header.metaRows === 1 && header.header.height <= 44,
+            `${label} did not keep all Results metadata in one row: ${JSON.stringify(header)}`);
+    } else {
+        assert(header.header.height <= 96 && header.headerRows <= 3,
+            `${label} did not use the bounded responsive Results layout: ${JSON.stringify(header)}`);
+    }
+    return { ...header, layoutViewport: layout.viewport };
 }
 
 function assert(condition, message) {

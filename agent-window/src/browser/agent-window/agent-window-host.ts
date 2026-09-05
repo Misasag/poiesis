@@ -13,6 +13,7 @@ import type { VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/v
 import type { WorkspaceService } from '@theia/workspace/lib/browser';
 import type { AgentActivity, AgentEvent, AgentProvider } from '../../common/agent-provider';
 import type { AgentRuntimeServer, AiRole, CliDetectionReport, KnownCliId } from '../../common/agent-runtime-protocol';
+import type { CliDetectionPhase } from '../../common/cli-detection-lifecycle';
 import type { FolderExplorerService } from '../folder-explorer-service';
 import type { GlobalStorageService } from '../global-storage-service';
 import type { RequirementClassificationService } from '../requirement-classification-service';
@@ -49,6 +50,7 @@ export interface AgentWindowState {
     effortByModel: Record<AiRole, Record<string, string>>;
     allowExternalResultsResources: boolean;
     automaticRequirementClassification: boolean;
+    cliDetectionPhase: CliDetectionPhase;
     cliDetectionReport?: CliDetectionReport;
     deleteSessionConfirmationId?: string;
     railCollapsed: boolean;
@@ -130,6 +132,7 @@ export interface AgentWindowHost {
     closeShortcutsOverlay(): void;
     uiFontScaleValue(): number;
     refreshCliDetection(): Promise<void>;
+    waitForCurrentCliDetection(): Promise<void>;
     restorePoiesisSettings(): Promise<void>;
 
     // RailPart-owned operations.

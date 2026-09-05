@@ -31,6 +31,10 @@ assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'grok', model: 'grok-4
     '-p', 'Do the work.', '--cwd', 'C:\\work', '--model', 'grok-4', '--reasoning-effort', 'high', '--output-format', 'plain',
     '--permission-mode', 'acceptEdits', '--sandbox', 'workspace', '--disable-web-search', '--no-subagents', '--no-plan'
 ]);
+assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'grok', model: 'grok-4.5', effort: 'medium' }), [
+    '-p', 'Do the work.', '--cwd', 'C:\\work', '--model', 'grok-4.5', '--reasoning-effort', 'medium', '--output-format', 'plain',
+    '--permission-mode', 'acceptEdits', '--sandbox', 'workspace', '--disable-web-search', '--no-subagents', '--no-plan'
+]);
 
 const oneShotBase = { workspace: 'C:\\work', prompt: 'Answer.', promptViaStdin: true };
 assert.deepEqual(oneShotCliArgs({ ...oneShotBase, providerId: 'claude', model: 'haiku' }), [
@@ -55,8 +59,12 @@ assert.deepEqual(oneShotCliArgs({ ...oneShotBase, providerId: 'grok', model: 'gr
     '--prompt-file', 'C:\\temp\\prompt.txt', '--cwd', 'C:\\work', '--model', 'grok-4', '--reasoning-effort', 'low', '--output-format', 'plain',
     '--permission-mode', 'plan', '--sandbox', 'read-only', '--disable-web-search', '--no-subagents', '--max-turns', '1'
 ]);
+assert.deepEqual(oneShotCliArgs({ ...oneShotBase, providerId: 'grok', model: 'grok-4.5', effort: 'medium', promptFile: 'C:\\temp\\prompt.txt' }), [
+    '--prompt-file', 'C:\\temp\\prompt.txt', '--cwd', 'C:\\work', '--model', 'grok-4.5', '--reasoning-effort', 'medium', '--output-format', 'plain',
+    '--permission-mode', 'plan', '--sandbox', 'read-only', '--disable-web-search', '--no-subagents', '--max-turns', '1'
+]);
 
-for (const [providerId, effort] of [['claude', 'minimal'], ['codex', 'max'], ['grok', 'medium'], ['gemini', 'low']]) {
+for (const [providerId, effort] of [['claude', 'minimal'], ['codex', 'max'], ['grok', 'max'], ['gemini', 'low']]) {
     assert.throws(
         () => agentCliArgs({ ...agentBase, providerId, effort }),
         error => error instanceof Error && error.message.startsWith(`Unsupported effort for ${providerId}:`)

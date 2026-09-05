@@ -120,6 +120,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         effortByModel: { agent: {}, results: {} },
         allowExternalResultsResources: false,
         automaticRequirementClassification: true,
+        cliDetectionPhase: 'pending',
         railCollapsed: false,
         railWidth: DEFAULT_RAIL_WIDTH,
         sessionSearchVisible: false,
@@ -196,6 +197,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     public closeShortcutsOverlay(): void { this.settingsPart.closeShortcutsOverlay(); }
     public uiFontScaleValue(): number { return this.settingsPart.uiFontScaleValue(); }
     public refreshCliDetection(): Promise<void> { return this.settingsPart.refreshCliDetection(); }
+    public waitForCurrentCliDetection(): Promise<void> { return this.settingsPart.waitForCurrentCliDetection(); }
     public restorePoiesisSettings(): Promise<void> { return this.settingsPart.restorePoiesisSettings(); }
 
     // RailPart.
@@ -426,8 +428,10 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         }
 
         this.sessions.sessionsInitialization = this.restorePoiesisSettings()
-            .then(() => this.refreshCliDetection())
-            .then(() => this.sessions.initializeSessions()).catch((error: unknown) => {
+            .then(async () => {
+                void this.refreshCliDetection();
+                await this.sessions.initializeSessions();
+            }).catch((error: unknown) => {
             console.error('[Poiesis] Could not initialize Agent Window sessions.', error);
         }).finally(() => {
             this.sessions.sessionsInitialized = true;

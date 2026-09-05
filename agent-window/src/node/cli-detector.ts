@@ -15,9 +15,40 @@ import { HiddenCliProcess, spawnHiddenCli } from './hidden-process';
 export class CliDetector {
     protected lastReport?: CliDetectionReport;
 
+    protected detectionAttempt = 0;
+
     async detect(): Promise<CliDetectionReport> {
+        const attempt = ++this.detectionAttempt;
+        await this.waitForTestDelay();
+        if (this.testFailureAttempts().has(attempt)) {
+            throw new Error(`CLI detection test failure on attempt ${attempt}.`);
+        }
         const definitions = knownCliDefinitions();
-        const detections: CliDetection[] = process.env.POIESIS_DISABLE_CLI_DETECTION === '1'
+        const forcedFoundId = process.env.POIESIS_CLI_DETECTION_TEST_FORCE_FOUND?.trim();
+        const detections: CliDetection[] = forcedFoundId
+            ? definitions.map(definition => definition.id === forcedFoundId
+                ? {
+                    id: definition.id,
+                    name: definition.displayName,
+                    status: 'found' as const,
+                    path: `poiesis-test://${definition.id}`,
+                    source: 'well-known' as const,
+                    version: 'test fixture',
+                    executableRoles: [...definition.executableRoles],
+                    models: [...definition.models],
+                    defaultModel: definition.defaultModel,
+                    checkedLocations: []
+                }
+                : {
+                    id: definition.id,
+                    name: definition.displayName,
+                    status: 'missing' as const,
+                    executableRoles: [...definition.executableRoles],
+                    models: [...definition.models],
+                    defaultModel: definition.defaultModel,
+                    checkedLocations: []
+                })
+            : process.env.POIESIS_DISABLE_CLI_DETECTION === '1'
             ? definitions.map(definition => ({
                 id: definition.id,
                 name: definition.displayName,
@@ -38,6 +69,21 @@ export class CliDetector {
             `${item.name} ${item.status}${item.path ? ` (${item.path})` : ''}`
         ).join(', '));
         return report;
+    }
+
+    protected async waitForTestDelay(): Promise<void> {
+        const configured = Number(process.env.POIESIS_CLI_DETECTION_TEST_DELAY_MS);
+        const delay = Number.isFinite(configured) ? Math.max(0, Math.min(configured, 10_000)) : 0;
+        if (delay > 0) {
+            await new Promise<void>(resolveDelay => setTimeout(resolveDelay, delay));
+        }
+    }
+
+    protected testFailureAttempts(): Set<number> {
+        return new Set((process.env.POIESIS_CLI_DETECTION_TEST_FAIL_CALLS ?? '')
+            .split(',')
+            .map(value => Number(value.trim()))
+            .filter(value => Number.isSafeInteger(value) && value > 0));
     }
 
     get recordedReport(): CliDetectionReport | undefined {

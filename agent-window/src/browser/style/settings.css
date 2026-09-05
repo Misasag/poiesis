@@ -256,6 +256,14 @@
     color: #9fc8a7;
 }
 
+.poiesis-settings-modal__cli-status.pending {
+    color: var(--poiesis-chrome-muted);
+}
+
+.poiesis-settings-modal__cli-status.error {
+    color: #d9aaa4;
+}
+
 .poiesis-settings-modal__cli-status.unsupported {
     color: #d1ae75;
 }
