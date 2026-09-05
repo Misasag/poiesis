@@ -1,6 +1,8 @@
 import { ChildProcess, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { delimiter, dirname, extname, basename, join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { delimiter, dirname, extname, basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
 import { KnownCliId } from '../common/agent-runtime-protocol';
 
@@ -30,7 +32,7 @@ export function spawnHiddenCli(
     const invocation = resolveKnownCliInvocation(providerId, command, args);
     const child = spawn(invocation.executable, invocation.args, {
         cwd: options.cwd,
-        env: options.env,
+        env: childCliEnvironment(options.env ?? process.env, options.cwd),
         windowsHide: true,
         shell: false,
         stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe']
@@ -39,6 +41,72 @@ export function spawnHiddenCli(
         child.stdin?.end(options.input, 'utf8');
     }
     return child;
+}
+
+/**
+ * Prevents npm/npx processes started by an agent CLI from resolving a relative
+ * cache setting against the user's Workspace. All unrelated environment values
+ * (including registry and credential settings) pass through unchanged.
+ */
+export function childCliEnvironment(
+    source: NodeJS.ProcessEnv = process.env,
+    cwd?: string
+): NodeJS.ProcessEnv {
+    const env = { ...source };
+    const cacheEntries = Object.entries(source)
+        .filter(([key]) => key.toLocaleLowerCase() === 'npm_config_cache');
+    const explicit = cacheEntries.find(([key]) => key === 'npm_config_cache')?.[1]
+        ?? cacheEntries[0]?.[1];
+    for (const key of Object.keys(env)) {
+        if (key.toLocaleLowerCase() === 'npm_config_cache') {
+            delete env[key];
+        }
+    }
+    const workspacePath = cwd ? resolve(cwd) : undefined;
+    const explicitPath = explicit?.trim();
+    env.npm_config_cache = explicitPath && isAbsolute(explicitPath)
+        && (!workspacePath || !pathIsWithin(workspacePath, explicitPath))
+        ? resolve(explicitPath)
+        : defaultRuntimeNpmCache(env, workspacePath);
+    return env;
+}
+
+function defaultRuntimeNpmCache(env: NodeJS.ProcessEnv, workspacePath: string | undefined): string {
+    const localAppData = environmentValue(env, 'LOCALAPPDATA');
+    const candidates = [
+        localAppData ? join(localAppData, 'Poiesis', 'runtime-cache', 'npm') : undefined,
+        join(homedir(), '.poiesis', 'runtime-cache', 'npm'),
+        join(tmpdir(), 'poiesis-runtime-cache', 'npm')
+    ];
+    for (const candidate of candidates) {
+        if (candidate && isAbsolute(candidate)
+            && (!workspacePath || !pathIsWithin(workspacePath, candidate))) {
+            return resolve(candidate);
+        }
+    }
+    if (workspacePath) {
+        const workspaceHash = createHash('sha1').update(workspacePath, 'utf8').digest('hex').slice(0, 12);
+        const sibling = join(dirname(workspacePath), `.poiesis-runtime-cache-${workspaceHash}`, 'npm');
+        if (!pathIsWithin(workspacePath, sibling)) {
+            return resolve(sibling);
+        }
+    }
+    throw new Error('An npm runtime cache outside the Workspace could not be resolved.');
+}
+
+function environmentValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+    return Object.entries(env).find(([key]) => key.toLocaleLowerCase() === name.toLocaleLowerCase())?.[1];
+}
+
+function pathIsWithin(parent: string, candidate: string): boolean {
+    const parentPath = resolve(parent);
+    const candidatePath = resolve(candidate);
+    const comparisonParent = process.platform === 'win32' ? parentPath.toLocaleLowerCase() : parentPath;
+    const comparisonCandidate = process.platform === 'win32' ? candidatePath.toLocaleLowerCase() : candidatePath;
+    const relativePath = relative(comparisonParent, comparisonCandidate);
+    return relativePath === '' || relativePath !== '..'
+        && !relativePath.startsWith(`..${sep}`)
+        && !isAbsolute(relativePath);
 }
 
 export function resolveKnownCliInvocation(

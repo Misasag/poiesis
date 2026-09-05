@@ -22,11 +22,7 @@ export interface RequirementClassifierRequirementLike {
 export interface RequirementClassifierSettings {
     enabled: boolean;
     workspaceIsLocal?: boolean;
-}
-
-export interface RequirementHeuristicDecision {
-    decision: 'continue';
-    reason: 'file-overlap' | 'previous-task-reference';
+    outcomeIsResult: boolean;
 }
 
 export interface ParsedRequirementClassification {
@@ -38,9 +34,6 @@ export interface ParsedRequirementClassification {
 
 export const INVALID_CLASSIFICATION_REASON = 'invalid-response';
 
-// Intentionally small: these words explicitly point back to earlier work.
-const PREVIOUS_TASK_REFERENCE_WORDS = ['さっき', '先ほど', '前回', '続き', 'same', 'previous'] as const;
-
 export function shouldClassify(
     task: RequirementClassifierTaskLike,
     requirement: RequirementClassifierRequirementLike | undefined,
@@ -48,11 +41,9 @@ export function shouldClassify(
 ): boolean {
     if (!settings.enabled
         || settings.workspaceIsLocal === false
+        || !settings.outcomeIsResult
         || task.requirementChoice !== 'default'
         || task.status !== 'completed'
-        || task.changeSet?.source === 'empty'
-        || task.changeSet?.error
-        || !task.changeSet?.files.length
         || !requirement) {
         return false;
     }
@@ -62,22 +53,6 @@ export function shouldClassify(
             && (!task.startedAt || !candidate.startedAt || candidate.startedAt < task.startedAt))
         : requirement.taskIds.filter(taskId => taskId !== task.id);
     return otherFinishedTasks.length > 0;
-}
-
-export function heuristicDecision(
-    taskFiles: readonly string[],
-    requirementFiles: readonly string[],
-    request: string
-): RequirementHeuristicDecision | undefined {
-    const earlierFiles = new Set(requirementFiles.map(normalizePath).filter(Boolean));
-    if (taskFiles.some(file => earlierFiles.has(normalizePath(file)))) {
-        return { decision: 'continue', reason: 'file-overlap' };
-    }
-    const normalizedRequest = request.toLocaleLowerCase();
-    if (PREVIOUS_TASK_REFERENCE_WORDS.some(word => normalizedRequest.includes(word))) {
-        return { decision: 'continue', reason: 'previous-task-reference' };
-    }
-    return undefined;
 }
 
 export function parseClassification(text: string): ParsedRequirementClassification {
@@ -127,8 +102,4 @@ export function parseSuggestedRequirementTitle(text: string): string | undefined
 
 function invalidClassification(): ParsedRequirementClassification {
     return { decision: 'continue', reason: INVALID_CLASSIFICATION_REASON };
-}
-
-function normalizePath(path: string): string {
-    return path.replace(/\\/g, '/').replace(/^\.\//, '').trim().toLocaleLowerCase();
 }

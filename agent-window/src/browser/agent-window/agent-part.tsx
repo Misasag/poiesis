@@ -20,6 +20,7 @@ import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-co
 import { SearchInWorkspaceCommands } from '@theia/search-in-workspace/lib/browser/search-in-workspace-frontend-contribution';
 import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
 import { AgentActivity, AgentActivityKind, AgentEvent, AgentProvider, AgentSession } from '../../common/agent-provider';
+import { boundedAgentConversation } from '../../common/agent-prompt';
 import {
     AgentRuntimeServer,
     AiRole,
@@ -75,6 +76,7 @@ import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed
 import { cliRoleAvailability } from '../../common/cli-detection-lifecycle';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
+import { liveWorkspaceBranch } from './workspace-context';
 
 interface AgentHtmlPreview {
     uri: string;
@@ -104,6 +106,8 @@ export class AgentPart extends AgentWindowPart {
     protected readonly agentActivityExpanded = new Set<string>();
 
     protected agentComposerInput?: HTMLTextAreaElement;
+
+    protected agentComposerSessionId?: string;
 
     public disposeAgentRichContent(): void {
         for (const content of this.agentRichContent.values()) {
@@ -197,12 +201,15 @@ export class AgentPart extends AgentWindowPart {
                 <section className='poiesis-agent-window__composer' aria-label='Agent の入力欄'>
                     <PoiesisComposer
                         key={session?.id ?? 'no-session'}
-                        elementRef={input => { this.agentComposerInput = input ?? undefined; }}
+                        elementRef={this.setAgentComposerInput}
+                        data-poiesis-session-id={session?.id}
                         value={session?.agentDraft ?? ''}
                         placeholder='次の変更内容や質問を入力…'
                         aria-label='Agent へのメッセージ'
                         rows={2}
                         disabled={!session}
+                        onSelect={event => this.captureAgentComposerState(session?.id, event.currentTarget, true)}
+                        onScroll={event => this.captureAgentComposerState(session?.id, event.currentTarget, true)}
                         onValueChange={value => this.setAgentDraft(session?.id, value)}
                         onSubmit={() => {
                             if (!runningTask) {
@@ -272,7 +279,10 @@ export class AgentPart extends AgentWindowPart {
     }
 
     protected renderNewAgentContext(session: WindowAgentSession): React.ReactNode {
-        const branch = session.branch ?? this.host.sessions.gitBranchForWorkspace(session.workspaceUri) ?? 'main';
+        const currentWorkspaceUri = this.host.sessions.workspaceRoot()?.resource.toString();
+        const branch = this.host.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)
+            ? liveWorkspaceBranch(this.scmService, session.workspaceUri)
+            : session.branch;
         return (
             <div className='poiesis-agent-window__new-agent-context'>
                 <button
@@ -286,10 +296,12 @@ export class AgentPart extends AgentWindowPart {
                     <span>{this.host.repositoryLabel(session.workspaceUri)}</span>
                     <span className='codicon codicon-chevron-down' aria-hidden='true' />
                 </button>
-                <span className='poiesis-agent-window__context-pill static' title='現在のローカルブランチ'>
-                    <span className='codicon codicon-git-branch' aria-hidden='true' />
-                    <span>{branch}</span>
-                </span>
+                {branch && (
+                    <span className='poiesis-agent-window__context-pill static' title='現在のローカルブランチ'>
+                        <span className='codicon codicon-git-branch' aria-hidden='true' />
+                        <span>{branch}</span>
+                    </span>
+                )}
                 {this.host.renderAiRolePill('agent')}
             </div>
         );
@@ -311,11 +323,11 @@ export class AgentPart extends AgentWindowPart {
         }
         const current = richContent?.signature === signature ? richContent : undefined;
         const task = message.taskId ? this.taskService.get(message.taskId) : undefined;
-        const showResultsAction = message.complete
+        const showChangeSummary = message.complete
             && task?.status === 'completed'
             && task.changeSet?.source === 'task-diff'
             && task.changeSet.files.length > 0;
-        const diffstat = showResultsAction ? summarizeTaskChangeSet(task.changeSet) : undefined;
+        const diffstat = showChangeSummary ? summarizeTaskChangeSet(task.changeSet) : undefined;
         const skillProposalCount = message.complete && task?.status === 'completed'
             ? task.skillProposals?.length ?? 0
             : 0;
@@ -324,24 +336,12 @@ export class AgentPart extends AgentWindowPart {
                 {this.renderMarkdown(message.content, current?.imageSources, workspaceUri)}
                 {current?.htmlPreviews.map((preview, index) =>
                     this.renderAgentHtmlPreview(messageKey, preview, index, isMostRecentAgentMessage))}
-                {(showResultsAction || skillProposalCount > 0) && (
+                {(showChangeSummary || skillProposalCount > 0) && (
                     <div className='poiesis-agent-window__message-actions'>
-                        {showResultsAction && (
+                        {showChangeSummary && (
                             <span className='poiesis-agent-window__diffstat-chip'>
                                 変更 {diffstat!.fileCount} ファイル · +{diffstat!.additions} −{diffstat!.deletions}
                             </span>
-                        )}
-                        {showResultsAction && (
-                            <button
-                                type='button'
-                                onClick={() => {
-                                    this.host.selectResultsTask(task.id);
-                                    this.host.selectResultsRequirement(task.requirementId);
-                                    this.host.selectTab('results');
-                                }}
-                            >
-                                Results で確認
-                            </button>
                         )}
                         {skillProposalCount > 0 && (
                             <span className='poiesis-agent-window__skill-proposal-notice'>
@@ -993,6 +993,11 @@ export class AgentPart extends AgentWindowPart {
 
     protected async sendPreparedAgentMessage(session: WindowAgentSession, content: string): Promise<void> {
         const { requirementId, requirementChoice } = this.requirementForSend(session, content);
+        const conversation = boundedAgentConversation(session.messages.flatMap(message =>
+            message.complete && !message.error && message.content.trim() && !message.id.startsWith('provider-')
+                ? [{ role: message.role === 'user' ? 'user' as const : 'assistant' as const, content: message.content }]
+                : []
+        ));
         session.agentDraft = '';
         const sentAt = Date.now();
         session.messages.push({ id: `user-${sentAt}`, role: 'user', content, complete: true });
@@ -1052,7 +1057,8 @@ export class AgentPart extends AgentWindowPart {
                 ownerSessionId: session.id,
                 requirementId,
                 requirementChoice,
-                workspaceUri: session.workspaceUri
+                workspaceUri: session.workspaceUri,
+                conversation
             });
         } catch (error) {
             await this.recordPreSpawnFailure(
@@ -1230,6 +1236,51 @@ export class AgentPart extends AgentWindowPart {
         session.agentDraft = value;
         this.host.sessions.persistWindowState();
         this.update();
+    }
+
+    protected readonly setAgentComposerInput = (input: HTMLTextAreaElement | null): void => {
+        if (!input) {
+            if (this.agentComposerInput && this.agentComposerSessionId) {
+                this.captureAgentComposerState(this.agentComposerSessionId, this.agentComposerInput, true);
+            }
+            this.agentComposerInput = undefined;
+            this.agentComposerSessionId = undefined;
+            return;
+        }
+        this.agentComposerInput = input;
+        const sessionId = input.dataset.poiesisSessionId;
+        this.agentComposerSessionId = sessionId;
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId);
+        if (!session) {
+            return;
+        }
+        requestAnimationFrame(() => {
+            if (this.agentComposerInput !== input) {
+                return;
+            }
+            const start = Math.min(session.agentDraftSelectionStart ?? input.value.length, input.value.length);
+            const end = Math.min(session.agentDraftSelectionEnd ?? start, input.value.length);
+            input.setSelectionRange(start, end, session.agentDraftSelectionDirection ?? 'none');
+            input.scrollTop = session.agentDraftScrollTop ?? 0;
+        });
+    };
+
+    protected captureAgentComposerState(
+        sessionId: string | undefined,
+        input: HTMLTextAreaElement,
+        persist = false
+    ): void {
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId);
+        if (!session) {
+            return;
+        }
+        session.agentDraftSelectionStart = input.selectionStart;
+        session.agentDraftSelectionEnd = input.selectionEnd;
+        session.agentDraftSelectionDirection = input.selectionDirection;
+        session.agentDraftScrollTop = input.scrollTop;
+        if (persist) {
+            void this.host.sessions.persistWindowState();
+        }
     }
 
     constructor(host: AgentWindowHost) {

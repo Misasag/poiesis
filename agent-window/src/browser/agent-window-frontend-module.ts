@@ -33,6 +33,7 @@ import {
 } from '../common/requirement-classification-protocol';
 import { RequirementClassificationService } from './requirement-classification-service';
 import { ResultsAssertionServer, resultsAssertionServerPath } from '../common/results-assertion-protocol';
+import { DurableStorageServer, durableStorageServerPath } from '../common/durable-storage-protocol';
 import '../../src/browser/style/base.css';
 import '../../src/browser/style/components.css';
 import '../../src/browser/style/rail.css';
@@ -65,6 +66,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
         .createProxy<RequirementClassificationServer>(requirementClassificationServerPath)).inSingletonScope();
     bind(ResultsGenerationServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
         .createProxy<ResultsGenerationServer>(resultsGenerationServerPath)).inSingletonScope();
+    bind(DurableStorageServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
+        .createProxy<DurableStorageServer>(durableStorageServerPath)).inSingletonScope();
     bind(ResultsGenerationContext).toSelf().inSingletonScope();
     bind(ResultsQuestionService).toSelf().inSingletonScope();
     bind(TaskService).toSelf().inSingletonScope();

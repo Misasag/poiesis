@@ -33,7 +33,6 @@ import { formatRequirementExecutionEvidence, ResultsService } from '../results-s
 import {
     ExecutionTask,
     formatTaskEndedAtJst,
-    isNoChangeTask,
     summarizeTaskChangeSet,
     TaskChangeSet,
     TaskResultDocument,
@@ -42,6 +41,8 @@ import {
     TaskService,
     taskTitleForRequest
 } from '../task-service';
+import { taskProducesResult } from '../../common/task-outcome';
+import { tasksForDurableSession } from '../../common/session-persistence';
 import { getDesignVariant } from '../design-variant';
 import { FolderExplorerService } from '../folder-explorer-service';
 import { ResultsQuestionService } from '../results-question-service';
@@ -75,6 +76,7 @@ import { PoiesisTextArea, PoiesisTextInput } from '../components/poiesis-inputs'
 import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowHost, AgentWindowPartBase } from './agent-window-host';
+import { liveWorkspaceBranch } from './workspace-context';
 
 export type AgentWindowTab = 'agent' | 'results';
 
@@ -88,9 +90,7 @@ export const SESSION_MIGRATION_MARKER_KEY = 'poiesis.agent-window.sessions.migra
 
 export const RESULTS_QA_PANEL_STORAGE_KEY = 'poiesis.results-qa-panel.sessions.v1';
 
-export const MAX_PERSISTED_TASKS_PER_SESSION = 10;
-
-export const MAX_PERSISTED_RESULTS_HTML_CHARS = 300_000;
+export { MAX_PERSISTED_RESULTS_HTML_CHARS } from '../../common/session-persistence';
 
 export const DEFAULT_RAIL_WIDTH = 258;
 
@@ -129,6 +129,10 @@ export interface WindowAgentSession {
     archived: boolean;
     activeTab: AgentWindowTab;
     agentDraft: string;
+    agentDraftSelectionStart?: number;
+    agentDraftSelectionEnd?: number;
+    agentDraftSelectionDirection?: 'forward' | 'backward' | 'none';
+    agentDraftScrollTop?: number;
     messages: ChatMessage[];
     taskIds: string[];
     requirementDraft?: string | 'new';
@@ -174,6 +178,10 @@ export class SessionStore extends AgentWindowPartBase {
     public resultsQaPanelStatePersistence: Promise<void> = Promise.resolve();
 
     public legacyErrorMessagesMigrated = false;
+
+    public restoringWindowState = false;
+
+    public windowStatePersistenceRequestedDuringRestore = false;
 
     public selectedSessionId?: string;
 
@@ -231,21 +239,15 @@ export class SessionStore extends AgentWindowPartBase {
 
     public workspaceContextLabel(session = this.selectedSession()): string {
         const workspace = session?.workspaceUri ? this.host.repositoryLabel(session.workspaceUri) : this.workspaceFolderName();
-        const branch = session?.branch ?? this.gitBranchForWorkspace(session?.workspaceUri) ?? this.currentGitBranch();
+        const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
+        const branch = this.host.sameWorkspaceUri(session?.workspaceUri, currentWorkspaceUri)
+            ? liveWorkspaceBranch(this.scmService, session?.workspaceUri ?? currentWorkspaceUri)
+            : session?.branch;
         return branch ? `${workspace} / ${branch}` : workspace;
     }
 
     public gitBranchForWorkspace(workspaceUri: string | undefined): string | undefined {
-        if (!workspaceUri) {
-            return undefined;
-        }
-        const repository = this.scmService.findRepository(new URI(workspaceUri));
-        const provider = repository?.provider;
-        if (provider?.id.toLowerCase() !== 'git') {
-            return undefined;
-        }
-        const ref = provider.historyProvider?.currentHistoryItemRef;
-        return ref?.id.startsWith('refs/heads/') ? ref.name.trim() || undefined : undefined;
+        return liveWorkspaceBranch(this.scmService, workspaceUri);
     }
 
     public currentGitBranch(): string | undefined {
@@ -281,7 +283,7 @@ export class SessionStore extends AgentWindowPartBase {
             createdAt: now,
             updatedAt: now,
             workspaceUri: this.workspaceRoot()?.resource.toString(),
-            branch: this.currentGitBranch() ?? 'main',
+            branch: this.currentGitBranch(),
             runTarget: 'local',
             title: NEW_SESSION_TITLE,
             hasUserMessage: false,
@@ -356,15 +358,26 @@ export class SessionStore extends AgentWindowPartBase {
             if (state.version !== 1 || !Array.isArray(state.sessions) || state.sessions.length === 0) {
                 return false;
             }
+            this.restoringWindowState = true;
             this.sessions.splice(0, this.sessions.length, ...state.sessions.flatMap(candidate => {
                 if (!candidate || typeof candidate.id !== 'string' || typeof candidate.title !== 'string') {
                     return [];
                 }
                 const createdAt = Number(candidate.createdAt) || Date.now();
+                const workspaceUri = typeof candidate.workspaceUri === 'string'
+                    ? this.host.canonicalWorkspaceUri(candidate.workspaceUri)
+                    : this.workspaceRoot()?.resource.toString();
                 const restoredTasks = this.taskService.restore(Array.isArray(candidate.tasks) ? candidate.tasks : []);
                 const taskIds = restoredTasks.map(task => task.id);
+                const legacyResultTaskIds = new Set(Array.isArray(candidate.resultsDocuments)
+                    ? candidate.resultsDocuments.flatMap(document => document
+                        && typeof document.taskId === 'string'
+                        && ['ready', 'failed'].includes(document.status)
+                        ? [document.taskId]
+                        : [])
+                    : []);
                 const resultsTaskIds = new Set(restoredTasks
-                    .filter(task => this.isResultsTask(task))
+                    .filter(task => this.isResultsTask(task) || legacyResultTaskIds.has(task.id))
                     .map(task => task.id));
                 const embeddedResultsDocuments = restoredTasks.flatMap(task =>
                     task.resultsDocument ? [task.resultsDocument] : []
@@ -387,26 +400,17 @@ export class SessionStore extends AgentWindowPartBase {
                     activities: this.host.restoreAgentActivities(message.activities)
                 }))) : []).map(message => {
                     const task = message.taskId ? taskById.get(message.taskId) : undefined;
-                    if (message.complete || task?.status !== 'failed') {
-                        return message;
-                    }
-                    return {
-                        ...message,
-                        content: task.failure?.summary ?? 'タスクの実行に失敗しました。',
-                        complete: true,
-                        error: true,
-                        errorDetails: task.failure?.details
-                    };
+                    return this.repairRestoredAgentMessage(message, task);
                 });
                 const latestTask = restoredTasks[restoredTasks.length - 1];
                 const restored: WindowAgentSession = {
                     id: candidate.id,
                     createdAt,
                     updatedAt: Number(candidate.updatedAt) || createdAt,
-                    workspaceUri: typeof candidate.workspaceUri === 'string'
-                        ? this.host.canonicalWorkspaceUri(candidate.workspaceUri)
-                        : this.workspaceRoot()?.resource.toString(),
-                    branch: typeof candidate.branch === 'string' ? candidate.branch : this.currentGitBranch() ?? 'main',
+                    workspaceUri,
+                    branch: this.host.sameWorkspaceUri(workspaceUri, this.workspaceRoot()?.resource.toString())
+                        ? liveWorkspaceBranch(this.scmService, workspaceUri)
+                        : typeof candidate.branch === 'string' ? candidate.branch : undefined,
                     runTarget: 'local',
                     title: candidate.title || NEW_SESSION_TITLE,
                     hasUserMessage: Boolean(candidate.hasUserMessage),
@@ -424,6 +428,19 @@ export class SessionStore extends AgentWindowPartBase {
                     archived: Boolean(candidate.archived),
                     activeTab: candidate.activeTab === 'results' ? 'results' : 'agent',
                     agentDraft: typeof candidate.agentDraft === 'string' ? candidate.agentDraft : '',
+                    agentDraftSelectionStart: Number.isFinite(candidate.agentDraftSelectionStart)
+                        ? Math.max(0, Number(candidate.agentDraftSelectionStart))
+                        : undefined,
+                    agentDraftSelectionEnd: Number.isFinite(candidate.agentDraftSelectionEnd)
+                        ? Math.max(0, Number(candidate.agentDraftSelectionEnd))
+                        : undefined,
+                    agentDraftSelectionDirection: candidate.agentDraftSelectionDirection === 'forward'
+                        || candidate.agentDraftSelectionDirection === 'backward'
+                        ? candidate.agentDraftSelectionDirection
+                        : 'none',
+                    agentDraftScrollTop: Number.isFinite(candidate.agentDraftScrollTop)
+                        ? Math.max(0, Number(candidate.agentDraftScrollTop))
+                        : undefined,
                     messages: restoredMessages,
                     taskIds,
                     requirementDraft: candidate.requirementDraft === 'new' || typeof candidate.requirementDraft === 'string'
@@ -444,6 +461,10 @@ export class SessionStore extends AgentWindowPartBase {
                 return [restored];
             }));
             await this.requirementService.restore(this.taskService.list());
+            this.selectedSessionId = typeof state.selectedSessionId === 'string' ? state.selectedSessionId : undefined;
+            this.host.state.railWidth = this.host.clampRailWidth(Number(state.railWidth) || DEFAULT_RAIL_WIDTH);
+            this.host.state.railCollapsed = Boolean(state.railCollapsed);
+            this.sessionSequence = this.sessions.length;
             for (const session of this.sessions) {
                 const selectedTask = session.selectedResultsTaskId
                     ? this.taskService.get(session.selectedResultsTaskId)
@@ -460,18 +481,61 @@ export class SessionStore extends AgentWindowPartBase {
                 }
             }
             await this.resultsService.restoreRequirements();
-            this.selectedSessionId = typeof state.selectedSessionId === 'string' ? state.selectedSessionId : undefined;
-            this.host.state.railWidth = this.host.clampRailWidth(Number(state.railWidth) || DEFAULT_RAIL_WIDTH);
-            this.host.state.railCollapsed = Boolean(state.railCollapsed);
-            this.sessionSequence = this.sessions.length;
-            if (this.legacyErrorMessagesMigrated) {
+            this.restoringWindowState = false;
+            this.windowStatePersistenceRequestedDuringRestore = false;
+            try {
                 await this.persistWindowState();
+            } catch (error) {
+                console.warn('[Poiesis] Could not persist the complete restored Agent Window state.', error);
             }
+            this.resultsService.resumeRestoredGeneration();
             return this.sessions.length > 0;
         } catch (error) {
             console.warn('[Poiesis] Could not restore Agent Window sessions.', error);
             return false;
+        } finally {
+            this.restoringWindowState = false;
+            this.windowStatePersistenceRequestedDuringRestore = false;
         }
+    }
+
+    public repairRestoredAgentMessage(message: ChatMessage, task: ExecutionTask | undefined): ChatMessage {
+        if (message.role !== 'agent' || !task) {
+            return message;
+        }
+        const content = message.content.trim();
+        if (task.status === 'completed' && !message.error && (!message.complete || !content)) {
+            const recovered = content
+                || task.implementerReport?.trim()
+                || task.completionSummary?.trim();
+            return recovered ? {
+                ...message,
+                content: recovered,
+                complete: true,
+                error: undefined,
+                errorDetails: undefined
+            } : message;
+        }
+        if (task.status === 'failed' && (!message.complete || !content)) {
+            return {
+                ...message,
+                content: task.failure?.summary ?? 'タスクの実行に失敗しました。',
+                complete: true,
+                error: true,
+                errorDetails: task.failure?.details
+            };
+        }
+        if (task.status === 'cancelled' && (!message.complete || !content)) {
+            const cancellation = '実行をキャンセルしました。';
+            return {
+                ...message,
+                content: content && /キャンセル/u.test(content) ? content : `${content} ${cancellation}`.trim(),
+                complete: true,
+                error: undefined,
+                errorDetails: undefined
+            };
+        }
+        return message;
     }
 
     public migrateLegacyCliErrorMessage(message: ChatMessage): ChatMessage {
@@ -621,17 +685,26 @@ export class SessionStore extends AgentWindowPartBase {
             };
             this.resultsQaPanelStatePersistence = this.resultsQaPanelStatePersistence
                 .catch(() => undefined)
-                .then(() => this.storageService.setData(RESULTS_QA_PANEL_STORAGE_KEY, state))
-                .catch(error => {
-                    console.warn('[Poiesis] Could not persist Results Q&A panel state.', error);
-                });
+                .then(() => this.storageService.setData(RESULTS_QA_PANEL_STORAGE_KEY, state));
+            void this.resultsQaPanelStatePersistence.catch(error => {
+                console.warn('[Poiesis] Could not persist Results Q&A panel state.', error);
+                void this.messageService.error('表示状態を保存できませんでした。再試行してください。');
+            });
         } catch (error) {
             console.warn('[Poiesis] Could not persist Results Q&A panel state.', error);
+            void this.messageService.error('表示状態を保存できませんでした。再試行してください。');
+            const failed = Promise.reject(error);
+            void failed.catch(() => undefined);
+            this.resultsQaPanelStatePersistence = failed;
         }
         return this.resultsQaPanelStatePersistence;
     }
 
     public persistWindowState(): Promise<void> {
+        if (this.restoringWindowState) {
+            this.windowStatePersistenceRequestedDuringRestore = true;
+            return this.windowStatePersistence;
+        }
         try {
             const state: PersistedAgentWindowState = {
                 version: 1,
@@ -656,14 +729,19 @@ export class SessionStore extends AgentWindowPartBase {
                     };
                 })
             };
-            this.windowStatePersistence = this.windowStatePersistence
+            const write = this.windowStatePersistence
                 .catch(() => undefined)
-                .then(() => this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, state))
-                .catch(error => {
-                    console.warn('[Poiesis] Could not persist Agent Window sessions.', error);
-                });
+                .then(() => this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, state));
+            this.windowStatePersistence = write;
+            void write.catch(error => {
+                console.warn('[Poiesis] Could not persist Agent Window sessions.', error);
+            });
         } catch (error) {
             console.warn('[Poiesis] Could not persist Agent Window sessions.', error);
+            void this.messageService.error('会話と成果を保存できませんでした。再試行してください。');
+            const failed = Promise.reject(error);
+            void failed.catch(() => undefined);
+            this.windowStatePersistence = failed;
         }
         return this.windowStatePersistence;
     }
@@ -687,13 +765,13 @@ export class SessionStore extends AgentWindowPartBase {
         return this.requirementsForSession(session).filter(requirement => requirement.taskIds
             .some(taskId => {
                 const task = this.taskService.get(taskId);
-                return task && task.status !== 'running' && !isNoChangeTask(task);
+                return task && taskProducesResult(task);
             }));
     }
 
     public latestTaskForRequirement(requirement: Requirement): ExecutionTask | undefined {
         return requirement.taskIds.map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task && !isNoChangeTask(task)))
+            .filter((task): task is ExecutionTask => Boolean(task && taskProducesResult(task)))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
             .at(-1);
     }
@@ -704,7 +782,7 @@ export class SessionStore extends AgentWindowPartBase {
 
     public finishedTasksForRequirement(requirement: Requirement): ExecutionTask[] {
         return requirement.taskIds.map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task && task.status !== 'running' && !isNoChangeTask(task)))
+            .filter((task): task is ExecutionTask => Boolean(task && taskProducesResult(task)))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
     }
 
@@ -729,26 +807,9 @@ export class SessionStore extends AgentWindowPartBase {
     }
 
     public persistedTasks(session: WindowAgentSession): ExecutionTask[] {
-        return session.taskIds
+        return tasksForDurableSession(session.taskIds
             .map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task))
-            .sort((left, right) => left.startedAt.localeCompare(right.startedAt))
-            .slice(-MAX_PERSISTED_TASKS_PER_SESSION)
-            .map(task => {
-                const persistedTask: ExecutionTask = task.status === 'running' ? {
-                    ...task,
-                    status: 'failed',
-                    endedAt: new Date().toISOString(),
-                    failure: { summary: 'アプリ終了により中断されました' }
-                } : task;
-                return persistedTask.resultsDocument ? {
-                    ...persistedTask,
-                    resultsDocument: {
-                        ...persistedTask.resultsDocument,
-                        html: persistedTask.resultsDocument.html?.slice(0, MAX_PERSISTED_RESULTS_HTML_CHARS)
-                    }
-                } : persistedTask;
-            });
+            .filter((task): task is ExecutionTask => Boolean(task)));
     }
 
     public async initializeSessions(): Promise<void> {
@@ -792,7 +853,7 @@ export class SessionStore extends AgentWindowPartBase {
     }
 
     public isResultsTask(task: ExecutionTask): boolean {
-        return task.status !== 'running' && !isNoChangeTask(task);
+        return taskProducesResult(task);
     }
 
     public taskFinishedTime(task: ExecutionTask): string {
@@ -825,9 +886,10 @@ export class SessionStore extends AgentWindowPartBase {
                 : event.type === 'ended' ? 'completed' : event.type;
             session.updatedAt = Date.now();
         }
-        const shouldSelectResultsTask = event.type === 'ended'
+        const shouldSelectResultsTask = (event.type === 'ended'
             || event.type === 'failed'
-            || event.type === 'cancelled';
+            || event.type === 'cancelled')
+            && this.isResultsTask(event.task);
         if (shouldSelectResultsTask && session) {
             session.selectedResultsRequirementId = event.task.requirementId;
             session.selectedResultsTaskId = undefined;

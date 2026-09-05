@@ -74,24 +74,37 @@ import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
+import { liveWorkspaceBranch } from './workspace-context';
 
 export class HeaderPart extends AgentWindowPart {
+    protected workspaceContextLabel(): string {
+        const session = this.host.sessions.selectedSession();
+        const workspaceUri = session?.workspaceUri
+            ?? this.host.sessions.workspaceRoot()?.resource.toString();
+        const workspace = session?.workspaceUri
+            ? this.host.repositoryLabel(session.workspaceUri)
+            : this.host.sessions.workspaceFolderName();
+        const branch = liveWorkspaceBranch(this.host.scmService, workspaceUri);
+        return branch ? `${workspace} / ${branch}` : workspace;
+    }
+
     public renderHeader(): React.ReactNode {
         if (this.host.state.codeMode) {
+            const returnTab = this.host.sessions.selectedSession()?.activeTab ?? 'agent';
+            const returnLabel = returnTab === 'results' ? 'Results' : 'Agent';
             return (
                 <header className='poiesis-agent-window__header poiesis-agent-window__code-header'>
                     <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
                     <button
                         type='button'
-                        className='poiesis-agent-window__code-control active'
-                        aria-pressed='true'
-                        aria-label='Agentへ戻る'
+                        className='poiesis-agent-window__code-control'
+                        aria-label={`${returnLabel} に戻る`}
                         onClick={() => this.host.toggleCodeMode()}
                     >
-                        <span className='codicon codicon-code' aria-hidden='true' />
-                        <span>Code</span>
+                        <span className='codicon codicon-arrow-left' aria-hidden='true' />
+                        <span>{returnLabel}</span>
                     </button>
-                    <span className='poiesis-agent-window__code-workspace'>{this.host.sessions.workspaceContextLabel()}</span>
+                    <span className='poiesis-agent-window__code-workspace'>{this.workspaceContextLabel()}</span>
                 </header>
             );
         }
@@ -101,7 +114,7 @@ export class HeaderPart extends AgentWindowPart {
                     <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
                     <div className='poiesis-agent-window__context'>
                         <div className='poiesis-agent-window__context-scope'>
-                            <small>{this.host.sessions.workspaceContextLabel()}</small>
+                            <small>{this.workspaceContextLabel()}</small>
                             <button type='button' className='poiesis-agent-window__code-control' onClick={() => this.host.toggleCodeMode()}>
                                 <span className='codicon codicon-code' aria-hidden='true' />
                                 <span>Code</span>
@@ -129,7 +142,7 @@ export class HeaderPart extends AgentWindowPart {
                 <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
                 <div className='poiesis-agent-window__context'>
                     <div className='poiesis-agent-window__context-scope'>
-                        <small>{this.host.sessions.workspaceContextLabel()}</small>
+                        <small>{this.workspaceContextLabel()}</small>
                         <button
                             type='button'
                             className={`poiesis-agent-window__code-control${this.host.state.codeMode ? ' active' : ''}`}

@@ -9,6 +9,8 @@ import {
     AgentSession,
     CreateSessionInput
 } from '../common/agent-provider';
+import { buildAgentExecutionPrompt } from '../common/agent-prompt';
+import { parseAgentCompletion } from '../common/task-outcome';
 import {
     AgentRuntimeServer,
     CodexExecutionEvent,
@@ -17,7 +19,6 @@ import {
 import { AgentRuntimeClientImpl } from './agent-runtime-client';
 import { AgentActivityParser, createAgentActivityParser } from './agent-activity-parser';
 import { MockAgentProvider } from './mock-agent-provider';
-import { ResultsService } from './results-skill';
 import { TaskService } from './task-service';
 import { WorkspaceSkillService } from './workspace-skill-service';
 
@@ -65,7 +66,6 @@ export class CliAgentProvider implements AgentProvider {
         @inject(AgentRuntimeClientImpl) protected readonly runtimeClient: AgentRuntimeClientImpl,
         @inject(MockAgentProvider) protected readonly mockProvider: MockAgentProvider,
         @inject(TaskService) protected readonly taskService: TaskService,
-        @inject(ResultsService) protected readonly resultsService: ResultsService,
         @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService
     ) {
         this.mockProvider.onEvent(event => this.eventEmitter.fire(event));
@@ -160,7 +160,7 @@ export class CliAgentProvider implements AgentProvider {
                 model: session.model,
                 effort: session.effort,
                 workspacePath: session.workspacePath,
-                prompt: this.implementerPrompt(message.content, workspaceSkills.content)
+                prompt: buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)
             });
             if (this.runs.get(sessionId) === run) {
                 run.phase = 'waiting';
@@ -186,9 +186,8 @@ export class CliAgentProvider implements AgentProvider {
         } finally {
             if (this.runs.get(sessionId) === run) {
                 this.clearProgressTimer(run);
-                this.runs.delete(sessionId);
                 await this.taskService.cancel(run.taskId);
-                await this.resultsService.whenFinished(run.taskId);
+                this.runs.delete(sessionId);
                 this.eventEmitter.fire({
                     type: 'task-cancelled',
                     sessionId,
@@ -228,10 +227,14 @@ export class CliAgentProvider implements AgentProvider {
         this.flushStdout(run);
         const successful = event.code === 0 && !event.signal;
         this.clearProgressTimer(run);
-        this.runs.delete(run.sessionId);
         if (successful) {
-            const task = await this.taskService.end(run.taskId, run.finalMessage?.trim() || 'タスクを完了しました。');
-            await this.resultsService.whenFinished(run.taskId);
+            const completion = parseAgentCompletion(run.finalMessage?.trim() || 'タスクを完了しました。');
+            const task = await this.taskService.end(
+                run.taskId,
+                completion.message || 'タスクを完了しました。',
+                completion.outcomeKind
+            );
+            this.runs.delete(run.sessionId);
             this.eventEmitter.fire({
                 type: 'message-delta',
                 sessionId: run.sessionId,
@@ -255,7 +258,7 @@ export class CliAgentProvider implements AgentProvider {
                 : `${name} の実行に失敗しました（終了コード ${event.code ?? '不明'}）。`;
             const details = run.failureDiagnostics.trim() || undefined;
             await this.taskService.fail(run.taskId, { summary, details });
-            await this.resultsService.whenFinished(run.taskId);
+            this.runs.delete(run.sessionId);
             this.eventEmitter.fire({
                 type: 'message-completed',
                 sessionId: run.sessionId,
@@ -276,9 +279,8 @@ export class CliAgentProvider implements AgentProvider {
             return;
         }
         this.clearProgressTimer(run);
-        this.runs.delete(run.sessionId);
         await this.taskService.fail(run.taskId, { summary, details });
-        await this.resultsService.whenFinished(run.taskId);
+        this.runs.delete(run.sessionId);
         this.eventEmitter.fire({
             type: 'message-completed',
             sessionId: run.sessionId,
@@ -321,13 +323,16 @@ export class CliAgentProvider implements AgentProvider {
             this.appendDiagnostic(run, diagnostic);
         }
         for (const activity of result.activities) {
-            run.phase = activity.status === 'running' ? 'activity' : 'waiting';
-            this.taskService.recordActivity(run.taskId, activity);
+            const visibleActivity = activity.kind === 'message' && activity.detail
+                ? { ...activity, detail: parseAgentCompletion(activity.detail).message }
+                : activity;
+            run.phase = visibleActivity.status === 'running' ? 'activity' : 'waiting';
+            this.taskService.recordActivity(run.taskId, visibleActivity);
             this.eventEmitter.fire({
                 type: 'activity',
                 sessionId: run.sessionId,
                 taskId: run.taskId,
-                activity
+                activity: visibleActivity
             });
         }
     }
@@ -378,16 +383,6 @@ export class CliAgentProvider implements AgentProvider {
             clearTimeout(run.progressTimer);
             run.progressTimer = undefined;
         }
-    }
-
-    protected implementerPrompt(request: string, workspaceSkillPrompt = ''): string {
-        const skillProposalContract = [
-            '',
-            '## Application-owned Skill proposal channel',
-            '非自明な検証手順、ビルド手順、または繰り返し使える作業ルールを見つけた場合だけ、`.poiesis/pending/skills/<skill-id>/SKILL.md` に Skill の提案を書いてよい（既存 Skill と同じ id なら更新提案）。`.poiesis/skills` 配下の既存 Skill を直接編集してはならない。提案は1タスクにつき最大2件、frontmatter は name / description / metadata.poiesis.kind を含める。'
-        ].join('\n');
-        const finalReportRequest = '\nReturn the final report in the user\'s language.';
-        return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.\n\n${request}${workspaceSkillPrompt}${skillProposalContract}${finalReportRequest}`;
     }
 
     protected errorMessage(error: unknown): string {

@@ -16,7 +16,7 @@ export interface RequirementClassificationScope {
     effort?: string;
     workspaceUri: string;
     currentRequirementTitle: string;
-    previousTasks: Array<Pick<RequirementClassificationTaskData, 'request' | 'changedFiles'>>;
+    previousTasks: RequirementClassificationTaskData[];
     task: RequirementClassificationTaskData;
 }
 

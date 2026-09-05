@@ -322,7 +322,7 @@ body.poiesis-code-file-pointer-drag * {
     display: flex;
     flex: 0 0 auto;
     height: 34px;
-    max-width: 220px;
+    max-width: 280px;
     min-width: 80px;
     position: relative;
     width: auto;
@@ -369,7 +369,6 @@ body.poiesis-code-file-pointer-drag * {
     white-space: nowrap;
 }
 
-.poiesis-agent-window__code-editor-tab:not(.active) .poiesis-agent-window__code-editor-tab-name,
 .poiesis-agent-window__code-editor-tab.preview .poiesis-agent-window__code-editor-tab-name {
     font-style: italic;
 }

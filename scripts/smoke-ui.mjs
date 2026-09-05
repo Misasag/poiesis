@@ -250,20 +250,28 @@ try {
 
     await click(page, '.poiesis-agent-window__code-control', 'Code');
     await page.waitForSelector('.poiesis-agent-window__code');
-    await page.waitForFunction(() => Boolean(document.querySelector('.poiesis-agent-window__code-terminal-host > *')));
     const code = await page.evaluate(readState);
     assert(code.mode === 'code', `Expected Code mode, got ${code.mode}`);
     assert(!code.sessionRailVisible, 'Session rail must be hidden in Code mode');
     assert(code.codeSidebarVisible, 'Code sidebar is missing');
     assert(code.codeEditorVisible, 'Code editor host is missing');
     assert(code.codeActivityVisible, 'Code Activity Bar is missing');
-    assert(code.codePanelVisible, 'Code bottom panel is missing');
-    assert(code.codeTerminalVisible, 'Code terminal is missing');
+    assert(!code.codePanelVisible, 'Code must not open the bottom panel automatically');
+    assert(!code.codeTerminalVisible, 'Code must not create a Terminal automatically');
     assert(code.codeStatusVisible, 'Code status bar is missing');
     assert(code.codeLuminoPanelCount === 0, 'Code must not contain lm-Widget lm-Panel wrappers');
     assert(code.codeLuminoTabContainerCount === 0, 'Code must not contain lm-TabBar-content-container wrappers');
     assert(!code.applicationShellVisible, 'Code must not mount the Theia ApplicationShell');
     assert(code.sessionTabCount === 0, 'Agent / Results tabs must be hidden in Code mode');
+    assert(await page.$eval('.poiesis-agent-window__code-control', element => element.textContent?.trim()) === 'Results',
+        'Code return control must identify the active Results view');
+    assert(await page.$eval('.poiesis-agent-window__code-control', element => element.getAttribute('aria-label')) === 'Results に戻る',
+        'Code return control must describe returning to Results');
+    await page.click('.poiesis-agent-window__code-status button[aria-label="パネルを切り替える"]');
+    await page.waitForFunction(() => Boolean(document.querySelector('.poiesis-agent-window__code-terminal-host > *')));
+    const codeWithTerminal = await page.evaluate(readState);
+    assert(codeWithTerminal.codePanelVisible, 'Opening the bottom panel must show it');
+    assert(codeWithTerminal.codeTerminalVisible, 'Opening the bottom panel must create its Terminal');
     await page.waitForSelector('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea');
     const firstTerminalId = await page.$eval('.poiesis-agent-window__code-terminal-host > *', element => element.id);
     const terminalCommand = process.platform === 'win32'
@@ -650,11 +658,12 @@ try {
         fontStyle: getComputedStyle(tab.querySelector('.poiesis-agent-window__code-editor-tab-name')).fontStyle,
         fontWeight: Number(getComputedStyle(tab.querySelector('.poiesis-agent-window__code-editor-tab-name')).fontWeight)
     })));
-    assert(editorTabState.every(tab => tab.role === 'tab' && tab.width >= 80 && tab.width <= 220), 'Editor tabs must stay within the content-fit width bounds and preserve tab semantics');
+    assert(editorTabState.every(tab => tab.role === 'tab' && tab.width >= 80 && tab.width <= 280), 'Editor tabs must stay within the content-fit width bounds and preserve tab semantics');
     assert(new Set(editorTabState.map(tab => tab.width)).size > 1, 'Editor tab widths must vary with file name length');
     assert(editorTabState.filter(tab => tab.active && tab.selected === 'true').length === 1, 'Exactly one editor tab must be active and selected');
     assert(editorTabState.every(tab => tab.fontWeight >= 600), 'Editor tab names must use a bold weight');
-    assert(editorTabState.filter(tab => !tab.active).every(tab => tab.fontStyle === 'italic'), 'Inactive editor tab names must be italic');
+    assert(editorTabState.filter(tab => tab.preview).every(tab => tab.fontStyle === 'italic'), 'Preview editor tab names must be italic');
+    assert(editorTabState.filter(tab => !tab.preview).every(tab => tab.fontStyle === 'normal'), 'Pinned editor tab names must not be italic');
     assert(editorTabState.find(tab => tab.name === 'PRODUCT.md')?.preview, 'The last Explorer click must remain the single preview tab');
     assert(await page.$('.poiesis-agent-window__code-editor-tab .git-icon.file-icon'), 'The Git editor tab icon is missing');
     assert(await page.$('.poiesis-agent-window__code-editor-tab .markdown-icon.file-icon'), 'The Markdown editor tab icon is missing');
@@ -720,7 +729,7 @@ try {
     assert(!await page.$('.poiesis-agent-window__code-status-eol'), 'EOL status must disappear after the last editor closes');
     assert(!await page.$('.poiesis-agent-window__code-status-indentation'), 'Indentation status must disappear after the last editor closes');
 
-    await click(page, '.poiesis-agent-window__code-control', 'Code');
+    await click(page, '.poiesis-agent-window__code-control', 'Results');
     await page.waitForSelector('.poiesis-results');
     const returned = await page.evaluate(readState);
     assert(returned.mode === 'results', `Code must return to Results, got ${returned.mode}`);

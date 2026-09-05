@@ -30,6 +30,7 @@ runGit(['branch', 'branch-smoke']);
 
 const initialHead = gitHead();
 assert(initialHead === 'main', `Expected the fixture to start on main, got ${initialHead}.`);
+const composerDraft = 'branch picker composer state';
 
 const port = await freePort();
 const uiUrl = `http://127.0.0.1:${port}`;
@@ -69,8 +70,15 @@ try {
     page.setDefaultTimeout(timeout);
     await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout });
     await page.waitForSelector('.poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
+    await page.waitForSelector('.poiesis-agent-window__composer textarea');
+    await page.type('.poiesis-agent-window__composer textarea', composerDraft);
     await clickText(page, '.poiesis-agent-window__code-control', 'Code');
     await page.waitForSelector('.poiesis-agent-window__code');
+    assert(await page.$eval('.poiesis-agent-window__code-control', element => element.getAttribute('aria-label')) === 'Agent に戻る',
+        'Code return control did not preserve the Agent destination.');
+    await page.waitForFunction(branch => document.querySelector('.poiesis-agent-window__code-workspace')
+        ?.textContent?.trim().endsWith(` / ${branch}`), {}, initialHead);
+    const initialHeaderBranch = await page.$eval('.poiesis-agent-window__code-workspace', element => element.textContent?.trim());
     await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-agent-window__code-status-scm')]
         .some(element => element.textContent?.trim() === 'main' && !(element instanceof HTMLButtonElement && element.disabled)),
     { timeout: 60_000 });
@@ -128,11 +136,24 @@ try {
         .some(element => element.textContent?.trim() === 'branch-smoke'));
     const displayedBranch = await page.$eval('.poiesis-agent-window__code-status-scm', element => element.textContent?.trim());
     const finalHead = gitHead();
+    await page.waitForFunction(branch => document.querySelector('.poiesis-agent-window__code-workspace')
+        ?.textContent?.trim().endsWith(` / ${branch}`), {}, finalHead);
+    const checkedOutHeaderBranch = await page.$eval('.poiesis-agent-window__code-workspace', element => element.textContent?.trim());
+    await clickText(page, '.poiesis-agent-window__code-control', 'Agent');
+    await page.waitForSelector('.poiesis-agent-window__composer textarea');
+    const restoredComposerDraft = await page.$eval('.poiesis-agent-window__composer textarea', element => element.value);
+    await clickText(page, '.poiesis-agent-window__code-control', 'Code');
+    await page.waitForSelector('.poiesis-agent-window__code');
+    const returnedCodeHeaderBranch = await page.$eval('.poiesis-agent-window__code-workspace', element => element.textContent?.trim());
 
     assert(quickPickHost === 'BODY', `Expected the QuickPick host below BODY, got ${quickPickHost}.`);
     assert(quickPickText.includes('branch-smoke'), `QuickPick did not contain branch-smoke: ${quickPickText}`);
     assert(finalHead === 'branch-smoke', `Expected HEAD branch-smoke, got ${finalHead}.`);
     assert(displayedBranch === 'branch-smoke', `Status bar did not follow HEAD: ${displayedBranch}`);
+    assert(initialHeaderBranch.endsWith(` / ${initialHead}`), `Header did not show initial HEAD: ${initialHeaderBranch}`);
+    assert(checkedOutHeaderBranch.endsWith(` / ${finalHead}`), `Header did not follow checked out HEAD: ${checkedOutHeaderBranch}`);
+    assert(restoredComposerDraft === composerDraft, `Composer state was not restored: ${restoredComposerDraft}`);
+    assert(returnedCodeHeaderBranch.endsWith(` / ${finalHead}`), `Header changed after returning to Code: ${returnedCodeHeaderBranch}`);
     console.log(`CODE_BRANCH_PICKER_SMOKE_RESULT=${JSON.stringify({
         fixture: 'pomodoro-web-smoke',
         branches: ['main', 'branch-smoke'],
@@ -141,7 +162,11 @@ try {
         quickPickHost,
         quickPickMatched: 'branch-smoke',
         finalHead,
-        displayedBranch
+        displayedBranch,
+        initialHeaderBranch,
+        checkedOutHeaderBranch,
+        restoredComposerDraft,
+        returnedCodeHeaderBranch
     })}`);
 } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import {
-    heuristicDecision,
     parseClassification,
     parseSuggestedRequirementTitle,
     shouldClassify
@@ -30,30 +29,40 @@ const requirement = {
 
 assert.equal(shouldClassify({ ...task, requirementChoice: 'explicit' }, requirement, {
     enabled: true,
-    workspaceIsLocal: true
+    workspaceIsLocal: true,
+    outcomeIsResult: true
 }), false, 'An explicit composer choice must skip classification.');
 assert.equal(shouldClassify(task, { taskIds: [task.id], tasks: [task] }, {
     enabled: true,
-    workspaceIsLocal: true
+    workspaceIsLocal: true,
+    outcomeIsResult: true
 }), false, 'The first Task in a Requirement must skip classification.');
 assert.equal(shouldClassify(task, requirement, {
     enabled: false,
-    workspaceIsLocal: true
+    workspaceIsLocal: true,
+    outcomeIsResult: true
 }), false, 'The disabled setting must skip classification.');
 assert.equal(shouldClassify(task, requirement, {
     enabled: true,
-    workspaceIsLocal: true
+    workspaceIsLocal: true,
+    outcomeIsResult: true
 }), true, 'A later default Task with changes in a local Workspace is eligible.');
+assert.equal(shouldClassify({ ...task, changeSet: { source: 'empty', files: [], diff: '' } }, requirement, {
+    enabled: true,
+    workspaceIsLocal: true,
+    outcomeIsResult: true
+}), true, 'A concrete no-file outcome must still be eligible for semantic grouping.');
+assert.equal(shouldClassify(task, requirement, {
+    enabled: true,
+    workspaceIsLocal: true,
+    outcomeIsResult: false
+}), false, 'Conversation-only turns must not be classified as Results.');
 
-assert.deepEqual(
-    heuristicDecision(['src\\shared.ts'], ['src/shared.ts'], '独立した変更を追加'),
-    { decision: 'continue', reason: 'file-overlap' }
+const sameFileSeparateGoal = parseClassification(
+    '{"decision":"new","confidence":0.94,"title":"削除取り消し","reason":"並び順改善とは独立した機能"}'
 );
-assert.deepEqual(
-    heuristicDecision(['src/new.ts'], ['src/old.ts'], '前回の続きとして調整して'),
-    { decision: 'continue', reason: 'previous-task-reference' }
-);
-assert.equal(heuristicDecision(['src/new.ts'], ['src/old.ts'], '別の画面を追加して'), undefined);
+assert.equal(sameFileSeparateGoal.decision, 'new',
+    'An undo-deletion feature must be a separate Result even when it changes the same file as ordering work.');
 
 assert.equal(parseClassification('not json').decision, 'continue');
 assert.equal(parseClassification('{"decision":"new","confidence":0.79,"title":"別要件","reason":"やや不確実"}').decision, 'continue');

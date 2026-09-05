@@ -11,6 +11,18 @@ import {
 
 const SNAPSHOT_MISSING_ERROR = 'スナップショットが見つかりません。';
 const GIT_OUTPUT_MAX_BYTES = 100 * 1024 * 1024;
+const NPM_RUNTIME_ARTIFACT_ROOTS = [
+    '.npm-cache/_npx',
+    '.npm-cache/_cacache',
+    '.npm-cache/_logs',
+    '.npm-cache/_update-notifier-last-checked'
+] as const;
+const NPM_RUNTIME_ARTIFACT_EXCLUDES = [
+    ':(exclude).npm-cache/_npx/**',
+    ':(exclude).npm-cache/_cacache/**',
+    ':(exclude).npm-cache/_logs/**',
+    ':(exclude).npm-cache/_update-notifier-last-checked'
+] as const;
 
 interface SnapshotRepository {
     gitDir: string;
@@ -114,6 +126,7 @@ export class SnapshotStore {
     protected async writeWorkspaceTree(repository: SnapshotRepository): Promise<string> {
         const temporaryRoot = await mkdtemp(join(tmpdir(), 'poiesis-snapshot-index-'));
         const indexFile = join(temporaryRoot, 'index');
+        const trackedRuntimeArtifacts = await this.trackedRuntimeArtifactPaths(repository.workspacePath);
         const env = {
             ...process.env,
             GIT_DIR: repository.gitDir,
@@ -123,8 +136,15 @@ export class SnapshotStore {
         try {
             await runGit(['-c', 'core.autocrlf=false', 'read-tree', '--empty'], repository.workspacePath, env);
             await runGit([
-                '-c', 'core.autocrlf=false', 'add', '-A', '--ignore-errors', '--', '.'
+                '-c', 'core.autocrlf=false', 'add', '-A', '--ignore-errors', '--', '.',
+                ...NPM_RUNTIME_ARTIFACT_EXCLUDES
             ], repository.workspacePath, env);
+            if (trackedRuntimeArtifacts.length > 0) {
+                await runGit([
+                    '-c', 'core.autocrlf=false', 'add', '-A', '-f', '--ignore-errors', '--',
+                    ...trackedRuntimeArtifacts
+                ], repository.workspacePath, env);
+            }
             return (await runGit([
                 '-c', 'core.autocrlf=false', 'write-tree'
             ], repository.workspacePath, env)).trim();
@@ -151,7 +171,11 @@ export class SnapshotStore {
         const files = filesOutput.split(/\r?\n/)
             .map(path => path.trim().replace(/\\/g, '/'))
             .filter(Boolean);
-        if (files.length === 0) {
+        const trackedRuntimeArtifacts = new Set(await this.trackedRuntimeArtifactPaths(repository.workspacePath));
+        const filteredFiles = files.filter(path =>
+            !this.isNpmRuntimeArtifact(path) || trackedRuntimeArtifacts.has(this.comparablePath(path))
+        );
+        if (filteredFiles.length === 0) {
             return { source: 'empty', diff: '', files: [], endSnapshotId };
         }
         const diff = await runGit([
@@ -160,11 +184,40 @@ export class SnapshotStore {
             '-c', 'core.quotepath=false',
             'diff-tree', '-p', '--binary', '--no-color', '--find-renames',
             fromSnapshotId, toSnapshotId,
-            ...pathArgs
+            '--', ...filteredFiles
         ], repository.workspacePath);
         return diff
-            ? { source: 'task-diff', diff, files, endSnapshotId }
+            ? { source: 'task-diff', diff, files: filteredFiles, endSnapshotId }
             : { source: 'empty', diff: '', files: [], endSnapshotId };
+    }
+
+    protected async trackedRuntimeArtifactPaths(workspacePath: string): Promise<string[]> {
+        try {
+            const output = await runGit([
+                '-c', 'core.quotepath=false', 'ls-files', '-z', '--cached', '--',
+                ...NPM_RUNTIME_ARTIFACT_ROOTS
+            ], workspacePath);
+            return [...new Set(output.split('\0')
+                .map(path => path.replace(/\\/g, '/').replace(/^\.\//, ''))
+                .filter(path => path && this.isNpmRuntimeArtifact(path))
+                .map(path => this.comparablePath(path)))]
+                .sort();
+        } catch {
+            return [];
+        }
+    }
+
+    protected isNpmRuntimeArtifact(path: string): boolean {
+        const comparable = this.comparablePath(path);
+        return comparable === '.npm-cache/_update-notifier-last-checked'
+            || comparable.startsWith('.npm-cache/_npx/')
+            || comparable.startsWith('.npm-cache/_cacache/')
+            || comparable.startsWith('.npm-cache/_logs/');
+    }
+
+    protected comparablePath(path: string): string {
+        const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '');
+        return process.platform === 'win32' ? normalized.toLocaleLowerCase() : normalized;
     }
 
     protected async findRepository(snapshotIds: string[]): Promise<SnapshotRepository | undefined> {

@@ -10,6 +10,9 @@ import {
 } from '../common/agent-runtime-protocol';
 import type { AgentActivity, AgentActivityKind } from '../common/agent-provider';
 import type { ResultsAssertionResult } from './results-assertions';
+import { TaskOutcomeKind } from '../common/task-outcome';
+import { restoredDurableTaskCandidates } from '../common/session-persistence';
+import { GlobalStorageService } from './global-storage-service';
 
 export type ExecutionTaskStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -90,15 +93,6 @@ export function formatTaskEndedAtJst(value: string | undefined): string {
     return `${part('year')}/${part('month')}/${part('day')} ${part('hour')}:${part('minute')} JST`;
 }
 
-/** A completed Task whose successfully captured Change Set contains no workspace changes. */
-export function isNoChangeTask(task: ExecutionTask): boolean {
-    return task.status === 'completed'
-        && Boolean(task.changeSet)
-        && !task.changeSet?.error
-        && task.changeSet?.files.length === 0
-        && !task.changeSet.diff.trim();
-}
-
 export interface TaskFailure {
     summary: string;
     details?: string;
@@ -116,6 +110,8 @@ export interface TaskResultDocument {
     status: 'generating' | 'ready' | 'failed';
     html?: string;
     error?: string;
+    /** A newer generation failed while the readable document remains current. */
+    updateError?: string;
     generator?: 'ai' | 'template' | 'fallback';
     providerId?: KnownCliId;
     model?: string;
@@ -124,6 +120,8 @@ export interface TaskResultDocument {
     assertions?: ResultsAssertionResult[];
     assertionAttempts?: 1 | 2;
     generatedAt?: string;
+    /** The task outcome version included in an aggregate document. */
+    sourceVersion?: string;
     durationMs?: number;
 }
 
@@ -155,6 +153,8 @@ export interface ExecutionTask {
     completionSummary?: string;
     /** Full implementer handoff for Results; never rendered directly in Agent conversation. */
     implementerReport?: string;
+    /** Agent-reported semantic outcome; absent on backward-compatible saved Tasks. */
+    outcomeKind?: TaskOutcomeKind;
     baseline: TaskBaseline;
     baselineSnapshotId?: string;
     endSnapshotId?: string;
@@ -175,6 +175,7 @@ export interface TaskEvent {
 }
 
 export const RESULTS_QUESTION_HISTORY_STORAGE_KEY = 'poiesis.results-question.sessions.v1';
+const RESULTS_QUESTION_HISTORY_MIGRATION_MARKER_KEY = 'poiesis.results-question.migrated.v1';
 
 interface PersistedResultsQuestionHistory {
     version: 1;
@@ -193,6 +194,7 @@ export class TaskService {
     protected readonly baselineCaptures = new Map<string, Promise<GitSnapshotCapture>>();
     protected readonly terminalFinalizers = new Set<(task: ExecutionTask) => Promise<void>>();
     protected readonly finalizingTaskIds = new Set<string>();
+    protected readonly terminalFinalizationPromises = new Map<string, Promise<void>>();
     protected readonly persistedResultsQuestions = new Map<string, Map<string, TaskResultsQuestion[]>>();
     protected readonly onDidChangeEmitter = new Emitter<TaskEvent>();
     readonly onDidChangeTask: Event<TaskEvent> = this.onDidChangeEmitter.event;
@@ -207,13 +209,13 @@ export class TaskService {
     constructor(
         @inject(AgentRuntimeServer) protected readonly runtimeServer: AgentRuntimeServer,
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
-        @inject(StorageService) protected readonly storageService: StorageService
+        @inject(GlobalStorageService) protected readonly globalStorageService: GlobalStorageService,
+        @inject(StorageService) protected readonly legacyStorageService: StorageService
     ) { }
 
     @postConstruct()
     protected loadResultsQuestionHistory(): void {
-        this.resultsQuestionHistoryLoading = this.storageService
-            .getData<Partial<PersistedResultsQuestionHistory>>(RESULTS_QUESTION_HISTORY_STORAGE_KEY, {})
+        this.resultsQuestionHistoryLoading = this.loadPersistedResultsQuestionHistory()
             .then(state => {
                 if (state?.version !== 1 || !state.sessions || typeof state.sessions !== 'object') {
                     return;
@@ -304,12 +306,16 @@ export class TaskService {
             },
             failure
         };
-        await this.finalizeTerminalTask(task, 'failed');
+        this.finalizeTerminalTask(task, 'failed');
         return task;
     }
 
-    async end(taskId: string, completionSummary?: string): Promise<ExecutionTask | undefined> {
-        return this.finish(taskId, 'completed', 'ended', undefined, completionSummary);
+    async end(
+        taskId: string,
+        completionSummary?: string,
+        outcomeKind?: TaskOutcomeKind
+    ): Promise<ExecutionTask | undefined> {
+        return this.finish(taskId, 'completed', 'ended', undefined, completionSummary, outcomeKind);
     }
 
     async cancel(taskId: string): Promise<ExecutionTask | undefined> {
@@ -420,6 +426,11 @@ export class TaskService {
         return this.finalizingTaskIds.has(taskId);
     }
 
+    /** Waits for background terminal work without extending the user-visible execution boundary. */
+    async whenFinalized(taskId: string): Promise<void> {
+        await this.terminalFinalizationPromises.get(taskId);
+    }
+
     async whenBaselineCaptured(taskId: string): Promise<void> {
         await this.baselineCaptures.get(taskId);
     }
@@ -436,16 +447,7 @@ export class TaskService {
 
     restore(tasks: readonly ExecutionTask[]): ExecutionTask[] {
         const restored: ExecutionTask[] = [];
-        for (const candidate of tasks) {
-            if (!candidate
-                || typeof candidate.id !== 'string'
-                || typeof candidate.sessionId !== 'string'
-                || typeof candidate.title !== 'string'
-                || typeof candidate.request !== 'string'
-                || typeof candidate.startedAt !== 'string'
-                || !['running', 'completed', 'failed', 'cancelled'].includes(candidate.status)) {
-                continue;
-            }
+        for (const candidate of restoredDurableTaskCandidates(tasks)) {
             const legacyResultsQuestions = this.normalizeResultsQuestions(candidate.resultsQuestions);
             const resultsQuestions = this.persistedResultsQuestions
                 .get(candidate.sessionId)?.get(candidate.id)
@@ -456,6 +458,9 @@ export class TaskService {
             const skillProposals = this.normalizeSkillProposals(candidate.skillProposals);
             const requirementClassification = this.normalizeRequirementClassification(candidate.requirementClassification);
             const requirementChoice = candidate.requirementChoice === 'explicit' ? 'explicit' : 'default';
+            const outcomeKind = candidate.outcomeKind === 'result' || candidate.outcomeKind === 'conversation'
+                ? candidate.outcomeKind
+                : undefined;
             const task: ExecutionTask = candidate.status === 'running'
                 ? {
                     ...candidate,
@@ -469,7 +474,8 @@ export class TaskService {
                     skillProposals,
                     resultsQuestions,
                     resultsDocument,
-                    requirementClassification
+                    requirementClassification,
+                    outcomeKind
                 }
                 : {
                     ...candidate,
@@ -480,7 +486,8 @@ export class TaskService {
                     skillProposals,
                     resultsQuestions,
                     resultsDocument,
-                    requirementClassification
+                    requirementClassification,
+                    outcomeKind
                 };
             this.tasks.set(task.id, task);
             if (legacyResultsQuestions.length > 0) {
@@ -535,7 +542,8 @@ export class TaskService {
         status: Exclude<ExecutionTaskStatus, 'running'>,
         eventType: Extract<TaskEvent['type'], 'ended' | 'failed' | 'cancelled'>,
         failure?: TaskFailure,
-        completionSummary?: string
+        completionSummary?: string,
+        outcomeKind?: TaskOutcomeKind
     ): Promise<ExecutionTask | undefined> {
         const current = this.tasks.get(taskId);
         if (!current || current.status !== 'running') {
@@ -559,30 +567,45 @@ export class TaskService {
             implementerReport: status === 'completed'
                 ? completionSummary?.trim().slice(0, 12_000) || undefined
                 : undefined,
+            outcomeKind: status === 'completed' ? outcomeKind : undefined,
             failure
         };
-        await this.finalizeTerminalTask(task, eventType);
+        this.finalizeTerminalTask(task, eventType);
         return task;
     }
 
-    protected async finalizeTerminalTask(
+    protected finalizeTerminalTask(
         task: ExecutionTask,
         eventType: Extract<TaskEvent['type'], 'ended' | 'failed' | 'cancelled'>
-    ): Promise<void> {
+    ): void {
         this.tasks.set(task.id, task);
+        const finalization = Promise.resolve()
+            .then(() => this.runTerminalFinalizers(task))
+            .catch(error => {
+                console.warn('[Poiesis] Task background finalization failed.', error);
+            });
+        this.terminalFinalizationPromises.set(task.id, finalization);
+        void finalization.finally(() => {
+            if (this.terminalFinalizationPromises.get(task.id) === finalization) {
+                this.terminalFinalizationPromises.delete(task.id);
+            }
+        }).catch(() => undefined);
         this.finalizingTaskIds.add(task.id);
         try {
-            for (const finalizer of this.terminalFinalizers) {
-                try {
-                    await finalizer(task);
-                } catch (error) {
-                    console.warn('[Poiesis] A Task terminal finalizer failed.', error);
-                }
-            }
+            this.onDidChangeEmitter.fire({ type: eventType, task });
         } finally {
             this.finalizingTaskIds.delete(task.id);
         }
-        this.onDidChangeEmitter.fire({ type: eventType, task });
+    }
+
+    protected async runTerminalFinalizers(task: ExecutionTask): Promise<void> {
+        for (const finalizer of this.terminalFinalizers) {
+            try {
+                await finalizer(task);
+            } catch (error) {
+                console.warn('[Poiesis] A Task terminal finalizer failed.', error);
+            }
+        }
     }
 
     protected async captureBaseline(workspacePath?: string): Promise<GitSnapshotCapture> {
@@ -646,7 +669,7 @@ export class TaskService {
     ): TaskResultDocument | undefined {
         if (!document
             || document.taskId !== taskId
-            || !['ready', 'failed'].includes(document.status)
+            || !['generating', 'ready', 'failed'].includes(document.status)
             || document.status === 'ready' && typeof document.html !== 'string') {
             return undefined;
         }
@@ -861,10 +884,70 @@ export class TaskService {
         };
         this.resultsQuestionHistoryPersistence = this.resultsQuestionHistoryPersistence
             .catch(() => undefined)
-            .then(() => this.storageService.setData(
+            .then(() => this.globalStorageService.setData(
                 RESULTS_QUESTION_HISTORY_STORAGE_KEY,
                 Object.keys(state.sessions).length > 0 ? state : undefined
             ));
         return this.resultsQuestionHistoryPersistence;
+    }
+
+    protected async loadPersistedResultsQuestionHistory(): Promise<Partial<PersistedResultsQuestionHistory> | undefined> {
+        const durable = await this.globalStorageService.getData<Partial<PersistedResultsQuestionHistory>>(
+            RESULTS_QUESTION_HISTORY_STORAGE_KEY
+        );
+        const migrated = await this.globalStorageService.getData<boolean>(
+            RESULTS_QUESTION_HISTORY_MIGRATION_MARKER_KEY
+        );
+        if (migrated) {
+            return durable;
+        }
+        const legacy = await this.globalStorageService.getWorkspaceData<Partial<PersistedResultsQuestionHistory>>(
+            RESULTS_QUESTION_HISTORY_STORAGE_KEY
+        );
+        const currentLegacy = await this.legacyStorageService.getData<Partial<PersistedResultsQuestionHistory>>(
+            RESULTS_QUESTION_HISTORY_STORAGE_KEY,
+            {}
+        );
+        if (currentLegacy?.version === 1) {
+            legacy.push(currentLegacy);
+        }
+        const merged = this.mergePersistedResultsQuestionHistory([...legacy, durable]);
+        try {
+            if (merged) {
+                await this.globalStorageService.setData(RESULTS_QUESTION_HISTORY_STORAGE_KEY, merged);
+            }
+            await this.globalStorageService.setData(RESULTS_QUESTION_HISTORY_MIGRATION_MARKER_KEY, true);
+        } catch (error) {
+            console.warn('[Poiesis] Could not migrate Results question history.', error);
+        }
+        return merged;
+    }
+
+    protected mergePersistedResultsQuestionHistory(
+        states: Array<Partial<PersistedResultsQuestionHistory> | undefined>
+    ): PersistedResultsQuestionHistory | undefined {
+        const sessions: PersistedResultsQuestionHistory['sessions'] = {};
+        for (const state of states) {
+            if (state?.version !== 1 || !state.sessions || typeof state.sessions !== 'object') {
+                continue;
+            }
+            for (const [sessionId, tasks] of Object.entries(state.sessions)) {
+                if (!tasks || typeof tasks !== 'object') {
+                    continue;
+                }
+                const session = sessions[sessionId] ??= {};
+                for (const [taskId, entries] of Object.entries(tasks)) {
+                    const combined = [...session[taskId] ?? [], ...this.normalizeResultsQuestions(entries)];
+                    const unique = new Map(combined.map(entry => [
+                        `${entry.timestamp}\u0000${entry.question}\u0000${entry.answer ?? entry.error ?? ''}`,
+                        entry
+                    ]));
+                    session[taskId] = [...unique.values()]
+                        .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+                        .slice(-TaskService.MAX_RESULTS_QUESTIONS_PER_TASK);
+                }
+            }
+        }
+        return Object.keys(sessions).length ? { version: 1, sessions } : undefined;
     }
 }

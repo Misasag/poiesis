@@ -65,6 +65,11 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             this.pendingTaskIds.delete(request.taskId);
             return this.failed({ code: 'internal', message: '成果文書生成のテスト用失敗が指定されました。' });
         }
+        const deterministicHtml = process.env.POIESIS_RESULTS_GENERATION_TEST_HTML?.trim();
+        if (deterministicHtml) {
+            this.pendingTaskIds.delete(request.taskId);
+            return { status: 'generated', html: deterministicHtml.slice(0, GENERATED_RESULTS_HTML_MAX_CHARS) };
+        }
 
         let pendingPromptDirectory: string | undefined;
         try {

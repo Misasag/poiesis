@@ -34,6 +34,7 @@ interface CodexRun {
 export class AgentRuntimeServerImpl implements AgentRuntimeServer {
     protected readonly snapshotStore = new SnapshotStore();
     protected readonly codexRuns = new Map<string, CodexRun>();
+    protected agentTestReplySequence = 0;
     protected client?: AgentRuntimeClient;
 
     constructor(
@@ -119,8 +120,9 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         if (process.env.POIESIS_AGENT_FORCE_PRESPAWN_FAILURE === '1') {
             throw new Error('Agent pre-spawn failure requested by test hook.');
         }
-        const testReply = process.env.POIESIS_AGENT_TEST_REPLY;
+        const testReply = this.nextAgentTestReply() ?? process.env.POIESIS_AGENT_TEST_REPLY;
         if (testReply !== undefined) {
+            this.assertAgentTestPrompt(prompt);
             const testWritePath = process.env.POIESIS_AGENT_TEST_WRITE_FILE?.trim();
             if (testWritePath) {
                 const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
@@ -241,6 +243,51 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
                 });
             }
         });
+    }
+
+    protected nextAgentTestReply(): string | undefined {
+        const configured = process.env.POIESIS_AGENT_TEST_REPLIES;
+        if (!configured) {
+            return undefined;
+        }
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(configured);
+        } catch {
+            throw new Error('POIESIS_AGENT_TEST_REPLIES must be a JSON array of strings.');
+        }
+        if (!Array.isArray(parsed) || !parsed.length || parsed.some(reply => typeof reply !== 'string')) {
+            throw new Error('POIESIS_AGENT_TEST_REPLIES must be a non-empty JSON array of strings.');
+        }
+        const reply = parsed[this.agentTestReplySequence];
+        if (reply === undefined) {
+            throw new Error('POIESIS_AGENT_TEST_REPLIES does not contain a reply for this request.');
+        }
+        this.agentTestReplySequence += 1;
+        return reply;
+    }
+
+    protected assertAgentTestPrompt(prompt: string): void {
+        const configured = process.env.POIESIS_AGENT_TEST_EXPECT_PROMPTS;
+        if (!configured) {
+            return;
+        }
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(configured);
+        } catch {
+            throw new Error('POIESIS_AGENT_TEST_EXPECT_PROMPTS must be a JSON array of string arrays.');
+        }
+        const index = Math.max(0, this.agentTestReplySequence - 1);
+        const expected = Array.isArray(parsed) ? parsed[index] : undefined;
+        if (!Array.isArray(expected) || expected.some(value => typeof value !== 'string')) {
+            throw new Error(`POIESIS_AGENT_TEST_EXPECT_PROMPTS has no valid entry for request ${index + 1}.`);
+        }
+        for (const value of expected) {
+            if (!prompt.includes(value)) {
+                throw new Error(`The transported Agent prompt for request ${index + 1} is missing expected conversation context.`);
+            }
+        }
     }
 
     async cancelCodex(executionId: string): Promise<void> {

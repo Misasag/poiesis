@@ -10,10 +10,13 @@ import {
     RequirementTitleSource,
     splitTaskInRequirementModel
 } from './requirement-model';
-import { ExecutionTask, isNoChangeTask, TaskResultDocument, TaskResultsQuestion, TaskService } from './task-service';
+import { ExecutionTask, TaskResultDocument, TaskResultsQuestion, TaskService } from './task-service';
+import { taskProducesResult } from '../common/task-outcome';
 import { shortenLegacyRequirementTitle } from './requirement-title-migration';
+import { GlobalStorageService } from './global-storage-service';
 
 const REQUIREMENTS_STORAGE_KEY = 'poiesis.requirements.sessions.v1';
+const REQUIREMENTS_MIGRATION_MARKER_KEY = 'poiesis.requirements.migrated.v1';
 
 interface PersistedRequirements {
     version: 1;
@@ -37,12 +40,13 @@ export class RequirementService {
 
     constructor(
         @inject(TaskService) protected readonly taskService: TaskService,
-        @inject(StorageService) protected readonly storageService: StorageService
+        @inject(GlobalStorageService) protected readonly globalStorageService: GlobalStorageService,
+        @inject(StorageService) protected readonly legacyStorageService: StorageService
     ) { }
 
     @postConstruct()
     protected init(): void {
-        this.loading = this.storageService.getData<Partial<PersistedRequirements>>(REQUIREMENTS_STORAGE_KEY, {})
+        this.loading = this.loadPersistedRequirements()
             .then(state => {
                 if (state?.version !== 1 || !state.sessions || typeof state.sessions !== 'object') {
                     return;
@@ -62,8 +66,8 @@ export class RequirementService {
             if (event.type === 'started' || !this.requirements.has(event.task.requirementId)) {
                 this.attachTask(event.task);
             }
-            if (event.type === 'ended' && !isNoChangeTask(event.task)) {
-                this.retitleFromFirstChangedTask(event.task);
+            if (event.type === 'ended' && taskProducesResult(event.task)) {
+                this.retitleFromFirstResultTask(event.task);
             }
         });
         this.taskService.onDidRemoveTask(task => this.detachTask(task));
@@ -240,7 +244,7 @@ export class RequirementService {
         this.changed('tasks-changed', affected);
     }
 
-    protected retitleFromFirstChangedTask(task: ExecutionTask): void {
+    protected retitleFromFirstResultTask(task: ExecutionTask): void {
         const requirement = this.requirements.get(task.requirementId);
         if (!requirement || requirement.titleSource !== 'task') {
             return;
@@ -249,8 +253,7 @@ export class RequirementService {
             .map(taskId => this.taskService.get(taskId))
             .filter((candidate): candidate is ExecutionTask => Boolean(candidate
                 && candidate.status === 'completed'
-                && !candidate.changeSet?.error
-                && (candidate.changeSet?.files.length || candidate.changeSet?.diff.trim())))
+                && taskProducesResult(candidate)))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt))[0];
         if (firstChangedTask?.id === task.id && requirement.title !== task.title) {
             this.rename(requirement.id, task.title, 'task');
@@ -288,15 +291,85 @@ export class RequirementService {
         this.onDidChangeEmitter.fire({ type, requirementIds });
     }
 
+    protected async loadPersistedRequirements(): Promise<Partial<PersistedRequirements> | undefined> {
+        const durable = await this.globalStorageService.getData<Partial<PersistedRequirements>>(REQUIREMENTS_STORAGE_KEY);
+        const migrated = await this.globalStorageService.getData<boolean>(REQUIREMENTS_MIGRATION_MARKER_KEY);
+        if (migrated) {
+            return durable;
+        }
+        const legacy = await this.globalStorageService.getWorkspaceData<Partial<PersistedRequirements>>(
+            REQUIREMENTS_STORAGE_KEY
+        );
+        const currentLegacy = await this.legacyStorageService.getData<Partial<PersistedRequirements>>(
+            REQUIREMENTS_STORAGE_KEY,
+            {}
+        );
+        if (currentLegacy?.version === 1) {
+            legacy.push(currentLegacy);
+        }
+        const merged = this.mergePersistedRequirements([...legacy, durable]);
+        try {
+            if (merged) {
+                await this.globalStorageService.setData(REQUIREMENTS_STORAGE_KEY, merged);
+            }
+            await this.globalStorageService.setData(REQUIREMENTS_MIGRATION_MARKER_KEY, true);
+        } catch (error) {
+            console.warn('[Poiesis] Could not migrate Requirements.', error);
+        }
+        return merged;
+    }
+
+    protected mergePersistedRequirements(
+        states: Array<Partial<PersistedRequirements> | undefined>
+    ): PersistedRequirements | undefined {
+        const byId = new Map<string, Requirement>();
+        for (const state of states) {
+            if (state?.version !== 1 || !state.sessions || typeof state.sessions !== 'object') {
+                continue;
+            }
+            for (const requirements of Object.values(state.sessions)) {
+                if (!Array.isArray(requirements)) {
+                    continue;
+                }
+                for (const requirement of requirements) {
+                    if (!requirement || typeof requirement.id !== 'string' || typeof requirement.sessionId !== 'string') {
+                        continue;
+                    }
+                    const existing = byId.get(requirement.id);
+                    if (!existing || requirement.updatedAt >= existing.updatedAt) {
+                        byId.set(requirement.id, requirement);
+                    }
+                }
+            }
+        }
+        if (!byId.size) {
+            return undefined;
+        }
+        const sessions: Record<string, Requirement[]> = {};
+        for (const requirement of byId.values()) {
+            (sessions[requirement.sessionId] ??= []).push(requirement);
+        }
+        return { version: 1, sessions };
+    }
+
     protected persist(): Promise<void> {
         const sessions: Record<string, Requirement[]> = {};
         for (const requirement of this.requirements.values()) {
-            (sessions[requirement.sessionId] ??= []).push(requirement);
+            const resultTaskIds = requirement.taskIds.filter(taskId => {
+                const task = this.taskService.get(taskId);
+                return Boolean(task && taskProducesResult(task));
+            });
+            const singleTaskDocumentIsOwnedByTask = resultTaskIds.length === 1
+                && requirement.resultsDocument?.taskId === resultTaskIds[0];
+            (sessions[requirement.sessionId] ??= []).push(singleTaskDocumentIsOwnedByTask
+                ? { ...requirement, resultsDocument: undefined }
+                : requirement);
         }
         const state: PersistedRequirements = { version: 1, sessions };
-        this.persistence = this.persistence.catch(() => undefined)
-            .then(() => this.storageService.setData(REQUIREMENTS_STORAGE_KEY, state))
-            .catch(error => console.warn('[Poiesis] Could not persist Requirements.', error));
-        return this.persistence;
+        const write = this.persistence.catch(() => undefined)
+            .then(() => this.globalStorageService.setData(REQUIREMENTS_STORAGE_KEY, state));
+        this.persistence = write;
+        void write.catch(error => console.warn('[Poiesis] Could not persist Requirements.', error));
+        return write;
     }
 }

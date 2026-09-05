@@ -190,33 +190,29 @@ try {
         await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-activity__row').length >= 3
             && !document.querySelector('.poiesis-agent-window__composer textarea')?.disabled);
         const runningActivityRows = await page.$$eval('.poiesis-agent-activity__row', nodes => nodes.length);
-        const composerEnabledDuringRun = await page.$eval(
+        const composerEnabledAfterAgent = await page.$eval(
             '.poiesis-agent-window__composer textarea', input => !input.disabled
         );
         assert(runningActivityRows >= 3, `Agent activity rows are missing during the run: ${runningActivityRows}`);
-        assert(composerEnabledDuringRun, 'Agent Composer textarea is disabled during the run');
-        await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__message-state [role="timer"]')
-            ?.textContent?.includes('成果を作成しています'));
-        const finalizingStatus = await page.$eval(
-            '.poiesis-agent-window__message-state [role="timer"]', node => node.textContent?.trim()
-        );
-        assert(finalizingStatus?.startsWith('成果を作成しています · ')
-            && !finalizingStatus.includes('最終出力')
-            && !finalizingStatus.includes('60秒以上出力がありません'),
-        `Finalizing status is misleading: ${JSON.stringify(finalizingStatus)}`);
-        assert(!await page.$('.poiesis-agent-window__message-state .poiesis-agent-window__diagnostics'),
-            'Run diagnostics remained visible while Results were finalizing.');
-        await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state [role="timer"]'));
-        await page.waitForSelector('.poiesis-agent-activity__summary');
-        const activitySummary = await page.$eval('.poiesis-agent-activity__summary', node => node.textContent?.trim() ?? '');
-        assert(activitySummary.includes('作業ログ') && activitySummary.includes('コマンド 1'),
-            `Collapsed activity summary is incomplete: ${activitySummary}`);
+        assert(composerEnabledAfterAgent, 'Agent Composer textarea remained disabled after Agent completion');
+        assert(!await page.$('.poiesis-agent-window__message-state [role="timer"]'),
+            'Agent progress remained visible after Agent completion.');
         const completion = await page.$eval('[aria-label="Agent のメッセージ"]:last-of-type .poiesis-markdown',
             node => node.textContent?.trim() ?? '');
         assert(completion === process.env.POIESIS_AGENT_TEST_REPLY
             && !completion.includes('詳細は Results を確認してください')
             && !completion.includes('変更ファイル: なし'),
         `Agent completion was not preserved verbatim: ${JSON.stringify(completion)}`);
+        await page.click('#poiesis-results-tab');
+        await page.waitForSelector('.poiesis-results__generating');
+        const resultsPendingAfterAgent = Boolean(await page.$('.poiesis-results__generating'));
+        assert(resultsPendingAfterAgent, 'Results did not remain pending after Agent became ready.');
+        await page.waitForFunction(() => !document.querySelector('.poiesis-results__generating'));
+        await page.click('#poiesis-agent-tab');
+        await page.waitForSelector('.poiesis-agent-activity__summary');
+        const activitySummary = await page.$eval('.poiesis-agent-activity__summary', node => node.textContent?.trim() ?? '');
+        assert(activitySummary.includes('作業ログ') && activitySummary.includes('コマンド 1'),
+            `Collapsed activity summary is incomplete: ${activitySummary}`);
         assert(await page.$('.poiesis-agent-window__diffstat-chip'), 'Changed-file diffstat chip is missing.');
         await installRound12DenseResultsFixture(page);
         await page.reload({ waitUntil: 'domcontentloaded' });
@@ -243,9 +239,9 @@ try {
         console.log(`ELECTRON_TASK_FEEDBACK_SMOKE_RESULT=${JSON.stringify({
             elapsedVisible: true,
             elapsedUpdated: true,
-            finalizingStatus,
             runningActivityRows,
-            composerEnabledDuringRun,
+            composerEnabledAfterAgent,
+            resultsPendingAfterAgent,
             activitySummaryVisible: true,
             resultsStandard,
             resultsLarge,

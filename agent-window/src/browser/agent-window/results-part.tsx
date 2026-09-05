@@ -33,7 +33,6 @@ import { formatRequirementExecutionEvidence, ResultsService } from '../results-s
 import {
     ExecutionTask,
     formatTaskEndedAtJst,
-    isNoChangeTask,
     summarizeTaskChangeSet,
     TaskChangeSet,
     TaskResultDocument,
@@ -41,6 +40,7 @@ import {
     TaskService,
     taskTitleForRequest
 } from '../task-service';
+import { taskProducesResult } from '../../common/task-outcome';
 import { getDesignVariant } from '../design-variant';
 import { FolderExplorerService } from '../folder-explorer-service';
 import { ResultsQuestionService } from '../results-question-service';
@@ -180,7 +180,16 @@ export class ResultsPart extends AgentWindowPart {
                         {selectedRequirement && document?.status === 'failed' && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>成果を作成できませんでした</strong>
-                                <p>Results skill の処理に失敗しました。</p>
+                                <p>成果の作成中に問題が発生しました。再試行してください。</p>
+                                <button type='button' onClick={() => selectedTask
+                                    ? void this.retryResults(selectedTask.id)
+                                    : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>
+                            </div>
+                        )}
+                        {selectedRequirement && document?.html && document.updateError && (
+                            <div className='poiesis-results__state error' role='alert'>
+                                <strong>{document.updateError}</strong>
+                                <p>前回の内容を表示しています。</p>
                                 <button type='button' onClick={() => selectedTask
                                     ? void this.retryResults(selectedTask.id)
                                     : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>
@@ -290,7 +299,7 @@ export class ResultsPart extends AgentWindowPart {
         const menuKey = `requirement:${requirement.id}`;
         const renaming = this.renamingRequirementId === requirement.id;
         const tasks = requirement.taskIds.map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task && !isNoChangeTask(task)))
+            .filter((task): task is ExecutionTask => Boolean(task && taskProducesResult(task)))
             .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
         const automaticSplitTask = tasks.length === 1
             && tasks[0].requirementClassification?.decision === 'new'

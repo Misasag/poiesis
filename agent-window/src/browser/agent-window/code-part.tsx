@@ -78,6 +78,8 @@ import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
+import { codeTabLabel } from './code-tab-label';
+import { PendingEditorPins } from './pending-editor-pins';
 
 type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
 
@@ -133,7 +135,7 @@ export class CodePart extends AgentWindowPart {
 
     protected readonly pendingDuplicateCodeWidgets = new WeakSet<Widget>();
 
-    protected readonly pendingPinnedEditorUris = new Set<string>();
+    protected readonly pendingPinnedEditors = new PendingEditorPins();
 
     protected activeCodeCenterWidget?: Widget;
 
@@ -165,7 +167,9 @@ export class CodePart extends AgentWindowPart {
 
     protected codeSidebarResizeCleanup?: Disposable;
 
-    protected codePanelVisible = true;
+    protected codePanelVisible = false;
+
+    protected focusCodeTerminalOnEnsure = false;
 
     protected codePanelHeight = DEFAULT_CODE_PANEL_HEIGHT;
 
@@ -203,7 +207,7 @@ export class CodePart extends AgentWindowPart {
         this.codeStatusListenersInstalled = true;
         const listeners = new DisposableCollection();
         listeners.push(this.problemManager.onDidChangeMarkers(() => this.update()));
-        listeners.push(this.editorManager.onCurrentEditorChanged(() => this.bindCodeEditorStatus()));
+        listeners.push(this.editorManager.onCurrentEditorChanged(() => this.handleCurrentCodeEditorChanged()));
         listeners.push(Disposable.create(() => {
             this.codeEditorStatusListeners.dispose();
             if (this.codeEditorStatusRefreshTimer !== undefined) {
@@ -215,7 +219,17 @@ export class CodePart extends AgentWindowPart {
         this.bindCodeEditorStatus();
     }
 
+    protected handleCurrentCodeEditorChanged(): void {
+        const editor = this.editorManager.currentEditor;
+        if (editor && editor !== this.activeCodeCenterWidget && this.codeCenterWidgets.includes(editor)) {
+            this.selectCodeCenterWidget(editor);
+            return;
+        }
+        this.bindCodeEditorStatus();
+    }
+
     public disposeCodeResources(): void {
+        this.pendingPinnedEditors.clear();
         this.codeSidebarResizeCleanup?.dispose();
         this.codeSidebarResizeCleanup = undefined;
         this.codePanelResizeCleanup?.dispose();
@@ -831,10 +845,15 @@ export class CodePart extends AgentWindowPart {
             changed = this.codeExtensionsWidget !== widget;
             this.codeExtensionsWidget = widget;
         } else if (this.isCodeCenterWidget(factoryId, widget)
-            && !this.codeCenterWidgets.includes(widget)) {
+            && this.codeCenterWidgets.includes(widget)) {
+            if (widget instanceof EditorWidget
+                && (pinned || this.pendingPinnedEditors.has(widget.editor.uri.toString()))) {
+                this.pinCodeCenterWidget(widget);
+            }
+        } else if (this.isCodeCenterWidget(factoryId, widget)) {
             if (widget instanceof EditorWidget) {
                 const uri = widget.editor.uri.toString();
-                const shouldPin = pinned || this.pendingPinnedEditorUris.has(uri);
+                const shouldPin = pinned || this.pendingPinnedEditors.has(uri);
                 const existing = this.codeCenterWidgets.find(candidate => candidate instanceof EditorWidget
                     && candidate.editor.uri.toString() === uri);
                 if (existing) {
@@ -1147,13 +1166,19 @@ export class CodePart extends AgentWindowPart {
         }
         this.attachCodeWidget(this.activeCodeCenterWidget, this.codeEditorHost);
         if (this.codePanelVisible) {
-            this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
+            this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost, false);
         } else {
             this.detachCodeWidget(this.codeTerminalWidget);
         }
     }
 
     public async ensureCodeTerminal(): Promise<void> {
+        if (!this.codePanelVisible) {
+            this.focusCodeTerminalOnEnsure = false;
+            return;
+        }
+        const activate = this.focusCodeTerminalOnEnsure;
+        this.focusCodeTerminalOnEnsure = false;
         if (!this.codeTerminalWidget) {
             if (!this.codeTerminalCreation) {
                 this.codeTerminalCreation = this.newCodeTerminal()
@@ -1168,7 +1193,7 @@ export class CodePart extends AgentWindowPart {
             await this.codeTerminalCreation;
         }
         if (this.host.state.codeMode && this.codePanelVisible) {
-            this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost);
+            this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost, activate);
         }
     }
 
@@ -1265,13 +1290,14 @@ export class CodePart extends AgentWindowPart {
             this.detachCodeWidget(this.codeTerminalWidget);
         }
         this.codePanelVisible = visible;
+        this.focusCodeTerminalOnEnsure = visible;
         this.update();
         if (visible) {
             requestAnimationFrame(() => void this.ensureCodeTerminal());
         }
     }
 
-    protected attachCodeWidget(widget: Widget | undefined, host: HTMLDivElement | undefined): void {
+    protected attachCodeWidget(widget: Widget | undefined, host: HTMLDivElement | undefined, activate = true): void {
         if (!widget || !host) {
             return;
         }
@@ -1284,13 +1310,15 @@ export class CodePart extends AgentWindowPart {
             }
             Widget.attach(widget, host);
         }
-        this.revealCodeWidget(widget, host);
+        this.revealCodeWidget(widget, host, activate);
     }
 
-    protected revealCodeWidget(widget: Widget, host: HTMLDivElement): void {
+    protected revealCodeWidget(widget: Widget, host: HTMLDivElement, activate: boolean): void {
         widget.show();
         widget.update();
-        widget.activate();
+        if (activate) {
+            widget.activate();
+        }
         this.resizeCodeWidget(widget, host);
         requestAnimationFrame(() => {
             if (!widget.isDisposed && widget.isAttached && widget.node.parentElement === host) {
@@ -1438,19 +1466,55 @@ export class CodePart extends AgentWindowPart {
     }
 
     protected pinCodeCenterWidget(widget: Widget): void {
+        const previewEditor = widget as Widget & {
+            readonly isPreview?: boolean;
+            convertToNonPreview?: () => void;
+        };
+        if (previewEditor.isPreview === true && typeof previewEditor.convertToNonPreview === 'function') {
+            previewEditor.convertToNonPreview();
+        }
         if (this.previewCodeCenterWidget === widget) {
             this.previewCodeCenterWidget = undefined;
             this.update();
         }
     }
 
+    protected codeEditorForUri(uri: string): EditorWidget | undefined {
+        return this.codeCenterWidgets.find((candidate): candidate is EditorWidget => candidate instanceof EditorWidget
+            && !candidate.isDisposed
+            && candidate.editor.uri.toString() === uri);
+    }
+
+    protected pinOpenedCodeEditor(opened: EditorWidget, uri: string): void {
+        const available = opened.isDisposed ? this.codeEditorForUri(uri) : opened;
+        if (!available) {
+            return;
+        }
+        this.registerCodeWidget(CodePart.EDITOR_WIDGET_FACTORY_ID, available, true);
+        const registered = this.codeEditorForUri(uri);
+        if (registered) {
+            this.pinCodeCenterWidget(registered);
+            this.selectCodeCenterWidget(registered);
+        }
+    }
+
+    protected codeFileNode(target: EventTarget | null): HTMLElement | undefined {
+        if (!(target instanceof Element)) {
+            return undefined;
+        }
+        const node = target.closest<HTMLElement>('#files .theia-FileStatNode[title]');
+        return node && !node.classList.contains('theia-ExpandableTreeNode') && node.title
+            ? node
+            : undefined;
+    }
+
     public installCodeTabDropTarget(): void {
         const onPointerDown = (event: PointerEvent): void => {
-            if (event.button !== 0 || !(event.target instanceof Element)) {
+            if (event.button !== 0) {
                 return;
             }
-            const node = event.target.closest<HTMLElement>('#files .theia-FileStatNode[draggable="true"]');
-            if (!node || node.classList.contains('theia-ExpandableTreeNode') || !node.title) {
+            const node = this.codeFileNode(event.target);
+            if (!node) {
                 return;
             }
             this.finishCodeFilePointerDrag();
@@ -1516,12 +1580,23 @@ export class CodePart extends AgentWindowPart {
             event.preventDefault();
             event.stopImmediatePropagation();
         };
+        const onDoubleClick = (event: MouseEvent): void => {
+            const node = this.codeFileNode(event.target);
+            if (!node) {
+                return;
+            }
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            void this.openDraggedCodeFile(FileUri.create(node.title).toString())
+                .catch(() => this.messageService.error('ファイルを開けませんでした。'));
+        };
         document.addEventListener('pointerdown', onPointerDown, true);
         document.addEventListener('pointermove', onPointerMove, true);
         document.addEventListener('pointerup', onPointerUp, true);
         document.addEventListener('pointercancel', onPointerCancel, true);
         document.addEventListener('keydown', onKeyDown, true);
         document.addEventListener('click', onClick, true);
+        document.addEventListener('dblclick', onDoubleClick, true);
         window.addEventListener('blur', onWindowBlur);
         this.host.addDisposable(Disposable.create(() => {
             document.removeEventListener('pointerdown', onPointerDown, true);
@@ -1530,6 +1605,7 @@ export class CodePart extends AgentWindowPart {
             document.removeEventListener('pointercancel', onPointerCancel, true);
             document.removeEventListener('keydown', onKeyDown, true);
             document.removeEventListener('click', onClick, true);
+            document.removeEventListener('dblclick', onDoubleClick, true);
             window.removeEventListener('blur', onWindowBlur);
             this.finishCodeFilePointerDrag();
         }));
@@ -1567,17 +1643,21 @@ export class CodePart extends AgentWindowPart {
         }
         const uri = new URI(rawUri);
         const uriKey = uri.toString();
-        this.pendingPinnedEditorUris.add(uriKey);
+        const existing = this.codeEditorForUri(uriKey);
+        if (existing) {
+            this.pinCodeCenterWidget(existing);
+            this.selectCodeCenterWidget(existing);
+            return;
+        }
+        const pinRequest = this.pendingPinnedEditors.begin(uriKey);
         try {
-            await this.editorManager.open(uri);
-            const opened = this.codeCenterWidgets.find(candidate => candidate instanceof EditorWidget
-                && candidate.editor.uri.toString() === uriKey);
-            if (opened) {
-                this.pinCodeCenterWidget(opened);
-                this.selectCodeCenterWidget(opened);
+            const opened = await this.editorManager.open(uri);
+            if (!pinRequest.isActive()) {
+                return;
             }
+            this.pinOpenedCodeEditor(opened, uriKey);
         } finally {
-            this.pendingPinnedEditorUris.delete(uriKey);
+            pinRequest.dispose();
         }
     }
 
@@ -1731,6 +1811,14 @@ export class CodePart extends AgentWindowPart {
         if (widget.id === CodePart.SETTINGS_WIDGET_FACTORY_ID) {
             return 'Settings';
         }
+        if (widget instanceof EditorWidget) {
+            return codeTabLabel(
+                widget.editor.uri.path.toString(),
+                this.codeCenterWidgets
+                    .filter((candidate): candidate is EditorWidget => candidate instanceof EditorWidget)
+                    .map(candidate => candidate.editor.uri.path.toString())
+            );
+        }
         return widget.title.label || widget.title.caption || 'Editor';
     }
 
@@ -1746,27 +1834,24 @@ export class CodePart extends AgentWindowPart {
             this.ensureCodeFileIcons();
             this.host.state.codeMode = true;
             this.update();
-            requestAnimationFrame(() => void this.ensureCodeTerminal());
             await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
         }
         const uriKey = file.toString();
-        this.pendingPinnedEditorUris.add(uriKey);
+        const pinRequest = this.pendingPinnedEditors.begin(uriKey);
         try {
-            await this.editorManager.open(file, {
+            const opened = await this.editorManager.open(file, {
                 mode: 'activate',
                 selection: {
                     start: { line: startLine - 1, character: 0 },
                     end: { line: endLine - 1, character: 0 }
                 }
             });
-            const opened = this.codeCenterWidgets.find(candidate => candidate instanceof EditorWidget
-                && candidate.editor.uri.toString() === uriKey);
-            if (opened) {
-                this.pinCodeCenterWidget(opened);
-                this.selectCodeCenterWidget(opened);
+            if (!pinRequest.isActive()) {
+                return;
             }
+            this.pinOpenedCodeEditor(opened, uriKey);
         } finally {
-            this.pendingPinnedEditorUris.delete(uriKey);
+            pinRequest.dispose();
         }
     }
 
@@ -1776,7 +1861,6 @@ export class CodePart extends AgentWindowPart {
             this.ensureCodeFileIcons();
             this.host.state.codeMode = true;
             this.update();
-            requestAnimationFrame(() => void this.ensureCodeTerminal());
             await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
         } else {
             this.update();

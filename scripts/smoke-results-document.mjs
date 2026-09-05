@@ -5,6 +5,16 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import puppeteer from 'puppeteer-core';
+import {
+    DURABLE_REQUIREMENTS_KEY,
+    DURABLE_SESSION_KEY,
+    DURABLE_SESSION_MIGRATION_KEY,
+    readDurableValue,
+    updateDurableValue,
+    waitForDurableValue,
+    waitForDurableWritesToSettle,
+    writeDurableValue
+} from './poiesis-smoke-state.mjs';
 
 const URI = createRequire(import.meta.url)('@theia/core/lib/common/uri').default;
 
@@ -121,6 +131,8 @@ try {
     page.setDefaultTimeout(timeout);
     if (mode === 'detection') {
         await installCliDetectionFixtureBeforeNavigation(page, workspace, uiUrl);
+    } else if (mode === 'citation') {
+        seedCitationDurableState(workspace);
     }
     const diagnostics = [];
     page.on('console', message => {
@@ -131,7 +143,7 @@ try {
     await waitForApp(page);
 
     if (mode === 'citation') {
-        await smokeCitation(page, workspace);
+        await smokeCitation(page);
         console.log('RESULTS_CITATION_SMOKE_RESULT={"mode":"code","file":"citation-target.txt","line":4}');
     } else if (mode === 'fallback') {
         const responsiveResults = await smokeFallback(page, diagnostics);
@@ -164,6 +176,57 @@ try {
 
 async function installCliDetectionFixtureBeforeNavigation(page, workspacePath, applicationUrl) {
     const now = new Date().toISOString();
+    const sessionId = 'cli-detection-lifecycle-session';
+    const taskId = 'cli-detection-lifecycle-seed-task';
+    writeSessionFixture({
+        version: 1,
+        selectedSessionId: sessionId,
+        railWidth: 258,
+        railCollapsed: false,
+        sessions: [{
+            id: sessionId,
+            createdAt: Date.now() - 60_000,
+            updatedAt: Date.now(),
+            workspaceUri: pathToFileURL(workspacePath).toString(),
+            branch: 'main',
+            runTarget: 'local',
+            title: 'CLI detection lifecycle',
+            hasUserMessage: false,
+            lastTaskStatus: 'completed',
+            pinned: false,
+            archived: false,
+            activeTab: 'agent',
+            agentDraft: '',
+            messages: [],
+            selectedResultsTaskId: taskId,
+            resultsDrafts: [],
+            tasks: [{
+                id: taskId,
+                sessionId,
+                title: 'Detection fixture result',
+                request: 'Keep a Results role control visible.',
+                status: 'completed',
+                startedAt: now,
+                endedAt: now,
+                baseline: { kind: 'workspace-snapshot', capturedAt: now },
+                changeSet: {
+                    source: 'task-diff',
+                    diff: 'diff --git a/citation-target.txt b/citation-target.txt\n+ready',
+                    files: ['citation-target.txt'],
+                    capturedAt: now
+                }
+            }],
+            resultsDocuments: [{
+                taskId,
+                status: 'ready',
+                generator: 'ai',
+                providerId: 'grok',
+                model: 'grok-4.5',
+                effort: 'medium',
+                html: '<!doctype html><html lang="ja"><body><main data-detection-fixture><h1>Detection fixture</h1></main></body></html>'
+            }]
+        }]
+    });
     await page.evaluateOnNewDocument(fixture => {
         if (location.origin !== fixture.origin) return;
         const savedSettings = {
@@ -183,63 +246,9 @@ async function installCliDetectionFixtureBeforeNavigation(page, workspacePath, a
             automaticRequirementClassification: true
         };
         localStorage.setItem(`theia:${location.pathname}:${fixture.settingsWorkspaceUri}:poiesis.settings.v1`, JSON.stringify(savedSettings));
-        localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.global.v1', JSON.stringify({
-            version: 1,
-            selectedSessionId: fixture.sessionId,
-            railWidth: 258,
-            railCollapsed: false,
-            sessions: [{
-                id: fixture.sessionId,
-                createdAt: Date.now() - 60_000,
-                updatedAt: Date.now(),
-                workspaceUri: fixture.workspaceUri,
-                branch: 'main',
-                runTarget: 'local',
-                title: 'CLI detection lifecycle',
-                hasUserMessage: false,
-                lastTaskStatus: 'completed',
-                pinned: false,
-                archived: false,
-                activeTab: 'agent',
-                agentDraft: '',
-                messages: [],
-                selectedResultsTaskId: fixture.taskId,
-                resultsDrafts: [],
-                tasks: [{
-                    id: fixture.taskId,
-                    sessionId: fixture.sessionId,
-                    title: 'Detection fixture result',
-                    request: 'Keep a Results role control visible.',
-                    status: 'completed',
-                    startedAt: fixture.now,
-                    endedAt: fixture.now,
-                    baseline: { kind: 'workspace-snapshot', capturedAt: fixture.now },
-                    changeSet: {
-                        source: 'task-diff',
-                        diff: 'diff --git a/citation-target.txt b/citation-target.txt\n+ready',
-                        files: ['citation-target.txt'],
-                        capturedAt: fixture.now
-                    }
-                }],
-                resultsDocuments: [{
-                    taskId: fixture.taskId,
-                    status: 'ready',
-                    generator: 'ai',
-                    providerId: 'grok',
-                    model: 'grok-4.5',
-                    effort: 'medium',
-                    html: '<!doctype html><html lang="ja"><body><main data-detection-fixture><h1>Detection fixture</h1></main></body></html>'
-                }]
-            }]
-        }));
-        localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.migrated.v1', 'true');
     }, {
         origin: new URL(applicationUrl).origin,
-        workspaceUri: pathToFileURL(workspacePath).toString(),
-        settingsWorkspaceUri: new URI(pathToFileURL(workspacePath).toString()).toString(),
-        sessionId: 'cli-detection-lifecycle-session',
-        taskId: 'cli-detection-lifecycle-seed-task',
-        now
+        settingsWorkspaceUri: new URI(pathToFileURL(workspacePath).toString()).toString()
     });
 }
 
@@ -269,12 +278,10 @@ async function smokeCliDetectionUi(page) {
         && firstDeferred.draft === '',
     `First send escaped the pending detection barrier: ${JSON.stringify({ beforeFirstSend, firstDeferred })}`);
 
-    await page.waitForFunction(() => {
-        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-        const state = raw ? JSON.parse(raw) : undefined;
+    await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
         const tasks = state?.sessions?.[0]?.tasks ?? [];
         return tasks.length === 2 && tasks.at(-1)?.status === 'completed';
-    });
+    }, timeout);
     const firstCompletedAt = Date.now();
     const firstCompleted = await lifecyclePersistedSnapshot(page);
     assert(firstCompleted.latestTask?.providerId === 'claude'
@@ -332,17 +339,13 @@ async function smokeCliDetectionUi(page) {
         && !errorSendDeferred.taskRunning,
     `Send reused a stale provider session after detection failure: ${JSON.stringify({ beforeErrorSend, errorSendDeferred })}`);
 
-    await page.waitForFunction(() => {
-        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-        const state = raw ? JSON.parse(raw) : undefined;
+    await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
         return (state?.sessions?.[0]?.tasks?.length ?? 0) === 3;
-    });
+    }, timeout);
     const freshTaskStartedAt = Date.now();
-    await page.waitForFunction(() => {
-        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-        const state = raw ? JSON.parse(raw) : undefined;
+    await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
         return state?.sessions?.[0]?.tasks?.at(-1)?.status === 'completed';
-    });
+    }, timeout);
     const secondCompleted = await lifecyclePersistedSnapshot(page);
     assert(secondCompleted.latestTask?.providerId === 'claude'
         && secondCompleted.latestTask?.model === 'fable'
@@ -455,29 +458,29 @@ function assertDetectionStatus(snapshot, phase, label) {
 }
 
 async function agentSendSnapshot(page) {
-    return page.evaluate(() => {
-        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-        const state = raw ? JSON.parse(raw) : undefined;
-        return {
-            userMessages: document.querySelectorAll('[aria-label="あなたのメッセージ"]').length,
-            taskCount: state?.sessions?.[0]?.tasks?.length ?? 0,
-            taskRunning: Boolean(document.querySelector('.poiesis-agent-window__task-state')),
-            draft: document.querySelector('[aria-label="Agent へのメッセージ"]')?.value ?? ''
-        };
-    });
+    const state = readDurableValue(theiaConfig, DURABLE_SESSION_KEY);
+    const ui = await page.evaluate(() => ({
+        userMessages: document.querySelectorAll('[aria-label="あなたのメッセージ"]').length,
+        taskRunning: Boolean(document.querySelector('.poiesis-agent-window__task-state')),
+        draft: document.querySelector('[aria-label="Agent へのメッセージ"]')?.value ?? ''
+    }));
+    return {
+        ...ui,
+        taskCount: state?.sessions?.[0]?.tasks?.length ?? 0
+    };
 }
 
 async function lifecyclePersistedSnapshot(page) {
-    return page.evaluate(() => {
-        const sessionRaw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
+    const sessionState = readDurableValue(theiaConfig, DURABLE_SESSION_KEY);
+    const settings = await page.evaluate(() => {
         const settingsKey = Object.keys(localStorage).find(key => key.startsWith('theia:') && key.endsWith(':poiesis.settings.v1'));
         const settingsRaw = settingsKey ? localStorage.getItem(settingsKey) : undefined;
-        const sessionState = sessionRaw ? JSON.parse(sessionRaw) : undefined;
-        return {
-            latestTask: sessionState?.sessions?.[0]?.tasks?.at(-1),
-            settings: settingsRaw ? JSON.parse(settingsRaw) : undefined
-        };
+        return settingsRaw ? JSON.parse(settingsRaw) : undefined;
     });
+    return {
+        latestTask: sessionState?.sessions?.[0]?.tasks?.at(-1),
+        settings
+    };
 }
 
 async function fillAgentComposer(page, value) {
@@ -510,88 +513,87 @@ async function closeSettings(page) {
     await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
 }
 
-async function smokeCitation(page, workspacePath) {
+function seedCitationDurableState(workspacePath) {
     const now = new Date().toISOString();
     const sessionId = 'results-citation-smoke-session';
     const taskId = 'results-citation-smoke-task';
-    await page.evaluate(fixture => {
-        localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.global.v1', JSON.stringify({
-            version: 1,
-            selectedSessionId: fixture.sessionId,
-            railWidth: 258,
-            railCollapsed: false,
-            sessions: [{
-                id: fixture.sessionId,
-                createdAt: Date.now() - 60_000,
-                updatedAt: Date.now(),
-                workspaceUri: fixture.workspaceUri,
-                branch: 'main',
-                runTarget: 'local',
+    writeSessionFixture({
+        version: 1,
+        selectedSessionId: sessionId,
+        railWidth: 258,
+        railCollapsed: false,
+        sessions: [{
+            id: sessionId,
+            createdAt: Date.now() - 60_000,
+            updatedAt: Date.now(),
+            workspaceUri: pathToFileURL(workspacePath).toString(),
+            branch: 'main',
+            runTarget: 'local',
+            title: 'Citation smoke',
+            hasUserMessage: true,
+            lastTaskStatus: 'completed',
+            unreadTaskCompletion: false,
+            pinned: false,
+            archived: false,
+            activeTab: 'results',
+            agentDraft: '',
+            messages: [{ id: 'seed-user', role: 'user', content: 'Open the citation.', complete: true }],
+            selectedResultsTaskId: taskId,
+            resultsDrafts: [],
+            tasks: [{
+                id: taskId,
+                sessionId,
                 title: 'Citation smoke',
-                hasUserMessage: true,
-                lastTaskStatus: 'completed',
-                unreadTaskCompletion: false,
-                pinned: false,
-                archived: false,
-                activeTab: 'results',
-                agentDraft: '',
-                messages: [{ id: 'seed-user', role: 'user', content: 'Open the citation.', complete: true }],
-                selectedResultsTaskId: fixture.taskId,
-                resultsDrafts: [],
-                tasks: [{
-                    id: fixture.taskId,
-                    sessionId: fixture.sessionId,
-                    title: 'Citation smoke',
-                    request: 'Open the citation.',
-                    status: 'completed',
-                    startedAt: fixture.now,
-                    endedAt: fixture.now,
-                    completionSummary: 'Citation ready.',
-                    baseline: { kind: 'workspace-snapshot', capturedAt: fixture.now },
-                    changeSet: {
-                        source: 'task-diff',
-                        diff: 'diff --git a/citation-target.txt b/citation-target.txt\n+four',
-                        files: ['citation-target.txt'],
-                        capturedAt: fixture.now
-                    }
-                }],
-                resultsDocuments: [{
-                    taskId: fixture.taskId,
-                    status: 'ready',
-                    generator: 'ai',
-                    html: '<!doctype html><html><head><title>Citation</title></head><body><h2 style="font-family: Georgia, serif">根拠</h2><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></body></html>',
-                    assertions: [
-                        { text: '変更ファイルがある場合、本文に根拠引用がある', source: 'app', status: 'pass' },
-                        { text: '本文に見出し（h2〜h4）がある', source: 'app', status: 'pass' },
-                        { text: '空の見出しがない', source: 'app', status: 'pass' }
-                    ],
-                    assertionAttempts: 1
-                }]
+                request: 'Open the citation.',
+                status: 'completed',
+                startedAt: now,
+                endedAt: now,
+                completionSummary: 'Citation ready.',
+                baseline: { kind: 'workspace-snapshot', capturedAt: now },
+                changeSet: {
+                    source: 'task-diff',
+                    diff: 'diff --git a/citation-target.txt b/citation-target.txt\n+four',
+                    files: ['citation-target.txt'],
+                    capturedAt: now
+                }
+            }],
+            resultsDocuments: [{
+                taskId,
+                status: 'ready',
+                generator: 'ai',
+                html: '<!doctype html><html><head><title>Citation</title></head><body><h2 style="font-family: Georgia, serif">根拠</h2><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></body></html>',
+                assertions: [
+                    { text: '変更ファイルがある場合、本文に根拠引用がある', source: 'app', status: 'pass' },
+                    { text: '本文に見出し（h2〜h4）がある', source: 'app', status: 'pass' },
+                    { text: '空の見出しがない', source: 'app', status: 'pass' }
+                ],
+                assertionAttempts: 1
             }]
-        }));
-        localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.migrated.v1', 'true');
-    }, {
-        workspaceUri: pathToFileURL(workspacePath).toString(),
-        sessionId,
-        taskId,
-        now
+        }]
     });
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await waitForApp(page);
+}
+
+async function smokeCitation(page) {
+    const taskId = 'results-citation-smoke-task';
     await page.waitForSelector('.poiesis-results__document');
-    const assertionState = await page.evaluate(taskId => {
-        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-        const state = raw ? JSON.parse(raw) : undefined;
+    const persisted = await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
         const session = state?.sessions?.find(candidate => (candidate.tasks ?? []).some(task => task.id === taskId));
         const task = session?.tasks?.find(candidate => candidate.id === taskId);
         const resultDocument = task?.resultsDocument ?? session?.resultsDocuments?.find(candidate => candidate.taskId === taskId);
-        return {
-            badge: document.querySelector('.poiesis-results__assertion-badge')?.textContent?.replace(/\s+/g, ' ').trim(),
-            badgeAriaLabel: document.querySelector('.poiesis-results__assertion-badge')?.getAttribute('aria-label'),
-            assertions: resultDocument?.assertions,
-            attempts: resultDocument?.assertionAttempts
-        };
-    }, taskId);
+        return Array.isArray(resultDocument?.assertions) && resultDocument.assertions.length === 3;
+    }, timeout);
+    const session = persisted?.sessions?.find(candidate => (candidate.tasks ?? []).some(task => task.id === taskId));
+    const task = session?.tasks?.find(candidate => candidate.id === taskId);
+    const resultDocument = task?.resultsDocument ?? session?.resultsDocuments?.find(candidate => candidate.taskId === taskId);
+    const assertionUi = await page.evaluate(() => ({
+        badge: document.querySelector('.poiesis-results__assertion-badge')?.textContent?.replace(/\s+/g, ' ').trim(),
+        badgeAriaLabel: document.querySelector('.poiesis-results__assertion-badge')?.getAttribute('aria-label')
+    }));
+    const assertionState = {
+        ...assertionUi,
+        assertions: resultDocument?.assertions,
+        attempts: resultDocument?.assertionAttempts
+    };
     assert(assertionState.badge === '条件 3/3'
         && assertionState.badgeAriaLabel === 'Skill 条件 3/3 合格'
         && assertionState.assertions?.length === 3
@@ -623,24 +625,21 @@ async function smokeFallback(page, diagnostics) {
     await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
     writeFileSync(resolve(workspace, 'fallback-new.html'), '<!doctype html>\n<title>Fallback smoke</title>\n', 'utf8');
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
-    await page.waitForFunction(() => {
-        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-        const state = raw ? JSON.parse(raw) : undefined;
+    const persistedBeforeOpen = await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
         const task = state?.sessions?.[0]?.tasks?.at(-1);
         return task?.status === 'completed' && task.resultsDocument?.status === 'ready';
-    });
-    const beforeOpen = await page.evaluate(() => {
-        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-        const state = raw ? JSON.parse(raw) : undefined;
-        const task = state?.sessions?.[0]?.tasks?.at(-1);
-        const agentMessages = [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')];
-        return {
-            activeResults: document.querySelector('#poiesis-results-tab')?.getAttribute('aria-selected') === 'true',
-            iframeCount: document.querySelectorAll('.poiesis-results__document').length,
-            task,
-            conversation: agentMessages.at(-1)?.querySelector('.poiesis-markdown')?.textContent?.trim() ?? ''
-        };
-    });
+    }, timeout);
+    const beforeOpen = {
+        ...await page.evaluate(() => {
+            const agentMessages = [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')];
+            return {
+                activeResults: document.querySelector('#poiesis-results-tab')?.getAttribute('aria-selected') === 'true',
+                iframeCount: document.querySelectorAll('.poiesis-results__document').length,
+                conversation: agentMessages.at(-1)?.querySelector('.poiesis-markdown')?.textContent?.trim() ?? ''
+            };
+        }),
+        task: persistedBeforeOpen?.sessions?.[0]?.tasks?.at(-1)
+    };
     assert(!beforeOpen.activeResults && beforeOpen.iframeCount === 0,
         `Results opened before the explicit tab action: ${JSON.stringify(beforeOpen)}`);
     assert(beforeOpen.task?.resultsDocument?.status === 'ready',
@@ -742,74 +741,69 @@ async function smokeFallback(page, diagnostics) {
     await page.waitForSelector('.poiesis-results__document');
     frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-action="retry-ai-results"]');
-    await page.waitForFunction(() => {
-        const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-        const state = raw ? JSON.parse(raw) : undefined;
+    await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
         return state?.sessions?.[0]?.tasks?.at(-1)?.resultsDocument?.status === 'ready';
-    });
-    await page.evaluate(fixture => {
-        const key = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
-        const raw = localStorage.getItem(key);
-        const state = raw ? JSON.parse(raw) : undefined;
-        const session = state?.sessions?.[0];
-        const task = session?.tasks?.at(-1);
-        if (!session || !task) throw new Error('Fallback Task state was not available for the dense header fixture.');
-        task.title = fixture.title;
-        task.appliedSkills = { agent: fixture.skills, results: [] };
-        task.resultsDocument = {
-            ...task.resultsDocument,
-            status: 'ready',
-            generator: 'ai',
-            providerId: 'codex',
-            fallbackReason: undefined,
-            html: fixture.html,
-            assertions: Array.from({ length: 7 }, (_, index) => ({
-                text: `Dense header assertion ${index + 1}`,
-                source: 'app',
-                status: 'pass'
-            })),
-            assertionAttempts: 1
-        };
-        const originalStartedAt = new Date(task.startedAt).getTime();
-        const history = Array.from({ length: 9 }, (_, index) => {
-            const sequence = index + 1;
-            const startedAt = new Date(originalStartedAt - (10 - sequence) * 60_000).toISOString();
-            return {
-                ...task,
-                id: `${task.id}-history-${sequence}`,
-                title: `${fixture.title} ${sequence}`,
-                startedAt,
-                endedAt: startedAt,
-                resultsDocument: {
-                    ...task.resultsDocument,
-                    taskId: `${task.id}-history-${sequence}`
-                }
+    }, timeout);
+    await replaceDurableFixtures(page, () => {
+        const fixture = { html: nestedAiDocument, skills: denseHeaderSkills, title: denseHeaderTitle };
+        updateDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
+            const session = state?.sessions?.[0];
+            const task = session?.tasks?.at(-1);
+            if (!session || !task) throw new Error('Fallback Task state was not available for the dense header fixture.');
+            task.title = fixture.title;
+            task.appliedSkills = { agent: fixture.skills, results: [] };
+            task.resultsDocument = {
+                ...task.resultsDocument,
+                status: 'ready',
+                generator: 'ai',
+                providerId: 'codex',
+                fallbackReason: undefined,
+                html: fixture.html,
+                assertions: Array.from({ length: 7 }, (_, index) => ({
+                    text: `Dense header assertion ${index + 1}`,
+                    source: 'app',
+                    status: 'pass'
+                })),
+                assertionAttempts: 1
             };
+            const originalStartedAt = new Date(task.startedAt).getTime();
+            const history = Array.from({ length: 9 }, (_, index) => {
+                const sequence = index + 1;
+                const startedAt = new Date(originalStartedAt - (10 - sequence) * 60_000).toISOString();
+                return {
+                    ...task,
+                    id: `${task.id}-history-${sequence}`,
+                    title: `${fixture.title} ${sequence}`,
+                    startedAt,
+                    endedAt: startedAt,
+                    resultsDocument: {
+                        ...task.resultsDocument,
+                        taskId: `${task.id}-history-${sequence}`
+                    }
+                };
+            });
+            session.tasks = [...history, task];
+            session.selectedResultsTaskId = task.id;
+            session.activeTab = 'results';
+            return state;
         });
-        session.tasks = [...history, task];
-        session.selectedResultsTaskId = task.id;
-        session.activeTab = 'results';
-        localStorage.setItem(key, JSON.stringify(state));
-        for (const storageKey of Object.keys(localStorage)) {
-            if (!storageKey.includes('poiesis.requirements.sessions.v1')) continue;
-            try {
-                const stored = JSON.parse(localStorage.getItem(storageKey));
-                for (const requirements of Object.values(stored?.sessions ?? {})) {
-                    for (const requirement of Array.isArray(requirements) ? requirements : []) {
-                        if (requirement.taskIds?.includes(task.id)) {
-                            requirement.title = fixture.title;
-                            requirement.taskIds = session.tasks.map(candidate => candidate.id);
-                        }
+        updateDurableValue(theiaConfig, DURABLE_REQUIREMENTS_KEY, stored => {
+            if (!stored?.sessions) return stored;
+            const sessionState = readDurableValue(theiaConfig, DURABLE_SESSION_KEY);
+            const session = sessionState?.sessions?.[0];
+            const task = session?.tasks?.at(-1);
+            if (!session || !task) return stored;
+            for (const requirements of Object.values(stored.sessions ?? {})) {
+                for (const requirement of Array.isArray(requirements) ? requirements : []) {
+                    if (requirement.taskIds?.includes(task.id)) {
+                        requirement.title = fixture.title;
+                        requirement.taskIds = session.tasks.map(candidate => candidate.id);
                     }
                 }
-                localStorage.setItem(storageKey, JSON.stringify(stored));
-            } catch {
-                // Ignore unrelated storage values that happen to share the suffix.
             }
-        }
-    }, { html: nestedAiDocument, skills: denseHeaderSkills, title: denseHeaderTitle });
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await waitForApp(page);
+            return stored;
+        });
+    });
     await page.waitForSelector('.poiesis-results__document');
     await waitForFinishedResultsContent(page, '[data-live-check-heading]');
     const denseHeader = await page.evaluate(expectedTitle => {
@@ -1013,6 +1007,19 @@ async function waitForServer(url, child, waitTimeout) {
 
 async function waitForApp(page) {
     await page.waitForSelector('#poiesis-window-host .poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
+}
+
+function writeSessionFixture(state) {
+    writeDurableValue(theiaConfig, DURABLE_SESSION_KEY, state);
+    writeDurableValue(theiaConfig, DURABLE_SESSION_MIGRATION_KEY, true);
+}
+
+async function replaceDurableFixtures(page, mutate) {
+    await page.goto('about:blank', { waitUntil: 'domcontentloaded' });
+    await waitForDurableWritesToSettle(theiaConfig, timeout);
+    mutate();
+    await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout });
+    await waitForApp(page);
 }
 
 function stopProcessTree(child) {

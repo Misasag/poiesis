@@ -1,16 +1,15 @@
 import { Emitter, Event } from '@theia/core/lib/common';
 import URI from '@theia/core/lib/common/uri';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { WorkspaceService } from '@theia/workspace/lib/browser';
 import {
     ExecutionTask,
-    isNoChangeTask,
     summarizeTaskChangeSet,
     TaskChangeSet,
     TaskChangedFileSummary,
     TaskResultDocument,
     TaskService
 } from './task-service';
+import { hasReadableResultDocument, taskProducesResult } from '../common/task-outcome';
 import { ResultsSkillBundle } from '../common/skill-bundle';
 import {
     ResultsGenerationRequest,
@@ -233,7 +232,6 @@ export class AiResultsSkill implements ResultsSkill {
         @inject(ResultsGenerationServer) protected readonly generationServer: ResultsGenerationServer,
         @inject(BundledResultsSkill) protected readonly fallbackSkill: BundledResultsSkill,
         @inject(ResultsGenerationContext) protected readonly context: ResultsGenerationContext,
-        @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
         @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService,
         @inject(TaskService) protected readonly taskService: TaskService,
         @inject(ResultsAssertionServer) protected readonly assertionServer: ResultsAssertionServer
@@ -247,18 +245,17 @@ export class AiResultsSkill implements ResultsSkill {
         const model = this.context.model.trim() || undefined;
         const effort = this.context.effort || undefined;
         const documentId = input.documentId ?? input.task.id;
+        const workspaceUri = input.task.workspaceUri;
         this.cancelledDocumentIds.delete(documentId);
-        const workspace = this.workspaceService.tryGetRoots()[0]
-            ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
-        if (!workspace) {
+        if (!workspaceUri) {
             this.taskService.setAppliedSkills(input.task.id, 'results', []);
-            console.warn('[Poiesis][Results diagnostics] AI generation skipped: no local Workspace is open.');
+            console.warn('[Poiesis][Results diagnostics] AI generation skipped: the Task has no local Workspace.');
             const fallback = await this.fallbackSkill.generate(input, { fallback: true });
             return { ...fallback, fallbackReason: 'no-workspace' };
         }
 
         try {
-            const workspaceSkills = await this.workspaceSkillService.buildPrompt(workspace.resource.toString(), 'results');
+            const workspaceSkills = await this.workspaceSkillService.buildPrompt(workspaceUri, 'results');
             this.taskService.setAppliedSkills(input.task.id, 'results', workspaceSkills.includedSkillIds);
             for (const diagnostic of workspaceSkills.diagnostics) {
                 console.warn(`[Poiesis] ${diagnostic}`);
@@ -272,7 +269,7 @@ export class AiResultsSkill implements ResultsSkill {
                 providerId,
                 model,
                 effort,
-                workspaceUri: workspace.resource.toString(),
+                workspaceUri,
                 taskMetadata: {
                     status: input.task.status,
                     title: input.task.title,
@@ -500,6 +497,7 @@ export class AiResultsSkill implements ResultsSkill {
 /** App-owned trigger: skills run only after a Task ends or is cancelled. */
 @injectable()
 export class ResultsService {
+    protected static readonly UPDATE_ERROR = '成果の更新に失敗しました。';
     protected readonly documents = new Map<string, TaskResultDocument>();
     protected readonly requirementChangeSets = new Map<string, TaskChangeSet>();
     protected readonly onDidChangeEmitter = new Emitter<TaskResultDocument>();
@@ -507,6 +505,10 @@ export class ResultsService {
     protected readonly generationTokens = new Map<string, number>();
     protected readonly generationPromises = new Map<string, Promise<void>>();
     protected readonly requirementGenerationPromises = new Map<string, Promise<void>>();
+    protected readonly requestedRequirementVersions = new Map<string, string>();
+    protected readonly appliedRequirementVersions = new Map<string, string>();
+    protected readonly attemptedRequirementVersions = new Map<string, string>();
+    protected readonly restoredGenerationTaskIds = new Set<string>();
     protected generationSequence = 0;
 
     constructor(
@@ -525,12 +527,15 @@ export class ResultsService {
             if (event.type === 'tasks-changed') {
                 for (const requirementId of event.requirementIds) {
                     const requirement = this.requirementService.get(requirementId);
-                    const tasks = requirement?.taskIds.map(taskId => this.taskService.get(taskId))
-                        .filter(task => task && !isNoChangeTask(task)) ?? [];
-                    if (requirement && !tasks.some(task => task?.status === 'running')) {
+                    const attachedTasks = requirement?.taskIds.map(taskId => this.taskService.get(taskId))
+                        .filter((task): task is ExecutionTask => Boolean(task)) ?? [];
+                    if (requirement && !attachedTasks.some(task => task.status === 'running')) {
                         void this.startRequirementGeneration(requirementId);
                     } else if (!requirement) {
                         this.requirementChangeSets.delete(requirementId);
+                        this.requestedRequirementVersions.delete(requirementId);
+                        this.appliedRequirementVersions.delete(requirementId);
+                        this.attemptedRequirementVersions.delete(requirementId);
                     }
                 }
             }
@@ -567,31 +572,88 @@ export class ResultsService {
         }
         for (const taskId of taskIds) {
             const task = this.taskService.get(taskId);
-            if (task && !this.get(taskId)) {
-                this.startGeneration(task);
+            const document = this.get(taskId);
+            if (task && (!document || document.status === 'generating')) {
+                this.restoredGenerationTaskIds.add(taskId);
             }
         }
     }
 
     async restoreRequirements(): Promise<void> {
-        await Promise.all(this.requirementService.list().map(async requirement => {
+        for (const requirement of this.requirementService.list()) {
             const tasks = this.finishedRequirementTasks(requirement);
             if (!tasks.length) {
-                return;
+                continue;
             }
-            await Promise.all(tasks.map(task => this.generationPromises.get(task.id)));
             if (tasks.length === 1) {
                 const document = this.get(tasks[0].id);
                 if (document) {
-                    this.requirementService.setResultsDocument(requirement.id, document);
+                    const version = this.requirementOutcomeVersion(requirement);
+                    this.requirementService.setResultsDocument(requirement.id, { ...document, sourceVersion: version });
+                    if (document.updateError || document.status === 'failed') {
+                        this.attemptedRequirementVersions.set(requirement.id, version);
+                    } else if (document.status === 'ready') {
+                        this.appliedRequirementVersions.set(requirement.id, version);
+                    }
                 }
                 this.requirementChangeSets.set(requirement.id, tasks[0].changeSet!);
-            } else if (!requirement.resultsDocument) {
-                await this.startRequirementGeneration(requirement.id);
-            } else {
-                await this.cumulativeChangeSet(requirement);
+            } else if (requirement.resultsDocument) {
+                const version = this.requirementOutcomeVersion(requirement);
+                if (requirement.resultsDocument.updateError || requirement.resultsDocument.status === 'failed') {
+                    this.attemptedRequirementVersions.set(requirement.id, version);
+                } else if (requirement.resultsDocument.status === 'ready'
+                    && this.restoredRequirementDocumentIsCurrent(requirement, version)) {
+                    this.appliedRequirementVersions.set(requirement.id, version);
+                }
             }
-        }));
+        }
+    }
+
+    /** Restarts incomplete restored work only after Session and Requirement membership is stable. */
+    resumeRestoredGeneration(): void {
+        const taskIds = [...this.restoredGenerationTaskIds];
+        this.restoredGenerationTaskIds.clear();
+        const pendingRequirementIds = new Set<string>();
+        for (const taskId of taskIds) {
+            const task = this.taskService.get(taskId);
+            if (!task) {
+                continue;
+            }
+            pendingRequirementIds.add(task.requirementId);
+            void this.startGeneration(task).catch(error =>
+                console.warn('[Poiesis] Could not resume restored Results generation.', error)
+            );
+        }
+        for (const requirement of this.requirementService.list()) {
+            const tasks = this.finishedRequirementTasks(requirement);
+            if (tasks[0]) {
+                void this.requirementClassificationService.suggestTitle(tasks[0].id).catch(error =>
+                    console.warn('[Poiesis][Requirement title] Could not name the restored outcome.', error)
+                );
+            }
+            if (tasks.length < 2) {
+                continue;
+            }
+            const document = requirement.resultsDocument;
+            const needsUpdate = document?.status === 'generating'
+                || document?.status === 'ready' && !document.updateError
+                    && this.appliedRequirementVersions.get(requirement.id) !== this.requirementOutcomeVersion(requirement);
+            if (needsUpdate) {
+                if (!pendingRequirementIds.has(requirement.id)) {
+                    void this.startRequirementGeneration(requirement.id).catch(error =>
+                        console.warn('[Poiesis] Could not resume restored Requirement Results.', error)
+                    );
+                }
+            } else if (requirement.resultsDocument) {
+                void this.cumulativeChangeSet(requirement).catch(error =>
+                    console.warn('[Poiesis] Could not restore cumulative Results evidence.', error)
+                );
+            } else if (!pendingRequirementIds.has(requirement.id)) {
+                void this.startRequirementGeneration(requirement.id).catch(error =>
+                    console.warn('[Poiesis] Could not resume restored Requirement Results.', error)
+                );
+            }
+        }
     }
 
     async retry(taskId: string): Promise<void> {
@@ -602,7 +664,12 @@ export class ResultsService {
     }
 
     async retryRequirement(requirementId: string): Promise<void> {
-        await this.startRequirementGeneration(requirementId);
+        const requirement = this.requirementService.get(requirementId);
+        const tasks = requirement ? this.finishedRequirementTasks(requirement) : [];
+        if (tasks.length === 1) {
+            await this.retry(tasks[0].id);
+        }
+        await this.startRequirementGeneration(requirementId, true);
     }
 
     async requirementChangeSet(requirementId: string): Promise<TaskChangeSet | undefined> {
@@ -616,6 +683,7 @@ export class ResultsService {
 
     /** Resolves only after the terminal Task's Results document has been attached to that Task. */
     async whenFinished(taskId: string): Promise<TaskResultDocument | undefined> {
+        await this.taskService.whenFinalized(taskId);
         await this.generationPromises.get(taskId);
         return this.get(taskId);
     }
@@ -636,16 +704,23 @@ export class ResultsService {
         if (!this.shouldGenerate(task)) {
             this.documents.delete(task.id);
             this.taskService.setResultsDocument(task.id, undefined);
+            const requirementId = this.taskService.get(task.id)?.requirementId ?? task.requirementId;
+            void this.startRequirementGeneration(requirementId).catch(error =>
+                console.warn('[Poiesis] Could not finish pending Requirement Results.', error)
+            );
             return Promise.resolve();
         }
+        const current = this.generationPromises.get(task.id);
+        if (current && this.generationTokens.has(task.id)) {
+            return current;
+        }
+        void this.requirementClassificationService.suggestTitle(task.id).catch(error =>
+            console.warn('[Poiesis][Requirement title] Suggestion failed unexpectedly.', error)
+        );
         const generation = this.generateTask(task).then(() => {
             void this.recordPendingSkillProposals(task).catch(error =>
                 console.warn('[Poiesis] Could not record pending Skill proposals.', error)
             );
-            void this.requirementClassificationService.suggestTitle(task.id)
-                .catch(error =>
-                    console.warn('[Poiesis][Requirement title] Suggestion failed unexpectedly.', error)
-                );
             void this.requirementClassificationService.classify(task.id)
                 .catch(error =>
                     console.warn('[Poiesis][Requirement classification] Classification failed unexpectedly.', error)
@@ -655,6 +730,10 @@ export class ResultsService {
                         console.warn('[Poiesis] Could not generate Requirement Results in the background.', error)
                     );
                 });
+        }).finally(() => {
+            if (this.generationPromises.get(task.id) === generation) {
+                this.generationPromises.delete(task.id);
+            }
         });
         this.generationPromises.set(task.id, generation);
         return generation;
@@ -676,8 +755,11 @@ export class ResultsService {
         const changeSet = task.changeSet!;
         const generationToken = ++this.generationSequence;
         const generationStartedAt = Date.now();
+        const previousDocument = this.get(task.id);
         this.generationTokens.set(task.id, generationToken);
-        this.set({ taskId: task.id, status: 'generating' }, task);
+        if (!hasReadableResultDocument(previousDocument)) {
+            this.set({ taskId: task.id, status: 'generating' }, task);
+        }
         try {
             const generated = await this.resultsSkill.generate({ task, changeSet });
             if (this.generationTokens.get(task.id) !== generationToken) {
@@ -697,13 +779,21 @@ export class ResultsService {
             if (this.generationTokens.get(task.id) !== generationToken) {
                 return;
             }
-            this.set({
-                taskId: task.id,
-                status: 'failed',
-                error: error instanceof Error ? error.message : String(error),
-                generatedAt: new Date().toISOString(),
-                durationMs: Math.max(0, Date.now() - generationStartedAt)
-            }, task);
+            if (hasReadableResultDocument(previousDocument)) {
+                this.set({
+                    ...previousDocument!,
+                    status: 'ready',
+                    updateError: ResultsService.UPDATE_ERROR
+                }, task);
+            } else {
+                this.set({
+                    taskId: task.id,
+                    status: 'failed',
+                    error: error instanceof Error ? error.message : String(error),
+                    generatedAt: new Date().toISOString(),
+                    durationMs: Math.max(0, Date.now() - generationStartedAt)
+                }, task);
+            }
         } finally {
             if (this.generationTokens.get(task.id) === generationToken) {
                 this.generationTokens.delete(task.id);
@@ -711,45 +801,98 @@ export class ResultsService {
         }
     }
 
-    protected startRequirementGeneration(requirementId: string): Promise<void> {
+    protected startRequirementGeneration(requirementId: string, force = false): Promise<void> {
+        const requirement = this.requirementService.get(requirementId);
+        if (!requirement) {
+            this.requestedRequirementVersions.delete(requirementId);
+            this.appliedRequirementVersions.delete(requirementId);
+            this.attemptedRequirementVersions.delete(requirementId);
+            return Promise.resolve();
+        }
+        const attachedTasks = requirement.taskIds.map(taskId => this.taskService.get(taskId))
+            .filter((task): task is ExecutionTask => Boolean(task));
+        if (attachedTasks.some(task => task.status === 'running')) {
+            return this.requirementGenerationPromises.get(requirementId) ?? Promise.resolve();
+        }
+        const requestedVersion = this.requirementOutcomeVersion(requirement);
+        if (!requestedVersion) {
+            return this.requirementGenerationPromises.get(requirementId) ?? Promise.resolve();
+        }
+        this.requestedRequirementVersions.set(requirementId, requestedVersion);
+        if (force) {
+            this.appliedRequirementVersions.delete(requirementId);
+        }
         const current = this.requirementGenerationPromises.get(requirementId);
         if (current) {
             return current;
         }
-        const generation = this.generateRequirement(requirementId).finally(() => {
+        if (!force && requestedVersion === this.attemptedRequirementVersions.get(requirementId)) {
+            return Promise.resolve();
+        }
+        const generation = this.drainRequirementGenerations(requirementId).finally(() => {
             if (this.requirementGenerationPromises.get(requirementId) === generation) {
                 this.requirementGenerationPromises.delete(requirementId);
+            }
+            if (this.requestedRequirementVersions.get(requirementId)
+                !== this.attemptedRequirementVersions.get(requirementId)
+                && this.requestedRequirementVersions.get(requirementId)
+                    !== this.appliedRequirementVersions.get(requirementId)) {
+                void this.startRequirementGeneration(requirementId).catch(error =>
+                    console.warn('[Poiesis] Could not generate the newest Requirement Results.', error)
+                );
             }
         });
         this.requirementGenerationPromises.set(requirementId, generation);
         return generation;
     }
 
-    protected async generateRequirement(requirementId: string): Promise<void> {
+    protected async drainRequirementGenerations(requirementId: string): Promise<void> {
+        while (true) {
+            const requestedVersion = this.requestedRequirementVersions.get(requirementId);
+            if (!requestedVersion || requestedVersion === this.appliedRequirementVersions.get(requirementId)) {
+                return;
+            }
+            this.attemptedRequirementVersions.set(requirementId, requestedVersion);
+            const applied = await this.generateRequirement(requirementId, requestedVersion);
+            if (applied) {
+                this.appliedRequirementVersions.set(requirementId, requestedVersion);
+            }
+            const latestVersion = this.requestedRequirementVersions.get(requirementId);
+            if (latestVersion === requestedVersion) {
+                return;
+            }
+        }
+    }
+
+    protected async generateRequirement(requirementId: string, requestedVersion: string): Promise<boolean> {
         const requirement = this.requirementService.get(requirementId);
-        if (!requirement) {
-            return;
+        if (!requirement || !this.requirementGenerationIsCurrent(requirement, requestedVersion)) {
+            return false;
         }
         const tasks = this.finishedRequirementTasks(requirement);
         if (!tasks.length || tasks.some(task => !task.changeSet)) {
-            return;
+            return false;
         }
         if (tasks.length === 1) {
             const document = this.get(tasks[0].id);
-            if (document) {
-                this.requirementService.setResultsDocument(requirement.id, document);
+            if (document && this.requirementGenerationIsCurrent(requirement, requestedVersion)) {
+                this.requirementService.setResultsDocument(requirement.id, { ...document, sourceVersion: requestedVersion });
                 this.requirementChangeSets.set(requirement.id, tasks[0].changeSet!);
                 this.onDidChangeEmitter.fire(document);
+                return true;
             }
-            return;
+            return false;
         }
 
         const latestTask = tasks.at(-1)!;
         const documentId = this.requirementDocumentId(requirement.id);
         const generationToken = ++this.generationSequence;
         const generationStartedAt = Date.now();
+        const previousDocument = requirement.resultsDocument;
         this.generationTokens.set(documentId, generationToken);
-        this.setRequirementDocument(requirement, { taskId: documentId, status: 'generating' });
+        if (!hasReadableResultDocument(previousDocument)) {
+            this.setRequirementDocument(requirement, { taskId: documentId, status: 'generating' });
+        }
         try {
             const changeSet = await this.cumulativeChangeSet(requirement);
             const generated = await this.resultsSkill.generate({
@@ -758,8 +901,9 @@ export class ResultsService {
                 documentId,
                 requirement: { id: requirement.id, title: requirement.title, tasks }
             });
-            if (this.generationTokens.get(documentId) !== generationToken) {
-                return;
+            if (this.generationTokens.get(documentId) !== generationToken
+                || !this.requirementGenerationIsCurrent(requirement, requestedVersion)) {
+                return false;
             }
             if (!/^(?:<!doctype\s+html[^>]*>\s*)?<html[\s>]/i.test(generated.html.trim())) {
                 throw new Error('Results skill did not return one complete HTML document.');
@@ -769,24 +913,77 @@ export class ResultsService {
                 status: 'ready',
                 ...generated,
                 generatedAt: new Date().toISOString(),
+                sourceVersion: requestedVersion,
                 durationMs: Math.max(0, Date.now() - generationStartedAt)
             });
+            return true;
         } catch (error) {
-            if (this.generationTokens.get(documentId) !== generationToken) {
-                return;
+            if (this.generationTokens.get(documentId) !== generationToken
+                || !this.requirementGenerationIsCurrent(requirement, requestedVersion)) {
+                return false;
             }
-            this.setRequirementDocument(requirement, {
-                taskId: documentId,
-                status: 'failed',
-                error: error instanceof Error ? error.message : String(error),
-                generatedAt: new Date().toISOString(),
-                durationMs: Math.max(0, Date.now() - generationStartedAt)
-            });
+            if (hasReadableResultDocument(previousDocument)) {
+                this.setRequirementDocument(requirement, {
+                    ...previousDocument!,
+                    status: 'ready',
+                    updateError: ResultsService.UPDATE_ERROR
+                });
+            } else {
+                this.setRequirementDocument(requirement, {
+                    taskId: documentId,
+                    status: 'failed',
+                    error: error instanceof Error ? error.message : String(error),
+                    generatedAt: new Date().toISOString(),
+                    durationMs: Math.max(0, Date.now() - generationStartedAt)
+                });
+            }
+            return false;
         } finally {
             if (this.generationTokens.get(documentId) === generationToken) {
                 this.generationTokens.delete(documentId);
             }
         }
+    }
+
+    protected restoredRequirementDocumentIsCurrent(requirement: Requirement, version: string): boolean {
+        const document = requirement.resultsDocument;
+        if (document?.sourceVersion !== undefined) {
+            return document.sourceVersion === version;
+        }
+        // Legacy aggregate timestamps can prove coverage; a copied single-task document cannot.
+        if (document?.taskId !== this.requirementDocumentId(requirement.id)) {
+            return false;
+        }
+        const generatedAt = Date.parse(document.generatedAt ?? '');
+        return Number.isFinite(generatedAt) && this.finishedRequirementTasks(requirement).every(task =>
+            [task.endedAt, task.changeSet?.capturedAt, task.resultsDocument?.generatedAt]
+                .every(timestamp => {
+                    const time = Date.parse(timestamp ?? '');
+                    return Number.isFinite(time) && time <= generatedAt;
+                })
+        );
+    }
+
+    protected requirementOutcomeVersion(requirement: Requirement): string {
+        return this.finishedRequirementTasks(requirement).map(task => [
+            task.id,
+            task.endedAt ?? '',
+            task.outcomeKind ?? 'legacy',
+            task.changeSet?.capturedAt ?? '',
+            task.resultsDocument?.status ?? '',
+            task.resultsDocument?.generatedAt ?? ''
+        ].join(':')).join('|');
+    }
+
+    protected requirementGenerationIsCurrent(requirement: Requirement, requestedVersion: string): boolean {
+        const current = this.requirementService.get(requirement.id);
+        if (!current || this.requestedRequirementVersions.get(requirement.id) !== requestedVersion) {
+            return false;
+        }
+        const attachedTasks = current.taskIds.map(taskId => this.taskService.get(taskId))
+            .filter((task): task is ExecutionTask => Boolean(task));
+        return !attachedTasks.some(task => task.status === 'running')
+            && this.requirementOutcomeVersion(current) === requestedVersion;
     }
 
     protected async cumulativeChangeSet(requirement: Requirement): Promise<TaskChangeSet> {
@@ -832,7 +1029,7 @@ export class ResultsService {
     protected finishedRequirementTasks(requirement: Requirement): ExecutionTask[] {
         return requirement.taskIds
             .map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task && task.status !== 'running' && task.changeSet && !isNoChangeTask(task)))
+            .filter((task): task is ExecutionTask => Boolean(task && task.changeSet && taskProducesResult(task)))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
     }
 
@@ -857,8 +1054,6 @@ export class ResultsService {
     }
 
     protected shouldGenerate(task: ExecutionTask): boolean {
-        return task.status !== 'running'
-            && Boolean(task.changeSet)
-            && !isNoChangeTask(task);
+        return Boolean(task.changeSet) && taskProducesResult(task);
     }
 }

@@ -39,6 +39,9 @@ const agentWidget = (await Promise.all([
     'agent-window/src/browser/components/elapsed.tsx'
 ].map(read))).join('\n');
 const sessionStore = await read('agent-window/src/browser/agent-window/session-store.ts');
+const agentPartSource = await read('agent-window/src/browser/agent-window/agent-part.tsx');
+const railPartSource = await read('agent-window/src/browser/agent-window/rail-part.tsx');
+const workspaceContext = await read('agent-window/src/browser/agent-window/workspace-context.ts');
 const composerBehavior = await read('agent-window/src/browser/composer-behavior.ts');
 const composerBehaviorTest = await read('scripts/test-composer-behavior.mjs');
 const agentStyles = (await Promise.all([
@@ -63,6 +66,9 @@ const designShotContribution = await read('agent-window/src/browser/design-shot-
 const backendModule = await read('agent-window/src/node/agent-window-backend-module.ts');
 const agentContribution = await read('agent-window/src/browser/agent-window-contribution.ts');
 const providerSource = await read('agent-window/src/common/agent-provider.ts');
+const agentPrompt = await read('agent-window/src/common/agent-prompt.ts');
+const taskOutcome = await read('agent-window/src/common/task-outcome.ts');
+const sessionPersistence = await read('agent-window/src/common/session-persistence.ts');
 const runtimeProtocol = await read('agent-window/src/common/agent-runtime-protocol.ts');
 const cliDetectionLifecycle = await read('agent-window/src/common/cli-detection-lifecycle.ts');
 const cliDetectionLifecycleTest = await read('scripts/test-cli-detection-lifecycle.mjs');
@@ -93,6 +99,9 @@ const resultsAssertionsTest = await read('scripts/test-results-assertions.mjs');
 const resultsAssertionProtocol = await read('agent-window/src/common/results-assertion-protocol.ts');
 const resultsAssertionServer = await read('agent-window/src/node/results-assertion-server.ts');
 const globalStorageService = await read('agent-window/src/browser/global-storage-service.ts');
+const durableDataStore = await read('agent-window/src/common/durable-data-store.ts');
+const durableStorageProtocol = await read('agent-window/src/common/durable-storage-protocol.ts');
+const durableStorageServer = await read('agent-window/src/node/durable-storage-server.ts');
 const skillDocument = await read('agent-window/src/browser/skill-document.ts');
 const workspaceSkillService = await read('agent-window/src/browser/workspace-skill-service.ts');
 const textDiff = await read('agent-window/src/browser/text-diff.ts');
@@ -103,12 +112,21 @@ const knownCliRegistry = await read('agent-window/src/node/known-cli-registry.ts
 const cliArgs = await read('agent-window/src/node/cli-args.ts');
 const cliArgsTest = await read('scripts/test-cli-args.mjs');
 const hiddenProcess = await read('agent-window/src/node/hidden-process.ts');
+const hiddenProcessEnvTest = await read('scripts/test-hidden-process-env.mjs');
 const skillBundleContract = await read('agent-window/src/common/skill-bundle.ts');
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const snapshotStore = await read('agent-window/src/node/snapshot-store.ts');
 const snapshotStoreTest = await read('scripts/test-snapshot-store.mjs');
 const requirementModelTest = await read('scripts/test-requirement-model.mjs');
 const requirementClassifierTest = await read('scripts/test-requirement-classifier.mjs');
+const outcomeSemanticsTest = await read('scripts/test-outcome-semantics.mjs');
+const conversationTransportTest = await read('scripts/test-conversation-transport.mjs');
+const sessionDurabilityTest = await read('scripts/test-session-durability.mjs');
+const durableStorageTest = await read('scripts/test-durable-storage.mjs');
+const resultsGenerationEventsTest = await read('scripts/test-results-generation-events.mjs');
+const deferredResultsCompletionTest = await read('scripts/test-deferred-results-completion.mjs');
+const sessionRestoreBackgroundResultsTest = await read('scripts/test-session-restore-background-results.mjs');
+const resultsContinuitySmoke = await read('scripts/smoke-results-continuity.mjs');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
 const agentRichContentSmoke = await read('scripts/smoke-agent-rich-content.mjs');
 const markdownSmoke = await read('scripts/smoke-markdown.mjs');
@@ -344,8 +362,8 @@ for (const marker of [
     'expanded-maximized',
     'taskCountAfterUpdate',
     'snapshot.title.width >= snapshot.header.width * 0.45',
-    "snapshot.headerStyle.metaWrap === 'wrap'",
-    "snapshot.headerStyle.badgeWrap === 'wrap'",
+    'snapshot.headerStyle.metaBounds.every',
+    'snapshot.headerStyle.metaRows === 1',
     'titleWidthRatio'
 ]) {
     assert.ok(resultsQuestionSmoke.includes(marker), `Results task rail smoke is missing ${marker}`);
@@ -457,7 +475,7 @@ for (const marker of [
     'effort: session.effort',
     'activityParser: createAgentActivityParser(session.providerId, session.workspacePath)',
     'const result = run.activityParser.consumeLine(line)',
-    'this.taskService.recordActivity(run.taskId, activity)',
+    'this.taskService.recordActivity(run.taskId, visibleActivity)',
     "this.taskService.setAppliedSkills(task.id, 'agent', workspaceSkills.includedSkillIds)",
     "type: 'activity'",
     "type: 'progress'",
@@ -471,10 +489,11 @@ for (const marker of [
     'elapsed < 1_000',
     'type: \'message-delta\'',
     'type: \'message-completed\'',
-    'await this.taskService.end(run.taskId, run.finalMessage?.trim()',
+    'const completion = parseAgentCompletion(',
+    'await this.taskService.end(',
     'await this.runtimeServer.cancelCodex',
     'await this.taskService.cancel(run.taskId)',
-    'You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.'
+    'buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)'
 ]) {
     assert.ok(cliProvider.includes(marker), `CLI AgentProvider is missing ${marker}`);
 }
@@ -533,7 +552,8 @@ for (const marker of [
     'setRequirementClassification(',
     'baselineSnapshotId?: string',
     'endSnapshotId?: string',
-    "async end(taskId: string, completionSummary?: string)",
+    'async end(\n        taskId: string,',
+    'outcomeKind?: TaskOutcomeKind',
     'completionSummary?: string',
     "async fail(taskId: string, failure?: TaskFailure)",
     "async cancel(taskId: string)",
@@ -543,6 +563,8 @@ for (const marker of [
     'captureGitChangeSet',
     'whenBaselineCaptured',
     'registerTerminalFinalizer(finalizer:',
+    'terminalFinalizationPromises',
+    'whenFinalized(taskId: string)',
     'summarizeTaskChangeSet(changeSet:',
     'formatTaskEndedAtJst(value:',
     "timeZone: 'Asia/Tokyo'",
@@ -578,23 +600,149 @@ for (const marker of [
 ]) {
     assert.ok(snapshotStore.includes(marker), `SnapshotStore is missing ${marker}`);
 }
+for (const marker of [
+    "'.npm-cache/_npx'",
+    "'.npm-cache/_cacache'",
+    "'.npm-cache/_logs'",
+    "'.npm-cache/_update-notifier-last-checked'",
+    'NPM_RUNTIME_ARTIFACT_EXCLUDES',
+    'trackedRuntimeArtifactPaths(repository.workspacePath)',
+    '!this.isNpmRuntimeArtifact(path) || trackedRuntimeArtifacts.has',
+    "'--', ...filteredFiles"
+]) {
+    assert.ok(snapshotStore.includes(marker), `Snapshot npm runtime filtering is missing ${marker}`);
+}
 assert.ok(runtimeServer.includes('this.snapshotStore.captureChangeSet(baselineSnapshotId)'));
 assert.ok(runtimeServer.includes('this.snapshotStore.captureBetween(request)'));
 assert.ok(snapshotStoreTest.includes("for (const kind of ['git', 'plain'])"));
 assert.ok(snapshotStoreTest.includes('const secondStore = new SnapshotStore(storeRoot)'));
+assert.ok(snapshotStoreTest.includes('cache-only changes must not become task evidence.')
+    && snapshotStoreTest.includes('mixed changes must retain only source evidence.')
+    && snapshotStoreTest.includes('legacy cache entries must be filtered from file evidence.')
+    && snapshotStoreTest.includes('legacy cache entries must be filtered from diff evidence.')
+    && snapshotStoreTest.includes('cumulative filtering must retain source evidence only.')
+    && snapshotStoreTest.includes('A user-authored Git tracked file under a similarly named directory must be preserved.'),
+    'Snapshot runtime-cache regression coverage is incomplete');
 assert.ok(!taskService.includes("kind: 'placeholder'"), 'TaskService must capture a real baseline');
 for (const marker of [
     'restore(tasks: readonly ExecutionTask[])',
     "failure: { summary: 'アプリ終了により中断されました' }",
     'remove(taskIds: Iterable<string>)',
-    'export function isNoChangeTask(task: ExecutionTask): boolean',
-    "task.status === 'completed'",
-    '!task.changeSet?.error',
-    'task.changeSet?.files.length === 0',
-    '!task.changeSet.diff.trim()'
+    'outcomeKind?: TaskOutcomeKind',
+    'restoredDurableTaskCandidates(tasks)'
 ]) {
     assert.ok(taskService.includes(marker), `Task persistence is missing ${marker}`);
 }
+for (const marker of [
+    'export function parseAgentCompletion',
+    'export function taskProducesResult',
+    'export function hasReadableResultDocument',
+    "task.outcomeKind === 'result'",
+    'hasMaterialTaskChanges(task)',
+    'hasReadableResultDocument(task.resultsDocument)'
+]) {
+    assert.ok(taskOutcome.includes(marker), `Outcome semantics are missing ${marker}`);
+}
+for (const marker of [
+    'An ordinary conversation must not create a Result.',
+    'A concrete design outcome must produce a Result without file changes.',
+    'An empty failed attempt must not become a polished Result.',
+    'Material partial changes must remain visible'
+]) {
+    assert.ok(outcomeSemanticsTest.includes(marker), `Outcome semantics test is missing ${marker}`);
+}
+for (const marker of [
+    'MAX_AGENT_CONTEXT_TURNS = 40',
+    'MAX_AGENT_CONTEXT_CHARS = 32_000',
+    'export function buildAgentExecutionPrompt',
+    'Later corrections override earlier details.',
+    '<!-- poiesis-outcome: result -->',
+    '<!-- poiesis-outcome: conversation -->'
+]) {
+    assert.ok(agentPrompt.includes(marker), `Agent prompt continuity is missing ${marker}`);
+}
+assert.ok(conversationTransportTest.includes('turnsAfterName\":24')
+    && conversationTransportTest.includes('The latest correction must survive bounding.')
+    && conversationTransportTest.includes('isolatedPrompt'),
+    'Conversation transport regression coverage is incomplete');
+assert.ok(sessionPersistence.includes('tasksForDurableSession')
+    && !sessionPersistence.includes('.slice(-10)'),
+    'Durable Task retention must not use the old last-ten cap');
+assert.ok(sessionDurabilityTest.includes('length, 15')
+    && sessionDurabilityTest.includes('legacyResultRetained'),
+    'Session durability regression coverage must restore more than ten Tasks and a legacy Result');
+for (const marker of [
+    'class DurableDataStore',
+    'this.writes.get(key)',
+    'previous.catch(() => undefined).then',
+    "operation: 'migrate'"
+]) {
+    assert.ok(durableDataStore.includes(marker), `Durable storage coordination is missing ${marker}`);
+}
+assert.ok(globalStorageService.includes('@inject(DurableStorageServer)')
+    && globalStorageService.includes('this.durableStorageServer.write(key, contents)')
+    && globalStorageService.includes('会話と成果を保存できませんでした。再試行してください。'),
+    'The browser storage adapter must use the durable backend and surface save failures');
+assert.ok(durableStorageProtocol.includes("durableStorageServerPath = '/services/poiesis/durable-storage'")
+    && backendModule.includes('bind(DurableStorageServer).to(DurableStorageServerImpl).inSingletonScope()')
+    && moduleSource.includes('.createProxy<DurableStorageServer>(durableStorageServerPath)'),
+    'The profile-scoped durable storage RPC is not bound end to end');
+for (const marker of [
+    'class DurableFileStore',
+    'EnvVariablesServer',
+    "resolve(FileUri.fsPath(configDir), 'poiesis', 'state-v1')",
+    "open(lockPath, 'wx')",
+    'await rename(paths.target, paths.backup)',
+    'await rename(paths.temporary, paths.target)',
+    'recoverInterruptedReplacement(paths)',
+    'A reload can still read and restore the preserved backup.'
+]) {
+    assert.ok(durableStorageServer.includes(marker), `Durable replacement is missing ${marker}`);
+}
+assert.ok(durableStorageTest.includes("length: 18")
+    && durableStorageTest.includes('injected replacement-stage failure')
+    && durableStorageTest.includes('injected immediate-restore failure')
+    && durableStorageTest.includes('A read must wait for the newest queued write.')
+    && durableStorageTest.includes('Separate backend clients must be serialized by the filesystem lock')
+    && durableStorageTest.includes('A real reload must recover the last successful value')
+    && durableStorageTest.includes('A later read must retry and durably complete an incomplete migration.'),
+    'Durable storage capacity, ordering, migration, replacement, and reload coverage is incomplete');
+assert.ok(resultsGenerationEventsTest.includes('A running ordinary question must not regenerate an older aggregate.')
+    && resultsGenerationEventsTest.includes('An outcome that finishes during generation must be coalesced')
+    && resultsGenerationEventsTest.includes('A stale generation must not overwrite')
+    && resultsGenerationEventsTest.includes('A task update failure must preserve the readable body.')
+    && resultsGenerationEventsTest.includes('A failed aggregate version must not be recorded as successfully applied.')
+    && resultsGenerationEventsTest.includes('An ordinary question after an update failure must not retry')
+    && resultsGenerationEventsTest.includes('Reload must not promote a failed aggregate version')
+    && resultsGenerationEventsTest.includes('successful explicit aggregate retry must clear the update error'),
+    'Results generation event regression coverage is incomplete');
+assert.ok(deferredResultsCompletionTest.includes('The final Agent response must complete while Results is pending.')
+    && deferredResultsCompletionTest.includes('The provider must retain the run until final change evidence is captured.')
+    && deferredResultsCompletionTest.includes('A second turn must proceed before prior Results settles.')
+    && deferredResultsCompletionTest.includes('A later turn must not contaminate finalized change evidence.')
+    && deferredResultsCompletionTest.includes('Delayed Results must retain the workspace captured by their Task')
+    && deferredResultsCompletionTest.includes('A rejected background Results update must not retract'),
+    'Deferred Results completion regression coverage is incomplete');
+assert.ok(sessionRestoreBackgroundResultsTest.includes('Session initialization waited for Results generation.')
+    && sessionRestoreBackgroundResultsTest.includes('No initialization write may lose a restored Session.')
+    && sessionRestoreBackgroundResultsTest.includes('A completed Task must recover its blank incomplete Agent reply')
+    && sessionRestoreBackgroundResultsTest.includes('An existing completed Agent reply must not be duplicated')
+    && sessionRestoreBackgroundResultsTest.includes('A genuinely interrupted Task must not be restored as a successful completion.')
+    && sessionRestoreBackgroundResultsTest.includes('A rejected restored generation must persist a retryable Result error.'),
+    'Background Results restoration regression coverage is incomplete');
+assert.ok(rootPackage.scripts['test:session-restore-background-results']
+    ?.includes('scripts/test-session-restore-background-results.mjs'),
+    'The background Results restoration test script is not registered');
+assert.ok(resultsSkill.includes("protected static readonly UPDATE_ERROR = '成果の更新に失敗しました。'")
+    && resultsSkill.includes('requestedVersion === this.attemptedRequirementVersions.get(requirementId)')
+    && agentWidget.includes('document.updateError')
+    && agentWidget.includes('前回の内容を表示しています。')
+    && agentWidget.includes('void this.retryRequirementResults(selectedRequirement.id)'),
+    'A failed Results update must preserve its body and expose an explicit retry without automatic retries');
+assert.ok(resultsContinuitySmoke.includes('POIESIS_AGENT_TEST_EXPECT_PROMPTS')
+    && resultsContinuitySmoke.includes("['conversation', 'result', 'conversation', 'result']")
+    && resultsContinuitySmoke.includes('The unsent draft disappeared from the conversation rail.'),
+    'The production-path Results continuity smoke is incomplete');
 for (const marker of [
     'skillProposals?: string[]',
     'setSkillProposals(taskId: string, ids: readonly string[])',
@@ -615,23 +763,21 @@ for (const marker of [
 }
 for (const marker of [
     'export function shouldClassify(',
-    'export function heuristicDecision(',
     'export function parseClassification(',
     'export function parseSuggestedRequirementTitle(',
-    "reason: 'file-overlap'",
-    "reason: 'previous-task-reference'",
     "confidence >= 0.8",
     ".trim().slice(0, 24)"
 ]) {
     assert.ok(requirementClassifier.includes(marker), `Requirement classifier logic is missing ${marker}`);
 }
 assert.ok(!requirementClassifier.includes('@theia/'), 'Requirement classifier logic must stay pure');
+assert.ok(!requirementClassifier.includes('PREVIOUS_TASK_REFERENCE_WORDS'), 'Reference words must not force outcome grouping.');
 for (const marker of [
     "requirementChoice: 'explicit'",
     'The first Task in a Requirement must skip classification.',
     'The disabled setting must skip classification.',
-    "reason: 'file-overlap'",
-    "reason: 'previous-task-reference'",
+    'a separate Result even when it changes the same file',
+    'A concrete no-file outcome must still be eligible',
     'longTitle.slice(0, 24)'
 ]) {
     assert.ok(requirementClassifierTest.includes(marker), `Requirement classifier test is missing ${marker}`);
@@ -649,9 +795,8 @@ for (const marker of [
 }
 for (const marker of [
     'class RequirementClassificationService',
-    'isNoChangeTask(task)',
+    'taskProducesResult(task)',
     'shouldClassify(task, requirement ?',
-    'heuristicDecision(task.changeSet!.files',
     'await this.server.classify(scope)',
     'effort: this.resultsContext.effort || undefined',
     'this.requirementService.splitTaskToNew(task.id)',
@@ -697,8 +842,8 @@ for (const marker of [
     'moveTask(taskId: string, targetRequirementId: string)',
     'splitTaskToNew(taskId: string)',
     'currentRequirementId(sessionId: string)',
-    "event.type === 'ended' && !isNoChangeTask(event.task)",
-    'retitleFromFirstChangedTask(task: ExecutionTask)',
+    "event.type === 'ended' && taskProducesResult(event.task)",
+    'retitleFromFirstResultTask(task: ExecutionTask)',
     "requirement.titleSource !== 'task'",
     'this.taskService.onDidRemoveTask(task => this.detachTask(task))'
 ]) {
@@ -848,7 +993,8 @@ for (const marker of [
     "type: 'exit'",
     'killHiddenProcessTree(child)',
     "process.env.POIESIS_AGENT_FORCE_PRESPAWN_FAILURE === '1'",
-    'const testReply = process.env.POIESIS_AGENT_TEST_REPLY',
+    'const testReply = this.nextAgentTestReply() ?? process.env.POIESIS_AGENT_TEST_REPLY',
+    'POIESIS_AGENT_TEST_EXPECT_PROMPTS',
     'const testWritePath = process.env.POIESIS_AGENT_TEST_WRITE_FILE?.trim()',
     "await writeFile(target, 'Poiesis Agent test change.\\n', 'utf8')",
     "item: { type: 'agent_message', text: testReply }",
@@ -905,6 +1051,11 @@ for (const source of [runtimeServer, resultsQuestionServer, resultsGenerationSer
 }
 for (const marker of [
     'resolveKnownCliInvocation(providerId, command, args)',
+    'childCliEnvironment(options.env ?? process.env, options.cwd)',
+    'export function childCliEnvironment(',
+    "key.toLocaleLowerCase() === 'npm_config_cache'",
+    "join(localAppData, 'Poiesis', 'runtime-cache', 'npm')",
+    '!pathIsWithin(workspacePath, explicitPath)',
     "providerId === 'claude'",
     "'@anthropic-ai', 'claude-code', 'bin', 'claude.exe'",
     "providerId === 'codex'",
@@ -917,6 +1068,16 @@ for (const marker of [
 ]) {
     assert.ok(hiddenProcess.includes(marker), `Hidden process boundary is missing ${marker}`);
 }
+assert.ok(hiddenProcessEnvTest.includes('Case-insensitive npm cache environment names must be normalized to one value.')
+    && hiddenProcessEnvTest.includes('A relative npm cache must be redirected outside the child working directory.')
+    && hiddenProcessEnvTest.includes('Registry configuration must pass through unchanged.')
+    && hiddenProcessEnvTest.includes('An absolute cache inside the Workspace must also be redirected.')
+    && hiddenProcessEnvTest.includes("[npxCli, '--no-install', 'cache-probe']")
+    && hiddenProcessEnvTest.includes('The CLI child and its local npx tool must inherit the external absolute cache.')
+    && hiddenProcessEnvTest.includes("existsSync(join(workspace, '.npm-cache'))"),
+    'Hidden child npm cache regression coverage is incomplete');
+assert.ok(rootPackage.scripts['test:hidden-process-env']?.includes('scripts/test-hidden-process-env.mjs'),
+    'The hidden child environment test script is not registered');
 for (const source of [runtimeServer, resultsQuestionServer]) {
     assert.ok(source.includes('spawnHiddenCli(providerId, command, args, { cwd, env })'));
     assert.ok(source.includes('return killHiddenProcessTree(child)'));
@@ -975,8 +1136,13 @@ for (const marker of [
     'const requirementId = this.taskService.get(task.id)?.requirementId ?? task.requirementId',
     'void this.startRequirementGeneration(requirementId).catch',
     "if (event.type === 'tasks-changed')",
-    '.filter(task => task && !isNoChangeTask(task))',
-    '!isNoChangeTask(task)',
+    '.filter((task): task is ExecutionTask => Boolean(task))',
+    'attachedTasks.some(task => task.status === \'running\')',
+    'requestedRequirementVersions',
+    'appliedRequirementVersions',
+    'requirementOutcomeVersion(requirement)',
+    'drainRequirementGenerations(requirementId)',
+    'taskProducesResult(task)',
     'const providerId = this.context.providerId;',
     'const effort = this.context.effort || undefined;',
     'providerId,\n                model,\n                effort'
@@ -989,11 +1155,11 @@ const restoreRequirementsSource = resultsSkill.match(
     /async restoreRequirements\(\): Promise<void> \{[\s\S]*?\n    async retry\(/
 )?.[0];
 assert.ok(restoreRequirementsSource, 'Results requirement restore source is missing');
-assert.deepEqual(
-    restoreRequirementsSource.match(/} else if \([^\n]+/g),
-    ['} else if (!requirement.resultsDocument) {'],
-    'Results restore must regenerate a multi-task Requirement only when it has no persisted document'
-);
+assert.ok(!restoreRequirementsSource.includes('await Promise.all(tasks.map(task => this.generationPromises.get(task.id)))')
+    && restoreRequirementsSource.includes('resumeRestoredGeneration(): void')
+    && restoreRequirementsSource.includes('restoredGenerationTaskIds')
+    && resultsSkill.includes("document.status === 'generating'"),
+    'Results restore must prepare state synchronously and resume incomplete generation explicitly');
 assert.ok(taskService.includes('providerId?: KnownCliId;') && taskService.includes('model?: string;') && taskService.includes('effort?: string;'),
     'Tasks and Results documents must persist their generation provider, model, and effort');
 for (const marker of [
@@ -1170,9 +1336,8 @@ for (const marker of [
     'pinnedSessions.map(session => this.renderSessionRow(session))',
     'protected renderSessionRow(session: WindowAgentSession): React.ReactNode',
     '{this.host.sessions.workspaceFolderName()}',
-    '{this.host.sessions.workspaceContextLabel()}',
-    "ref?.id.startsWith('refs/heads/')",
-    'provider.historyProvider?.currentHistoryItemRef',
+    '{this.workspaceContextLabel()}',
+    'liveWorkspaceBranch(',
     'session.title = this.host.sessions.titleForSession(content)',
     'session.hasUserMessage = true',
     'public async createSession(): Promise<void>',
@@ -1295,18 +1460,18 @@ for (const marker of [
     "document.addEventListener('pointermove', onPointerMove, true)",
     'protected finishCodeFilePointerDrag(): void',
     'protected async openDraggedCodeFile(rawUri: string): Promise<void>',
-    'this.pendingPinnedEditorUris.add(uriKey)',
+    'const pinRequest = this.pendingPinnedEditors.begin(uriKey)',
     'protected isCodeCenterWidget(factoryId: string, widget: Widget): boolean',
     'widget instanceof EditorWidget',
     'factoryId.startsWith(CodePart.EDITOR_WIDGET_FACTORY_ID)',
     'protected syncCodeWidgetAttachments(): void',
     'this.attachCodeWidget(this.activeCodeSidebarWidget(), this.codeSidebarHost)',
     'this.attachCodeWidget(this.activeCodeCenterWidget, this.codeEditorHost)',
-    'this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost)',
+    'this.attachCodeWidget(this.codeTerminalWidget, this.codeTerminalHost,',
     'this.resizeCodeWidget(this.activeCodeSidebarWidget(), host)',
     'this.resizeCodeWidget(this.activeCodeCenterWidget, host)',
     'widget.parent = null',
-    'protected revealCodeWidget(widget: Widget, host: HTMLDivElement): void',
+    'protected revealCodeWidget(widget: Widget, host: HTMLDivElement, activate: boolean): void',
     'requestAnimationFrame(() =>',
     'protected resizeCodeWidget(widget: Widget | undefined, host: HTMLDivElement): void',
     'const width = host.clientWidth',
@@ -1409,7 +1574,7 @@ for (const marker of [
     'onValueChange={value => scopeKey && this.setResultsDraft(scopeKey, value)}',
     'const shouldSelectResultsTask =',
     'public isResultsTask(task: ExecutionTask): boolean',
-    "return task.status !== 'running' && !isNoChangeTask(task);",
+    'return taskProducesResult(task);',
     'resultsTaskIds.has(candidate.selectedResultsTaskId)',
     'protected async deleteResultsTask(taskId: string): Promise<void>',
     'this.resultsService.remove([taskId])',
@@ -1556,7 +1721,7 @@ for (const marker of [
     assert.ok(skillDocument.includes(marker), `Pure Skill document parser is missing ${marker}`);
 }
 assert.ok(cliProvider.includes("buildPrompt(session.workspaceUri, 'agent')"));
-assert.ok(cliProvider.includes('this.implementerPrompt(message.content, workspaceSkills.content)'));
+assert.ok(cliProvider.includes('buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)'));
 for (const marker of [
     'Application-owned Skill proposal channel',
     '.poiesis/pending/skills/<skill-id>/SKILL.md',
@@ -1564,18 +1729,17 @@ for (const marker of [
     '提案は1タスクにつき最大2件',
     'metadata.poiesis.kind'
 ]) {
-    assert.ok(cliProvider.includes(marker), `Implementer Skill proposal contract is missing ${marker}`);
+    assert.ok(agentPrompt.includes(marker), `Implementer Skill proposal contract is missing ${marker}`);
 }
-assert.ok(cliProvider.includes('${workspaceSkillPrompt}${skillProposalContract}${finalReportRequest}'),
-    'Skill proposal contract must precede the neutral final-report request');
 for (const marker of [
-    'const finalReportRequest =',
-    "run.finalMessage?.trim() || 'タスクを完了しました。'",
-    "task?.completionSummary ?? 'タスクを完了しました。'",
-    'await this.resultsService.whenFinished(run.taskId)'
+    'const completion = parseAgentCompletion(',
+    "completion.message || 'タスクを完了しました。'",
+    "task?.completionSummary ?? 'タスクを完了しました。'"
 ]) {
     assert.ok(cliProvider.includes(marker), `Full implementer report flow is missing ${marker}`);
 }
+assert.ok(!cliProvider.includes('await this.resultsService.whenFinished(run.taskId)'),
+    'Agent completion must not wait for background Results generation');
 for (const forbidden of [
     'applicationCompletionContract',
     'one or two short lines',
@@ -1587,12 +1751,15 @@ for (const forbidden of [
 }
 for (const marker of [
     'this.renderMarkdown(message.content',
-    'const diffstat = showResultsAction ? summarizeTaskChangeSet(task.changeSet) : undefined;',
+    'const diffstat = showChangeSummary ? summarizeTaskChangeSet(task.changeSet) : undefined;',
     '変更 {diffstat!.fileCount} ファイル · +{diffstat!.additions} −{diffstat!.deletions}'
 ]) {
     assert.ok(agentWidget.includes(marker), `Full report or changed-files signal is missing ${marker}`);
 }
-assert.ok(resultsSkill.includes("buildPrompt(workspace.resource.toString(), 'results')"));
+assert.ok(resultsSkill.includes("buildPrompt(workspaceUri, 'results')")
+    && resultsSkill.includes('const workspaceUri = input.task.workspaceUri')
+    && resultsSkill.includes('await this.taskService.whenFinalized(taskId)'),
+    'Results generation must retain its Task workspace and expose an explicit completion wait');
 assert.ok(resultsSkill.includes('workspaceSkillGuidance: workspaceSkills.content || undefined'));
 for (const marker of [
     'checkAppResultsAssertions(html, input.changeSet.files)',
@@ -1968,8 +2135,8 @@ assert.ok(!agentWidget.includes('このタスクにファイル変更はあり�
     'No-change completed tasks must not expose a Results-side canvas state');
 assert.ok(!agentStyles.includes('.poiesis-results__task-row.no-change'), 'No-change Results rail styling must stay removed');
 for (const marker of [
-    'return task.status !== \'running\' && !isNoChangeTask(task);',
-    'task && task.status !== \'running\' && !isNoChangeTask(task)',
+    'return taskProducesResult(task);',
+    'task && taskProducesResult(task)',
     'finishedTasksForRequirement(requirement: Requirement)',
     'this.host.sessions.finishedTasksForRequirement(requirement)'
 ]) {
@@ -2018,22 +2185,39 @@ for (const dummyChrome of [
 ]) {
     assert.ok(!agentWidget.includes(dummyChrome), `Dummy Agent chrome must not return: ${dummyChrome}`);
 }
+assert.ok(workspaceContext.includes('export function liveWorkspaceBranch('),
+    'The live Workspace branch helper is missing');
+for (const source of [sessionStore, agentPartSource, railPartSource]) {
+    assert.ok(source.includes('liveWorkspaceBranch('), 'Agent chrome must consume the live Workspace branch helper');
+    assert.ok(!source.includes("?? 'main'"), 'Unknown branch state must not be labeled main');
+}
 assert.ok(agentWidget.includes('@inject(GlobalStorageService)'), 'Window sessions must use the global storage boundary');
 assert.ok(agentWidget.includes('this.globalStorageService.setData'), 'Window sessions must persist across workspaces');
 for (const marker of [
-    'MAX_PERSISTED_TASKS_PER_SESSION = 10',
-    'MAX_PERSISTED_RESULTS_HTML_CHARS = 300_000',
     'taskIds: string[]',
     'tasks?: ExecutionTask[]',
     'resultsDocuments?: TaskResultDocument[]',
     'this.taskService.restore',
     'this.resultsService.restore',
     'public persistedTasks(session: WindowAgentSession)',
-    "failure: { summary: 'アプリ終了により中断されました' }"
+    'tasksForDurableSession(session.taskIds'
 ]) {
     assert.ok(agentWidget.includes(marker), `Session artifact persistence is missing ${marker}`);
 }
 assert.ok(!agentWidget.includes("defaultValue={session?.agentDraft ?? ''}"), 'Agent composer must have one controlled source of truth');
+for (const marker of [
+    'sessionHasRailContent',
+    'canReuseSessionForNewChat(current)',
+    'agentDraftSelectionStart?: number',
+    'agentDraftScrollTop?: number',
+    'data-poiesis-session-id={session?.id}',
+    'captureAgentComposerState(this.agentComposerSessionId, this.agentComposerInput, true)'
+]) {
+    assert.ok(agentWidget.includes(marker), `Draft continuity is missing ${marker}`);
+}
+assert.ok(sessionDurabilityTest.includes('A non-empty draft must remain reachable in the rail.')
+    && sessionDurabilityTest.includes('An empty conversation must not clutter the rail.'),
+    'Draft rail regression coverage is incomplete');
 assert.ok(!agentWidget.includes('window.localStorage'), 'The Agent widget must not write browser storage directly');
 assert.ok(!agentWidget.includes('sessionStorage'), 'Window sessions must survive a browser session');
 for (const marker of [
@@ -2066,7 +2250,7 @@ for (const marker of [
     "<div className='poiesis-agent-window__rail-heading'>",
     '<span>ワークスペース</span>',
     'poiesis-agent-window__workspace-group',
-    '<small>Local · {group.branch}</small>',
+    "<small>{group.branch ? `Local · ${group.branch}` : 'Local'}</small>",
     "className='poiesis-agent-window__session-title'",
     'poiesis-agent-window__session-meta',
     'public sessionMeta(session: WindowAgentSession): string',
@@ -2079,7 +2263,8 @@ for (const marker of [
     'protected startRailResize(event: React.PointerEvent<HTMLDivElement>): void',
     'public persistWindowState(): Promise<void>',
     'public windowStatePersistence: Promise<void> = Promise.resolve()',
-    'this.windowStatePersistence = this.windowStatePersistence',
+    'const write = this.windowStatePersistence',
+    'this.windowStatePersistence = write',
     'void this.refreshCliDetection();',
     'await this.sessions.initializeSessions();',
     'public waitForCurrentCliDetection(): Promise<void>',
@@ -2094,6 +2279,9 @@ for (const marker of [
     'const task = await this.taskService.failBeforeStart(',
     'requirementChoice,\n            session.workspaceUri',
     'public async restoreWindowState(): Promise<boolean>',
+    'public repairRestoredAgentMessage(message: ChatMessage, task: ExecutionTask | undefined)',
+    'public restoringWindowState = false',
+    'this.resultsService.resumeRestoredGeneration()',
     'public async loadGlobalWindowState()',
     'public mergePersistedWindowStates(',
     'SESSION_MIGRATION_MARKER_KEY',
@@ -2121,6 +2309,14 @@ for (const marker of [
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent rail is missing ${marker}`);
 }
+assert.ok(sessionStore.includes('await this.persistWindowState();\n            } catch (error)')
+    && sessionStore.indexOf('await this.persistWindowState();\n            } catch (error)')
+        < sessionStore.indexOf('this.resultsService.resumeRestoredGeneration();'),
+    'The complete restored Session state must be persisted before Results resumes');
+assert.ok(electronSmoke.includes("await page.waitForSelector('.poiesis-results__generating')")
+    && electronSmoke.includes("assert(resultsPendingAfterAgent, 'Results did not remain pending after Agent became ready.')")
+    && !electronSmoke.includes('finalizingStatus'),
+    'Electron task feedback must expect Agent readiness before Results completion');
 assert.ok(!agentWidget.includes('FileDialogService'), 'Poiesis must not open stock Theia file dialogs');
 assert.ok(!agentWidget.includes('スペース: 4'), 'Code status must not contain a hard-coded indentation value');
 assert.ok(!agentWidget.includes('codicon-bell'), 'Code status must not contain a dead notification control');
@@ -2135,9 +2331,10 @@ assert.ok(!agentWidget.includes('protected activeTab:'), 'Agent / Results select
 assert.ok(!agentWidget.includes('Widget.ResizeMessage.UnknownSize'), 'Code widgets must receive measured pixel resize messages');
 assert.equal(
     agentWidget.match(/this\.host\.selectTab\('results'\)/g)?.length,
-    2,
-    'Only the explicit Results tab and completed-task action may switch to Results'
+    1,
+    'Only the persistent Results tab may switch to Results'
 );
+assert.ok(!agentWidget.includes('Results で確認'), 'Completed replies must not repeat a Results navigation action');
 const codeToggle = agentWidget.match(/public toggleCodeMode\(\): void \{[\s\S]*?\n    \}/)?.[0];
 assert.ok(codeToggle, 'Code mode toggle is missing');
 assert.ok(!codeToggle.includes('activeTab'), 'Code mode must preserve the previous Agent / Results tab');
@@ -2218,7 +2415,7 @@ for (const marker of [
     'font-style: italic',
     'font-weight: 600',
     'flex: 0 0 auto',
-    'max-width: 220px',
+    'max-width: 240px',
     '.poiesis-agent-window__code-terminal-host',
     '.poiesis-agent-window__code-panel',
     '.poiesis-agent-window__code-panel-resize',

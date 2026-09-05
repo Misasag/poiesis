@@ -21,6 +21,7 @@ import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-co
 import { SearchInWorkspaceCommands } from '@theia/search-in-workspace/lib/browser/search-in-workspace-frontend-contribution';
 import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
 import { AgentActivity, AgentActivityKind, AgentEvent, AgentProvider, AgentSession } from '../common/agent-provider';
+import { canReuseSessionForNewChat } from '../common/session-persistence';
 import {
     AgentRuntimeServer,
     AiRole,
@@ -555,7 +556,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         this.state.repositoryPickerAnchor = undefined;
         this.state.repositorySearchQuery = '';
         const current = this.sessions.selectedSession();
-        if (current && !current.archived && !current.hasUserMessage) {
+        if (canReuseSessionForNewChat(current)) {
             current.activeTab = 'agent';
             this.sessions.persistWindowState();
             this.update();

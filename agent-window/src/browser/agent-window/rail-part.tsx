@@ -74,6 +74,8 @@ import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
+import { liveWorkspaceBranch } from './workspace-context';
+import { sessionHasRailContent } from '../../common/session-persistence';
 
 interface PickerAnchor {
     left: number;
@@ -86,7 +88,7 @@ interface WorkspaceSessionGroup {
     key: string;
     workspaceUri?: string;
     name: string;
-    branch: string;
+    branch?: string;
     current: boolean;
     activeSessions: WindowAgentSession[];
     archivedSessions: WindowAgentSession[];
@@ -265,8 +267,8 @@ export class RailPart extends AgentWindowPart {
                     workspaceUri,
                     name: resource?.path.base || resource?.displayName || 'ワークスペースなし',
                     branch: this.sameWorkspaceUri(workspaceUri, currentWorkspaceUri)
-                        ? this.host.sessions.gitBranchForWorkspace(workspaceUri) ?? this.host.sessions.currentGitBranch() ?? 'main'
-                        : 'main',
+                        ? liveWorkspaceBranch(this.scmService, workspaceUri)
+                        : undefined,
                     current: this.sameWorkspaceUri(workspaceUri, currentWorkspaceUri),
                     activeSessions: [],
                     archivedSessions: []
@@ -278,15 +280,19 @@ export class RailPart extends AgentWindowPart {
         if (currentWorkspaceUri) {
             ensureGroup(currentWorkspaceUri);
         }
-        for (const session of this.filteredSessions(false).filter(candidate => candidate.hasUserMessage)) {
+        for (const session of this.filteredSessions(false).filter(sessionHasRailContent)) {
             const group = ensureGroup(session.workspaceUri);
             group.activeSessions.push(session);
-            group.branch = session.branch ?? group.branch;
+            group.branch = group.current
+                ? liveWorkspaceBranch(this.scmService, group.workspaceUri)
+                : session.branch;
         }
-        for (const session of this.filteredSessions(true).filter(candidate => candidate.hasUserMessage)) {
+        for (const session of this.filteredSessions(true).filter(sessionHasRailContent)) {
             const group = ensureGroup(session.workspaceUri);
             group.archivedSessions.push(session);
-            group.branch = session.branch ?? group.branch;
+            group.branch = group.current
+                ? liveWorkspaceBranch(this.scmService, group.workspaceUri)
+                : session.branch;
         }
         return [...groups.values()].sort((left, right) => {
             if (left.current !== right.current) {
@@ -316,7 +322,7 @@ export class RailPart extends AgentWindowPart {
                     <span className='codicon codicon-folder-opened' aria-hidden='true' />
                     <span className='poiesis-agent-window__workspace-name-copy'>
                         <strong>{group.name}</strong>
-                        <small>Local · {group.branch}</small>
+                        <small>{group.branch ? `Local · ${group.branch}` : 'Local'}</small>
                     </span>
                     <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
                 </button>
@@ -925,7 +931,7 @@ export class RailPart extends AgentWindowPart {
             return;
         }
         session.workspaceUri = workspaceUri;
-        session.branch = this.host.sessions.gitBranchForWorkspace(workspaceUri) ?? 'main';
+        session.branch = liveWorkspaceBranch(this.scmService, workspaceUri);
         session.updatedAt = Date.now();
         this.closeNewAgentPickers();
         this.host.sessions.persistWindowState();
@@ -998,7 +1004,7 @@ export class RailPart extends AgentWindowPart {
         const folder = URI.fromFilePath(selectedPath);
         if (session) {
             session.workspaceUri = folder.toString();
-            session.branch = 'main';
+            session.branch = liveWorkspaceBranch(this.scmService, session.workspaceUri);
             session.updatedAt = Date.now();
         }
         this.host.state.repositoryPickerVisible = false;

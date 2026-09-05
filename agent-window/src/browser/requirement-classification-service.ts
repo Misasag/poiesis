@@ -6,7 +6,6 @@ import {
     RequirementTitleSuggestionScope
 } from '../common/requirement-classification-protocol';
 import {
-    heuristicDecision,
     INVALID_CLASSIFICATION_REASON,
     parseClassification,
     parseSuggestedRequirementTitle,
@@ -17,10 +16,10 @@ import { RequirementService } from './requirement-service';
 import { ResultsGenerationContext } from './results-generation-context';
 import {
     ExecutionTask,
-    isNoChangeTask,
     TaskRequirementClassification,
     TaskService
 } from './task-service';
+import { taskProducesResult } from '../common/task-outcome';
 
 @injectable()
 export class RequirementClassificationService {
@@ -39,7 +38,10 @@ export class RequirementClassificationService {
 
     async classify(taskId: string): Promise<void> {
         const task = this.taskService.get(taskId);
-        if (!task || isNoChangeTask(task) || task.requirementClassification || this.classifyingTaskIds.has(taskId)) {
+        const classification = task?.requirementClassification;
+        const legacyWordDecision = classification?.source === 'heuristic'
+            && classification.reason === 'previous-task-reference' && !classification.undone;
+        if (!task || !taskProducesResult(task) || classification && !legacyWordDecision || this.classifyingTaskIds.has(taskId)) {
             return;
         }
         this.classifyingTaskIds.add(taskId);
@@ -47,14 +49,15 @@ export class RequirementClassificationService {
             const requirement = this.requirementService.get(task.requirementId);
             const requirementTasks = requirement?.taskIds
                 .map(id => this.taskService.get(id))
-                .filter((candidate): candidate is ExecutionTask => Boolean(candidate && !isNoChangeTask(candidate)));
+                .filter((candidate): candidate is ExecutionTask => Boolean(candidate && taskProducesResult(candidate)));
             const workspaceIsLocal = isLocalWorkspace(task.workspaceUri);
             if (!shouldClassify(task, requirement ? {
                 taskIds: requirement.taskIds,
                 tasks: requirementTasks
             } : undefined, {
                 enabled: this.enabled,
-                workspaceIsLocal
+                workspaceIsLocal,
+                outcomeIsResult: taskProducesResult(task)
             })) {
                 this.record(task.id, {
                     decision: 'continue',
@@ -70,17 +73,6 @@ export class RequirementClassificationService {
                     && candidate.status !== 'running'
                     && candidate.startedAt < task.startedAt)
                 .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
-            const requirementFiles = [...new Set(previousTasks.flatMap(candidate => candidate.changeSet?.files ?? []))];
-            const heuristic = heuristicDecision(task.changeSet!.files, requirementFiles, task.request);
-            if (heuristic) {
-                this.record(task.id, {
-                    ...heuristic,
-                    source: 'heuristic',
-                    decidedAt: new Date().toISOString()
-                });
-                return;
-            }
-
             const scope: RequirementClassificationScope = {
                 taskId: task.id,
                 providerId: this.resultsContext.providerId,
@@ -90,12 +82,13 @@ export class RequirementClassificationService {
                 currentRequirementTitle: requirement!.title,
                 previousTasks: previousTasks.map(candidate => ({
                     request: candidate.request.slice(0, 600),
+                    completionSummary: candidate.completionSummary?.slice(0, 1_000),
                     changedFiles: [...candidate.changeSet?.files ?? []]
                 })),
                 task: {
                     request: task.request,
                     completionSummary: task.completionSummary?.slice(0, 2_000),
-                    changedFiles: [...task.changeSet!.files]
+                    changedFiles: [...task.changeSet?.files ?? []]
                 }
             };
             const result = await this.server.classify(scope);
@@ -180,24 +173,24 @@ export class RequirementClassificationService {
         if (!task
             || task.status !== 'completed'
             || !task.changeSet
-            || isNoChangeTask(task)
+            || !taskProducesResult(task)
             || this.suggestingTitleTaskIds.has(taskId)) {
             return;
         }
         const requirement = this.requirementService.get(task.requirementId);
         const firstTaskId = requirement?.taskIds
             .map(id => this.taskService.get(id))
-            .filter((candidate): candidate is ExecutionTask => Boolean(candidate && !isNoChangeTask(candidate)))
+            .filter((candidate): candidate is ExecutionTask => Boolean(candidate && taskProducesResult(candidate)))
             .sort((left, right) => left.startedAt.localeCompare(right.startedAt))[0]?.id;
         if (!requirement
             || firstTaskId !== task.id
-            || requirement.title !== task.title
-            || requirement.titleSource === 'user') {
+            || requirement.titleSource !== 'task') {
             return;
         }
 
         this.suggestingTitleTaskIds.add(taskId);
-        const originalTitle = task.title;
+        const originalTitle = shortRequirementTitleFallback(task.title);
+        this.requirementService.rename(requirement.id, originalTitle, 'ai');
         try {
             let suggested: string | undefined;
             if (isLocalWorkspace(task.workspaceUri)) {
@@ -280,8 +273,8 @@ export class RequirementClassificationService {
         if (task.status !== 'completed') {
             return 'task-not-completed';
         }
-        if (task.changeSet?.source === 'empty' || task.changeSet?.error || !task.changeSet?.files.length) {
-            return 'empty-change-set';
+        if (!taskProducesResult(task)) {
+            return 'no-result-outcome';
         }
         if (!workspaceIsLocal) {
             return 'non-local-workspace';

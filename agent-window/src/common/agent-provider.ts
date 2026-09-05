@@ -1,5 +1,6 @@
 import { Disposable } from '@theia/core/lib/common';
 import { KnownCliId } from './agent-runtime-protocol';
+import { AgentConversationTurn } from './agent-prompt';
 
 export const AgentProvider = Symbol('AgentProvider');
 
@@ -28,6 +29,8 @@ export interface AgentMessage {
     requirementId: string;
     requirementChoice: 'explicit' | 'default';
     workspaceUri?: string;
+    /** Bounded, session-local context selected by the application. */
+    conversation?: AgentConversationTurn[];
 }
 
 export type AgentActivityKind = 'command' | 'file-change' | 'read' | 'reasoning' | 'message' | 'tool';

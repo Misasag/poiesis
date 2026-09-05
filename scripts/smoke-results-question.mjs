@@ -4,6 +4,18 @@ import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import puppeteer from 'puppeteer-core';
+import {
+    DURABLE_RESULTS_QUESTION_KEY,
+    DURABLE_SESSION_KEY,
+    DURABLE_SESSION_MIGRATION_KEY,
+    durableStatePath,
+    durableValueExists,
+    readDurableValue,
+    updateDurableValue,
+    waitForDurableValue,
+    waitForDurableWritesToSettle,
+    writeDurableValue
+} from './poiesis-smoke-state.mjs';
 
 const root = process.cwd();
 const repositoryRoot = root;
@@ -20,10 +32,8 @@ const browserProfile = resolve(runDirectory, 'browser-profile');
 const emptyPlugins = resolve(runDirectory, 'empty-plugins');
 const theiaConfig = resolve(runDirectory, 'theia-config');
 const theiaCli = resolve(root, 'node_modules', '@theia', 'cli', 'bin', 'theia.js');
-const storageKey = 'poiesis.results-question.sessions.v1';
+const storageKey = DURABLE_RESULTS_QUESTION_KEY;
 const panelStorageKey = 'poiesis.results-qa-panel.sessions.v1';
-const sessionStorageKey = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
-const migrationStorageKey = 'poiesis:global:poiesis.agent-window.sessions.migrated.v1';
 const mockAnswerMarker = 'MOCK_RESULTS_ANSWER';
 const mockAnswer = `${mockAnswerMarker}: docs/UX.md:12\n\n${Array.from({ length: 36 }, (_, index) =>
     `Verification detail ${index + 1} keeps the docked thread long enough to exercise its internal scrollbar.`).join(' ')}`;
@@ -75,68 +85,8 @@ try {
     });
     const page = await browser.newPage();
     page.setDefaultTimeout(timeout);
+    seedQuestionDurableState();
     await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout });
-    await waitForApp(page);
-
-    const now = new Date().toISOString();
-    await page.evaluate(fixture => {
-        localStorage.setItem(fixture.sessionStorageKey, JSON.stringify({
-            version: 1,
-            selectedSessionId: fixture.sessionId,
-            railWidth: 258,
-            railCollapsed: false,
-            sessions: [{
-                id: fixture.sessionId,
-                createdAt: Date.now() - 60_000,
-                updatedAt: Date.now(),
-                workspaceUri: fixture.workspaceUri,
-                branch: 'main',
-                runTarget: 'local',
-                title: 'Results question smoke',
-                hasUserMessage: true,
-                lastTaskStatus: 'completed',
-                unreadTaskCompletion: false,
-                pinned: false,
-                archived: false,
-                activeTab: 'results',
-                agentDraft: '',
-                messages: [{ id: 'seed-user', role: 'user', content: 'Create the stored result.', complete: true }],
-                selectedResultsTaskId: fixture.taskId,
-                resultsDrafts: [],
-                tasks: [{
-                    id: fixture.taskId,
-                    sessionId: fixture.sessionId,
-                    title: 'Stored result task with a deliberately long Application-owned title for responsive header verification',
-                    request: 'Update docs/UX.md',
-                    status: 'completed',
-                    startedAt: fixture.now,
-                    endedAt: fixture.now,
-                    appliedSkills: {
-                        agent: ['workspace-review-checklist', 'responsive-results-layout-guidance', 'verification-evidence-policy'],
-                        results: []
-                    },
-                    baseline: { kind: 'workspace-snapshot', capturedAt: fixture.now },
-                    changeSet: {
-                        source: 'task-diff',
-                        diff: 'diff --git a/docs/UX.md b/docs/UX.md\n+Results question smoke',
-                        files: ['docs/UX.md'],
-                        capturedAt: fixture.now
-                    }
-                }],
-                resultsDocuments: [{ taskId: fixture.taskId, status: 'ready', html: fixture.resultsHtml }]
-            }]
-        }));
-        localStorage.setItem(fixture.migrationStorageKey, 'true');
-    }, {
-        sessionStorageKey,
-        migrationStorageKey,
-        sessionId,
-        taskId,
-        workspaceUri: pathToFileURL(repositoryRoot).toString(),
-        now,
-        resultsHtml
-    });
-    await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
     await page.waitForSelector('.poiesis-results__document');
     const documentBefore = await page.$eval('.poiesis-results__document', frame => frame.getAttribute('srcdoc'));
@@ -211,12 +161,9 @@ try {
         entry.textContent?.includes(expected) === true, mockAnswerMarker);
     assert(reopened, 'The answer was missing after the panel was reopened.');
 
-    await page.waitForFunction((key, expectedSession, expectedTask, expectedAnswer) => {
-        const storageEntry = Object.keys(localStorage).find(candidate => candidate.endsWith(`:${key}`));
-        if (!storageEntry) return false;
-        const state = JSON.parse(localStorage.getItem(storageEntry) ?? '{}');
-        return state.sessions?.[expectedSession]?.[expectedTask]?.[0]?.answer === expectedAnswer;
-    }, {}, storageKey, sessionId, taskId, mockAnswer);
+    await waitForDurableValue(theiaConfig, storageKey, state => {
+        return state?.sessions?.[sessionId]?.[taskId]?.[0]?.answer === mockAnswer;
+    }, timeout);
 
     await page.waitForFunction((key, expectedSession, expectedTask) => {
         const storageEntry = Object.keys(localStorage).find(candidate => candidate.endsWith(`:${key}`));
@@ -226,15 +173,12 @@ try {
             && state.sessions?.[expectedSession]?.expandedTaskIds?.includes(expectedTask);
     }, {}, panelStorageKey, sessionId, taskId);
 
-    const persisted = await page.evaluate((key, expectedSession, expectedTask) => {
-        const storageEntry = Object.keys(localStorage).find(candidate => candidate.endsWith(`:${key}`));
-        const state = storageEntry ? JSON.parse(localStorage.getItem(storageEntry) ?? '{}') : {};
-        return {
-            storageEntry,
-            history: state.sessions?.[expectedSession]?.[expectedTask] ?? []
-        };
-    }, storageKey, sessionId, taskId);
-    assert(persisted.storageEntry?.startsWith('theia:'), `History did not use Theia StorageService: ${persisted.storageEntry}`);
+    const historyState = readDurableValue(theiaConfig, storageKey);
+    const persisted = {
+        storagePath: durableStatePath(theiaConfig, storageKey),
+        history: historyState?.sessions?.[sessionId]?.[taskId] ?? []
+    };
+    assert(durableValueExists(theiaConfig, storageKey), `History was not persisted to the durable store: ${persisted.storagePath}`);
     assert(persisted.history.length === 1, `Unexpected persisted history: ${JSON.stringify(persisted.history)}`);
 
     const panelPersisted = await page.evaluate((key, expectedSession) => {
@@ -256,17 +200,16 @@ try {
     stage = 'code-return';
     await page.waitForSelector('.poiesis-results__qa-panel.expanded');
 
-    await page.evaluate((key, expectedTask) => {
-        const state = JSON.parse(localStorage.getItem(key) ?? '{}');
-        for (const session of state.sessions ?? []) {
-            for (const task of session.tasks ?? []) {
-                if (task.id === expectedTask) delete task.resultsQuestions;
+    await replaceDurableFixtures(page, () => {
+        updateDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
+            for (const session of state?.sessions ?? []) {
+                for (const task of session.tasks ?? []) {
+                    if (task.id === taskId) delete task.resultsQuestions;
+                }
             }
-        }
-        localStorage.setItem(key, JSON.stringify(state));
-    }, sessionStorageKey, taskId);
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await waitForApp(page);
+            return state;
+        });
+    });
     stage = 'restart-restore';
     await page.waitForSelector('.poiesis-results__qa-panel.expanded .poiesis-results__qa-entry:not(.failed)');
     const restored = await page.evaluate(expectedAnswer => ({
@@ -308,24 +251,23 @@ try {
         ...await assertTaskRailLayout(page, 'collapsed-maximized', true, 1)
     });
 
-    await page.evaluate((key, newTaskId) => {
-        const state = JSON.parse(localStorage.getItem(key) ?? '{}');
-        const session = state.sessions?.[0];
-        const source = session?.tasks?.[0];
-        if (!session || !source) throw new Error('The stored smoke Task was unavailable.');
-        session.tasks.push({
-            ...source,
-            id: newTaskId,
-            title: 'Updated task while rail collapsed',
-            request: 'Verify collapsed task count updates.',
-            status: 'failed',
-            failure: { summary: 'Expected smoke fixture failure.' },
-            resultsDocument: undefined
+    await replaceDurableFixtures(page, () => {
+        updateDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
+            const session = state?.sessions?.[0];
+            const source = session?.tasks?.[0];
+            if (!session || !source) throw new Error('The stored smoke Task was unavailable.');
+            session.tasks.push({
+                ...source,
+                id: 'results-question-smoke-task-updated',
+                title: 'Updated task while rail collapsed',
+                request: 'Verify collapsed task count updates.',
+                status: 'failed',
+                failure: { summary: 'Expected smoke fixture failure.' },
+                resultsDocument: undefined
+            });
+            return state;
         });
-        localStorage.setItem(key, JSON.stringify(state));
-    }, sessionStorageKey, 'results-question-smoke-task-updated');
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await waitForApp(page);
+    });
     stage = 'task-rail-collapsed-restore';
     await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="true"] .poiesis-results__task-switcher[data-collapsed="true"]');
     const restoredCollapsedRail = await assertTaskRailLayout(page, 'collapsed-after-restart-and-task-update', true, 1);
@@ -388,7 +330,7 @@ try {
         documentScrollStable: documentScrollBefore === documentScrollAfterSend
             && documentScrollBefore === documentScrollAfterAnswer,
         collapsedAndReopened: reopened,
-        theiaStorage: true,
+        durableHistoryStorage: true,
         panelStateRestored: restored.expanded,
         restoredQuestions: restored.count,
         citationLine: 12,
@@ -439,7 +381,11 @@ async function assertDockedLayout(page, label) {
         const titleHeading = title?.querySelector('h1');
         const meta = header?.querySelector('.poiesis-results__fixed-meta');
         const badges = meta?.querySelector('.poiesis-results__badges');
-        const rowCount = elements => new Set([...elements].map(element => Math.round(element.getBoundingClientRect().top))).size;
+        const metaItems = [...header?.querySelectorAll('.poiesis-results__status, time, .poiesis-results__diffstat, .poiesis-results__badges > span') ?? []];
+        const rowCount = elements => new Set([...elements].map(element => {
+            const rect = element.getBoundingClientRect();
+            return Math.round(rect.top + rect.height / 2);
+        })).size;
         return {
             label: currentLabel,
             viewport: { width: innerWidth, height: innerHeight },
@@ -453,10 +399,14 @@ async function assertDockedLayout(page, label) {
                 lineClamp: getComputedStyle(titleHeading).webkitLineClamp,
                 metaWrap: meta instanceof HTMLElement ? getComputedStyle(meta).flexWrap : undefined,
                 badgeWrap: badges instanceof HTMLElement ? getComputedStyle(badges).flexWrap : undefined,
-                metaRows: meta instanceof HTMLElement ? rowCount(meta.children) : 0,
+                metaRows: rowCount(metaItems),
                 badgeRows: badges instanceof HTMLElement ? rowCount(badges.children) : 0,
+                metaBounds: metaItems.map(element => {
+                    const rect = element.getBoundingClientRect();
+                    return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+                }),
                 appliedSkillsTitle: [...badges?.children ?? []]
-                    .find(element => element.textContent?.includes('適用 Skills:'))?.getAttribute('title')
+                    .find(element => element.getAttribute('title')?.includes('verification-evidence-policy'))?.getAttribute('title')
             } : undefined,
             historyOverflow: history instanceof HTMLElement && history.scrollHeight > history.clientHeight,
             expanded: document.querySelector('.poiesis-results__qa-toggle')?.getAttribute('aria-expanded') === 'true'
@@ -466,14 +416,16 @@ async function assertDockedLayout(page, label) {
         `Docked layout is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
     assert(snapshot.title.width >= snapshot.header.width * 0.45,
         `The Results title used less than 45 percent at ${label}: ${JSON.stringify(snapshot)}`);
-    assert(snapshot.headerStyle.lineClamp === '2'
-        && snapshot.headerStyle.metaWrap === 'wrap'
-        && snapshot.headerStyle.badgeWrap === 'wrap'
-        && snapshot.headerStyle.appliedSkillsTitle?.includes('verification-evidence-policy'),
+    assert(snapshot.headerStyle.lineClamp === '1'
+        && snapshot.headerStyle.appliedSkillsTitle?.includes('verification-evidence-policy')
+        && snapshot.headerStyle.metaBounds.every(item => item.left >= snapshot.header.left - 1
+            && item.right <= snapshot.header.right + 1
+            && item.top >= snapshot.header.top - 1
+            && item.bottom <= snapshot.header.bottom + 1),
     `The responsive Results header contract is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
-    if (snapshot.viewport.width <= 1400) {
-        assert(snapshot.headerStyle.metaRows >= 2,
-            `The Results metadata did not wrap at ${label}: ${JSON.stringify(snapshot)}`);
+    if (snapshot.canvas.width > 700) {
+        assert(snapshot.headerStyle.metaRows === 1 && snapshot.header.height <= 40,
+            `The Results metadata did not retain a compact row at ${label}: ${JSON.stringify(snapshot)}`);
     }
     assert(snapshot.expanded, `The panel collapsed unexpectedly at ${label}.`);
     assert(snapshot.canvas.bottom <= snapshot.panel.top + 1,
@@ -605,6 +557,65 @@ async function waitForServer(url, child, waitTimeout) {
 
 async function waitForApp(page) {
     await page.waitForSelector('#poiesis-window-host .poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
+}
+
+function seedQuestionDurableState() {
+    const now = new Date().toISOString();
+    writeDurableValue(theiaConfig, DURABLE_SESSION_KEY, {
+        version: 1,
+        selectedSessionId: sessionId,
+        railWidth: 258,
+        railCollapsed: false,
+        sessions: [{
+            id: sessionId,
+            createdAt: Date.now() - 60_000,
+            updatedAt: Date.now(),
+            workspaceUri: pathToFileURL(repositoryRoot).toString(),
+            branch: 'main',
+            runTarget: 'local',
+            title: 'Results question smoke',
+            hasUserMessage: true,
+            lastTaskStatus: 'completed',
+            unreadTaskCompletion: false,
+            pinned: false,
+            archived: false,
+            activeTab: 'results',
+            agentDraft: '',
+            messages: [{ id: 'seed-user', role: 'user', content: 'Create the stored result.', complete: true }],
+            selectedResultsTaskId: taskId,
+            resultsDrafts: [],
+            tasks: [{
+                id: taskId,
+                sessionId,
+                title: 'Stored result task with a deliberately long Application-owned title for responsive header verification',
+                request: 'Update docs/UX.md',
+                status: 'completed',
+                startedAt: now,
+                endedAt: now,
+                appliedSkills: {
+                    agent: ['workspace-review-checklist', 'responsive-results-layout-guidance', 'verification-evidence-policy'],
+                    results: []
+                },
+                baseline: { kind: 'workspace-snapshot', capturedAt: now },
+                changeSet: {
+                    source: 'task-diff',
+                    diff: 'diff --git a/docs/UX.md b/docs/UX.md\n+Results question smoke',
+                    files: ['docs/UX.md'],
+                    capturedAt: now
+                }
+            }],
+            resultsDocuments: [{ taskId, status: 'ready', html: resultsHtml }]
+        }]
+    });
+    writeDurableValue(theiaConfig, DURABLE_SESSION_MIGRATION_KEY, true);
+}
+
+async function replaceDurableFixtures(page, mutate) {
+    await page.goto('about:blank', { waitUntil: 'domcontentloaded' });
+    await waitForDurableWritesToSettle(theiaConfig, timeout);
+    mutate();
+    await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout });
+    await waitForApp(page);
 }
 
 function stopProcessTree(child) {

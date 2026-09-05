@@ -19,6 +19,8 @@ import {
 import { RequirementClassificationServerImpl } from './requirement-classification-server';
 import { ResultsAssertionServer, resultsAssertionServerPath } from '../common/results-assertion-protocol';
 import { ResultsAssertionServerImpl } from './results-assertion-server';
+import { DurableStorageServer, durableStorageServerPath } from '../common/durable-storage-protocol';
+import { DurableStorageServerImpl } from './durable-storage-server';
 
 export default new ContainerModule(bind => {
     bind(CliDetector).toSelf().inSingletonScope();
@@ -45,6 +47,12 @@ export default new ContainerModule(bind => {
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler(resultsGenerationServerPath, () =>
             context.container.get<ResultsGenerationServer>(ResultsGenerationServer)
+        )
+    ).inSingletonScope();
+    bind(DurableStorageServer).to(DurableStorageServerImpl).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(context =>
+        new RpcConnectionHandler(durableStorageServerPath, () =>
+            context.container.get<DurableStorageServer>(DurableStorageServer)
         )
     ).inSingletonScope();
     bind(AgentRuntimeServer).to(AgentRuntimeServerImpl).inSingletonScope();
