@@ -60,7 +60,8 @@
         },
         "preferences": {
           "security.workspace.trust.enabled": false,
-          "extensions.ignoreRecommendations": true
+          "extensions.ignoreRecommendations": true,
+          "git.openRepositoryInParentFolders": "never"
         }
       }
     },
