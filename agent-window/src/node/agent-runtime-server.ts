@@ -5,6 +5,8 @@ import {
     AgentRuntimeClient,
     AgentRuntimeServer,
     CliDetectionReport,
+    CliModelCatalog,
+    CliModelDiscoveryRequest,
     CodexExecutionRequest,
     CreateFolderRequest,
     FolderBrowserRequest,
@@ -19,9 +21,10 @@ import {
     KnownCliId
 } from '../common/agent-runtime-protocol';
 import { CliDetector } from './cli-detector';
+import { CliModelDiscoveryService } from './cli-model-discovery';
 import { CliProviderRegistry } from './cli-provider-registry';
 import { agentCliArgs, validateCliEffort } from './cli-args';
-import { grokExecutionEnvironment } from './known-cli-registry';
+import { grokExecutionEnvironment, knownCliDefinitions } from './known-cli-registry';
 import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 import { isGitRepository, SnapshotStore } from './snapshot-store';
 
@@ -41,7 +44,8 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
 
     constructor(
         @inject(CliDetector) protected readonly cliDetector: CliDetector,
-        @inject(CliProviderRegistry) protected readonly providerRegistry: CliProviderRegistry
+        @inject(CliProviderRegistry) protected readonly providerRegistry: CliProviderRegistry,
+        @inject(CliModelDiscoveryService) protected readonly modelDiscovery: CliModelDiscoveryService
     ) { }
 
     setClient(client: AgentRuntimeClient | undefined): void {
@@ -59,6 +63,26 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
 
     detectClis(): Promise<CliDetectionReport> {
         return this.cliDetector.detect();
+    }
+
+    discoverModels({ providerId, refresh }: CliModelDiscoveryRequest): Promise<CliModelCatalog> {
+        const definition = knownCliDefinitions().find(candidate => candidate.id === providerId);
+        if (!definition) {
+            return Promise.resolve({
+                providerId,
+                source: 'failed',
+                models: [],
+                error: '対応するAIのモデル一覧を取得できませんでした。'
+            });
+        }
+        const detection = this.cliDetector.recordedReport?.detections.find(candidate => candidate.id === providerId);
+        return this.modelDiscovery.discover({
+            providerId,
+            command: detection?.status === 'found' ? detection.path : undefined,
+            version: detection?.status === 'found' ? detection.version : undefined,
+            fallbackModels: definition.models,
+            refresh
+        });
     }
 
     async browseFolders({ path }: FolderBrowserRequest): Promise<FolderBrowserResult> {
@@ -221,7 +245,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
             return;
         }
 
-        const provider = await this.providerRegistry.resolve('agent', providerId, model);
+        const provider = await this.providerRegistry.resolve('agent', providerId, model, effort);
 
         const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
         const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(resolvedWorkspace);

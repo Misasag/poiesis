@@ -132,7 +132,7 @@ export const PoiesisSelect = ({
                 return;
             }
             if (target && !triggerRef.current?.contains(target) && !popoverRef.current?.contains(target)) {
-                close();
+                close(false);
             }
         };
         window.addEventListener('resize', reposition);

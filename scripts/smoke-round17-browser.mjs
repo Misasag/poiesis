@@ -283,11 +283,11 @@ async function selectProviders(page) {
         await page.waitForFunction(selector => !document.querySelector(selector)?.disabled, {}, radio);
         await page.$eval(radio, input => input.click());
         await page.waitForFunction(selector => document.querySelector(selector)?.checked, {}, radio);
-        const model = `[aria-label="${role === 'agent' ? 'Agent' : 'Results'} の AI モデル"]`;
+        const model = `.poiesis-settings-modal [aria-label="${role === 'agent' ? 'Agent' : 'Results'} のモデル"]`;
         await page.click(model);
-        await page.waitForSelector('.poiesis-select__listbox');
-        await page.$eval(`.poiesis-select__option[data-value="${modelId}"]`, option => option.click());
-        await page.waitForFunction((selector, expected) => document.querySelector(selector)?.dataset.value === expected, {}, model, modelId);
+        await page.waitForSelector('.poiesis-model-picker__popover');
+        await page.$eval(`.poiesis-model-picker__option[data-provider="${provider}"][data-model="${modelId}"]`, option => option.click());
+        await page.waitForFunction((roleId, expected) => document.querySelector(`.poiesis-settings-modal [data-ai-role="${roleId}"]`)?.dataset.model === expected, {}, role, modelId);
     }
     await page.click('.poiesis-settings-modal__header button[aria-label="設定を閉じる"]');
     await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));

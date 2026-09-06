@@ -124,6 +124,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         allowExternalResultsResources: false,
         automaticRequirementClassification: true,
         cliDetectionPhase: 'pending',
+        modelCatalogs: {},
         railCollapsed: false,
         railWidth: DEFAULT_RAIL_WIDTH,
         compactRailViewport: false,
@@ -202,7 +203,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     public openShortcutsOverlay(): void { this.settingsPart.openShortcutsOverlay(); }
     public closeShortcutsOverlay(): void { this.settingsPart.closeShortcutsOverlay(); }
     public uiFontScaleValue(): number { return this.settingsPart.uiFontScaleValue(); }
-    public refreshCliDetection(): Promise<void> { return this.settingsPart.refreshCliDetection(); }
+    public refreshCliDetection(refreshModels = false): Promise<void> { return this.settingsPart.refreshCliDetection(refreshModels); }
     public waitForCurrentCliDetection(): Promise<void> { return this.settingsPart.waitForCurrentCliDetection(); }
     public restorePoiesisSettings(): Promise<void> { return this.settingsPart.restorePoiesisSettings(); }
 
@@ -402,7 +403,8 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 } else {
                     this.closeFolderExplorer();
                 }
-            } else if (document.querySelector('.poiesis-select__listbox')) {
+            } else if (document.querySelector('.poiesis-select__listbox')
+                || document.querySelector('.poiesis-model-picker__popover')) {
                 return;
             } else if (this.state.openSessionMenuId) {
                 event.preventDefault();

@@ -47,6 +47,7 @@ for (const phase of ['startup', 'rescan']) {
             cliDetectionPhase: phase === 'startup' ? 'pending' : 'ready',
             agentCli: 'claude', agentModel: phase === 'startup' ? '' : 'fable', agentEffort: '',
             resultsCli: 'grok', resultsModel: 'grok-4.5', resultsEffort: 'medium',
+            modelCatalogs: {},
             providerPreparationErrors: new Map()
         };
         const report = { detections: [{ id: 'claude', status: 'found', defaultModel: 'fable', executableRoles: ['agent', 'results'] }] };
@@ -60,12 +61,13 @@ for (const phase of ['startup', 'rescan']) {
             async sendMessage(id, message) { sent.push({ id, ...message }); }
         };
         const settings = subject('../agent-window/src/browser/agent-window/settings-part.tsx', 'SettingsPart', [
-            'cliDetectionLoading', 'cliDetectionCompletion', 'refreshCliDetection', 'waitForCurrentCliDetection', 'performCliDetection'
+            'cliDetectionLoading', 'modelCatalogLoading', 'modelCatalogAttempt', 'cliDetectionCompletion',
+            'refreshCliDetection', 'waitForCurrentCliDetection', 'performCliDetection'
         ]);
         Object.assign(settings, {
             host, agentRuntimeServer: { detectClis: () => detection.promise }, update() {},
             roleModel: role => state[`${role}Model`], effortFor: () => '',
-            resultsGenerationContext: {}, persistPoiesisSettings() {}
+            resultsGenerationContext: {}, persistPoiesisSettings() {}, refreshModelCatalogs: async () => undefined
         });
         host.waitForCurrentCliDetection = () => settings.waitForCurrentCliDetection();
         const store = subject('../agent-window/src/browser/agent-window/session-store.ts', 'SessionStore', ['ensureProviderSession']);
@@ -116,7 +118,8 @@ for (const phase of ['startup', 'rescan']) {
             assert.equal(sent.length, 0, 'A removed chat must not start work');
         } else {
             assert.equal(created.length, 1);
-            assert.equal(created[0].model, 'fable', 'CLI configuration must use the completed model selection');
+            assert.equal(created[0].model, phase === 'startup' ? undefined : 'fable',
+                'Detection must preserve the saved model, including the empty CLI-configured default');
             assert.equal(sent.length, 1, 'A duplicate Send must not create another run');
             assert.equal(sent[0].ownerSessionId, 'A', 'Send changed its destination during detection');
             assert.equal(sent[0].content, 'A submitted', 'Send consumed text edited after submission');

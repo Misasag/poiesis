@@ -21,10 +21,13 @@ export function cliRoleAvailability(
         return 'error';
     }
     const detection = report?.detections.find(candidate => candidate.id === providerId);
+    if (detection && !detection.executableRoles.includes(role)) {
+        return 'unsupported';
+    }
     if (!detection || detection.status === 'missing') {
         return 'missing';
     }
-    return detection.executableRoles.includes(role) ? 'available' : 'unsupported';
+    return 'available';
 }
 
 export function cliRoleAvailabilityLabel(availability: CliRoleAvailability, detailed = false): string {

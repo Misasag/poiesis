@@ -13,7 +13,7 @@ import type { VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/v
 import type { WorkspaceService } from '@theia/workspace/lib/browser';
 import type { TaskReviewResourceResolver } from '../task-review-resource';
 import type { AgentActivity, AgentEvent, AgentProvider } from '../../common/agent-provider';
-import type { AgentRuntimeServer, AiRole, CliDetectionReport, KnownCliId } from '../../common/agent-runtime-protocol';
+import type { AgentRuntimeServer, AiRole, CliDetectionReport, CliModelCatalog, KnownCliId } from '../../common/agent-runtime-protocol';
 import type { CliDetectionPhase } from '../../common/cli-detection-lifecycle';
 import type { FolderExplorerService } from '../folder-explorer-service';
 import type { GlobalStorageService } from '../global-storage-service';
@@ -54,6 +54,7 @@ export interface AgentWindowState {
     automaticRequirementClassification: boolean;
     cliDetectionPhase: CliDetectionPhase;
     cliDetectionReport?: CliDetectionReport;
+    modelCatalogs: Partial<Record<KnownCliId, CliModelCatalog>>;
     deleteSessionConfirmationId?: string;
     railCollapsed: boolean;
     railWidth: number;
@@ -136,7 +137,7 @@ export interface AgentWindowHost {
     openShortcutsOverlay(): void;
     closeShortcutsOverlay(): void;
     uiFontScaleValue(): number;
-    refreshCliDetection(): Promise<void>;
+    refreshCliDetection(refreshModels?: boolean): Promise<void>;
     waitForCurrentCliDetection(): Promise<void>;
     restorePoiesisSettings(): Promise<void>;
 

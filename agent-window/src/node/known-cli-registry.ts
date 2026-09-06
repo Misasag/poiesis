@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { AiRole, CliModelOption, KnownCliId } from '../common/agent-runtime-protocol';
+import { AiRole, CliModelOption, CODEX_FALLBACK_MODEL_EFFORTS, KnownCliId } from '../common/agent-runtime-protocol';
 
 export interface KnownCliDefinition {
     id: KnownCliId;
@@ -31,17 +31,14 @@ export function grokExecutionEnvironment(): NodeJS.ProcessEnv {
     };
 }
 
-/**
- * Model entries are deliberately curated from locally verified CLI help/config/cache output.
- * They are not presented as a live provider model-listing API; Custom always accepts an explicit id.
- */
+/** Fallback entries used only when a CLI cannot provide a live model catalog. */
 export function knownCliDefinitions(): readonly KnownCliDefinition[] {
     const appData = process.env.APPDATA;
     const localAppData = process.env.LOCALAPPDATA;
     const userProfile = process.env.USERPROFILE;
     const compact = (values: Array<string | undefined>): string[] =>
         values.filter((value): value is string => Boolean(value));
-    const cliDefault: CliModelOption = { id: '', label: '既定 (CLIの設定に従う)' };
+    const cliDefault: CliModelOption = { id: '', label: '既定' };
     return [
         {
             id: 'codex',
@@ -57,11 +54,42 @@ export function knownCliDefinitions(): readonly KnownCliDefinition[] {
             executableRoles: ['agent', 'results'],
             models: [
                 cliDefault,
-                { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol' },
-                { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra' },
-                { id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna' },
-                { id: 'gpt-5.5', label: 'GPT-5.5' },
-                { id: 'gpt-5.4', label: 'GPT-5.4' }
+                {
+                    id: 'gpt-6-astra', label: 'GPT-6-Astra',
+                    description: 'Our most capable model for complex, demanding work.',
+                    isCatalogDefault: true,
+                    defaultReasoningEffort: 'medium',
+                    supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-6-astra']],
+                    inputModalities: ['text', 'image']
+                },
+                {
+                    id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol',
+                    description: 'Reliable agentic workhorse for everyday tasks.', defaultReasoningEffort: 'low',
+                    supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-5.6-sol']], inputModalities: ['text', 'image']
+                },
+                {
+                    id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra',
+                    description: 'Balanced agentic coding model for everyday work.', defaultReasoningEffort: 'medium',
+                    supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-5.6-terra']], inputModalities: ['text', 'image']
+                },
+                {
+                    id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna',
+                    description: 'Fast and affordable agentic coding model.', defaultReasoningEffort: 'medium',
+                    supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-5.6-luna']], inputModalities: ['text', 'image']
+                },
+                {
+                    id: 'gpt-5.5', label: 'GPT-5.5', defaultReasoningEffort: 'medium',
+                    supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-5.5']], inputModalities: ['text', 'image']
+                },
+                {
+                    id: 'gpt-5.4-mini', label: 'GPT-5.4-Mini', defaultReasoningEffort: 'medium',
+                    supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-5.4-mini']], inputModalities: ['text', 'image']
+                },
+                {
+                    id: 'gpt-5.3-codex-spark', label: 'GPT-5.3-Codex-Spark',
+                    description: 'Ultra-fast coding model.', defaultReasoningEffort: 'high',
+                    supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-5.3-codex-spark']], inputModalities: ['text']
+                }
             ],
             defaultModel: ''
         },
@@ -77,12 +105,13 @@ export function knownCliDefinitions(): readonly KnownCliDefinition[] {
             versionProbe: ['--version'],
             executableRoles: ['agent', 'results'],
             models: [
-                { id: 'fable', label: 'fable (既定)' },
+                cliDefault,
+                { id: 'fable', label: 'fable' },
                 { id: 'opus', label: 'opus' },
                 { id: 'sonnet', label: 'sonnet' },
                 { id: 'haiku', label: 'haiku' }
             ],
-            defaultModel: 'fable'
+            defaultModel: ''
         },
         {
             id: 'grok',

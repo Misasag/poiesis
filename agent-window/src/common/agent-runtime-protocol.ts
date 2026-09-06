@@ -16,12 +16,23 @@ export const CLI_DISPLAY_NAMES: Readonly<Record<KnownCliId, string>> = {
     gemini: 'Gemini CLI'
 };
 
-/** Curated CLI values exposed by Poiesis and accepted by the backend argv boundary. */
+/** CLI values accepted at the backend argv boundary. Model catalogs can expose a supported subset. */
 export const CLI_EFFORT_LEVELS: Readonly<Record<KnownCliId, readonly string[]>> = {
     claude: ['low', 'medium', 'high', 'xhigh', 'max'],
-    codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+    codex: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     grok: ['low', 'medium', 'high'],
     gemini: []
+};
+
+/** Capability snapshot shown only when live Codex discovery is unavailable. */
+export const CODEX_FALLBACK_MODEL_EFFORTS: Readonly<Record<string, readonly string[]>> = {
+    'gpt-6-astra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    'gpt-5.6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    'gpt-5.6-terra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    'gpt-5.6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],
+    'gpt-5.5': ['low', 'medium', 'high', 'xhigh'],
+    'gpt-5.4-mini': ['low', 'medium', 'high', 'xhigh'],
+    'gpt-5.3-codex-spark': ['low', 'medium', 'high', 'xhigh']
 };
 
 export function isKnownCliId(value: unknown): value is KnownCliId {
@@ -31,6 +42,27 @@ export function isKnownCliId(value: unknown): value is KnownCliId {
 export interface CliModelOption {
     id: string;
     label: string;
+    description?: string;
+    isCatalogDefault?: boolean;
+    defaultReasoningEffort?: string;
+    supportedReasoningEfforts?: string[];
+    inputModalities?: string[];
+}
+
+export type CliModelCatalogSource = 'live' | 'cached' | 'fallback' | 'failed';
+
+export interface CliModelCatalog {
+    providerId: KnownCliId;
+    source: CliModelCatalogSource;
+    models: CliModelOption[];
+    fetchedAt?: string;
+    /** A safe user-facing summary. Raw process output is never transported. */
+    error?: string;
+}
+
+export interface CliModelDiscoveryRequest {
+    providerId: KnownCliId;
+    refresh?: boolean;
 }
 
 export interface CliDetection {
@@ -134,6 +166,7 @@ export interface AgentRuntimeClient {
 
 export interface AgentRuntimeServer extends RpcServer<AgentRuntimeClient> {
     detectClis(): Promise<CliDetectionReport>;
+    discoverModels(request: CliModelDiscoveryRequest): Promise<CliModelCatalog>;
     captureGitSnapshot(request: GitSnapshotRequest): Promise<GitSnapshotCapture>;
     captureGitChangeSet(request: GitChangeSetRequest): Promise<GitChangeSetCapture>;
     captureGitChangeSetBetween(request: GitChangeSetBetweenRequest): Promise<GitChangeSetCapture>;

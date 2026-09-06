@@ -1067,10 +1067,10 @@ async function assertNativeWindowDrag(page, pid, selector, label) {
 }
 
 async function assertElectronAiPillPopover(page, phase) {
-    const trigger = '[data-ai-role="agent"] [aria-label="Agent の AI とモデル"]';
+    const trigger = '[data-ai-role="agent"] [aria-label="Agent のモデル"]';
     await page.click(trigger);
-    await page.waitForSelector('.poiesis-ai-role-pill__popover');
-    const snapshot = await page.$eval('.poiesis-ai-role-pill__popover', (popover, currentPhase) => {
+    await page.waitForSelector('.poiesis-model-picker__popover');
+    const snapshot = await page.$eval('.poiesis-model-picker__popover', (popover, currentPhase) => {
         const bounds = popover.getBoundingClientRect();
         const pill = document.querySelector('[data-ai-role="agent"]')?.getBoundingClientRect();
         return {
@@ -1087,7 +1087,7 @@ async function assertElectronAiPillPopover(page, phase) {
     assert(snapshot.pill && snapshot.pill.left >= 0 && snapshot.pill.right <= snapshot.viewport.width,
         `Electron Agent AI pill clipped ${phase}: ${JSON.stringify(snapshot)}`);
     await page.keyboard.press('Escape');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-ai-role-pill__popover'));
+    await page.waitForFunction(() => !document.querySelector('.poiesis-model-picker__popover'));
     return snapshot;
 }
 

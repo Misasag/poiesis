@@ -1,5 +1,4 @@
 import * as React from '@theia/core/shared/react';
-import * as ReactDOM from '@theia/core/shared/react-dom';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { FormatType, open, OpenerService, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser';
 import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
@@ -25,6 +24,7 @@ import {
     AiRole,
     CLI_DISPLAY_NAMES,
     CLI_EFFORT_LEVELS,
+    CliModelCatalogSource,
     CliDetectionReport,
     DEFAULT_CLI_ID,
     FolderBrowserResult,
@@ -72,8 +72,7 @@ import { formatExecutionEvidence } from '../results-document-normalizer';
 import { Requirement } from '../requirement-model';
 import { RequirementService } from '../requirement-service';
 import { RequirementClassificationService } from '../requirement-classification-service';
-import { PoiesisSelect, PoiesisSelectOption } from '../components/poiesis-select';
-import { PoiesisTextArea, PoiesisTextInput } from '../components/poiesis-inputs';
+import { ModelPicker } from '../components/model-picker';
 import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
@@ -107,6 +106,17 @@ interface LegacyPoiesisSettings {
 
 const SETTINGS_STORAGE_KEY = 'poiesis.settings.v1';
 
+const CLI_DOCUMENTATION: Partial<Record<KnownCliId, { setup: string; reference: string }>> = {
+    claude: {
+        setup: 'https://code.claude.com/docs/en/setup',
+        reference: 'https://code.claude.com/docs/en/cli-reference'
+    },
+    grok: {
+        setup: 'https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/01-getting-started.md',
+        reference: 'https://docs.x.ai/build/cli/reference'
+    }
+};
+
 type SettingsCategory = 'display' | 'ai' | 'results' | 'keyboard' | 'data';
 
 const SETTINGS_CATEGORIES: ReadonlyArray<{
@@ -122,9 +132,11 @@ const SETTINGS_CATEGORIES: ReadonlyArray<{
 ];
 
 export class SettingsPart extends AgentWindowPart {
-    protected readonly customModelRoles = new Set<AiRole>();
-
     protected cliDetectionLoading = false;
+
+    protected readonly modelCatalogLoading = new Set<KnownCliId>();
+
+    protected modelCatalogAttempt = 0;
 
     protected cliDetectionCompletion: Promise<void> = Promise.resolve();
 
@@ -234,6 +246,7 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected renderAiSettings(): React.ReactNode {
+        const refreshing = this.cliDetectionLoading || this.modelCatalogLoading.size > 0;
         return (
             <section className='poiesis-settings-modal__section poiesis-settings-modal__section--ai' aria-labelledby='poiesis-settings-ai'>
                 <div className='poiesis-settings-modal__section-heading'>
@@ -241,10 +254,11 @@ export class SettingsPart extends AgentWindowPart {
                         <h2 id='poiesis-settings-ai'>AI</h2>
                         <span>役割ごとに選択</span>
                     </div>
-                    <button type='button' className='poiesis-settings-modal__text-button' disabled={this.cliDetectionLoading} onClick={() => void this.refreshCliDetection()}>
-                        {this.cliDetectionLoading ? '検出中…' : '再検出'}
+                    <button type='button' className='poiesis-settings-modal__text-button' disabled={refreshing} onClick={() => void this.refreshCliDetection(true)}>
+                        {refreshing ? '更新中…' : 'AI情報を更新'}
                     </button>
                 </div>
+                <p className='poiesis-settings-modal__section-copy'>対応するAIは、各CLIのアカウントと設定を使います。</p>
                 <div className='poiesis-settings-modal__ai-roles'>
                     {this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)}
                     {this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)}
@@ -402,11 +416,6 @@ export class SettingsPart extends AgentWindowPart {
         const report = this.host.state.cliDetectionReport;
         const detections = report?.detections ?? [];
         const selectedDetection = detections.find(detection => detection.id === selected);
-        const model = this.roleModel(role);
-        const modelIds = selectedDetection?.models.map(option => option.id) ?? [];
-        const customModel = this.customModelRoles.has(role) || !modelIds.includes(model);
-        const modelSelection = customModel ? '__custom__' : model;
-        const effortOptions = this.effortOptions(selected);
         const purpose = role === 'agent'
             ? '依頼を理解し、コードやファイルを変更します。'
             : '完了した成果を読みやすい文書にまとめます。';
@@ -427,10 +436,18 @@ export class SettingsPart extends AgentWindowPart {
                         );
                         const executable = availability === 'available';
                         const status = availability === 'available'
-                            ? '検出済み'
+                            ? 'CLIを検出'
                             : availability === 'unsupported'
-                                ? '検出済み（未対応）'
+                                ? '未対応'
                                 : cliRoleAvailabilityLabel(availability);
+                        const guidance = availability === 'missing'
+                            ? 'CLIを準備した後、AI情報を更新してください。'
+                            : availability === 'unsupported'
+                                ? 'Poiesisからの実行には未対応です。'
+                                : availability === 'error'
+                                    ? 'AI情報を更新して、もう一度お試しください。'
+                                    : undefined;
+                        const documentation = availability === 'missing' ? CLI_DOCUMENTATION[providerId] : undefined;
                         return (
                             <div className='poiesis-settings-modal__cli-item' key={`${role}-${providerId}`}>
                                 <label className={`poiesis-settings-modal__cli-row${executable ? '' : ' unavailable'}`}>
@@ -444,52 +461,25 @@ export class SettingsPart extends AgentWindowPart {
                                     />
                                     <span className='poiesis-settings-modal__cli-copy'>
                                         <strong>{detection?.name ?? CLI_DISPLAY_NAMES[providerId]}</strong>
+                                        {guidance && <small>{guidance}</small>}
                                     </span>
                                     <span className={`poiesis-settings-modal__cli-status ${this.cliAvailabilityClass(availability)}`}>{status}</span>
                                 </label>
+                                {documentation && (
+                                    <div className='poiesis-settings-modal__cli-help'>
+                                        <button type='button' onClick={() => this.openCliDocumentation(documentation.setup)}>セットアップ</button>
+                                        <button type='button' onClick={() => this.openCliDocumentation(documentation.reference)}>CLIリファレンス</button>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
                 </div>
                 {selectedDetection && (
                     <div className='poiesis-settings-modal__model-field'>
-                        <label>
-                            <span>モデル</span>
-                            <PoiesisSelect
-                                ariaLabel={`${label} モデル`}
-                                value={modelSelection}
-                                disabled={cliRoleAvailability(this.host.state.cliDetectionPhase, report, selected, role) !== 'available'}
-                                options={[
-                                    ...selectedDetection.models.map(option => ({ value: option.id, label: option.id ? option.label : '既定' })),
-                                    { value: '__custom__', label: 'カスタム…' }
-                                ]}
-                                onChange={value => this.setRoleModelChoice(role, value)}
-                            />
-                        </label>
-                        {customModel && (
-                            <label>
-                                <span>カスタムモデルID</span>
-                                <PoiesisTextInput
-                                    value={model}
-                                    maxLength={160}
-                                    placeholder='モデルIDを入力'
-                                    aria-label={`${label} カスタムモデルID`}
-                                    onValueChange={value => this.setRoleModel(role, value)}
-                                />
-                            </label>
-                        )}
-                        {effortOptions.length > 0 && (
-                            <label>
-                                <span>処理の深さ</span>
-                                <PoiesisSelect
-                                    ariaLabel={`${label}の処理の深さ`}
-                                    value={this.roleEffort(role)}
-                                    disabled={cliRoleAvailability(this.host.state.cliDetectionPhase, report, selected, role) !== 'available'}
-                                    options={effortOptions}
-                                    onChange={value => this.setRoleEffort(role, value)}
-                                />
-                            </label>
-                        )}
+                        <span>モデルと処理の深さ</span>
+                        {this.renderAiRolePill(role)}
+                        <small>{this.modelCatalogStatus(selected)}</small>
                     </div>
                 )}
             </div>
@@ -523,89 +513,25 @@ export class SettingsPart extends AgentWindowPart {
         );
     }
 
-    protected roleChoiceValue(provider: KnownCliId, model: string): string {
-        return `provider:${provider}:${encodeURIComponent(model)}`;
-    }
-
-    protected roleModelIsCustom(role: AiRole): boolean {
-        const detection = this.host.state.cliDetectionReport?.detections.find(item => item.id === (role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli));
-        const model = this.roleModel(role);
-        return this.customModelRoles.has(role) || Boolean(detection && !detection.models.some(option => option.id === model));
-    }
-
-    protected rolePillOptions(role: AiRole): PoiesisSelectOption[] {
-        const selectedProvider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
-        const selectedModel = this.roleModel(role);
-        const selectedCustom = this.roleModelIsCustom(role);
-        const selectedEffort = this.roleEffort(role);
-        const report = this.host.state.cliDetectionReport;
-        const detections = report?.detections ?? [];
-        return KNOWN_CLI_IDS.flatMap(providerId => {
-            const detection = detections.find(candidate => candidate.id === providerId);
-            const availability = cliRoleAvailability(this.host.state.cliDetectionPhase, report, providerId, role);
-            const selected = providerId === selectedProvider;
-            const name = detection?.name ?? CLI_DISPLAY_NAMES[providerId];
-            if (availability !== 'available' || !detection) {
-                const status = cliRoleAvailabilityLabel(availability);
-                return [{
-                    value: selected
-                        ? this.roleChoiceValue(providerId, selectedCustom ? '__custom__' : selectedModel)
-                        : `unavailable:${role}:${providerId}`,
-                    label: status,
-                    triggerLabel: `${name} · ${selectedModel || '既定'}${selectedEffort ? ` · ${this.effortLabel(selectedEffort)}` : ''} · ${status}`,
-                    group: name,
-                    disabled: true
-                }];
-            }
-            const group = `${name} · 検出済み`;
-            return [
-                ...detection.models.map(option => ({
-                    value: this.roleChoiceValue(providerId, option.id),
-                    label: option.id ? option.label : '既定',
-                    triggerLabel: `${name} · ${option.id ? option.label : '既定'}${this.effortFor(role, providerId, option.id) ? ` · ${this.effortLabel(this.effortFor(role, providerId, option.id))}` : ''}`,
-                    group
-                })),
-                {
-                    value: this.roleChoiceValue(providerId, '__custom__'),
-                    label: 'カスタム…',
-                    triggerLabel: `${name} · ${selected && selectedCustom && selectedModel ? selectedModel : 'カスタム…'}${selected && selectedCustom && selectedEffort ? ` · ${this.effortLabel(selectedEffort)}` : ''}`,
-                    group,
-                    keepOpen: true
-                }
-            ];
-        });
-    }
-
-    protected setRoleProviderModelChoice(role: AiRole, value: string): void {
-        const match = /^provider:([^:]+):(.*)$/.exec(value);
-        if (!match || !isKnownCliId(match[1])) {
-            return;
-        }
-        const provider = match[1];
-        const modelChoice = decodeURIComponent(match[2]);
+    protected setRoleProviderModel(role: AiRole, provider: KnownCliId, model: string): void {
         const detection = this.host.state.cliDetectionReport?.detections.find(item => item.id === provider);
+        const normalizedModel = model.trim();
         if (detection?.status !== 'found' || !detection.executableRoles.includes(role)
-            || (modelChoice !== '__custom__' && !detection.models.some(option => option.id === modelChoice))) {
+            || normalizedModel.length > 160) {
             return;
         }
-        const model = modelChoice === '__custom__' ? '' : modelChoice;
-        const effort = this.effortFor(role, provider, model);
+        const effort = this.effortFor(role, provider, normalizedModel);
         if (role === 'agent') {
             this.host.state.agentCli = provider;
-            this.host.state.agentModel = model;
+            this.host.state.agentModel = normalizedModel;
             this.host.state.agentEffort = effort;
         } else {
             this.host.state.resultsCli = provider;
-            this.host.state.resultsModel = model;
+            this.host.state.resultsModel = normalizedModel;
             this.host.state.resultsEffort = effort;
             this.resultsGenerationContext.providerId = provider;
-            this.resultsGenerationContext.model = model;
+            this.resultsGenerationContext.model = normalizedModel;
             this.resultsGenerationContext.effort = effort;
-        }
-        if (modelChoice === '__custom__') {
-            this.customModelRoles.add(role);
-        } else {
-            this.customModelRoles.delete(role);
         }
         this.persistPoiesisSettings();
         this.update();
@@ -613,61 +539,30 @@ export class SettingsPart extends AgentWindowPart {
 
     public renderAiRolePill(role: AiRole, compact = false): React.ReactNode {
         const selectedProvider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
-        const selectedModel = this.roleModel(role);
-        const custom = this.roleModelIsCustom(role);
-        const effortOptions = this.effortOptions(selectedProvider);
-        const report = this.host.state.cliDetectionReport;
-        const detection = report?.detections.find(item => item.id === selectedProvider);
-        const availability = cliRoleAvailability(this.host.state.cliDetectionPhase, report, selectedProvider, role);
-        const executable = availability === 'available';
-        const loading = availability === 'pending';
-        const warning = availability === 'missing' || availability === 'unsupported' || availability === 'error';
-        const value = this.roleChoiceValue(selectedProvider, custom ? '__custom__' : selectedModel);
-        const roleLabel = role === 'agent' ? 'Agent' : 'Results';
         return (
-            <div
-                className={`poiesis-ai-role-pill ${compact ? 'compact' : ''}${warning ? ' warning' : ''}${loading ? ' loading' : ''}`}
-                data-ai-role={role}
-            >
-                <PoiesisSelect
-                    ariaLabel={`${roleLabel} の AI とモデル`}
-                    value={value}
-                    options={this.rolePillOptions(role)}
-                    popoverClassName='poiesis-ai-role-pill__popover'
-                    popoverMinWidth={280}
-                    leadingIconClass={warning ? 'codicon-warning' : 'codicon-sparkle'}
-                    popoverFooter={executable && (custom || effortOptions.length > 0) ? (
-                        <div className='poiesis-ai-role-pill__controls'>
-                            {custom && (
-                                <label className='poiesis-ai-role-pill__custom-model'>
-                                    <span>{detection?.name ?? selectedProvider} のカスタムモデルID</span>
-                                    <PoiesisTextInput
-                                        value={selectedModel}
-                                        maxLength={160}
-                                        placeholder='モデルIDを入力'
-                                        aria-label={`${roleLabel} の AI カスタムモデルID`}
-                                        autoFocus
-                                        onValueChange={model => this.setRoleModel(role, model)}
-                                    />
-                                </label>
-                            )}
-                            {effortOptions.length > 0 && (
-                                <label className='poiesis-ai-role-pill__effort'>
-                                    <span>処理の深さ</span>
-                                    <PoiesisSelect
-                                        ariaLabel={`${roleLabel}の処理の深さ`}
-                                        value={this.roleEffort(role)}
-                                        options={effortOptions}
-                                        onChange={nextEffort => this.setRoleEffort(role, nextEffort)}
-                                    />
-                                </label>
-                            )}
-                        </div>
-                    ) : undefined}
-                    onChange={nextValue => this.setRoleProviderModelChoice(role, nextValue)}
-                />
-            </div>
+            <ModelPicker
+                role={role}
+                compact={compact}
+                detectionPhase={this.host.state.cliDetectionPhase}
+                detectionReport={this.host.state.cliDetectionReport}
+                catalogs={this.host.state.modelCatalogs}
+                selectedProvider={selectedProvider}
+                selectedModel={this.roleModel(role)}
+                selectedEffort={this.roleEffort(role)}
+                onSelect={(provider, model) => this.setRoleProviderModel(role, provider, model)}
+                onEffortChange={effort => this.setRoleEffort(role, effort)}
+                onOpenSettings={() => this.openAiSettings()}
+            />
         );
+    }
+
+    protected openAiSettings(): void {
+        this.activeSettingsCategory = 'ai';
+        if (this.host.state.settingsModalVisible) {
+            this.update();
+            return;
+        }
+        this.openSettings();
     }
 
     public openSettings(): void {
@@ -823,7 +718,7 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected setRoleCli(role: AiRole, cli: KnownCliId): void {
-        const defaultModel = this.host.state.cliDetectionReport?.detections.find(detection => detection.id === cli)?.defaultModel ?? '';
+        const defaultModel = '';
         const effort = this.effortFor(role, cli, defaultModel);
         if (role === 'agent') {
             this.host.state.agentCli = cli;
@@ -837,7 +732,6 @@ export class SettingsPart extends AgentWindowPart {
             this.resultsGenerationContext.model = defaultModel;
             this.resultsGenerationContext.effort = effort;
         }
-        this.customModelRoles.delete(role);
         this.persistPoiesisSettings();
         this.update();
     }
@@ -857,51 +751,6 @@ export class SettingsPart extends AgentWindowPart {
     protected effortFor(role: AiRole, provider: KnownCliId, model: string): string {
         const effort = this.host.state.effortByModel[role][this.effortKey(provider, model)] ?? '';
         return CLI_EFFORT_LEVELS[provider].includes(effort) ? effort : '';
-    }
-
-    protected effortOptions(provider: KnownCliId): PoiesisSelectOption[] {
-        return CLI_EFFORT_LEVELS[provider].length > 0 ? [
-            { value: '', label: '既定' },
-            ...CLI_EFFORT_LEVELS[provider].map(value => ({ value, label: this.effortLabel(value) }))
-        ] : [];
-    }
-
-    protected effortLabel(value: string): string {
-        switch (value) {
-            case 'minimal': return '最小';
-            case 'low': return '軽め';
-            case 'medium': return '標準';
-            case 'high': return '深め';
-            case 'xhigh': return 'かなり深く';
-            case 'max': return '最大';
-            default: return value;
-        }
-    }
-
-    protected setRoleModelChoice(role: AiRole, value: string): void {
-        if (value === '__custom__') {
-            this.customModelRoles.add(role);
-            this.setRoleModel(role, '');
-            return;
-        }
-        this.customModelRoles.delete(role);
-        this.setRoleModel(role, value);
-    }
-
-    protected setRoleModel(role: AiRole, model: string): void {
-        const provider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
-        const effort = this.effortFor(role, provider, model);
-        if (role === 'agent') {
-            this.host.state.agentModel = model;
-            this.host.state.agentEffort = effort;
-        } else {
-            this.host.state.resultsModel = model;
-            this.host.state.resultsEffort = effort;
-            this.resultsGenerationContext.model = model.trim();
-            this.resultsGenerationContext.effort = effort;
-        }
-        this.persistPoiesisSettings();
-        this.update();
     }
 
     protected setRoleEffort(role: AiRole, effort: string): void {
@@ -931,11 +780,11 @@ export class SettingsPart extends AgentWindowPart {
         this.update();
     }
 
-    public refreshCliDetection(): Promise<void> {
+    public refreshCliDetection(refreshModels = false): Promise<void> {
         if (this.cliDetectionLoading) {
             return this.cliDetectionCompletion;
         }
-        this.cliDetectionCompletion = this.performCliDetection();
+        this.cliDetectionCompletion = this.performCliDetection(refreshModels);
         return this.cliDetectionCompletion;
     }
 
@@ -943,35 +792,16 @@ export class SettingsPart extends AgentWindowPart {
         return this.cliDetectionCompletion;
     }
 
-    protected async performCliDetection(): Promise<void> {
+    protected async performCliDetection(refreshModels = false): Promise<void> {
+        const catalogAttempt = ++this.modelCatalogAttempt;
+        this.modelCatalogLoading.clear();
         this.cliDetectionLoading = true;
         this.host.state.cliDetectionPhase = 'pending';
         this.update();
         try {
             this.host.state.cliDetectionReport = await this.agentRuntimeServer.detectClis();
             this.host.state.cliDetectionPhase = 'ready';
-            let settingsChanged = false;
-            for (const role of ['agent', 'results'] as const) {
-                const selected = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
-                const currentModel = this.roleModel(role);
-                const detection = this.host.state.cliDetectionReport.detections.find(item => item.id === selected);
-                if (!currentModel && detection?.defaultModel) {
-                    const effort = this.effortFor(role, selected, detection.defaultModel);
-                    if (role === 'agent') {
-                        this.host.state.agentModel = detection.defaultModel;
-                        this.host.state.agentEffort = effort;
-                    } else {
-                        this.host.state.resultsModel = detection.defaultModel;
-                        this.host.state.resultsEffort = effort;
-                        this.resultsGenerationContext.model = detection.defaultModel;
-                        this.resultsGenerationContext.effort = effort;
-                    }
-                    settingsChanged = true;
-                }
-            }
-            if (settingsChanged) {
-                this.persistPoiesisSettings();
-            }
+            void this.refreshModelCatalogs(this.host.state.cliDetectionReport, catalogAttempt, refreshModels);
         } catch (error) {
             this.host.state.cliDetectionPhase = 'error';
             console.warn('[Poiesis] Could not detect Agent CLIs.', error);
@@ -979,6 +809,90 @@ export class SettingsPart extends AgentWindowPart {
             this.cliDetectionLoading = false;
             this.update();
         }
+    }
+
+    protected async refreshModelCatalogs(
+        report: CliDetectionReport,
+        attempt: number,
+        refresh: boolean
+    ): Promise<void> {
+        const detections = report.detections.filter(detection =>
+            detection.status === 'found' && detection.executableRoles.length > 0);
+        for (const detection of detections) {
+            this.modelCatalogLoading.add(detection.id);
+        }
+        this.update();
+        await Promise.all(detections.map(async detection => {
+            try {
+                const catalog = await this.agentRuntimeServer.discoverModels({ providerId: detection.id, refresh });
+                if (attempt === this.modelCatalogAttempt) {
+                    this.host.state.modelCatalogs = {
+                        ...this.host.state.modelCatalogs,
+                        [detection.id]: catalog
+                    };
+                }
+            } catch {
+                if (attempt === this.modelCatalogAttempt) {
+                    const previous = this.host.state.modelCatalogs[detection.id];
+                    this.host.state.modelCatalogs = {
+                        ...this.host.state.modelCatalogs,
+                        [detection.id]: previous
+                            ? {
+                                ...previous,
+                                source: 'cached',
+                                error: 'モデル一覧を更新できなかったため、前回の一覧を表示しています。'
+                            }
+                            : {
+                                providerId: detection.id,
+                                source: detection.models.length ? 'fallback' : 'failed',
+                                models: [...detection.models],
+                                error: detection.models.length
+                                    ? 'モデル一覧を取得できなかったため、同梱の一覧を表示しています。'
+                                    : 'モデル一覧を取得できませんでした。'
+                            }
+                    };
+                }
+            } finally {
+                if (attempt === this.modelCatalogAttempt) {
+                    this.modelCatalogLoading.delete(detection.id);
+                    this.update();
+                }
+            }
+        }));
+    }
+
+    protected modelCatalogStatus(providerId: KnownCliId): string {
+        if (this.host.state.cliDetectionPhase === 'pending') {
+            return 'モデル一覧を確認しています。';
+        }
+        if (this.host.state.cliDetectionPhase === 'error') {
+            return 'CLIの検出に失敗したため、保存済みの選択を維持しています。';
+        }
+        const detection = this.host.state.cliDetectionReport?.detections.find(candidate => candidate.id === providerId);
+        if (detection && !detection.executableRoles.length) {
+            return 'Poiesisからの実行に未対応のため、モデルは選択できません。';
+        }
+        if (detection?.status !== 'found') {
+            return 'CLIが未検出のため、モデル一覧を更新できません。';
+        }
+        if (this.modelCatalogLoading.has(providerId)) {
+            return 'モデル一覧を更新しています。';
+        }
+        const catalog = this.host.state.modelCatalogs[providerId];
+        const source = catalog?.source;
+        const label: Record<CliModelCatalogSource, string> = {
+            live: 'CLIから取得したモデル一覧です。',
+            cached: '前回取得したモデル一覧です。',
+            fallback: '同梱のモデル一覧です。一覧にないモデルも指定できます。',
+            failed: 'モデル一覧を取得できませんでした。一覧にないモデルを指定できます。'
+        };
+        return source ? label[source] : 'モデル一覧を確認しています。';
+    }
+
+    protected openCliDocumentation(uri: string): void {
+        void open(this.openerService, new URI(uri)).catch(() => {
+            this.messageService.error('ドキュメントを開けませんでした。');
+        });
     }
 
     protected cliAvailabilityClass(availability: CliRoleAvailability): string {

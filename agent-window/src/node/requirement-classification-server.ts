@@ -13,6 +13,7 @@ import {
     RequirementTitleSuggestionScope
 } from '../common/requirement-classification-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { unsupportedModelEffortMessage } from './cli-model-discovery';
 import { oneShotCliArgs } from './cli-args';
 import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 import { grokExecutionEnvironment } from './known-cli-registry';
@@ -45,7 +46,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
 
         let pendingPromptDirectory: string | undefined;
         try {
-            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model);
+            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model, scope.effort);
             const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(workspace);
             const prompt = this.buildPrompt(scope);
@@ -87,9 +88,9 @@ export class RequirementClassificationServerImpl implements RequirementClassific
             this.runs.delete(scope.taskId);
             return this.failed({
                 code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
-                message: this.isCommandMissing(error)
+                message: unsupportedModelEffortMessage(error) ?? (this.isCommandMissing(error)
                     ? '選択したResults AI CLIが見つかりませんでした。'
-                    : '要件の自動分類を開始できませんでした。'
+                    : '要件の自動分類を開始できませんでした。')
             });
         }
     }
@@ -104,7 +105,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
 
         let pendingPromptDirectory: string | undefined;
         try {
-            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model);
+            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model, scope.effort);
             const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(workspace);
             const prompt = this.buildTitlePrompt(scope);
@@ -146,9 +147,9 @@ export class RequirementClassificationServerImpl implements RequirementClassific
             this.runs.delete(scope.taskId);
             return this.failed({
                 code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
-                message: this.isCommandMissing(error)
+                message: unsupportedModelEffortMessage(error) ?? (this.isCommandMissing(error)
                     ? '選択したResults AI CLIが見つかりませんでした。'
-                    : '要件名の提案を開始できませんでした。'
+                    : '要件名の提案を開始できませんでした。')
             });
         }
     }

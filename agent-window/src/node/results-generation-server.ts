@@ -11,6 +11,7 @@ import {
     ResultsGenerationServer
 } from '../common/results-generation-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { unsupportedModelEffortMessage } from './cli-model-discovery';
 import { oneShotCliArgs } from './cli-args';
 import { grokExecutionEnvironment } from './known-cli-registry';
 import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
@@ -73,7 +74,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
 
         let pendingPromptDirectory: string | undefined;
         try {
-            const provider = await this.providerRegistry.resolve('results', request.providerId, request.model);
+            const provider = await this.providerRegistry.resolve('results', request.providerId, request.model, request.effort);
             const workspace = await this.resolveWorkspace(request.workspaceUri);
             const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(workspace);
             if (this.cancelledTaskIds.delete(request.taskId)) {
@@ -123,9 +124,9 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             this.runs.delete(request.taskId);
             return this.failed({
                 code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
-                message: this.isCommandMissing(error)
+                message: unsupportedModelEffortMessage(error) ?? (this.isCommandMissing(error)
                     ? '選択したResults AI CLIが見つかりませんでした。'
-                    : '成果文書のAI生成を開始できませんでした。'
+                    : '成果文書のAI生成を開始できませんでした。')
             });
         }
     }

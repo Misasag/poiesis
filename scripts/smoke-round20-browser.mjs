@@ -23,37 +23,39 @@ try {
     const page = await browser.newPage();
     page.setDefaultTimeout(timeout);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
-    const trigger = '[data-ai-role="agent"] [aria-label="Agent の AI とモデル"]';
-    await page.waitForSelector(`${trigger}:not([data-value=""])`);
+    const trigger = '[data-ai-role="agent"] [aria-label="Agent のモデル"]';
+    await page.waitForSelector(trigger);
     await page.waitForFunction(selector => document.querySelector(selector)?.textContent?.includes('未検出'), {}, trigger);
     await page.click(trigger);
-    await page.waitForSelector('.poiesis-ai-role-pill__popover');
+    await page.waitForSelector('.poiesis-settings-modal');
     const warning = await page.evaluate(selector => {
         const pill = document.querySelector('[data-ai-role="agent"]');
         const control = document.querySelector(selector);
-        const popover = document.querySelector('.poiesis-ai-role-pill__popover');
-        if (!(pill instanceof HTMLElement) || !(control instanceof HTMLElement) || !(popover instanceof HTMLElement)) {
-            throw new Error('Agent AI warning pill did not render.');
+        const settings = document.querySelector('.poiesis-settings-modal');
+        if (!(pill instanceof HTMLElement) || !(control instanceof HTMLElement) || !(settings instanceof HTMLElement)) {
+            throw new Error('Agent AI settings route did not render.');
         }
-        const bounds = popover.getBoundingClientRect();
+        const bounds = settings.getBoundingClientRect();
         return {
             text: control.textContent?.trim(),
             warning: pill.classList.contains('warning'),
-            disabledOptions: [...popover.querySelectorAll('[role="option"]')]
-                .filter(option => option.getAttribute('aria-disabled') === 'true').length,
-            enabledOptions: [...popover.querySelectorAll('[role="option"]')]
-                .filter(option => option.getAttribute('aria-disabled') !== 'true').length,
-            groups: [...popover.querySelectorAll('.poiesis-select__group')].map(group => group.textContent?.trim()),
+            disabledProviders: [...settings.querySelectorAll('.poiesis-settings-modal__cli-row input')]
+                .filter(input => input.disabled).length,
+            enabledProviders: [...settings.querySelectorAll('.poiesis-settings-modal__cli-row input')]
+                .filter(input => !input.disabled).length,
+            actionableCopy: settings.textContent?.includes('CLIを準備してログイン後、AI情報を更新してください。'),
+            pickerOpen: Boolean(document.querySelector('.poiesis-model-picker__popover')),
             bounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom },
             viewport: { width: innerWidth, height: innerHeight }
         };
     }, trigger);
     assert(warning.warning && warning.text?.includes('未検出'), `Missing CLI warning is not honest: ${JSON.stringify(warning)}`);
-    assert(warning.disabledOptions === 4 && warning.enabledOptions === 0,
+    assert(warning.disabledProviders === 8 && warning.enabledProviders === 0 && warning.actionableCopy,
         `Missing CLIs became actionable: ${JSON.stringify(warning)}`);
+    assert(!warning.pickerOpen, `An unavailable provider opened an empty model picker: ${JSON.stringify(warning)}`);
     assert(warning.bounds.left >= 0 && warning.bounds.top >= 0
         && warning.bounds.right <= warning.viewport.width && warning.bounds.bottom <= warning.viewport.height,
-    `Warning popover clipped at 1024x600: ${JSON.stringify(warning)}`);
+    `AI Settings route clipped at 1024x600: ${JSON.stringify(warning)}`);
     console.log(`ROUND20_WARNING_SMOKE_RESULT=${JSON.stringify(warning, null, 2)}`);
 } finally {
     await browser.close();

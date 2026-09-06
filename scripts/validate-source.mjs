@@ -35,6 +35,8 @@ const agentWidget = (await Promise.all([
     'agent-window/src/browser/agent-window-widget.tsx',
     ...agentWindowPartFiles,
     'agent-window/src/browser/components/poiesis-select.tsx',
+    'agent-window/src/browser/components/model-picker.tsx',
+    'agent-window/src/browser/model-picker-state.ts',
     'agent-window/src/browser/components/poiesis-inputs.tsx',
     'agent-window/src/browser/components/poiesis-composer.tsx',
     'agent-window/src/browser/components/elapsed.tsx'
@@ -110,6 +112,11 @@ const textDiffTest = await read('scripts/test-text-diff.mjs');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
 const knownCliRegistry = await read('agent-window/src/node/known-cli-registry.ts');
+const cliModelDiscovery = await read('agent-window/src/node/cli-model-discovery.ts');
+const modelPicker = await read('agent-window/src/browser/components/model-picker.tsx');
+const modelPickerState = await read('agent-window/src/browser/model-picker-state.ts');
+const modelDiscoveryTest = await read('scripts/test-model-discovery.mjs');
+const modelSelectionTest = await read('scripts/test-model-selection.mjs');
 const cliArgs = await read('agent-window/src/node/cli-args.ts');
 const cliArgsTest = await read('scripts/test-cli-args.mjs');
 const hiddenProcess = await read('agent-window/src/node/hidden-process.ts');
@@ -321,7 +328,7 @@ assert.ok(!agentWidget.includes('this.resultsService.answer('), 'Bundled Results
 assert.ok(!resultsSkill.includes('async answer('), 'Bundled Results skill must only generate documents');
 for (const marker of [
     'this.resolveWorkspace(scope.workspaceUri)',
-    "this.providerRegistry.resolve('results', scope.providerId, scope.model)",
+    "this.providerRegistry.resolve('results', scope.providerId, scope.model, scope.effort)",
     "resource.scheme !== 'file'",
     'oneShotCliArgs({',
     'effort: scope.effort',
@@ -387,7 +394,7 @@ for (const marker of [
     assert.ok(resultsGenerationProtocol.includes(marker), `Results generation protocol is missing ${marker}`);
 }
 for (const marker of [
-    "this.providerRegistry.resolve('results', request.providerId, request.model)",
+    "this.providerRegistry.resolve('results', request.providerId, request.model, request.effort)",
     'oneShotCliArgs({',
     'effort: request.effort',
     'GENERATED_RESULTS_HTML_MAX_CHARS = 280_000',
@@ -890,8 +897,9 @@ for (const marker of [
     "AiRole = 'agent' | 'results'",
     "CliLocationSource = 'PATH' | 'well-known'",
     'CLI_EFFORT_LEVELS',
+    'CODEX_FALLBACK_MODEL_EFFORTS',
     "claude: ['low', 'medium', 'high', 'xhigh', 'max']",
-    "codex: ['minimal', 'low', 'medium', 'high', 'xhigh']",
+    "codex: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']",
     "grok: ['low', 'medium', 'high']",
     'gemini: []',
     "status: 'found' | 'missing'",
@@ -899,6 +907,9 @@ for (const marker of [
     'providerId: KnownCliId',
     'model?: string',
     'effort?: string',
+    "CliModelCatalogSource = 'live' | 'cached' | 'fallback' | 'failed'",
+    'supportedReasoningEfforts?: string[]',
+    'discoverModels(request: CliModelDiscoveryRequest)',
     'CodexExecutionEvent',
     'notifyCodexEvent',
     'runCodex(request: CodexExecutionRequest)',
@@ -911,8 +922,9 @@ for (const marker of [
     "CliRoleAvailability = 'pending' | 'available' | 'missing' | 'unsupported' | 'error'",
     "if (phase === 'pending')",
     "if (phase === 'error')",
+    "detection && !detection.executableRoles.includes(role)",
+    "return 'unsupported'",
     "detection.status === 'missing'",
-    "detection.executableRoles.includes(role) ? 'available' : 'unsupported'",
     "case 'pending': return '検出中…'",
     "case 'missing': return '未検出'",
     "case 'error': return '検出に失敗'"
@@ -923,6 +935,7 @@ for (const marker of [
     "cliRoleAvailability('pending', undefined, 'codex', 'agent')",
     "cliRoleAvailability('pending', foundReport, 'codex', 'agent')",
     "cliRoleAvailability('ready', missingReport, 'codex', 'agent')",
+    'A detected-or-missing CLI without a runtime adapter must not be presented as installable.',
     "cliRoleAvailability('error', foundReport, 'codex', 'agent')",
     "cliRoleAvailabilityLabel('pending'), '検出中…'",
     "cliRoleAvailabilityLabel('missing'), '未検出'",
@@ -963,14 +976,16 @@ for (const marker of [
     "id: 'grok'",
     "id: 'gemini'",
     "join(userProfile, '.grok', 'bin', 'grok.exe')",
-    "{ id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol' }",
-    "{ id: 'fable', label: 'fable (既定)' }",
+    "id: 'gpt-6-astra', label: 'GPT-6-Astra'",
+    "id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol'",
+    "{ id: 'fable', label: 'fable' }",
     "{ id: 'haiku', label: 'haiku' }"
 ]) {
     assert.ok(knownCliRegistry.includes(marker), `Known CLI registry is missing ${marker}`);
 }
 assert.ok(backendModule.includes('RpcConnectionHandler'));
 assert.ok(backendModule.includes('CliDetector'));
+assert.ok(backendModule.includes('CliModelDiscoveryService'));
 assert.ok(backendModule.includes('CliProviderRegistry'));
 assert.ok(backendModule.includes('server.setClient(client)'));
 for (const marker of [
@@ -978,14 +993,63 @@ for (const marker of [
     'definition?.executableRoles.includes(role)',
     'this.cliDetector.recordedReport',
     'class CliProviderRegistry',
+    'this.modelDiscovery.assertEffortSupported({',
     'model: selectedModel || undefined'
 ]) {
     assert.ok(cliProviderRegistry.includes(marker), `CLI provider registry is missing ${marker}`);
 }
+for (const marker of [
+    "spawnHiddenCli('codex', command, ['app-server']",
+    "spawnHiddenCli('grok', command, ['models']",
+    "await request(0, 'initialize'",
+    "send({ jsonrpc: '2.0', method: 'initialized'",
+    "'model/list'",
+    'includeHidden: false',
+    'MAX_OUTPUT_BYTES',
+    'MAX_PAGES',
+    'MAX_MODELS',
+    'MAX_CACHE_ENTRIES',
+    'modelDiscoveryIdentity(input.providerId, input.command, input.version)',
+    'this.inFlight.get(identity)',
+    "typeof parsed !== 'object' || Array.isArray(parsed)",
+    "child.stdin?.once('error'",
+    'boundedProcessCleanup(',
+    'parseGrokModelsOutput',
+    'assertEffortSupported(selection:',
+    "source: 'cached'",
+    "source: 'live'",
+    "source: 'fallback'",
+    "source: 'failed'",
+    'cleanup: ProcessCleanup = killHiddenProcessTree'
+]) {
+    assert.ok(cliModelDiscovery.includes(marker), `CLI model discovery is missing ${marker}`);
+}
+for (const marker of [
+    'Hidden and duplicate model entries must not reach the picker.',
+    'Concurrent discovery calls must share one in-flight request.',
+    'A timed-out app-server process must be killed.',
+    'A hanging cleanup helper must remain bounded.',
+    'A bounded cleanup must eventually clear the service in-flight entry.',
+    'Grok discovery must parse only documented rows',
+    'Grok discovery must preserve a separate blank CLI-configured default choice.',
+    'A stalled Grok model list must be terminated.',
+    'Oversized Grok output must be terminated.',
+    'Different executable identities must not share an in-flight request.',
+    'A saved unsupported effort must stop',
+    "assert.equal(stale.source, 'cached')",
+    "assert.equal(fallback.source, 'fallback')",
+    'MODEL_DISCOVERY_TEST=passed'
+]) {
+    assert.ok(modelDiscoveryTest.includes(marker), `Model discovery regression is missing ${marker}`);
+}
+assert.ok(rootPackage.scripts['test:model-discovery']?.includes('scripts/test-model-discovery.mjs'),
+    'The model discovery test script is not registered');
 
 for (const marker of [
     'agentCliArgs({',
     'validateCliEffort(providerId, effort)',
+    'discoverModels({ providerId, refresh }: CliModelDiscoveryRequest)',
+    'this.modelDiscovery.discover({',
     'effort,',
     'workspace: resolvedWorkspace',
     'spawnHiddenCli(providerId, command, args, { cwd, env })',
@@ -1001,7 +1065,7 @@ for (const marker of [
     "await writeFile(target, 'Poiesis Agent test change.\\n', 'utf8')",
     "item: { type: 'agent_message', text: testReply }",
     'const resolvedWorkspace = await this.resolveWorkspace(workspacePath)',
-    "this.providerRegistry.resolve('agent', providerId, model)",
+    "this.providerRegistry.resolve('agent', providerId, model, effort)",
     'this.snapshotStore.capture(await this.resolveWorkspace(workspacePath))'
 ]) {
     assert.ok(runtimeServer.includes(marker), `Codex runtime is missing ${marker}`);
@@ -1034,6 +1098,7 @@ for (const source of [runtimeServer, resultsQuestionServer, resultsGenerationSer
 for (const marker of [
     "providerId: 'claude', model: 'sonnet', effort: 'max'",
     "providerId: 'codex', model: 'gpt-5', effort: 'xhigh'",
+    "providerId: 'codex', model: 'gpt-6-astra', effort: 'ultra'",
     "providerId: 'grok', model: 'grok-4', effort: 'high'",
     "providerId: 'grok', model: 'grok-4.5', effort: 'medium'",
     "providerId: 'codex', model: 'gpt-5', effort: 'minimal'",
@@ -1514,8 +1579,7 @@ for (const marker of [
     'model: this.host.state.agentModel.trim() || undefined',
     'effort: this.host.state.agentEffort || undefined',
     'detection.executableRoles.includes(role)',
-    'protected setRoleModelChoice(',
-    'protected setRoleModel(',
+    'protected setRoleProviderModel(role: AiRole, provider: KnownCliId, model: string): void',
     'protected setRoleEffort(role: AiRole, effort: string): void',
     'protected effortKey(provider: KnownCliId, model: string): string',
     "label: '既定'",
@@ -1545,20 +1609,19 @@ for (const marker of [
     "role='listbox'",
     "role='option'",
     'ReactDOM.createPortal(',
-    'protected rolePillOptions(role: AiRole): PoiesisSelectOption[]',
-    'protected setRoleProviderModelChoice(role: AiRole, value: string): void',
     'public renderAiRolePill(role: AiRole, compact = false): React.ReactNode',
-    "data-ai-role={role}",
+    '<ModelPicker',
+    'catalogs={this.host.state.modelCatalogs}',
     "this.host.renderAiRolePill('agent')",
     "this.host.renderAiRolePill('results', true)",
-    "ariaLabel={`${roleLabel} の AI とモデル`}",
-    "aria-label={`${roleLabel} の AI カスタムモデルID`}",
-    "ariaLabel={`${roleLabel}の処理の深さ`}",
-    "className='poiesis-ai-role-pill__effort'",
-    'cliRoleAvailability(this.host.state.cliDetectionPhase',
+    'onSelect={(provider, model) => this.setRoleProviderModel(role, provider, model)}',
+    'onEffortChange={effort => this.setRoleEffort(role, effort)}',
+    'onOpenSettings={() => this.openAiSettings()}',
+    'const availability = cliRoleAvailability(',
     'cliRoleAvailabilityLabel(availability',
     'public waitForCurrentCliDetection(): Promise<void>',
-    'this.cliDetectionCompletion = this.performCliDetection();',
+    'this.cliDetectionCompletion = this.performCliDetection(refreshModels);',
+    'void this.refreshModelCatalogs(this.host.state.cliDetectionReport, catalogAttempt, refreshModels);',
     'await this.host.waitForCurrentCliDetection();',
     "selectedCliAvailability !== 'available'",
     'public async openCodeFile(rawUri: string): Promise<void>',
@@ -1584,6 +1647,80 @@ for (const marker of [
 ]) {
     assert.ok(agentWidget.includes(marker), `Agent / Results / Code UI is missing ${marker}`);
 }
+for (const marker of [
+    "aria-haspopup='dialog'",
+    "role='dialog'",
+    "aria-modal='false'",
+    "aria-label='モデルを検索'",
+    "role='listbox'",
+    "role='option'",
+    "event.key === 'ArrowDown' || event.key === 'ArrowUp'",
+    "event.key === 'Home' || event.key === 'End'",
+    'event.nativeEvent.isComposing || composingRef.current',
+    "activeRowRef.current.scrollIntoView({ block: 'nearest' })",
+    'document.addEventListener(\'pointerdown\', closeOutside, true)',
+    'close(false);',
+    "document.addEventListener('focusin', closeOnFocusLeave)",
+    "document.querySelector<HTMLElement>('.poiesis-model-picker__nested-select')",
+    '一覧にないモデルを指定',
+    'validateCustomModelDraft(customDraft)',
+    'onSelect(customDraft.providerId, validation.model)',
+    '!customDraft && (',
+    'effortUnsupported && (',
+    'onOpenSettings();'
+]) {
+    assert.ok(modelPicker.includes(marker), `Dedicated model picker is missing ${marker}`);
+}
+for (const marker of [
+    'box-sizing: border-box;',
+    'font-family: var(--poiesis-font-sans);',
+    'height: 44px;',
+    'min-height: 38px;',
+    '.poiesis-model-picker__custom',
+    'overflow-y: auto;',
+    '.poiesis-model-picker__effort-warning'
+]) {
+    assert.ok(agentStyles.includes(marker), `Model picker styling is missing ${marker}`);
+}
+for (const marker of [
+    '対応するAIは、各CLIのアカウントと設定を使います。',
+    "? 'CLIを検出'",
+    "? '未対応'",
+    'https://code.claude.com/docs/en/setup',
+    'https://docs.x.ai/build/cli/reference',
+    'openCliDocumentation(documentation.setup)'
+]) {
+    assert.ok(agentWidget.includes(marker), `AI settings guidance is missing ${marker}`);
+}
+assert.ok(!agentWidget.includes('任意のプロバイダーやAPIキーを追加する画面ではありません'),
+    'AI settings must not show the superseded warning wall');
+for (const marker of [
+    'cliRoleAvailability(phase, report, detection.id, role)',
+    'selectedModel',
+    'custom: true',
+    'validateCustomModelDraft',
+    "モデルIDは160文字以内で入力してください。",
+    'metadata?.supportedReasoningEfforts',
+    'CLI_EFFORT_LEVELS[providerId]',
+    'modelPickerPlacement(',
+    'modelEffortIsUnsupported('
+]) {
+    assert.ok(modelPickerState.includes(marker), `Model picker state is missing ${marker}`);
+}
+for (const marker of [
+    'A saved custom model must remain visible after a live catalog refresh.',
+    'GPT-6 must not present minimal and must present max/ultra.',
+    'Opening and editing a custom draft must not mutate the saved selection.',
+    'Catalog refresh must not rewrite a saved per-model effort.',
+    'A catalog refresh must preserve a saved unsupported effort for explicit user correction.',
+    'A no-match Enter path must preserve the search query in the custom draft.',
+    'Short-viewport placement must never claim more height than is actually available.',
+    'MODEL_SELECTION_TEST=passed'
+]) {
+    assert.ok(modelSelectionTest.includes(marker), `Model selection regression is missing ${marker}`);
+}
+assert.ok(rootPackage.scripts['test:model-selection']?.includes('scripts/test-model-selection.mjs'),
+    'The model selection test script is not registered');
 for (const marker of [
     'agentEffort: string;',
     'resultsEffort: string;',
@@ -1881,7 +2018,7 @@ for (const marker of [
 for (const marker of [
     'CLI_DETECTION_UI_SMOKE_RESULT=',
     'First send escaped the pending detection barrier',
-    'First Task did not use the model completed by detection',
+    'First Task did not preserve the CLI-configured default model',
     'Send reused a stale provider session after detection failure',
     'Error-state send did not perform a delayed fresh runtime check',
     "snapshot.statuses.every(status => status === '検出中…')",
@@ -1983,10 +2120,10 @@ for (const marker of [
 }
 for (const marker of [
     '[data-ai-role="agent"]',
-    'Agent の AI とモデル',
+    'Agent のモデル',
     "textContent?.includes('未検出')",
-    'disabledOptions === 4 && warning.enabledOptions === 0',
-    'Warning popover clipped at 1024x600',
+    'disabledProviders === 8 && warning.enabledProviders === 0',
+    'AI Settings route clipped at 1024x600',
     'ROUND20_WARNING_SMOKE_RESULT='
 ]) {
     assert.ok(round20Smoke.includes(marker), `Round 20 warning regression is missing ${marker}`);
@@ -2456,8 +2593,10 @@ for (const marker of [
     '.poiesis-select__listbox',
     '.poiesis-select__group',
     '.poiesis-select__footer',
-    '.poiesis-ai-role-pill',
-    '.poiesis-ai-role-pill.warning',
+    '.poiesis-model-picker',
+    '.poiesis-model-picker.warning',
+    '.poiesis-model-picker__popover',
+    '.poiesis-model-picker__list',
     '.poiesis-results__question-panel .poiesis-results__composer',
     '.poiesis-settings-modal__model-field',
     '.poiesis-agent-window__switch',

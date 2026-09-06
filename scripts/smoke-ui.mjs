@@ -776,20 +776,19 @@ try {
         return { agent: role('Agent の AI'), results: role('Results の AI') };
     });
     for (const role of [cliRegistry.agent, cliRegistry.results]) {
-        assert(role.some(entry => entry.name === 'Grok' && entry.status === '検出済み（実行可）' && !entry.disabled),
+        assert(role.some(entry => entry.name === 'Grok' && entry.status === '利用できます' && !entry.disabled),
             `Grok registry status is dishonest: ${JSON.stringify(role)}`);
-        assert(role.some(entry => entry.name === 'Gemini' && entry.status === '未検出' && entry.disabled),
+        assert(role.some(entry => entry.name === 'Gemini CLI' && entry.status === '未検出' && entry.disabled),
             `Gemini registry status is dishonest: ${JSON.stringify(role)}`);
     }
     await page.click('input[name="poiesis-agent-cli"][value="claude"]');
-    await page.waitForFunction(() => document.querySelector('[aria-label="Agent の AI モデル"]')?.dataset.value === 'fable');
-    await choosePoiesisSelect(page, '[aria-label="Agent の AI モデル"]', 'haiku');
-    await choosePoiesisSelect(page, '[aria-label="Results の AI モデル"]', '__custom__');
-    await page.waitForSelector('[aria-label="Results の AI カスタムモデルID"]');
-    await page.type('[aria-label="Results の AI カスタムモデルID"]', 'custom-model-smoke');
-    await choosePoiesisSelect(page, '[aria-label="Results の AI モデル"]', 'gpt-5.4');
+    await page.waitForFunction(() => document.querySelector('[data-ai-role="agent"]')?.dataset.provider === 'claude'
+        && document.querySelector('[data-ai-role="agent"]')?.dataset.model === '');
+    await chooseModel(page, 'agent', 'claude', 'haiku');
+    await chooseModel(page, 'results', 'codex', 'custom-model-smoke', true);
+    await chooseModel(page, 'results', 'codex', 'gpt-5.4-mini');
     await page.waitForFunction(() => [...Object.values(localStorage)].some(value =>
-        typeof value === 'string' && value.includes('"agentModel":"haiku"') && value.includes('"resultsModel":"gpt-5.4"')));
+        typeof value === 'string' && value.includes('"agentModel":"haiku"') && value.includes('"resultsModel":"gpt-5.4-mini"')));
     await page.setViewport({ width: 1024, height: 600, deviceScaleFactor: 1 });
     const settingsResize = await page.$eval('.poiesis-settings-modal:not(.poiesis-customize-modal)', element => {
         const bounds = element.getBoundingClientRect();
@@ -798,9 +797,9 @@ try {
     assert(settingsResize.left >= 0 && settingsResize.top >= 0
         && settingsResize.right <= 1024 && settingsResize.bottom <= 600,
     `Settings modal overflowed after resize: ${JSON.stringify(settingsResize)}`);
-    await page.click('[aria-label="Results の AI モデル"]');
-    await page.waitForSelector('.poiesis-select__listbox');
-    const settingsDropdownBounds = await page.$eval('.poiesis-select__listbox', element => {
+    await page.click('.poiesis-settings-modal [aria-label="Results のモデル"]');
+    await page.waitForSelector('.poiesis-model-picker__popover');
+    const settingsDropdownBounds = await page.$eval('.poiesis-model-picker__popover', element => {
         const bounds = element.getBoundingClientRect();
         return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom };
     });
@@ -809,10 +808,10 @@ try {
     `Settings dropdown clipped at 1024x600: ${JSON.stringify(settingsDropdownBounds)}`);
     await page.keyboard.press('ArrowUp');
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => document.querySelector('[aria-label="Results の AI モデル"]')?.dataset.value !== 'gpt-5.4');
-    await page.waitForFunction(() => document.querySelector('[aria-label="Results の AI モデル"]') === document.activeElement);
-    await choosePoiesisSelect(page, '[aria-label="Results の AI モデル"]', 'gpt-5.4');
-    const modelSelections = { agent: 'claude/haiku', results: 'codex/gpt-5.4', customField: true };
+    await page.waitForFunction(() => document.querySelector('[data-ai-role="results"]')?.dataset.model !== 'gpt-5.4-mini');
+    await page.waitForFunction(() => document.querySelector('.poiesis-settings-modal [aria-label="Results のモデル"]') === document.activeElement);
+    await chooseModel(page, 'results', 'codex', 'gpt-5.4-mini');
+    const modelSelections = { agent: 'claude/haiku', results: 'codex/gpt-5.4-mini', customApplied: true };
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
     await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
@@ -934,13 +933,13 @@ try {
     await page.waitForSelector('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
     await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
     await page.waitForSelector('.poiesis-settings-modal');
-    await page.waitForFunction(() => document.querySelector('[aria-label="Agent の AI モデル"]')?.dataset.value === 'haiku'
-        && document.querySelector('[aria-label="Results の AI モデル"]')?.dataset.value === 'gpt-5.4');
+    await page.waitForFunction(() => document.querySelector('.poiesis-settings-modal [data-ai-role="agent"]')?.dataset.model === 'haiku'
+        && document.querySelector('.poiesis-settings-modal [data-ai-role="results"]')?.dataset.model === 'gpt-5.4-mini');
     const persistedModels = await page.evaluate(() => ({
         agentProvider: document.querySelector('input[name="poiesis-agent-cli"]:checked')?.value,
-        agentModel: document.querySelector('[aria-label="Agent の AI モデル"]')?.dataset.value,
+        agentModel: document.querySelector('.poiesis-settings-modal [data-ai-role="agent"]')?.dataset.model,
         resultsProvider: document.querySelector('input[name="poiesis-results-cli"]:checked')?.value,
-        resultsModel: document.querySelector('[aria-label="Results の AI モデル"]')?.dataset.value
+        resultsModel: document.querySelector('.poiesis-settings-modal [data-ai-role="results"]')?.dataset.model
     }));
     await page.keyboard.press('Escape');
 
@@ -1172,6 +1171,34 @@ async function choosePoiesisSelect(page, triggerSelector, value) {
     assert(selected, `Poiesis select option was not found: ${value}`);
     await page.waitForFunction((selector, nextValue) => document.querySelector(selector)?.dataset.value === nextValue,
         {}, triggerSelector, value);
+}
+
+async function chooseModel(page, role, providerId, modelId, forceCustom = false) {
+    const roleLabel = role === 'agent' ? 'Agent' : 'Results';
+    const settingsOpen = Boolean(await page.$('.poiesis-settings-modal'));
+    const triggerSelector = `${settingsOpen ? '.poiesis-settings-modal ' : ''}[data-ai-role="${role}"] [aria-label="${roleLabel} のモデル"]`;
+    await page.click(triggerSelector);
+    await page.waitForSelector('.poiesis-model-picker__popover');
+    const selected = !forceCustom && await page.evaluate(({ providerId: provider, modelId: model }) => {
+        const option = [...document.querySelectorAll('.poiesis-model-picker__option')]
+            .find(candidate => candidate.dataset.provider === provider && candidate.dataset.model === model);
+        if (!(option instanceof HTMLElement)) return false;
+        option.click();
+        return true;
+    }, { providerId, modelId });
+    if (!selected) {
+        await page.click('.poiesis-model-picker__custom-entry');
+        const providerSelector = `[aria-label="${roleLabel} のカスタムモデルを使うAI"]`;
+        const currentProvider = await page.$eval(providerSelector, element => element.dataset.value);
+        if (currentProvider !== providerId) await choosePoiesisSelect(page, providerSelector, providerId);
+        const inputSelector = `[aria-label="${roleLabel} のカスタムモデルID"]`;
+        await page.type(inputSelector, modelId);
+        await page.click('.poiesis-model-picker__custom-actions .primary');
+    }
+    await page.waitForFunction(({ role: selectedRole, providerId: provider, modelId: model }) => {
+        const picker = document.querySelector(`[data-ai-role="${selectedRole}"]`);
+        return picker?.dataset.provider === provider && picker?.dataset.model === model;
+    }, {}, { role, providerId, modelId });
 }
 
 async function clickStable(page, selector) {

@@ -72,13 +72,13 @@ try {
 
     await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
     await page.waitForSelector('.poiesis-settings-modal');
-    const modelTrigger = '[aria-label="Agent の AI モデル"]';
+    const modelTrigger = '.poiesis-settings-modal [aria-label="Agent のモデル"]';
     const modelEnabled = await page.$eval(modelTrigger, element => !element.disabled);
     assert(modelEnabled, 'Agent model picker is disabled in the live CLI environment.');
     await page.click(modelTrigger);
-    await page.waitForSelector('.poiesis-select__listbox');
-    await page.$eval('.poiesis-select__option[data-value="__custom__"]', element => element.click());
-    const modelSelector = '[aria-label="Agent の AI カスタムモデルID"]';
+    await page.waitForSelector('.poiesis-model-picker__popover');
+    await page.click('.poiesis-model-picker__custom-entry');
+    const modelSelector = '[aria-label="Agent のカスタムモデルID"]';
     await page.waitForSelector(modelSelector);
     await clearControl(page, modelSelector);
     await commitIme(page, cdp, modelSelector, 'モデル');

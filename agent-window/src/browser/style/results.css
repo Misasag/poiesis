@@ -706,7 +706,7 @@
     color: #778198;
 }
 
-.poiesis-results__composer > .poiesis-ai-role-pill {
+.poiesis-results__composer > .poiesis-model-picker {
     grid-column: 1 / -1;
     justify-self: start;
     max-width: min(230px, 100%);

@@ -56,6 +56,8 @@
     "test:composer": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-composer-behavior.mjs",
     "test:agent-activity": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-agent-activity-parser.mjs",
     "test:cli-args": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-cli-args.mjs",
+    "test:model-discovery": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-model-discovery.mjs",
+    "test:model-selection": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-model-selection.mjs",
     "test:hidden-process-env": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-hidden-process-env.mjs",
     "test:cli-detection": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-cli-detection-lifecycle.mjs && node scripts/test-agent-send-detection.mjs",
     "test:results-normalizer": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-normalizer.mjs",

@@ -11,6 +11,7 @@ import {
     ResultsAssertionServer
 } from '../common/results-assertion-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { unsupportedModelEffortMessage } from './cli-model-discovery';
 import { oneShotCliArgs } from './cli-args';
 import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 import { grokExecutionEnvironment } from './known-cli-registry';
@@ -48,7 +49,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
         this.pendingTaskIds.add(scope.taskId);
         let pendingPromptDirectory: string | undefined;
         try {
-            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model);
+            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model, scope.effort);
             const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(workspace);
             if (this.cancelledTaskIds.delete(scope.taskId)) {
@@ -98,9 +99,9 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
             this.runs.delete(scope.taskId);
             return this.failed({
                 code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
-                message: this.isCommandMissing(error)
+                message: unsupportedModelEffortMessage(error) ?? (this.isCommandMissing(error)
                     ? '選択したResults AI CLIが見つかりませんでした。'
-                    : '成果条件の判定を開始できませんでした。'
+                    : '成果条件の判定を開始できませんでした。')
             });
         }
     }

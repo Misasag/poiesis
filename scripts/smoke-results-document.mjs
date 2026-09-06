@@ -253,10 +253,12 @@ async function installCliDetectionFixtureBeforeNavigation(page, workspacePath, a
 }
 
 async function smokeCliDetectionUi(page) {
-    await page.waitForFunction(() => document.querySelector('[data-ai-role="agent"] [aria-label="Agent の AI とモデル"]')
-        ?.getAttribute('data-value') === 'provider:claude:');
+    await page.waitForFunction(() => {
+        const picker = document.querySelector('[data-ai-role="agent"]');
+        return picker?.dataset.provider === 'claude' && picker?.dataset.model === '';
+    });
     const initialAgent = await roleControlSnapshot(page, 'agent');
-    assert(initialAgent.text?.includes('Claude Code') && initialAgent.text.includes('検出中…')
+    assert(initialAgent.text?.includes('確認中')
         && !initialAgent.text.includes('未検出'),
     `Agent role control falsely reported missing during startup: ${JSON.stringify(initialAgent)}`);
     await openSettings(page);
@@ -285,10 +287,10 @@ async function smokeCliDetectionUi(page) {
     const firstCompletedAt = Date.now();
     const firstCompleted = await lifecyclePersistedSnapshot(page);
     assert(firstCompleted.latestTask?.providerId === 'claude'
-        && firstCompleted.latestTask?.model === 'fable',
-    `First Task did not use the model completed by detection: ${JSON.stringify(firstCompleted)}`);
+        && !firstCompleted.latestTask?.model,
+    `First Task did not preserve the CLI-configured default model: ${JSON.stringify(firstCompleted)}`);
     assert(firstCompleted.settings?.agentCli === 'claude'
-        && firstCompleted.settings?.agentModel === 'fable'
+        && firstCompleted.settings?.agentModel === ''
         && firstCompleted.settings?.resultsCli === 'grok'
         && firstCompleted.settings?.resultsModel === 'grok-4.5'
         && firstCompleted.settings?.resultsEffort === 'medium',
@@ -298,7 +300,7 @@ async function smokeCliDetectionUi(page) {
     await page.waitForSelector('.poiesis-results__document');
     const readyResults = await roleControlSnapshot(page, 'results');
     assert(readyResults.text?.includes('Grok') && readyResults.text.includes('grok-4.5')
-        && readyResults.text.includes('medium') && readyResults.text.includes('未検出'),
+        && readyResults.text.includes('標準') && readyResults.text.includes('未検出'),
     `Results role control lost its saved completed-missing selection: ${JSON.stringify(readyResults)}`);
     await clickTab(page, 'Agent');
 
@@ -310,22 +312,22 @@ async function smokeCliDetectionUi(page) {
     const refreshPendingResults = await roleControlSnapshot(page, 'results');
     await clickTab(page, 'Agent');
     const refreshPendingAgent = await roleControlSnapshot(page, 'agent');
-    assert(refreshPendingAgent.text?.includes('検出中…') && !refreshPendingAgent.text.includes('未検出')
-        && refreshPendingResults.text?.includes('検出中…') && !refreshPendingResults.text.includes('未検出'),
+    assert(refreshPendingAgent.text?.includes('確認中') && !refreshPendingAgent.text.includes('未検出')
+        && refreshPendingResults.text?.includes('確認中') && !refreshPendingResults.text.includes('未検出'),
     `Role controls reused stale availability during refresh: ${JSON.stringify({ refreshPendingAgent, refreshPendingResults })}`);
     await openSettings(page);
     await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-settings-modal__cli-status')]
         .some(node => node.textContent?.trim() === '検出に失敗'));
     const failedSettings = await settingsDetectionSnapshot(page);
     assertDetectionStatus(failedSettings, 'error', 'failed refresh');
-    assert(failedSettings.agent.model === 'fable'
+    assert(failedSettings.agent.model === ''
         && failedSettings.results.model === 'grok-4.5'
         && failedSettings.results.effort === 'medium',
     `Failed refresh changed saved model or effort values: ${JSON.stringify(failedSettings)}`);
     await closeSettings(page);
 
     const failedAgentRole = await roleControlSnapshot(page, 'agent');
-    assert(failedAgentRole.text?.includes('検出に失敗'),
+    assert(failedAgentRole.text?.includes('検出失敗'),
         `Agent role control did not expose the failed refresh: ${JSON.stringify(failedAgentRole)}`);
     const secondPrompt = 'Use a fresh runtime check after the failed rescan.';
     await fillAgentComposer(page, secondPrompt);
@@ -348,7 +350,7 @@ async function smokeCliDetectionUi(page) {
     }, timeout);
     const secondCompleted = await lifecyclePersistedSnapshot(page);
     assert(secondCompleted.latestTask?.providerId === 'claude'
-        && secondCompleted.latestTask?.model === 'fable'
+        && !secondCompleted.latestTask?.model
         && freshTaskStartedAt - errorSendAt >= 3_500,
     `Error-state send did not perform a delayed fresh runtime check: ${JSON.stringify({ secondCompleted, delay: freshTaskStartedAt - errorSendAt })}`);
 
@@ -358,12 +360,12 @@ async function smokeCliDetectionUi(page) {
     await page.waitForFunction(() => {
         const agent = document.querySelector('input[name="poiesis-agent-cli"][value="claude"]')?.closest('.poiesis-settings-modal__cli-row');
         const results = document.querySelector('input[name="poiesis-results-cli"][value="grok"]')?.closest('.poiesis-settings-modal__cli-row');
-        return agent?.querySelector('.poiesis-settings-modal__cli-status')?.textContent?.includes('検出済み')
+        return agent?.querySelector('.poiesis-settings-modal__cli-status')?.textContent?.includes('利用できます')
             && results?.querySelector('.poiesis-settings-modal__cli-status')?.textContent?.trim() === '未検出';
     });
     const retryReadySettings = await settingsDetectionSnapshot(page);
     assertDetectionStatus(retryReadySettings, 'ready', 'retry completion');
-    assert(retryReadySettings.agent.model === 'fable'
+    assert(retryReadySettings.agent.model === ''
         && retryReadySettings.results.model === 'grok-4.5'
         && retryReadySettings.results.effort === 'medium',
     `Retry changed saved role selections: ${JSON.stringify(retryReadySettings)}`);
@@ -372,10 +374,10 @@ async function smokeCliDetectionUi(page) {
     const finalAgent = await roleControlSnapshot(page, 'agent');
     await clickTab(page, 'Results');
     const finalResults = await roleControlSnapshot(page, 'results');
-    assert(finalAgent.text?.includes('Claude') && finalAgent.text.includes('fable'),
+    assert(finalAgent.text?.includes('Claude') && finalAgent.text.includes('既定'),
         `Agent role control lost the completed default model: ${JSON.stringify(finalAgent)}`);
     assert(finalResults.text?.includes('Grok') && finalResults.text.includes('grok-4.5')
-        && finalResults.text.includes('medium') && finalResults.text.includes('未検出'),
+        && finalResults.text.includes('標準') && finalResults.text.includes('未検出'),
     `Results role control lost its saved unavailable selection: ${JSON.stringify(finalResults)}`);
 
     return {
@@ -403,12 +405,12 @@ async function smokeCliDetectionUi(page) {
 
 async function roleControlSnapshot(page, role) {
     const label = role === 'agent' ? 'Agent' : 'Results';
-    const selector = `[data-ai-role="${role}"] [aria-label="${label} の AI とモデル"]`;
+    const selector = `[data-ai-role="${role}"] [aria-label="${label} のモデル"]`;
     await page.waitForSelector(selector);
-    return page.$eval(selector, trigger => ({
-        value: trigger.getAttribute('data-value'),
-        text: trigger.textContent?.replace(/\s+/g, ' ').trim(),
-        disabled: trigger.hasAttribute('disabled'),
+    return page.$eval(`[data-ai-role="${role}"]`, picker => ({
+        value: `provider:${picker.dataset.provider}:${encodeURIComponent(picker.dataset.model ?? '')}`,
+        text: picker.textContent?.replace(/\s+/g, ' ').trim(),
+        disabled: picker.querySelector('button')?.hasAttribute('disabled'),
         pagePath: location.pathname,
         storageKeys: Object.keys(localStorage).filter(key => key.includes('poiesis.settings')),
         storedSettings: localStorage.getItem(`theia:${location.pathname}:poiesis.settings.v1`)
@@ -425,8 +427,8 @@ async function settingsDetectionSnapshot(page) {
                 checked: Boolean(input?.checked),
                 status: row?.querySelector('.poiesis-settings-modal__cli-status')?.textContent?.trim(),
                 rowText: row?.textContent?.replace(/\s+/g, ' ').trim(),
-                model: document.querySelector(`[aria-label="${label} の AI モデル"]`)?.getAttribute('data-value'),
-                effort: document.querySelector(`[aria-label="${label} の AI effort"]`)?.getAttribute('data-value')
+                model: document.querySelector(`.poiesis-settings-modal [data-ai-role="${roleId}"]`)?.dataset.model,
+                effort: document.querySelector(`.poiesis-settings-modal [data-ai-role="${roleId}"] [aria-label="${label}の処理の深さ"]`)?.dataset.value
             };
         };
         return {
@@ -452,7 +454,7 @@ function assertDetectionStatus(snapshot, phase, label) {
             && !snapshot.statuses.includes('未検出'),
         `${label} reused a stale report after failure: ${JSON.stringify(snapshot)}`);
     } else {
-        assert(snapshot.agent.status?.includes('検出済み') && snapshot.results.status === '未検出',
+        assert(snapshot.agent.status?.includes('利用できます') && snapshot.results.status === '未検出',
             `${label} did not distinguish found from completed missing: ${JSON.stringify(snapshot)}`);
     }
 }

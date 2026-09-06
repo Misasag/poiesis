@@ -40,6 +40,14 @@ assert.equal(cliRoleAvailability('error', foundReport, 'codex', 'agent'), 'error
     'A stale found report must not replace a failed rescan.');
 assert.equal(cliRoleAvailability('ready', foundReport, 'codex', 'results'), 'available');
 assert.equal(cliRoleAvailability('ready', foundReport, 'gemini', 'agent'), 'missing');
+assert.equal(cliRoleAvailability('ready', {
+    ...foundReport,
+    detections: [{
+        id: 'gemini', name: 'Gemini CLI', status: 'missing', executableRoles: [],
+        models: [], defaultModel: '', checkedLocations: []
+    }]
+}, 'gemini', 'agent'), 'unsupported',
+'A detected-or-missing CLI without a runtime adapter must not be presented as installable.');
 assert.equal(cliRoleAvailabilityLabel('pending'), '検出中…');
 assert.equal(cliRoleAvailabilityLabel('missing'), '未検出');
 assert.equal(cliRoleAvailabilityLabel('error'), '検出に失敗');

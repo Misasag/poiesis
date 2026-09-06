@@ -117,12 +117,12 @@ async function selectRoleProvider(page, role, providerId, modelId) {
     await page.waitForFunction(selector => !document.querySelector(selector)?.disabled, {}, radio);
     await page.$eval(radio, input => input.click());
     await page.waitForFunction(selector => document.querySelector(selector)?.checked, {}, radio);
-    const modelSelector = `[aria-label="${role === 'agent' ? 'Agent' : 'Results'} の AI モデル"]`;
+    const modelSelector = `.poiesis-settings-modal [aria-label="${role === 'agent' ? 'Agent' : 'Results'} のモデル"]`;
     await page.click(modelSelector);
-    await page.waitForSelector('.poiesis-select__listbox');
-    await page.$eval(`.poiesis-select__option[data-value="${modelId}"]`, option => option.click());
-    await page.waitForFunction((selector, expected) => document.querySelector(selector)?.dataset.value === expected,
-        {}, modelSelector, modelId);
+    await page.waitForSelector('.poiesis-model-picker__popover');
+    await page.$eval(`.poiesis-model-picker__option[data-provider="${providerId}"][data-model="${modelId}"]`, option => option.click());
+    await page.waitForFunction((roleId, expected) => document.querySelector(`.poiesis-settings-modal [data-ai-role="${roleId}"]`)?.dataset.model === expected,
+        {}, role, modelId);
 }
 
 async function closeSettings(page) {

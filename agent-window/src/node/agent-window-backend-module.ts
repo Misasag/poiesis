@@ -7,6 +7,7 @@ import {
 } from '../common/agent-runtime-protocol';
 import { AgentRuntimeServerImpl } from './agent-runtime-server';
 import { CliDetector } from './cli-detector';
+import { CliModelDiscoveryService } from './cli-model-discovery';
 import { CliProviderRegistry } from './cli-provider-registry';
 import { ResultsQuestionServer, resultsQuestionServerPath } from '../common/results-question-protocol';
 import { ResultsQuestionServerImpl } from './results-question-server';
@@ -24,6 +25,7 @@ import { DurableStorageServerImpl } from './durable-storage-server';
 
 export default new ContainerModule(bind => {
     bind(CliDetector).toSelf().inSingletonScope();
+    bind(CliModelDiscoveryService).toDynamicValue(() => new CliModelDiscoveryService()).inSingletonScope();
     bind(CliProviderRegistry).toSelf().inSingletonScope();
     bind(ResultsAssertionServer).to(ResultsAssertionServerImpl).inSingletonScope();
     bind(ConnectionHandler).toDynamicValue(context =>

@@ -72,6 +72,12 @@
     -webkit-app-region: no-drag;
 }
 
+.poiesis-model-picker__popover,
+.poiesis-model-picker__nested-select {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+}
+
 .poiesis-window-controls {
     app-region: no-drag;
     -webkit-app-region: no-drag;
@@ -130,4 +136,14 @@
 
 .poiesis-window-controls__close:active {
     background: #a92315;
+}
+
+#poiesis-window-host .poiesis-settings-modal__backdrop {
+    box-sizing: border-box;
+    padding-top: 62px;
+}
+
+#poiesis-window-host .poiesis-settings-modal {
+    box-sizing: border-box;
+    max-height: calc(100vh - 78px);
 }

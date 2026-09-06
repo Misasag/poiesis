@@ -12,6 +12,7 @@ export interface HiddenCliSpawnOptions {
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     input?: string;
+    keepStdinOpen?: boolean;
 }
 
 interface CliInvocation {
@@ -35,7 +36,7 @@ export function spawnHiddenCli(
         env: childCliEnvironment(options.env ?? process.env, options.cwd),
         windowsHide: true,
         shell: false,
-        stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe']
+        stdio: [options.input === undefined && !options.keepStdinOpen ? 'ignore' : 'pipe', 'pipe', 'pipe']
     }) as HiddenCliProcess;
     if (options.input !== undefined) {
         child.stdin?.end(options.input, 'utf8');
@@ -140,26 +141,47 @@ export function resolveKnownCliInvocation(
     throw new Error(`${providerId} CLI script shims are not supported without a direct executable.`);
 }
 
-/** Kills a process tree without ever creating a visible taskkill console. */
-export function killHiddenProcessTree(child: ChildProcess): Promise<void> {
+/** Kills a process tree without ever creating a visible taskkill console or waiting forever. */
+export function killHiddenProcessTree(child: ChildProcess, timeoutMs = 2_000): Promise<void> {
     if (process.platform !== 'win32' || child.pid === undefined) {
-        child.kill();
+        try {
+            child.kill();
+        } catch {
+            // The child may already have exited.
+        }
         return Promise.resolve();
     }
     return new Promise(resolvePromise => {
+        let settled = false;
+        let timeout: NodeJS.Timeout | undefined;
         const killer = spawn('taskkill.exe', ['/pid', String(child.pid), '/T', '/F'], {
             windowsHide: true,
             shell: false,
             stdio: 'ignore'
         });
-        killer.once('error', () => {
-            child.kill();
+        const finish = (): void => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            if (timeout) {
+                clearTimeout(timeout);
+            }
+            try {
+                killer.kill();
+            } catch {
+                // taskkill may already have exited.
+            }
+            try {
+                child.kill();
+            } catch {
+                // The child may already have exited.
+            }
             resolvePromise();
-        });
-        killer.once('close', () => {
-            child.kill();
-            resolvePromise();
-        });
+        };
+        timeout = setTimeout(finish, Math.max(100, Math.min(timeoutMs, 5_000)));
+        killer.once('error', finish);
+        killer.once('close', finish);
     });
 }
 

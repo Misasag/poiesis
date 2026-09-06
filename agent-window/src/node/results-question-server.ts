@@ -10,6 +10,7 @@ import {
 } from '../common/results-question-protocol';
 import { isKnownCliId, KnownCliId } from '../common/agent-runtime-protocol';
 import { CliProviderRegistry } from './cli-provider-registry';
+import { unsupportedModelEffortMessage } from './cli-model-discovery';
 import { oneShotCliArgs } from './cli-args';
 import { grokExecutionEnvironment } from './known-cli-registry';
 import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
@@ -67,7 +68,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
         }
 
         try {
-            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model);
+            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model, scope.effort);
             const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(workspace);
             const prompt = this.buildPrompt(question.trim(), scope);
@@ -92,9 +93,9 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             this.runs.delete(scope.taskId);
             return this.failed({
                 code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
-                message: this.isCommandMissing(error)
+                message: unsupportedModelEffortMessage(error) ?? (this.isCommandMissing(error)
                     ? '選択したAI CLIが見つからないため、回答を開始できませんでした。'
-                    : '回答を開始できませんでした。もう一度お試しください。'
+                    : '回答を開始できませんでした。もう一度お試しください。')
             });
         }
     }

@@ -524,7 +524,7 @@
     background: #242522;
 }
 
-.poiesis-agent-window__composer-footer > .poiesis-ai-role-pill {
+.poiesis-agent-window__composer-footer > .poiesis-model-picker {
     margin-right: auto;
 }
 
