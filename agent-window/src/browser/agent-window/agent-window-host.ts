@@ -55,6 +55,8 @@ export interface AgentWindowState {
     deleteSessionConfirmationId?: string;
     railCollapsed: boolean;
     railWidth: number;
+    compactRailViewport: boolean;
+    responsiveRailOpen: boolean;
     openSessionMenuId?: string;
     renamingSessionId?: string;
     sessionSearchVisible: boolean;

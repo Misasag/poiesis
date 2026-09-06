@@ -124,6 +124,8 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         cliDetectionPhase: 'pending',
         railCollapsed: false,
         railWidth: DEFAULT_RAIL_WIDTH,
+        compactRailViewport: false,
+        responsiveRailOpen: false,
         sessionSearchVisible: false,
         sessionSearchQuery: '',
         expandedWorkspaceGroups: new Set<string>(),
@@ -302,7 +304,25 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         this.addClass('poiesis-agent-window');
         this.toDispose.push(Disposable.create(() => this.disposeAgentRichContent()));
 
+        const compactRailQuery = window.matchMedia('(max-width: 1000px)');
+        const syncCompactRailViewport = (): void => {
+            const compact = compactRailQuery.matches;
+            if (this.state.compactRailViewport === compact
+                && (compact || !this.state.responsiveRailOpen)) {
+                return;
+            }
+            this.state.compactRailViewport = compact;
+            if (!compact) {
+                this.state.responsiveRailOpen = false;
+            }
+            this.update();
+        };
+        this.state.compactRailViewport = compactRailQuery.matches;
+        compactRailQuery.addEventListener('change', syncCompactRailViewport);
+        this.toDispose.push(Disposable.create(() => compactRailQuery.removeEventListener('change', syncCompactRailViewport)));
+
         const closeSessionMenu = (event: PointerEvent): void => {
+            const target = event.target as Element | null;
             if (this.state.openSessionMenuId && !(event.target as Element | null)?.closest('.poiesis-agent-window__session-actions')) {
                 this.state.openSessionMenuId = undefined;
                 this.update();
@@ -328,6 +348,18 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
             if (this.state.explorerMoreVisible
                 && !(event.target as Element | null)?.closest('.poiesis-agent-window__code-explorer-more')) {
                 this.state.explorerMoreVisible = false;
+                this.update();
+            }
+            if (this.state.responsiveRailOpen
+                && !target?.closest([
+                    '.poiesis-agent-window__rail',
+                    '.poiesis-agent-window__workspace-picker',
+                    '.poiesis-agent-window__repository-picker',
+                    '.poiesis-folder-explorer',
+                    '.poiesis-settings-modal',
+                    '.poiesis-shortcuts'
+                ].join(', '))) {
+                this.state.responsiveRailOpen = false;
                 this.update();
             }
         };
@@ -375,6 +407,14 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 this.state.explorerMoreVisible = false;
                 this.state.openSessionMenuId = undefined;
                 this.update();
+            } else if (this.state.responsiveRailOpen) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.state.responsiveRailOpen = false;
+                this.update();
+                requestAnimationFrame(() => {
+                    this.node.querySelector<HTMLElement>('.poiesis-agent-window__rail-toggle')?.focus();
+                });
             }
         };
         document.addEventListener('keydown', closeOverlaysOnEscape, true);
@@ -461,11 +501,16 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         const session = this.sessions.selectedSession();
         const activeTab = session?.activeTab ?? 'agent';
         const runningTask = this.sessions.runningTask(session);
+        const effectiveRailCollapsed = this.state.compactRailViewport
+            ? !this.state.responsiveRailOpen
+            : this.state.railCollapsed;
         return (
             <div
                 className='poiesis-agent-window__content'
                 data-mode={this.state.codeMode ? 'code' : this.state.customizeViewVisible ? 'customize' : activeTab}
-                data-rail-collapsed={this.state.railCollapsed ? 'true' : 'false'}
+                data-rail-collapsed={effectiveRailCollapsed ? 'true' : 'false'}
+                data-compact-rail={this.state.compactRailViewport ? 'true' : 'false'}
+                data-responsive-rail-open={this.state.responsiveRailOpen ? 'true' : 'false'}
                 style={{
                     '--poiesis-rail-width': `${this.state.railWidth}px`,
                     '--poiesis-ui-font-scale': this.uiFontScaleValue()

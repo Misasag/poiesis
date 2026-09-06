@@ -59,7 +59,7 @@ const serverProcess = spawn(process.execPath, [
         THEIA_CONFIG_DIR: theiaConfig,
         POIESIS_DISABLE_CLI_DETECTION: '1',
         POIESIS_RESULTS_QUESTION_MOCK_REPLY: mockAnswer,
-        POIESIS_RESULTS_QUESTION_MOCK_DELAY_MS: '900'
+        POIESIS_RESULTS_QUESTION_MOCK_DELAY_MS: '5000'
     },
     windowsHide: true,
     shell: false,
@@ -90,7 +90,8 @@ try {
     await waitForApp(page);
     await page.waitForSelector('.poiesis-results__document');
     const documentBefore = await page.$eval('.poiesis-results__document', frame => frame.getAttribute('srcdoc'));
-    assert(!await page.$('.poiesis-results__qa-panel'), 'The zero-question panel header must be hidden.');
+    assert(!await page.$('.poiesis-results__question-panel'), 'Questions must not reserve space in the reading state.');
+    assert(!await page.$('.poiesis-results__task-switcher'), 'The old permanent Results rail is still mounted.');
 
     let frame = await resultsFrame(page);
     await frame.evaluate(() => window.scrollTo(0, 720));
@@ -98,12 +99,16 @@ try {
     const documentScrollBefore = await frame.evaluate(() => window.scrollY);
     assert(documentScrollBefore > 0, `The Results document did not scroll: ${documentScrollBefore}`);
 
+    await page.click('#poiesis-results-question-trigger');
+    await page.waitForSelector('.poiesis-results__question-panel [aria-label="表示中の成果について質問"]', { visible: true });
+    assert(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') === '表示中の成果について質問'),
+        'Opening Questions did not focus the input.');
     await page.type('[aria-label="表示中の成果について質問"]', question);
     await page.click('[aria-label="Results 内へ送信"]');
-    await page.waitForSelector('.poiesis-results__qa-panel.expanded .poiesis-results__qa-entry.sending', { visible: true });
+    await page.waitForSelector('.poiesis-results__question-panel .poiesis-results__qa-entry.sending', { visible: true });
     const sending = await page.evaluate(() => ({
         visible: Boolean(document.querySelector('.poiesis-results__qa-entry.sending')),
-        expanded: document.querySelector('.poiesis-results__qa-toggle')?.getAttribute('aria-expanded') === 'true',
+        expanded: document.querySelector('#poiesis-results-question-trigger')?.getAttribute('aria-expanded') === 'true',
         questionVisible: document.querySelector('.poiesis-results__qa-entry.sending')?.textContent?.includes('Which file changed?') === true,
         sendDisabled: document.querySelector('[aria-label="Results 内へ送信"]')?.disabled === true,
         composerDisabled: document.querySelector('[aria-label="表示中の成果について質問"]')?.disabled === true
@@ -115,48 +120,83 @@ try {
     assert(documentScrollAfterSend === documentScrollBefore,
         `Document scroll moved on send: ${documentScrollBefore} -> ${documentScrollAfterSend}`);
 
-    await page.click('[aria-label="質問パネルをたたむ"]');
-    await page.waitForSelector('.poiesis-results__qa-panel.collapsed [aria-expanded="false"]');
+    await page.click('[aria-label="質問を閉じる"]');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-results__question-panel')
+        && document.querySelector('#poiesis-results-question-trigger')?.getAttribute('aria-expanded') === 'false');
     assert(!await page.$('.poiesis-results__qa-history'), 'The pending thread body did not collapse.');
+    assert(await page.evaluate(() => document.querySelector('#poiesis-results-question-trigger')?.getAttribute('data-pending') === 'true'),
+        'Pending activity was not discoverable after Questions closed.');
+
+    stage = 'pending-reopen-focus';
+    await page.click('#poiesis-results-question-trigger');
+    await page.waitForSelector('.poiesis-results__question-panel .poiesis-results__qa-entry.sending', { visible: true });
+    await page.waitForFunction(() => document.querySelector('.poiesis-results__question-panel')?.contains(document.activeElement)
+        && document.activeElement?.getAttribute('aria-label') === '質問を閉じる', { timeout: 2000 });
+    const pendingReopen = await page.evaluate(() => {
+        const panel = document.querySelector('.poiesis-results__question-panel');
+        const input = panel?.querySelector('[aria-label="表示中の成果について質問"]');
+        return {
+            focusInside: panel?.contains(document.activeElement) === true,
+            focusedLabel: document.activeElement?.getAttribute('aria-label'),
+            inputDisabled: input instanceof HTMLTextAreaElement && input.disabled
+        };
+    });
+    assert(pendingReopen.focusInside && pendingReopen.focusedLabel === '質問を閉じる' && pendingReopen.inputDisabled,
+        `Pending Questions did not move focus to an enabled panel control: ${JSON.stringify(pendingReopen)}`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-results__question-panel')
+        && document.activeElement?.id === 'poiesis-results-question-trigger');
+    assert(await page.evaluate(() => document.querySelector('#poiesis-results-question-trigger')?.getAttribute('data-pending') === 'true'),
+        'Pending activity was lost after closing Questions with Escape.');
+
+    const outcomeNavigationEnabled = await page.$eval('.poiesis-results__outcome-trigger', button => !button.disabled);
+    assert(outcomeNavigationEnabled, 'Outcome navigation was disabled while an answer was pending.');
+    await page.click('.poiesis-results__outcome-trigger');
+    await page.waitForSelector('#poiesis-results-navigator', { visible: true });
 
     stage = 'answer-arrival';
+    await page.waitForFunction(() => document.querySelector('#poiesis-results-question-trigger')?.textContent?.includes('質問 1'));
+    assert(!await page.$('.poiesis-results__question-panel'), 'A completed reply reopened Questions after the user closed it.');
+    assert(await page.$('#poiesis-results-navigator'), 'Answer completion dismissed the unrelated outcome navigator.');
+    await page.click('[aria-label="成果ナビゲーターを閉じる"]');
+    await page.waitForFunction(() => !document.querySelector('#poiesis-results-navigator'));
+    await page.click('#poiesis-results-question-trigger');
     await page.waitForSelector('.poiesis-results__qa-entry:not(.failed)');
     await page.waitForFunction(expected => document.querySelector('.poiesis-results__qa-entry:not(.failed)')?.textContent?.includes(expected), {}, mockAnswerMarker);
-    await page.waitForSelector('.poiesis-results__qa-panel.expanded [aria-expanded="true"]');
     const answered = await page.evaluate(expected => ({
         visible: document.querySelector('.poiesis-results__qa-entry:not(.failed)')?.textContent?.includes(expected) === true,
         oldNoticeAbsent: !document.querySelector('.poiesis-results__answer'),
-        panelCount: document.querySelector('.poiesis-results__qa-toggle-title strong')?.textContent?.trim(),
+        panelCount: document.querySelector('#poiesis-results-question-trigger')?.textContent?.trim(),
         internalOverflow: (() => {
             const body = document.querySelector('.poiesis-results__qa-history');
             return body instanceof HTMLElement && body.scrollHeight > body.clientHeight;
         })()
     }), mockAnswerMarker);
-    assert(answered.visible && answered.oldNoticeAbsent && answered.panelCount === '質問 1件' && answered.internalOverflow,
-        `The completed answer was not contained by the docked panel: ${JSON.stringify(answered)}`);
+    assert(answered.visible && answered.oldNoticeAbsent && answered.panelCount === '質問 1' && answered.internalOverflow,
+        `The completed answer was not contained by the question panel: ${JSON.stringify(answered)}`);
     frame = await resultsFrame(page);
     const documentScrollAfterAnswer = await frame.evaluate(() => window.scrollY);
     assert(documentScrollAfterAnswer === documentScrollBefore,
         `Document scroll moved on answer: ${documentScrollBefore} -> ${documentScrollAfterAnswer}`);
 
-    await page.click('[aria-label="質問パネルをたたむ"]');
-    await page.waitForSelector('.poiesis-results__qa-panel.collapsed [aria-expanded="false"]');
+    await page.click('[aria-label="質問を閉じる"]');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-results__question-panel'));
     assert(!await page.$('.poiesis-results__qa-history'), 'The completed thread body did not collapse.');
     stage = 'manual-reopen';
-    await page.click('[aria-label="質問パネルを展開"]');
+    await page.click('#poiesis-results-question-trigger');
     await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
     const reopenState = await page.evaluate((key, expectedSession) => {
         const storageEntry = Object.keys(localStorage).find(candidate => candidate.endsWith(`:${key}`));
         const stored = storageEntry ? JSON.parse(localStorage.getItem(storageEntry) ?? '{}') : {};
         return {
-            panelClass: document.querySelector('.poiesis-results__qa-panel')?.className,
-            expanded: document.querySelector('.poiesis-results__qa-toggle')?.getAttribute('aria-expanded'),
+            panelClass: document.querySelector('.poiesis-results__question-panel')?.className,
+            expanded: document.querySelector('#poiesis-results-question-trigger')?.getAttribute('aria-expanded'),
             entryCount: document.querySelectorAll('.poiesis-results__qa-entry').length,
             stored: stored.sessions?.[expectedSession]
         };
     }, panelStorageKey, sessionId);
     assert(reopenState.expanded === 'true', `Panel did not reopen: ${JSON.stringify(reopenState)}`);
-    await page.waitForSelector('.poiesis-results__qa-panel.expanded .poiesis-results__qa-entry:not(.failed)');
+    await page.waitForSelector('.poiesis-results__question-panel .poiesis-results__qa-entry:not(.failed)');
     const reopened = await page.$eval('.poiesis-results__qa-entry:not(.failed)', (entry, expected) =>
         entry.textContent?.includes(expected) === true, mockAnswerMarker);
     assert(reopened, 'The answer was missing after the panel was reopened.');
@@ -198,7 +238,7 @@ try {
         .some(line => line.textContent?.trim() === '12'));
     await page.click('.poiesis-agent-window__code-control');
     stage = 'code-return';
-    await page.waitForSelector('.poiesis-results__qa-panel.expanded');
+    await page.waitForSelector('.poiesis-results__question-panel');
 
     await replaceDurableFixtures(page, () => {
         updateDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
@@ -211,11 +251,11 @@ try {
         });
     });
     stage = 'restart-restore';
-    await page.waitForSelector('.poiesis-results__qa-panel.expanded .poiesis-results__qa-entry:not(.failed)');
+    await page.waitForSelector('.poiesis-results__question-panel .poiesis-results__qa-entry:not(.failed)');
     const restored = await page.evaluate(expectedAnswer => ({
         count: document.querySelectorAll('.poiesis-results__qa-entry:not(.failed)').length,
         answerVisible: document.querySelector('.poiesis-results__qa-entry:not(.failed)')?.textContent?.includes(expectedAnswer) === true,
-        expanded: document.querySelector('.poiesis-results__qa-toggle')?.getAttribute('aria-expanded') === 'true',
+        expanded: document.querySelector('#poiesis-results-question-trigger')?.getAttribute('aria-expanded') === 'true',
         documentHtml: document.querySelector('.poiesis-results__document')?.getAttribute('srcdoc')
     }), mockAnswerMarker);
     assert(restored.count === 1 && restored.answerVisible && restored.expanded,
@@ -224,32 +264,49 @@ try {
         && restored.documentHtml?.includes('<h1>Stored result document</h1>'),
     'Results Skill HTML was modified by the question flow.');
 
-    const expandedBaseline = await assertTaskRailLayout(page, 'expanded-baseline', false, 1);
-    await page.click('[aria-label="要件レールを折りたたむ"]');
-    await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="true"] .poiesis-results__task-switcher[data-collapsed="true"]');
-    const collapsedBaseline = await assertTaskRailLayout(page, 'collapsed-baseline', true, 1);
-    assert(collapsedBaseline.canvasWidth >= expandedBaseline.canvasWidth + 100,
-        `The Results canvas did not gain the task rail width: ${JSON.stringify({ expandedBaseline, collapsedBaseline })}`);
-    await page.waitForFunction(key => {
-        const storageEntry = Object.keys(localStorage).find(candidate => candidate.endsWith(`:${key}`));
-        const state = storageEntry ? JSON.parse(localStorage.getItem(storageEntry) ?? '{}') : {};
-        return state.taskRailCollapsed === true;
-    }, {}, panelStorageKey);
-
-    const collapsedLayouts = [];
-    for (const size of [{ width: 1280, height: 720 }, { width: 1400, height: 800 }]) {
+    await page.click('[aria-label="質問を閉じる"]');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-results__question-panel'));
+    const readingLayouts = [];
+    for (const size of [
+        { width: 1280, height: 720 },
+        { width: 1000, height: 760 },
+        { width: 820, height: 700 }
+    ]) {
         await page.setViewport({ ...size, deviceScaleFactor: 1 });
-        const label = `collapsed-${size.width}x${size.height}`;
-        collapsedLayouts.push({
-            ...await assertDockedLayout(page, label),
-            ...await assertTaskRailLayout(page, label, true, 1)
-        });
+        readingLayouts.push(await assertReadingLayout(page, `${size.width}x${size.height}`));
     }
-    const collapsedMaximized = await maximizeAndAssert(page);
-    collapsedLayouts.push({
-        ...collapsedMaximized.layout,
-        ...await assertTaskRailLayout(page, 'collapsed-maximized', true, 1)
+    await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
+    const readingBaseline = await assertReadingLayout(page, 'navigator-baseline');
+    await page.evaluate(() => {
+        window.__poiesisResultsFrameIdentity = document.querySelector('.poiesis-results__document');
     });
+    frame = await resultsFrame(page);
+    await frame.evaluate(() => window.scrollTo(0, 480));
+    const navigatorScrollBefore = await frame.evaluate(() => window.scrollY);
+    await page.click('.poiesis-results__outcome-trigger');
+    await page.waitForSelector('#poiesis-results-navigator');
+    const navigatorLayout = await assertNavigatorLayout(page, readingBaseline, 1);
+    const stableWhileNavigatorOpen = await page.evaluate(() => window.__poiesisResultsFrameIdentity === document.querySelector('.poiesis-results__document'));
+    frame = await resultsFrame(page);
+    const navigatorScrollAfter = await frame.evaluate(() => window.scrollY);
+    assert(stableWhileNavigatorOpen && navigatorScrollAfter === navigatorScrollBefore,
+        `Opening the navigator replaced or scrolled the document: ${JSON.stringify({ stableWhileNavigatorOpen, navigatorScrollBefore, navigatorScrollAfter })}`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('#poiesis-results-navigator'));
+    await page.waitForFunction(() => document.activeElement?.classList.contains('poiesis-results__outcome-trigger'));
+    assert(await page.evaluate(() => document.activeElement?.classList.contains('poiesis-results__outcome-trigger')),
+        'Closing the navigator did not return focus to its trigger.');
+
+    const retainedDraft = 'Retain this draft while Questions is closed.';
+    await page.click('#poiesis-results-question-trigger');
+    await page.type('[aria-label="表示中の成果について質問"]', retainedDraft);
+    await page.click('[aria-label="質問を閉じる"]');
+    assert(await page.evaluate(() => document.querySelector('#poiesis-results-question-trigger')?.getAttribute('data-has-draft') === 'true'),
+        'The closed Questions trigger did not expose the retained draft.');
+    await page.click('#poiesis-results-question-trigger');
+    assert(await page.$eval('[aria-label="表示中の成果について質問"]', input => input.value) === retainedDraft,
+        'The question draft was lost after closing and reopening Questions.');
+    await page.click('[aria-label="質問を閉じる"]');
 
     await replaceDurableFixtures(page, () => {
         updateDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
@@ -268,47 +325,25 @@ try {
             return state;
         });
     });
-    stage = 'task-rail-collapsed-restore';
-    await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="true"] .poiesis-results__task-switcher[data-collapsed="true"]');
-    const restoredCollapsedRail = await assertTaskRailLayout(page, 'collapsed-after-restart-and-task-update', true, 1);
-
-    await page.click('[aria-label="要件レールを展開"]');
-    await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="false"] .poiesis-results__task-list');
-    const expandedAfterRestore = await assertTaskRailLayout(page, 'expanded-after-restore', false, 1);
+    stage = 'navigator-task-update';
+    await page.waitForSelector('.poiesis-results__document');
+    await page.click('.poiesis-results__outcome-trigger');
+    await page.waitForSelector('#poiesis-results-navigator .poiesis-results__task-list');
     const cumulativeTaskCount = await page.$eval(
         '.poiesis-results__requirement-card.active .poiesis-results__requirement-select small',
         node => node.textContent?.replace(/\s+/g, ' ').trim() ?? ''
     );
     assert(cumulativeTaskCount.includes('タスク 2件'),
         `The cumulative Requirement did not retain both Tasks: ${cumulativeTaskCount}`);
-    assert(restoredCollapsedRail.canvasWidth >= expandedAfterRestore.canvasWidth + 100,
-        `The expanded task rail did not reclaim its width: ${JSON.stringify({ restoredCollapsedRail, expandedAfterRestore })}`);
-    await page.waitForFunction(key => {
-        const storageEntry = Object.keys(localStorage).find(candidate => candidate.endsWith(`:${key}`));
-        const state = storageEntry ? JSON.parse(localStorage.getItem(storageEntry) ?? '{}') : {};
-        return state.taskRailCollapsed === false;
-    }, {}, panelStorageKey);
-
-    const expandedLayouts = [];
-    for (const size of [{ width: 1280, height: 720 }, { width: 1400, height: 800 }]) {
-        await page.setViewport({ ...size, deviceScaleFactor: 1 });
-        const label = `expanded-${size.width}x${size.height}`;
-        expandedLayouts.push({
-            ...await assertDockedLayout(page, label),
-            ...await assertTaskRailLayout(page, label, false, 1)
-        });
-    }
+    const updatedNavigator = await assertNavigatorLayout(page, await assertReadingLayout(page, 'updated-reading-under-overlay', true), 1);
+    await page.click('[aria-label="成果ナビゲーターを閉じる"]');
     const maximized = await maximizeAndAssert(page);
-    expandedLayouts.push({
-        ...maximized.layout,
-        ...await assertTaskRailLayout(page, 'expanded-maximized', false, 1)
-    });
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
-    stage = 'task-rail-expanded-restore';
-    await page.waitForSelector('.poiesis-results[data-task-rail-collapsed="false"] .poiesis-results__task-list');
-    const restoredExpandedRail = await assertTaskRailLayout(page, 'expanded-after-restart', false, 1);
+    stage = 'reading-state-after-restart';
+    await page.waitForSelector('.poiesis-results__document');
+    const restoredReadingLayout = await assertReadingLayout(page, 'reading-after-restart');
 
     await page.click('#poiesis-agent-tab');
     await page.waitForSelector('.poiesis-agent-window__agent');
@@ -334,11 +369,13 @@ try {
         panelStateRestored: restored.expanded,
         restoredQuestions: restored.count,
         citationLine: 12,
-        taskRailCanvasGain: collapsedBaseline.canvasWidth - expandedBaseline.canvasWidth,
-        taskRailCollapsedRestored: restoredCollapsedRail.collapsed,
-        taskRailExpandedRestored: !restoredExpandedRail.collapsed,
-        taskCountAfterUpdate: restoredCollapsedRail.taskCount,
-        resizeLayouts: { collapsed: collapsedLayouts, expanded: expandedLayouts },
+        navigatorPreservedDocument: stableWhileNavigatorOpen,
+        navigatorOverlay: navigatorLayout,
+        taskCountAfterUpdate: cumulativeTaskCount,
+        retainedDraft: true,
+        resizeLayouts: readingLayouts,
+        updatedNavigator,
+        restoredReadingLayout,
         nativeMaximize: maximized.nativeMaximize,
         agentMessageCount: agentIsolation.messageCount,
         skillHtmlUnchanged: true
@@ -357,6 +394,109 @@ async function resultsFrame(page) {
     const frame = await handle?.contentFrame();
     if (!frame) throw new Error('The Results document frame was not attached.');
     return frame;
+}
+
+async function assertReadingLayout(page, label, allowAuxiliary = false) {
+    await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+    const snapshot = await page.evaluate((currentLabel, auxiliaryAllowed) => {
+        const bounds = selector => {
+            const element = document.querySelector(selector);
+            if (!(element instanceof HTMLElement)) return undefined;
+            const rect = element.getBoundingClientRect();
+            return {
+                left: Math.round(rect.left),
+                top: Math.round(rect.top),
+                right: Math.round(rect.right),
+                bottom: Math.round(rect.bottom),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height)
+            };
+        };
+        const header = bounds('.poiesis-results__fixed-header');
+        const title = bounds('.poiesis-results__fixed-title h1');
+        const firstAction = bounds('.poiesis-results__toolbar-actions button');
+        return {
+            label: currentLabel,
+            viewport: { width: innerWidth, height: innerHeight },
+            results: bounds('.poiesis-results'),
+            main: bounds('.poiesis-results__main'),
+            canvas: bounds('.poiesis-results__canvas'),
+            header,
+            title,
+            firstAction,
+            frame: bounds('.poiesis-results__document'),
+            hasPermanentTaskRail: Boolean(document.querySelector('.poiesis-results__task-switcher')),
+            hasPermanentComposer: !auxiliaryAllowed && Boolean(document.querySelector('.poiesis-results__composer')),
+            hasAuxiliary: Boolean(document.querySelector('.poiesis-results__auxiliary')),
+            horizontalOverflow: document.documentElement.scrollWidth > innerWidth
+        };
+    }, label, allowAuxiliary);
+    assert(snapshot.results && snapshot.main && snapshot.canvas && snapshot.header && snapshot.title && snapshot.firstAction && snapshot.frame,
+        `The Results reading layout is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(!snapshot.hasPermanentTaskRail && !snapshot.hasPermanentComposer,
+        `Permanent Results chrome still reserves reading space at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(allowAuxiliary || !snapshot.hasAuxiliary,
+        `An auxiliary panel remained open in the reading state at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.main.width === snapshot.results.width
+        && snapshot.canvas.width === snapshot.main.width
+        && snapshot.frame.width >= snapshot.canvas.width - 2,
+    `The document does not own the Results width at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.header.height <= 52 && snapshot.frame.top <= snapshot.header.bottom + 1,
+        `The compact document toolbar is not aligned at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.title.right <= snapshot.firstAction.left - 4,
+        `The title collides with toolbar actions at ${label}: ${JSON.stringify(snapshot)}`);
+    if (snapshot.viewport.width === 1280 && snapshot.viewport.height === 720) {
+        assert(snapshot.frame.height >= 540,
+            `The 1280x720 document viewport is shorter than 540px: ${JSON.stringify(snapshot)}`);
+    }
+    assert(!snapshot.horizontalOverflow,
+        `The Results reading layout overflowed horizontally at ${label}: ${JSON.stringify(snapshot)}`);
+    return {
+        label,
+        viewport: snapshot.viewport,
+        canvasWidth: snapshot.canvas.width,
+        canvasHeight: snapshot.canvas.height,
+        frameWidth: snapshot.frame.width,
+        frameHeight: snapshot.frame.height,
+        headerHeight: snapshot.header.height
+    };
+}
+
+async function assertNavigatorLayout(page, readingBaseline, expectedCount) {
+    await page.$eval('#poiesis-results-navigator', async element => {
+        await Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished));
+    });
+    const snapshot = await page.evaluate(() => {
+        const element = document.querySelector('#poiesis-results-navigator');
+        const canvas = document.querySelector('.poiesis-results__canvas');
+        const results = document.querySelector('.poiesis-results');
+        const rect = node => {
+            const bounds = node?.getBoundingClientRect();
+            return bounds && { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom, width: bounds.width };
+        };
+        return {
+            navigator: rect(element),
+            canvas: rect(canvas),
+            results: rect(results),
+            cardCount: document.querySelectorAll('#poiesis-results-navigator .poiesis-results__requirement-card').length,
+            expanded: document.querySelector('.poiesis-results__outcome-trigger')?.getAttribute('aria-expanded'),
+            dialog: element?.getAttribute('role'),
+            modal: element?.getAttribute('aria-modal'),
+            horizontalOverflow: document.documentElement.scrollWidth > innerWidth
+        };
+    });
+    assert(snapshot.navigator && snapshot.canvas && snapshot.results
+        && snapshot.cardCount === expectedCount
+        && snapshot.expanded === 'true'
+        && snapshot.dialog === 'dialog'
+        && snapshot.modal === 'true',
+    `The outcome navigator contract is incomplete: ${JSON.stringify(snapshot)}`);
+    assert(Math.round(snapshot.canvas.width) === readingBaseline.canvasWidth
+        && snapshot.navigator.left >= snapshot.results.left
+        && snapshot.navigator.right <= snapshot.results.right + 1
+        && !snapshot.horizontalOverflow,
+    `The outcome navigator changed or escaped the reading surface: ${JSON.stringify({ snapshot, readingBaseline })}`);
+    return { width: Math.round(snapshot.navigator.width), cardCount: snapshot.cardCount };
 }
 
 async function assertDockedLayout(page, label) {
@@ -525,7 +665,7 @@ async function maximizeAndAssert(page) {
         await client.detach();
     }
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
-    return { nativeMaximize, layout: await assertDockedLayout(page, 'maximized') };
+    return { nativeMaximize, layout: await assertReadingLayout(page, 'maximized') };
 }
 
 async function freePort() {

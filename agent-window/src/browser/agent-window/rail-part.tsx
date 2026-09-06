@@ -130,12 +130,20 @@ export class RailPart extends AgentWindowPart {
 
     public renderRail(): React.ReactNode {
         const workspaceGroups = this.workspaceSessionGroups();
-        const toggleLabel = this.host.state.railCollapsed ? '左サイドバーを展開' : '左サイドバーを折りたたむ';
+        const responsiveOverlay = this.host.state.compactRailViewport && this.host.state.responsiveRailOpen;
+        const visuallyCollapsed = this.host.state.compactRailViewport
+            ? !responsiveOverlay
+            : this.host.state.railCollapsed;
+        const toggleLabel = this.host.state.compactRailViewport
+            ? responsiveOverlay ? '会話ナビゲーションを閉じる' : '会話ナビゲーションを開く'
+            : visuallyCollapsed ? '左サイドバーを展開' : '左サイドバーを折りたたむ';
         return (
             <aside
+                id='poiesis-agent-window-rail-navigation'
                 className='poiesis-agent-window__rail'
-                data-collapsed={this.host.state.railCollapsed ? 'true' : 'false'}
-                aria-label='セッションのサイドバー'
+                data-collapsed={visuallyCollapsed ? 'true' : 'false'}
+                data-responsive-overlay={responsiveOverlay ? 'true' : 'false'}
+                aria-label='会話ナビゲーション'
             >
                 <div className='poiesis-agent-window__rail-top'>
                     <div className='poiesis-agent-window__rail-controls'>
@@ -144,10 +152,12 @@ export class RailPart extends AgentWindowPart {
                             className='poiesis-agent-window__rail-toggle'
                             title={toggleLabel}
                             aria-label={toggleLabel}
+                            aria-expanded={responsiveOverlay || !visuallyCollapsed}
+                            aria-controls='poiesis-agent-window-rail-navigation'
                             onClick={() => this.toggleRail()}
                         >
                             <span
-                                className={`codicon ${this.host.state.railCollapsed
+                                className={`codicon ${visuallyCollapsed
                                     ? 'codicon-layout-sidebar-left'
                                     : 'codicon-layout-sidebar-left-off'}`}
                                 aria-hidden='true'
@@ -158,6 +168,7 @@ export class RailPart extends AgentWindowPart {
                         type='button'
                         className='poiesis-agent-window__rail-action'
                         title='新しいチャット'
+                        aria-label='新しいチャット'
                         onClick={() => void this.host.newChat()}
                     >
                         <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
@@ -169,9 +180,10 @@ export class RailPart extends AgentWindowPart {
                         type='button'
                         className={`poiesis-agent-window__rail-action${this.host.state.sessionSearchVisible ? ' pressed' : ''}`}
                         aria-pressed={this.host.state.sessionSearchVisible}
-                        aria-expanded={this.host.state.sessionSearchVisible && !this.host.state.railCollapsed}
+                        aria-expanded={this.host.state.sessionSearchVisible && !visuallyCollapsed}
                         aria-controls='poiesis-agent-window-session-search'
                         title='検索'
+                        aria-label='検索'
                         onClick={() => this.showSessionSearch()}
                     >
                         <span className='poiesis-agent-window__rail-action-icon' aria-hidden='true'>
@@ -183,6 +195,7 @@ export class RailPart extends AgentWindowPart {
                         type='button'
                         className={`poiesis-agent-window__rail-action${this.host.state.customizeViewVisible ? ' active' : ''}`}
                         title='カスタマイズ'
+                        aria-label='カスタマイズ'
                         aria-current={this.host.state.customizeViewVisible ? 'page' : undefined}
                         onClick={() => this.host.openCustomize()}
                     >
@@ -191,7 +204,7 @@ export class RailPart extends AgentWindowPart {
                         </span>
                         <span className='poiesis-agent-window__rail-action-label'>カスタマイズ</span>
                     </button>
-                    {this.host.state.sessionSearchVisible && !this.host.state.railCollapsed && (
+                    {this.host.state.sessionSearchVisible && !visuallyCollapsed && (
                         <label className='poiesis-agent-window__session-search' id='poiesis-agent-window-session-search'>
                             <span className='codicon codicon-search' aria-hidden='true' />
                             <PoiesisTextInput
@@ -235,7 +248,7 @@ export class RailPart extends AgentWindowPart {
                         </button>
                     </div>
                 </div>
-                {!this.host.state.railCollapsed && (
+                {!this.host.state.compactRailViewport && !this.host.state.railCollapsed && (
                     <div
                         className='poiesis-agent-window__rail-resize-handle'
                         role='separator'
@@ -682,6 +695,14 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected toggleRail(): void {
+        if (this.host.state.compactRailViewport) {
+            this.host.state.responsiveRailOpen = !this.host.state.responsiveRailOpen;
+            this.update();
+            if (this.host.state.responsiveRailOpen && this.host.state.sessionSearchVisible) {
+                requestAnimationFrame(() => this.sessionSearchInput?.focus());
+            }
+            return;
+        }
         this.host.state.railCollapsed = !this.host.state.railCollapsed;
         this.host.sessions.persistWindowState();
         this.update();
@@ -691,7 +712,11 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected showSessionSearch(): void {
-        this.host.state.railCollapsed = false;
+        if (this.host.state.compactRailViewport) {
+            this.host.state.responsiveRailOpen = true;
+        } else {
+            this.host.state.railCollapsed = false;
+        }
         this.host.state.sessionSearchVisible = true;
         this.update();
         requestAnimationFrame(() => this.sessionSearchInput?.focus());

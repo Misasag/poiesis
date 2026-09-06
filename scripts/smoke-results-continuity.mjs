@@ -108,6 +108,7 @@ try {
     await selectTab(page, 'Agent');
     await sendAndWait(page, requests[1], visibleReplies[1]);
     await selectTab(page, 'Results');
+    await page.click('.poiesis-results__outcome-trigger');
     await page.waitForSelector('.poiesis-results__requirement-card');
     assert.equal(await page.$$eval('.poiesis-results__requirement-card', cards => cards.length), 1,
         'A concrete no-file design did not create one Result.');
@@ -185,6 +186,7 @@ try {
 
     await page.click(`[data-session-id="${originalSessionId}"] .poiesis-agent-window__session`);
     await selectTab(page, 'Results');
+    await page.click('.poiesis-results__outcome-trigger');
     assert.equal(await page.$$eval('.poiesis-results__requirement-card', cards => cards.length), 1,
         'The Result was not restored after reload.');
 

@@ -101,11 +101,11 @@ export class ResultsPart extends AgentWindowPart {
 
     protected readonly expandedRequirementIds = new Set<string>();
 
-    protected toggleResultsTaskRail(): void {
-        this.host.state.resultsTaskRailCollapsed = !this.host.state.resultsTaskRailCollapsed;
-        this.host.sessions.persistResultsQaPanelState();
-        this.update();
-    }
+    protected resultsAuxiliaryPanel?: 'navigator' | 'details';
+
+    protected resultsAuxiliaryScopeKey?: string;
+
+    protected resultsAuxiliaryTrigger?: HTMLElement;
 
     public renderResults(session: WindowAgentSession | undefined): React.ReactNode {
         const requirements = this.host.sessions.resultsRequirements(session);
@@ -128,12 +128,14 @@ export class ResultsPart extends AgentWindowPart {
             ? session?.resultsQaExpanded.get(scopeKey) === true
             : false;
         const selectedTitle = selectedTask?.title ?? selectedRequirement?.title;
+        const questionCount = questionHistory.length + (questionSending ? 1 : 0);
+        const auxiliaryPanel = this.resultsAuxiliaryScopeKey === scopeKey ? this.resultsAuxiliaryPanel : undefined;
 
         return (
             <section
                 id='poiesis-results-panel'
                 className='poiesis-results'
-                data-task-rail-collapsed={this.host.state.resultsTaskRailCollapsed ? 'true' : 'false'}
+                data-auxiliary-panel={questionPanelExpanded ? 'questions' : auxiliaryPanel ?? 'none'}
                 role='tabpanel'
                 aria-labelledby='poiesis-results-tab'
             >
@@ -147,9 +149,26 @@ export class ResultsPart extends AgentWindowPart {
                 >
                     <div className='poiesis-results__canvas' aria-label='Results HTML キャンバス'>
                         {!selectedRequirement && <div className='poiesis-results__empty'>Agent でタスクを完了すると、ここに要件ごとの成果が表示されます。</div>}
-                        {selectedTask && this.renderResultsHeader(selectedTask)}
+                        {selectedTask && this.renderResultsHeader(
+                            selectedTask,
+                            requirements.length,
+                            scopeKey,
+                            draft,
+                            questionCount,
+                            questionSending,
+                            questionPanelExpanded
+                        )}
                         {!selectedTask && selectedRequirement && latestTask
-                            && this.renderRequirementResultsHeader(selectedRequirement, latestTask)}
+                            && this.renderRequirementResultsHeader(
+                                selectedRequirement,
+                                latestTask,
+                                requirements.length,
+                                scopeKey,
+                                draft,
+                                questionCount,
+                                questionSending,
+                                questionPanelExpanded
+                            )}
                         {latestTask?.status === 'failed' && !document && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>タスクに失敗しました</strong>
@@ -171,7 +190,7 @@ export class ResultsPart extends AgentWindowPart {
                                 <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedRequirement && (document?.status === 'generating'
+                        {selectedRequirement && (document?.status === 'generating' && !document.html
                                 || latestTask?.status === 'completed' && !document) && (
                             <div className='poiesis-results__empty poiesis-results__generating'>
                                 <PoiesisResultsElapsed key={scopeKey} />
@@ -195,7 +214,7 @@ export class ResultsPart extends AgentWindowPart {
                                     : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>
                             </div>
                         )}
-                        {selectedRequirement && document?.status === 'ready' && document.html && (
+                        {selectedRequirement && document?.html && (document.status === 'ready' || document.status === 'generating') && (
                             <iframe
                                 key={`${scopeKey}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}
                                 className='poiesis-results__document'
@@ -205,88 +224,52 @@ export class ResultsPart extends AgentWindowPart {
                             />
                         )}
                     </div>
-                    {scopeKey && selectedTitle && (questionHistory.length > 0 || questionSending)
-                        && this.renderResultsQuestionPanel(
-                            scopeKey,
-                            selectedTitle,
-                            questionHistory,
-                            questionSending ? notice : undefined,
-                            questionPanelExpanded
-                        )}
-                    <section className='poiesis-results__composer' aria-label='Results の入力欄'>
-                        <PoiesisComposer
-                            key={scopeKey ?? 'no-results-scope'}
-                            value={draft}
-                            placeholder='この結果について質問…'
-                            aria-label='表示中の成果について質問'
-                            rows={2}
-                            maxLength={4_000}
-                            disabled={!scopeKey || document?.status !== 'ready' || questionSending}
-                            onValueChange={value => scopeKey && this.setResultsDraft(scopeKey, value)}
-                            onSubmit={() => scopeKey && void this.submitResultsQuestion(scopeKey)}
-                        />
-                        <button
-                            type='button'
-                            className='poiesis-results__send'
-                            aria-label='Results 内へ送信'
-                            disabled={!scopeKey || document?.status !== 'ready' || questionSending || !draft.trim()}
-                            onClick={() => scopeKey && void this.submitResultsQuestion(scopeKey)}
-                        >
-                            <span className='codicon codicon-arrow-up' aria-hidden='true' />
-                        </button>
-                        {scopeKey && document?.status === 'ready' && this.host.renderAiRolePill('results', true)}
-                    </section>
                 </div>
-                <aside
-                    className='poiesis-results__task-switcher'
-                    data-collapsed={this.host.state.resultsTaskRailCollapsed ? 'true' : 'false'}
-                    aria-label='同じセッションの要件'
-                >
-                    {this.host.state.resultsTaskRailCollapsed ? (
-                        <button
-                            type='button'
-                            className='poiesis-agent-window__rail-toggle poiesis-results__task-switcher-collapsed-button'
-                            title='要件レールを展開'
-                            aria-label='要件レールを展開'
-                            aria-expanded='false'
-                            aria-controls='poiesis-results-task-list'
-                            onClick={() => this.toggleResultsTaskRail()}
-                        >
-                            <span className='poiesis-results__task-count' aria-label={`要件 ${requirements.length}件`}>
-                                {requirements.length}
-                            </span>
-                            <span className='codicon codicon-layout-sidebar-right' aria-hidden='true' />
-                        </button>
-                    ) : <>
-                        <div className='poiesis-results__task-switcher-header'>
-                            <strong>要件</strong>
-                            <div className='poiesis-results__task-switcher-header-actions'>
-                                <span className='poiesis-results__task-count'>{requirements.length}</span>
-                                <button
-                                    type='button'
-                                    className='poiesis-agent-window__rail-toggle poiesis-results__task-switcher-toggle'
-                                    title='要件レールを折りたたむ'
-                                    aria-label='要件レールを折りたたむ'
-                                    aria-expanded='true'
-                                    aria-controls='poiesis-results-task-list'
-                                    onClick={() => this.toggleResultsTaskRail()}
-                                >
-                                    <span className='codicon codicon-layout-sidebar-right-off' aria-hidden='true' />
-                                </button>
-                            </div>
-                        </div>
-                        <div id='poiesis-results-task-list' className='poiesis-results__task-list' role='tablist'>
-                        {requirements.map(requirement => this.renderRequirementCard(
-                            requirement,
-                            selectedRequirement?.id === requirement.id,
-                            selectedTask?.id
-                        ))}
-                    </div>
-                        {!requirements.length && <p>完了した要件はありません。</p>}
-                    </>}
-                </aside>
+                {auxiliaryPanel === 'navigator' && this.renderResultsNavigator(
+                    requirements,
+                    selectedRequirement,
+                    selectedTask?.id
+                )}
+                {auxiliaryPanel === 'details' && selectedRequirement && latestTask
+                    && this.renderResultsDetails(selectedRequirement, selectedTask, latestTask)}
+                {questionPanelExpanded && scopeKey && selectedTitle && this.renderResultsQuestionPanel(
+                    scopeKey,
+                    selectedTitle,
+                    questionHistory,
+                    questionSending ? notice : undefined,
+                    draft,
+                    document?.status === 'ready'
+                )}
             </section>
         );
+    }
+
+    protected renderResultsNavigator(
+        requirements: readonly Requirement[],
+        selectedRequirement: Requirement | undefined,
+        selectedTaskId: string | undefined
+    ): React.ReactNode {
+        return <>
+            <div className='poiesis-results__auxiliary-scrim' onPointerDown={() => this.closeResultsAuxiliary()} />
+            <aside
+                id='poiesis-results-navigator'
+                className='poiesis-results__auxiliary poiesis-results__navigator'
+                role='dialog'
+                aria-modal='true'
+                aria-label='成果を選択'
+                onKeyDown={event => this.handleResultsAuxiliaryKeyDown(event, () => this.closeResultsAuxiliary())}
+            >
+                {this.renderResultsAuxiliaryHeader('成果', '成果ナビゲーターを閉じる', () => this.closeResultsAuxiliary())}
+                <div id='poiesis-results-task-list' className='poiesis-results__task-list' role='tablist'>
+                    {requirements.map(requirement => this.renderRequirementCard(
+                        requirement,
+                        selectedRequirement?.id === requirement.id,
+                        selectedTaskId
+                    ))}
+                </div>
+                {!requirements.length && <p className='poiesis-results__auxiliary-empty'>完了した成果はありません。</p>}
+            </aside>
+        </>;
     }
 
     protected renderRequirementCard(
@@ -308,6 +291,11 @@ export class ResultsPart extends AgentWindowPart {
             && !tasks[0].requirementClassification?.undone
             ? tasks[0]
             : undefined;
+        const session = this.host.sessions.selectedSession();
+        const scopeKey = `requirement:${requirement.id}`;
+        const questionState = session?.resultsNotices.get(scopeKey)?.status === 'sending'
+            ? '回答中'
+            : session?.resultsDrafts.get(scopeKey)?.trim() ? '下書き' : undefined;
         return (
             <article
                 key={requirement.id}
@@ -359,8 +347,8 @@ export class ResultsPart extends AgentWindowPart {
                             <span title={requirement.title}>{requirement.title}</span>
                             <small>
                                 タスク {tasks.length}件
-                                {latestTask ? ` · ${this.host.sessions.taskStatusLabel(latestTask)}` : ''}
-                                {latestTask?.endedAt ? ` · ${this.host.sessions.taskFinishedTime(latestTask)}` : ''}
+                                {latestTask && latestTask.status !== 'completed' ? ` · ${this.host.sessions.taskStatusLabel(latestTask)}` : ''}
+                                {questionState ? ` · ${questionState}` : ''}
                             </small>
                         </button>
                     )}
@@ -412,6 +400,10 @@ export class ResultsPart extends AgentWindowPart {
         const finalizing = task.status === 'running' || this.taskService.isFinalizing(task.id);
         const otherRequirements = this.host.sessions.requirementsForSession(this.host.sessions.findSessionForTask(task))
             .filter(candidate => candidate.id !== requirement.id);
+        const session = this.host.sessions.selectedSession();
+        const questionState = session?.resultsNotices.get(task.id)?.status === 'sending'
+            ? '回答中'
+            : session?.resultsDrafts.get(task.id)?.trim() ? '下書き' : undefined;
         return (
             <div className={`poiesis-results__history-row${selected ? ' active' : ''}`} key={task.id}>
                 <button
@@ -424,7 +416,10 @@ export class ResultsPart extends AgentWindowPart {
                     onClick={() => this.selectResultsTask(task.id)}
                 >
                     <span title={task.title}>{task.title}</span>
-                    <small>{this.host.sessions.taskStatusLabel(task)}{task.endedAt ? ` · ${this.host.sessions.taskFinishedTime(task)}` : ''}</small>
+                    <small>
+                        {task.status === 'completed' ? this.compactResultsDate(task.endedAt) : this.host.sessions.taskStatusLabel(task)}
+                        {questionState ? ` · ${questionState}` : ''}
+                    </small>
                 </button>
                 {!finalizing && (
                     <div className='poiesis-results__menu-host'>
@@ -475,74 +470,156 @@ export class ResultsPart extends AgentWindowPart {
         );
     }
 
-    protected renderResultsHeader(task: ExecutionTask): React.ReactNode {
-        const diffstat = summarizeTaskChangeSet(task.changeSet);
-        const status = task.status === 'completed' ? '完了' : task.status === 'failed' ? '失敗' : 'キャンセル';
-        const completedAtJst = formatTaskEndedAtJst(task.endedAt);
-        const compactCompletedAt = this.compactResultsDate(task.endedAt);
+    protected renderResultsHeader(
+        task: ExecutionTask,
+        resultsCount: number,
+        scopeKey: string | undefined,
+        draft: string,
+        questionCount: number,
+        questionSending: boolean,
+        questionPanelExpanded: boolean
+    ): React.ReactNode {
         const document = this.resultsService.get(task.id);
-        const generationBadge = this.resultsGenerationBadge(document);
-        const assertionBadge = this.renderResultsAssertionBadge(document);
-        const appliedSkillIds = [...new Set([
-            ...task.appliedSkills?.agent ?? [],
-            ...task.appliedSkills?.results ?? []
-        ])];
-        if (appliedSkillIds.some(id => !this.resultsSkillNames.has(id))) {
-            void this.ensureResultsSkillNames();
-        }
-        const appliedSkillNames = appliedSkillIds.map(id => this.resultsSkillNames.get(id) ?? id);
-        const requirement = this.requirementService.get(task.requirementId);
-        const taskCount = requirement ? this.host.sessions.finishedTasksForRequirement(requirement).length : 1;
+        return this.renderResultsToolbar(
+            task.title,
+            resultsCount,
+            scopeKey,
+            draft,
+            questionCount,
+            questionSending,
+            questionPanelExpanded,
+            this.resultsActionStatus(document, task)
+        );
+    }
+
+    protected renderRequirementResultsHeader(
+        requirement: Requirement,
+        latestTask: ExecutionTask,
+        resultsCount: number,
+        scopeKey: string | undefined,
+        draft: string,
+        questionCount: number,
+        questionSending: boolean,
+        questionPanelExpanded: boolean
+    ): React.ReactNode {
+        const document = this.resultsService.getRequirement(requirement.id);
+        return this.renderResultsToolbar(
+            requirement.title,
+            resultsCount,
+            scopeKey,
+            draft,
+            questionCount,
+            questionSending,
+            questionPanelExpanded,
+            this.resultsActionStatus(document, latestTask)
+        );
+    }
+
+    protected renderResultsToolbar(
+        title: string,
+        resultsCount: number,
+        scopeKey: string | undefined,
+        draft: string,
+        questionCount: number,
+        questionSending: boolean,
+        questionPanelExpanded: boolean,
+        actionStatus: { label: string; kind: string } | undefined
+    ): React.ReactNode {
+        const navigatorExpanded = this.resultsAuxiliaryPanel === 'navigator' && this.resultsAuxiliaryScopeKey === scopeKey;
+        const detailsExpanded = this.resultsAuxiliaryPanel === 'details' && this.resultsAuxiliaryScopeKey === scopeKey;
+        const questionLabel = questionSending
+            ? '回答中'
+            : draft.trim() ? '質問・下書き' : questionCount > 0 ? `質問 ${questionCount}` : '質問';
         return (
-            <header className='poiesis-results__fixed-header' data-task-status={task.status}>
+            <header className='poiesis-results__fixed-header'>
                 <div className='poiesis-results__fixed-title'>
-                    <h1 data-task-title={task.title} title={task.title}>{task.title}</h1>
-                </div>
-                <div className='poiesis-results__fixed-meta' aria-label='タスクの状態と変更規模'>
-                    <span className={`poiesis-results__status ${task.status}`}>{status}</span>
-                    {completedAtJst && (
-                        <time dateTime={task.endedAt} title={completedAtJst} aria-label={`完了日時 ${completedAtJst}`}>
-                            {compactCompletedAt}
-                        </time>
+                    <h1 data-result-title={title} title={title}>{title}</h1>
+                    {actionStatus && (
+                        <span className={`poiesis-results__action-status ${actionStatus.kind}`} role='status'>
+                            {actionStatus.kind === 'running' && <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />}
+                            {actionStatus.label}
+                        </span>
                     )}
-                    <span className='poiesis-results__diffstat'>
-                        <b>{diffstat.fileCount}ファイル</b>
-                        <ins>+{diffstat.additions}</ins>
-                        <del>−{diffstat.deletions}</del>
-                    </span>
-                    <span className='poiesis-results__badges' aria-label='成果文書の生成情報'>
-                        {generationBadge && (
-                            <span title={generationBadge.accessibleLabel} aria-label={generationBadge.accessibleLabel}>
-                                {generationBadge.label}
-                            </span>
-                        )}
-                        {assertionBadge}
-                        {appliedSkillIds.length > 0 && (
-                            <span
-                                title={`適用 Skills: ${appliedSkillNames.join('、')}`}
-                                aria-label={`適用 Skills: ${appliedSkillNames.join('、')}`}
-                            >
-                                Skills {appliedSkillIds.length}
-                            </span>
-                        )}
-                        <span title={`タスク ${taskCount}件`} aria-label={`タスク ${taskCount}件`}>タスク {taskCount}</span>
-                    </span>
+                </div>
+                <div className='poiesis-results__toolbar-actions'>
+                    <button
+                        type='button'
+                        className='poiesis-results__toolbar-button poiesis-results__outcome-trigger'
+                        aria-label={`成果を選択、${resultsCount}件`}
+                        aria-expanded={navigatorExpanded}
+                        aria-controls='poiesis-results-navigator'
+                        onClick={event => this.toggleResultsAuxiliary('navigator', event.currentTarget, scopeKey)}
+                    >
+                        <span>成果 {resultsCount}</span>
+                        <span className='codicon codicon-chevron-down' aria-hidden='true' />
+                    </button>
+                    <button
+                        id='poiesis-results-question-trigger'
+                        type='button'
+                        className='poiesis-results__toolbar-button'
+                        data-has-draft={draft.trim() ? 'true' : 'false'}
+                        data-pending={questionSending ? 'true' : 'false'}
+                        aria-label={`${questionLabel}パネルを${questionPanelExpanded ? '閉じる' : '開く'}`}
+                        aria-expanded={questionPanelExpanded}
+                        aria-controls='poiesis-results-questions-panel'
+                        disabled={!scopeKey}
+                        onClick={event => scopeKey && this.toggleResultsQuestionPanel(scopeKey, questionPanelExpanded, event.currentTarget)}
+                    >
+                        {questionSending
+                            ? <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
+                            : <span className='codicon codicon-comment-discussion' aria-hidden='true' />}
+                        <span>{questionLabel}</span>
+                    </button>
+                    <button
+                        type='button'
+                        className='poiesis-results__toolbar-button poiesis-results__details-trigger'
+                        aria-label='成果の詳細を表示'
+                        aria-expanded={detailsExpanded}
+                        aria-controls='poiesis-results-details-panel'
+                        onClick={event => this.toggleResultsAuxiliary('details', event.currentTarget, scopeKey)}
+                    >
+                        <span>詳細</span>
+                    </button>
                 </div>
             </header>
         );
     }
 
-    protected renderRequirementResultsHeader(requirement: Requirement, latestTask: ExecutionTask): React.ReactNode {
-        const changeSet = this.resultsService.getRequirementChangeSet(requirement.id)
+    protected resultsActionStatus(
+        document: TaskResultDocument | undefined,
+        task: ExecutionTask
+    ): { label: string; kind: string } | undefined {
+        if (document?.status === 'generating') {
+            return { label: document.html ? '更新中' : '作成中', kind: 'running' };
+        }
+        if (document?.updateError) {
+            return { label: '更新失敗', kind: 'failed' };
+        }
+        if (document?.status === 'failed') {
+            return { label: '作成失敗', kind: 'failed' };
+        }
+        if (task.status === 'failed') {
+            return { label: '失敗', kind: 'failed' };
+        }
+        if (task.status === 'cancelled') {
+            return { label: '停止', kind: 'cancelled' };
+        }
+        return undefined;
+    }
+
+    protected renderResultsDetails(
+        requirement: Requirement,
+        selectedTask: ExecutionTask | undefined,
+        latestTask: ExecutionTask
+    ): React.ReactNode {
+        const tasks = selectedTask ? [selectedTask] : this.host.sessions.finishedTasksForRequirement(requirement);
+        const document = selectedTask
+            ? this.resultsService.get(selectedTask.id)
+            : this.resultsService.getRequirement(requirement.id);
+        const changeSet = selectedTask?.changeSet
+            ?? this.resultsService.getRequirementChangeSet(requirement.id)
             ?? this.host.sessions.fallbackRequirementChangeSet(requirement);
         const diffstat = summarizeTaskChangeSet(changeSet);
-        const status = this.host.sessions.taskStatusLabel(latestTask);
-        const completedAtJst = formatTaskEndedAtJst(latestTask.endedAt);
-        const compactCompletedAt = this.compactResultsDate(latestTask.endedAt);
-        const document = this.resultsService.getRequirement(requirement.id);
-        const generationBadge = this.resultsGenerationBadge(document);
-        const assertionBadge = this.renderResultsAssertionBadge(document);
-        const tasks = this.host.sessions.finishedTasksForRequirement(requirement);
         const appliedSkillIds = [...new Set(tasks.flatMap(task => [
             ...task.appliedSkills?.agent ?? [],
             ...task.appliedSkills?.results ?? []
@@ -551,43 +628,167 @@ export class ResultsPart extends AgentWindowPart {
             void this.ensureResultsSkillNames();
         }
         const appliedSkillNames = appliedSkillIds.map(id => this.resultsSkillNames.get(id) ?? id);
-        return (
-            <header className='poiesis-results__fixed-header' data-task-status={latestTask.status}>
-                <div className='poiesis-results__fixed-title'>
-                    <h1 title={requirement.title}>{requirement.title}</h1>
-                </div>
-                <div className='poiesis-results__fixed-meta' aria-label='要件の状態と変更規模'>
-                    <span className={`poiesis-results__status ${latestTask.status}`}>{status}</span>
+        const assertions = document?.status === 'ready' && Array.isArray(document.assertions)
+            ? document.assertions
+            : [];
+        const passedAssertions = assertions.filter(assertion => assertion.status === 'pass').length;
+        const generation = this.resultsGenerationBadge(document);
+        const task = selectedTask ?? latestTask;
+        const completedAtJst = formatTaskEndedAtJst(task.endedAt);
+        return <>
+            <div className='poiesis-results__auxiliary-scrim' onPointerDown={() => this.closeResultsAuxiliary()} />
+            <aside
+                id='poiesis-results-details-panel'
+                className='poiesis-results__auxiliary poiesis-results__details'
+                role='dialog'
+                aria-modal='true'
+                aria-label='成果の詳細'
+                onKeyDown={event => this.handleResultsAuxiliaryKeyDown(event, () => this.closeResultsAuxiliary())}
+            >
+                {this.renderResultsAuxiliaryHeader('詳細', '詳細を閉じる', () => this.closeResultsAuxiliary())}
+                <dl className='poiesis-results__details-list'>
+                    <div>
+                        <dt>状態</dt>
+                        <dd>{this.host.sessions.taskStatusLabel(task)}</dd>
+                    </div>
                     {completedAtJst && (
-                        <time dateTime={latestTask.endedAt} title={completedAtJst} aria-label={`完了日時 ${completedAtJst}`}>
-                            {compactCompletedAt}
-                        </time>
+                        <div>
+                            <dt>完了日時</dt>
+                            <dd><time dateTime={task.endedAt}>{completedAtJst}</time></dd>
+                        </div>
                     )}
-                    <span className='poiesis-results__diffstat'>
-                        <b>{diffstat.fileCount}ファイル</b>
-                        <ins>+{diffstat.additions}</ins>
-                        <del>−{diffstat.deletions}</del>
-                    </span>
-                    <span className='poiesis-results__badges' aria-label='要件成果文書の生成情報'>
-                        {generationBadge && (
-                            <span title={generationBadge.accessibleLabel} aria-label={generationBadge.accessibleLabel}>
-                                {generationBadge.label}
-                            </span>
-                        )}
-                        {assertionBadge}
-                        {appliedSkillIds.length > 0 && (
-                            <span
-                                title={`適用 Skills: ${appliedSkillNames.join('、')}`}
-                                aria-label={`適用 Skills: ${appliedSkillNames.join('、')}`}
-                            >
-                                Skills {appliedSkillIds.length}
-                            </span>
-                        )}
-                        <span title={`タスク ${tasks.length}件`} aria-label={`タスク ${tasks.length}件`}>タスク {tasks.length}</span>
-                    </span>
-                </div>
+                    <div>
+                        <dt>変更</dt>
+                        <dd>{diffstat.fileCount}ファイル · +{diffstat.additions} −{diffstat.deletions}</dd>
+                    </div>
+                    <div>
+                        <dt>成果の作成</dt>
+                        <dd>{generation?.accessibleLabel ?? (document?.status === 'generating' ? '作成中' : document?.status === 'failed' ? '作成失敗' : '未作成')}</dd>
+                    </div>
+                    {assertions.length > 0 && (
+                        <div>
+                            <dt>成果の生成条件</dt>
+                            <dd>{passedAssertions}/{assertions.length} 通過</dd>
+                        </div>
+                    )}
+                    <div>
+                        <dt>適用 Skills</dt>
+                        <dd>{appliedSkillNames.length > 0 ? appliedSkillNames.join('、') : 'なし'}</dd>
+                    </div>
+                    <div>
+                        <dt>タスク履歴</dt>
+                        <dd>{this.host.sessions.finishedTasksForRequirement(requirement).length}件</dd>
+                    </div>
+                </dl>
+                {assertions.length > 0 && (
+                    <ul className='poiesis-results__assertion-list' aria-label='成果の生成条件'>
+                        {assertions.map((assertion, index) => (
+                            <li key={`${assertion.text}-${index}`} data-status={assertion.status}>
+                                <span>{assertion.status === 'pass' ? '通過' : assertion.status === 'fail' ? '不通過' : '未判定'}</span>
+                                <p>{assertion.text}</p>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </aside>
+        </>;
+    }
+
+    protected renderResultsAuxiliaryHeader(title: string, closeLabel: string, onClose: () => void): React.ReactNode {
+        return (
+            <header className='poiesis-results__auxiliary-header'>
+                <h2>{title}</h2>
+                <button type='button' aria-label={closeLabel} data-results-autofocus='true' onClick={onClose}>
+                    <span className='codicon codicon-close' aria-hidden='true' />
+                </button>
             </header>
         );
+    }
+
+    protected toggleResultsAuxiliary(
+        panel: 'navigator' | 'details',
+        trigger: HTMLElement,
+        scopeKey: string | undefined
+    ): void {
+        if (this.resultsAuxiliaryPanel === panel && this.resultsAuxiliaryScopeKey === scopeKey) {
+            this.closeResultsAuxiliary();
+            return;
+        }
+        const session = this.host.sessions.selectedSession();
+        if (session && scopeKey) {
+            session.resultsQaExpanded.delete(scopeKey);
+            this.host.sessions.persistResultsQaPanelState();
+        }
+        this.resultsAuxiliaryPanel = panel;
+        this.resultsAuxiliaryScopeKey = scopeKey;
+        this.resultsAuxiliaryTrigger = trigger;
+        this.host.state.openResultsMenuKey = undefined;
+        this.update();
+        requestAnimationFrame(() => {
+            const auxiliary = this.node.querySelector<HTMLElement>(`[data-auxiliary-panel='${panel}'] .poiesis-results__auxiliary`);
+            const selected = auxiliary?.querySelector<HTMLElement>('[aria-selected="true"]');
+            (selected ?? auxiliary?.querySelector<HTMLElement>('[data-results-autofocus="true"]'))?.focus();
+        });
+    }
+
+    protected closeResultsAuxiliary(returnFocus = true): void {
+        const trigger = this.resultsAuxiliaryTrigger;
+        this.resultsAuxiliaryPanel = undefined;
+        this.resultsAuxiliaryScopeKey = undefined;
+        this.host.state.openResultsMenuKey = undefined;
+        this.update();
+        if (returnFocus) {
+            requestAnimationFrame(() => trigger?.focus());
+        }
+    }
+
+    protected toggleResultsQuestionPanel(scopeKey: string, expanded: boolean, trigger: HTMLElement): void {
+        this.resultsAuxiliaryPanel = undefined;
+        this.resultsAuxiliaryScopeKey = undefined;
+        this.resultsAuxiliaryTrigger = trigger;
+        if (expanded) {
+            this.setResultsQuestionPanelExpanded(scopeKey, false);
+            requestAnimationFrame(() => trigger.focus());
+            return;
+        }
+        this.setResultsQuestionPanelExpanded(scopeKey, true);
+        requestAnimationFrame(() => {
+            const panel = this.node.querySelector<HTMLElement>('.poiesis-results__question-panel');
+            const input = panel?.querySelector<HTMLTextAreaElement>('textarea:not(:disabled)');
+            const enabledControl = panel?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled)');
+            (input ?? enabledControl ?? panel)?.focus();
+        });
+    }
+
+    protected handleResultsAuxiliaryKeyDown(event: React.KeyboardEvent<HTMLElement>, close: () => void): void {
+        if (event.defaultPrevented) {
+            return;
+        }
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            close();
+            return;
+        }
+        if (event.key !== 'Tab') {
+            return;
+        }
+        const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+            'a[href], button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])'
+        )).filter(element => element.getClientRects().length > 0);
+        if (!focusable.length) {
+            event.preventDefault();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
     }
 
     protected resultsGenerationBadge(document: TaskResultDocument | undefined): ResultsMetadataBadge | undefined {
@@ -702,77 +903,92 @@ export class ResultsPart extends AgentWindowPart {
         title: string,
         history: readonly TaskResultsQuestion[],
         pending: ResultsNotice | undefined,
-        expanded: boolean
+        draft: string,
+        documentReady: boolean
     ): React.ReactNode {
-        const questionCount = history.length + (pending ? 1 : 0);
-        const panelBodyId = `poiesis-results-qa-panel-${scopeKey.replace(/[^a-z0-9_-]/gi, '-')}`;
-        return (
+        return <>
+            <div className='poiesis-results__auxiliary-scrim' onPointerDown={() => this.closeResultsQuestionPanel(scopeKey)} />
             <section
-                className={`poiesis-results__qa-panel${expanded ? ' expanded' : ' collapsed'}`}
-                aria-label={`${title}への質問パネル`}
+                id='poiesis-results-questions-panel'
+                className='poiesis-results__auxiliary poiesis-results__question-panel'
+                role='dialog'
+                aria-modal='true'
+                aria-label={`${title}への質問`}
                 data-results-scope={scopeKey}
+                tabIndex={-1}
+                onKeyDown={event => this.handleResultsAuxiliaryKeyDown(event, () => this.closeResultsQuestionPanel(scopeKey))}
             >
-                <button
-                    type='button'
-                    className='poiesis-results__qa-toggle'
-                    aria-controls={panelBodyId}
-                    aria-expanded={expanded}
-                    aria-label={expanded ? '質問パネルをたたむ' : '質問パネルを展開'}
-                    onClick={() => this.setResultsQuestionPanelExpanded(scopeKey, !expanded)}
-                >
-                    <span className='poiesis-results__qa-toggle-title'>
-                        <span className='codicon codicon-comment-discussion' aria-hidden='true' />
-                        <strong>質問 {questionCount}件</strong>
-                    </span>
-                    <span className='poiesis-results__qa-toggle-action'>
-                        {expanded ? 'たたむ' : '表示'}
-                        <span className={`codicon codicon-chevron-${expanded ? 'down' : 'up'}`} aria-hidden='true' />
-                    </span>
-                </button>
-                {expanded && (
-                    <div
-                        id={panelBodyId}
-                        className='poiesis-results__qa-history'
-                        aria-label={`${title}への質問履歴`}
-                    >
-                        {history.map((entry, index) => (
-                            <article className={`poiesis-results__qa-entry${entry.error ? ' failed' : ''}`} key={`${entry.timestamp}-${index}`}>
-                                <div className='poiesis-results__qa-meta'>
-                                    <strong>質問</strong>
-                                    <time dateTime={entry.timestamp}>{this.questionTime(entry.timestamp)}</time>
-                                </div>
-                                <p>{entry.question}</p>
-                                <div className='poiesis-results__qa-response'>
-                                    <strong>{entry.error ? '回答に失敗' : '回答'}</strong>
-                                    {entry.error
-                                        ? <p>{entry.error}</p>
-                                        : this.host.renderMarkdown(entry.answer ?? '')}
-                                    {entry.error && (
-                                        <button type='button' onClick={() => void this.submitResultsQuestion(scopeKey, entry.question)}>再試行</button>
-                                    )}
-                                </div>
-                            </article>
-                        ))}
-                        {pending && (
-                            <article className='poiesis-results__qa-entry sending' role='status' aria-live='polite'>
-                                <div className='poiesis-results__qa-meta'>
-                                    <strong>質問</strong>
-                                    <span>送信中</span>
-                                </div>
-                                <p>{pending.question}</p>
-                                <div className='poiesis-results__qa-response'>
-                                    <strong>回答</strong>
-                                    <p className='poiesis-results__qa-sending'>
-                                        <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
-                                        回答を作成しています…
-                                    </p>
-                                </div>
-                            </article>
-                        )}
+                <header className='poiesis-results__auxiliary-header poiesis-results__question-header'>
+                    <div>
+                        <h2>質問</h2>
+                        <small title={title}>{title}</small>
                     </div>
-                )}
+                    <button type='button' aria-label='質問を閉じる' onClick={() => this.closeResultsQuestionPanel(scopeKey)}>
+                        <span className='codicon codicon-close' aria-hidden='true' />
+                    </button>
+                </header>
+                <div className='poiesis-results__qa-history' aria-label={`${title}への質問履歴`}>
+                    {history.map((entry, index) => (
+                        <article className={`poiesis-results__qa-entry${entry.error ? ' failed' : ''}`} key={`${entry.timestamp}-${index}`}>
+                            <div className='poiesis-results__qa-meta'>
+                                <strong>質問</strong>
+                                <time dateTime={entry.timestamp}>{this.questionTime(entry.timestamp)}</time>
+                            </div>
+                            <p>{entry.question}</p>
+                            <div className='poiesis-results__qa-response'>
+                                <strong>{entry.error ? '回答に失敗' : '回答'}</strong>
+                                {entry.error
+                                    ? <p>{entry.error}</p>
+                                    : this.host.renderMarkdown(entry.answer ?? '')}
+                                {entry.error && (
+                                    <button type='button' onClick={() => void this.submitResultsQuestion(scopeKey, entry.question)}>再試行</button>
+                                )}
+                            </div>
+                        </article>
+                    ))}
+                    {pending && (
+                        <article className='poiesis-results__qa-entry sending' role='status' aria-live='polite'>
+                            <div className='poiesis-results__qa-meta'>
+                                <strong>質問</strong>
+                                <span>送信中</span>
+                            </div>
+                            <p>{pending.question}</p>
+                            <div className='poiesis-results__qa-response'>
+                                <strong>回答</strong>
+                                <p className='poiesis-results__qa-sending'>
+                                    <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
+                                    回答を作成しています…
+                                </p>
+                            </div>
+                        </article>
+                    )}
+                </div>
+                <section className='poiesis-results__composer' aria-label='Results の入力欄'>
+                    <PoiesisComposer
+                        key={scopeKey}
+                        autoFocus
+                        value={draft}
+                        placeholder='この成果について質問…'
+                        aria-label='表示中の成果について質問'
+                        rows={3}
+                        maxLength={4_000}
+                        disabled={!documentReady || Boolean(pending)}
+                        onValueChange={value => this.setResultsDraft(scopeKey, value)}
+                        onSubmit={() => void this.submitResultsQuestion(scopeKey)}
+                    />
+                    <button
+                        type='button'
+                        className='poiesis-results__send'
+                        aria-label='Results 内へ送信'
+                        disabled={!documentReady || Boolean(pending) || !draft.trim()}
+                        onClick={() => void this.submitResultsQuestion(scopeKey)}
+                    >
+                        <span className='codicon codicon-arrow-up' aria-hidden='true' />
+                    </button>
+                    {documentReady && this.host.renderAiRolePill('results', true)}
+                </section>
             </section>
-        );
+        </>;
     }
 
     protected questionTime(timestamp: string): string {
@@ -793,13 +1009,17 @@ export class ResultsPart extends AgentWindowPart {
             : `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">`;
         const baseStyle = `<style data-poiesis-base>
 * { box-sizing: border-box; }
-html, body { font-family: ${POIESIS_FONT_SANS}; }
+html, body { font-family: ${POIESIS_FONT_SANS}; font-size: 16px; }
 body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }
 code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
-body { padding: 0 !important; }
-body > :not(script):not(style) { max-width: none !important; margin-inline: 0 !important; padding-top: clamp(14px, 1.2vw, 20px) !important; padding-inline: clamp(16px, 2vw, 28px) !important; }
+body { font-size: 15px !important; line-height: 1.65; margin: 0 !important; padding: 0 0 40px !important; }
+body > :not(script):not(style) { margin-inline: auto !important; max-width: 980px !important; min-width: 0; padding-top: clamp(22px, 3vw, 42px) !important; padding-inline: clamp(20px, 4vw, 48px) !important; width: 100% !important; }
 body > :not(script):not(style) > :only-child:not(code):not(pre):not(table):not(img) { max-width: none !important; margin-inline: 0 !important; padding-top: 0 !important; padding-inline: 0 !important; }
 body > :first-child, body > * > :first-child, body > * > * > :first-child { margin-top: 0 !important; }
+p, li, td, th { font-size: max(15px, .9375rem) !important; }
+table, pre { max-width: 100%; overflow-x: auto; }
+table { display: block; }
+img, svg, figure { max-width: 100%; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9a9183; background-clip: padding-box; }
@@ -905,6 +1125,7 @@ body > :first-child, body > * > :first-child, body > * > * > :first-child { marg
         const session = this.host.sessions.selectedSession();
         const task = this.taskService.get(taskId);
         if (session && task && task.status !== 'running') {
+            this.closeResultsPanelsForSelection(session);
             session.selectedResultsRequirementId = task.requirementId;
             session.selectedResultsTaskId = taskId;
             this.deleteTaskConfirmationId = undefined;
@@ -920,6 +1141,7 @@ body > :first-child, body > * > :first-child, body > * > * > :first-child { marg
         if (!session || requirement?.sessionId !== session.id) {
             return;
         }
+        this.closeResultsPanelsForSelection(session);
         session.selectedResultsRequirementId = requirementId;
         session.selectedResultsTaskId = undefined;
         this.deleteTaskConfirmationId = undefined;
@@ -1007,6 +1229,26 @@ body > :first-child, body > * > :first-child, body > * > * > :first-child { marg
         void this.host.sessions.persistWindowState();
         void this.host.sessions.persistResultsQaPanelState();
         this.update();
+    }
+
+    protected closeResultsPanelsForSelection(session: WindowAgentSession): void {
+        const scopeKey = this.host.sessions.selectedResultsScopeKey(session);
+        if (scopeKey) {
+            session.resultsQaExpanded.delete(scopeKey);
+        }
+        this.resultsAuxiliaryPanel = undefined;
+        this.resultsAuxiliaryScopeKey = undefined;
+        this.resultsAuxiliaryTrigger = undefined;
+        this.host.state.openResultsMenuKey = undefined;
+    }
+
+    protected closeResultsQuestionPanel(scopeKey: string): void {
+        const trigger = this.resultsAuxiliaryTrigger;
+        this.setResultsQuestionPanelExpanded(scopeKey, false);
+        requestAnimationFrame(() => {
+            const fallback = this.node.querySelector<HTMLElement>('#poiesis-results-question-trigger');
+            (trigger?.isConnected ? trigger : fallback)?.focus();
+        });
     }
 
     protected setResultsQuestionPanelExpanded(scopeKey: string, expanded: boolean, revealLatest = false): void {
@@ -1122,6 +1364,9 @@ body > :first-child, body > * > :first-child, body > * > * > :first-child { marg
         }
         session.selectedResultsRequirementId = requirement?.id ?? task.requirementId;
         session.selectedResultsTaskId = requirement ? undefined : task.id;
+        this.resultsAuxiliaryPanel = undefined;
+        this.resultsAuxiliaryScopeKey = undefined;
+        this.resultsAuxiliaryTrigger = this.node.querySelector<HTMLElement>('#poiesis-results-question-trigger') ?? undefined;
         session.resultsDrafts.set(scopeKey, '');
         session.resultsNotices.set(scopeKey, { question, status: 'sending', text: '' });
         session.resultsQaExpanded.set(scopeKey, true);
@@ -1176,7 +1421,6 @@ body > :first-child, body > * > :first-child, body > * > * > :first-child { marg
                     status: 'answered',
                     text: result.answer
                 });
-                session.resultsQaExpanded.set(scopeKey, true);
             } else if (result.status === 'failed') {
                 const entry = {
                     question,
@@ -1192,7 +1436,6 @@ body > :first-child, body > * > :first-child, body > * > * > :first-child { marg
                     text: result.error.message,
                     historyTimestamp: history?.timestamp
                 });
-                session.resultsQaExpanded.set(scopeKey, true);
             } else {
                 session.resultsDrafts.set(scopeKey, question);
                 session.resultsNotices.delete(scopeKey);
@@ -1213,7 +1456,6 @@ body > :first-child, body > * > :first-child, body > * > * > :first-child { marg
                 text,
                 historyTimestamp: history?.timestamp
             });
-            session.resultsQaExpanded.set(scopeKey, true);
         }
         this.host.sessions.persistWindowState();
         this.host.sessions.persistResultsQaPanelState();

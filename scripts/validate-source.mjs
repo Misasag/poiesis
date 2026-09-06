@@ -335,38 +335,38 @@ for (const marker of [
 assert.ok(!resultsQuestionServer.includes('getMostRecentlyUsedWorkspace'), 'Results questions must not use an unrelated recent workspace');
 assert.ok(resultsQuestionServer.includes('HISTORY_MAX_ITEMS = 6'), 'Results question history context must stay bounded');
 assert.ok(taskService.includes('MAX_RESULTS_QUESTIONS_PER_TASK = 20'), 'Persisted Results Q&A history must stay bounded');
-assert.ok(agentWidget.includes('renderResultsQuestionPanel'), 'Docked Results Q&A panel UI is missing');
+assert.ok(agentWidget.includes('renderResultsQuestionPanel'), 'On-demand Results Q&A panel UI is missing');
 assert.ok(agentWidget.includes('RESULTS_QA_PANEL_STORAGE_KEY'), 'Results Q&A panel state persistence is missing');
 assert.ok(!agentWidget.includes("className='poiesis-results__canvas-scroll'"),
     'Results Q&A must not share the document scroll flow');
-assert.match(agentStyles, /\.poiesis-results__qa-panel\s*\{[^}]*max-height:\s*calc\(\(100vh - 70px\) \* \.4\)/,
-    'Results Q&A panel must stay within about 40% of the canvas area');
+assert.match(agentStyles, /\.poiesis-results__question-panel\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto/,
+    'Results Q&A must use an on-demand panel with internal history scrolling');
 for (const marker of [
-    'resultsTaskRailCollapsed',
-    'taskRailCollapsed: this.host.state.resultsTaskRailCollapsed',
-    "aria-label='要件レールを折りたたむ'",
-    "aria-label='要件レールを展開'",
-    "data-task-rail-collapsed={this.host.state.resultsTaskRailCollapsed ? 'true' : 'false'}"
+    "data-auxiliary-panel={questionPanelExpanded ? 'questions' : auxiliaryPanel ?? 'none'}",
+    "aria-controls='poiesis-results-navigator'",
+    "aria-controls='poiesis-results-questions-panel'",
+    "aria-controls='poiesis-results-details-panel'",
+    "aria-modal='true'",
+    'handleResultsAuxiliaryKeyDown',
+    'closeResultsQuestionPanel'
 ]) {
-    assert.ok(agentWidget.includes(marker), `Collapsible Results task rail is missing ${marker}`);
+    assert.ok(agentWidget.includes(marker), `On-demand Results auxiliary UI is missing ${marker}`);
 }
-assert.match(agentStyles, /\.poiesis-results\[data-task-rail-collapsed='true'\]\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 42px/,
-    'Collapsed Results task rail must release its width to the document column');
+assert.ok(!agentWidget.includes("className='poiesis-results__task-switcher'"),
+    'Results must not mount a permanent outcome rail');
 for (const marker of [
-    'taskRailCanvasGain',
-    'taskRailCollapsedRestored',
-    'taskRailExpandedRestored',
+    'navigatorPreservedDocument',
+    'retainedDraft',
     '{ width: 1280, height: 720 }',
-    '{ width: 1400, height: 800 }',
-    'collapsed-maximized',
-    'expanded-maximized',
+    '{ width: 1000, height: 760 }',
+    '{ width: 820, height: 700 }',
+    'snapshot.frame.height >= 540',
+    'stableWhileNavigatorOpen',
     'taskCountAfterUpdate',
-    'snapshot.title.width >= snapshot.header.width * 0.45',
-    'snapshot.headerStyle.metaBounds.every',
-    'snapshot.headerStyle.metaRows === 1',
-    'titleWidthRatio'
+    'document.activeElement?.classList.contains(\'poiesis-results__outcome-trigger\')',
+    "getAttribute('data-has-draft') === 'true'"
 ]) {
-    assert.ok(resultsQuestionSmoke.includes(marker), `Results task rail smoke is missing ${marker}`);
+    assert.ok(resultsQuestionSmoke.includes(marker), `Results reading-layout smoke is missing ${marker}`);
 }
 assert.ok(agentWidget.includes('migrateLegacyCliErrorMessage'), 'Legacy CLI error migration is missing');
 for (const marker of [
@@ -1331,7 +1331,7 @@ for (const marker of [
     'const workspaceGroups = this.workspaceSessionGroups()',
     'const activeTab = session?.activeTab ?? \'agent\'',
     "data-mode={this.state.codeMode ? 'code' : this.state.customizeViewVisible ? 'customize' : activeTab}",
-    "data-rail-collapsed={this.state.railCollapsed ? 'true' : 'false'}",
+    "data-rail-collapsed={effectiveRailCollapsed ? 'true' : 'false'}",
     '{!this.state.codeMode && this.renderRail()}',
     'pinnedSessions.map(session => this.renderSessionRow(session))',
     'protected renderSessionRow(session: WindowAgentSession): React.ReactNode',
@@ -1344,8 +1344,8 @@ for (const marker of [
     "activeTab: 'agent'",
     'session.activeTab = tab',
     'poiesis-agent-window__code-control',
-    'aria-pressed={this.host.state.codeMode}',
-    '{!this.host.state.codeMode && session?.hasUserMessage && (',
+    "aria-label='Code を開く'",
+    '{session?.hasUserMessage && (',
     "aria-label='Agent と Results の切り替え'",
     "<span className='poiesis-agent-window__rail-action-label'>新しいチャット</span>",
     "id='poiesis-results-panel'",
@@ -1355,10 +1355,11 @@ for (const marker of [
     "aria-controls='poiesis-results-panel'",
     "aria-controls='poiesis-results-task-panel'",
     'poiesis-results__main',
-    'poiesis-results__task-switcher',
+    'poiesis-results__outcome-trigger',
+    "id='poiesis-results-navigator'",
     "aria-label='Results HTML キャンバス'",
     "className='poiesis-results__fixed-header'",
-    "data-task-title={task.title}",
+    'data-result-title={title}',
     'formatTaskEndedAtJst(task.endedAt)',
     'summarizeTaskChangeSet(task.changeSet)',
     "srcDoc={this.resultsDocumentHtml(document.html)}",
@@ -1366,9 +1367,8 @@ for (const marker of [
     "label: `AI · ${provider}${suffix}`",
     "accessibleLabel: `AI 生成 · ${provider}${suffix}`",
     'isKnownCliId(document.providerId) ? document.providerId : this.host.state.resultsCli',
-    'Skills {appliedSkillIds.length}',
-    'title={`適用 Skills: ${appliedSkillNames.join(\'、\')}`}',
-    'aria-label={`適用 Skills: ${appliedSkillNames.join(\'、\')}`}',
+    '<dt>適用 Skills</dt>',
+    "appliedSkillNames.join('、')",
     'this.workspaceSkillService.list(root)',
     "sandbox='allow-scripts'",
     "type: 'poiesis:open-citation' | 'poiesis:retry-ai-results'",
@@ -1382,7 +1382,7 @@ for (const marker of [
     "aria-label='Agent の入力欄'",
     "aria-label='Results の入力欄'",
     "placeholder='次の変更内容や質問を入力…'",
-    "placeholder='この結果について質問…'",
+    "placeholder='この成果について質問…'",
     'submitResultsQuestion',
     'public toggleCodeMode(): void',
     'public renderCode(): React.ReactNode',
@@ -1492,8 +1492,8 @@ for (const marker of [
     'protected resultsDocumentHtml(html: string): string',
     'Content-Security-Policy',
     '<style data-poiesis-base>',
-    'body { padding: 0 !important; }',
-    'body > :not(script):not(style) { max-width: none !important; margin-inline: 0 !important; padding-top: clamp(14px, 1.2vw, 20px) !important; padding-inline: clamp(16px, 2vw, 28px) !important; }',
+    'body { font-size: 15px !important; line-height: 1.65;',
+    'body > :not(script):not(style) { margin-inline: auto !important; max-width: 980px !important;',
     'body > :not(script):not(style) > :only-child:not(code):not(pre):not(table):not(img) { max-width: none !important; margin-inline: 0 !important; padding-top: 0 !important; padding-inline: 0 !important; }',
     'body > :first-child, body > * > :first-child, body > * > * > :first-child { margin-top: 0 !important; }',
     'body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }',
@@ -1571,7 +1571,7 @@ for (const marker of [
     'const PoiesisComposer = ({',
     'if (!composing.current && !nativeEvent.isComposing)',
     'onValueChange={value => this.setAgentDraft(session?.id, value)}',
-    'onValueChange={value => scopeKey && this.setResultsDraft(scopeKey, value)}',
+    'onValueChange={value => this.setResultsDraft(scopeKey, value)}',
     'const shouldSelectResultsTask =',
     'public isResultsTask(task: ExecutionTask): boolean',
     'return taskProducesResult(task);',
@@ -1637,12 +1637,14 @@ for (const marker of [
     assert.ok(agentStyles.includes(marker), `Agent run-status styling is missing ${marker}`);
 }
 for (const marker of [
-    '.poiesis-results__badges',
-    'display: contents;',
-    'background: #292a27;',
-    'justify-content: flex-end;'
+    '.poiesis-results__toolbar-actions',
+    '.poiesis-results__auxiliary-scrim',
+    '.poiesis-results__auxiliary',
+    'animation: poiesis-results-panel-in 170ms',
+    '.poiesis-results__requirement-card.active',
+    'background: var(--poiesis-selection-bg, #29302d);'
 ]) {
-    assert.ok(agentStyles.includes(marker), `Results transparency styling is missing ${marker}`);
+    assert.ok(agentStyles.includes(marker), `Results reading-layout styling is missing ${marker}`);
 }
 
 for (const marker of [
@@ -1900,18 +1902,19 @@ for (const marker of [
     'POIESIS_RESULTS_GENERATION_TEST_DELAY_MS',
     "task.resultsDocument?.status === 'ready'",
     '.poiesis-results__fixed-header',
-    'fixedHeader.title === fixedHeader.taskTitle',
+    'fixedHeader.title === selectedRequirement.title',
+    '!fixedHeader.hasPermanentMetadata',
     'beforeOpen.conversation === longCompletionReply',
     "!beforeOpen.conversation.includes('詳細は Results を確認してください')",
     'canvasLayout.header?.height <= 52',
     'canvasLayout.frame.top - canvasLayout.panel.top <= 70',
     'canvasLayout.frame.width >= canvasLayout.canvas.width - 2',
-    'denseHeader.height <= 40',
-    "denseHeader.badges.includes('AI · Codex')",
-    "denseHeader.badges.includes('条件 7/7')",
-    "denseHeader.badges.includes('Skills 4')",
-    "denseHeader.badges.includes('タスク 10')",
-    'denseHeader.metadataRows === 1',
+    'denseHeader.height <= 52',
+    "denseDetails.values['成果の作成'] === 'AI 生成 · Codex'",
+    "denseDetails.values['成果の生成条件'] === '7/7 通過'",
+    "denseHeaderSkills.every(skill => denseDetails.values['適用 Skills']?.includes(skill))",
+    "denseDetails.values['タスク履歴'] === '10件'",
+    'denseDetails.assertionCount === 7',
     "setUiFontScale(page, 'large')",
     'width: 1024, height: 720',
     'assertResultsLayout(largeLayout',
@@ -1921,7 +1924,9 @@ for (const marker of [
     'Number.parseFloat(getComputedStyle(preload).opacity) <= 0.01',
     'background: #f4f0e6; color: #28251f;',
     'fallback.cardPaddingTop >= 16',
-    'aiLayout.headingTop <= 22'
+    'aiLayout.headingTop <= 48',
+    'aiLayout.bodyFontSize >= 15',
+    "aiLayout.outerMaxWidth === '980px'"
 ]) {
     assert.ok(resultsDocumentSmoke.includes(marker), `Results boundary smoke is missing ${marker}`);
 }
@@ -2097,9 +2102,8 @@ for (const marker of [
     "triggerLabel: `要件: ${requirement.title}`",
     "label: '新しい要件として送信'",
     'this.requirementService.create(session.id, taskTitleForRequest(request))',
-    "<strong>要件</strong>",
-    '<h1 data-task-title={task.title} title={task.title}>{task.title}</h1>',
-    '<h1 title={requirement.title}>{requirement.title}</h1>',
+    "this.renderResultsAuxiliaryHeader('成果'",
+    '<h1 data-result-title={title} title={title}>{title}</h1>',
     'this.renderRequirementCard(',
     'this.requirementService.moveTask(taskId, targetRequirementId)',
     'this.requirementService.splitTaskToNew(taskId)',
@@ -2146,17 +2150,19 @@ assert.ok(!agentWidget.includes("aria-label='Extensions' onClick={() => this.ope
 assert.ok(!agentWidget.includes("aria-label='Settings' onClick={() => this.openSettings()}"), 'Code Settings must not open Poiesis Settings');
 assert.ok(!agentWidget.includes('VS Code built-in extensions'), 'Poiesis Customize must not manage Code extensions');
 for (const marker of [
-    'margin: 6px 8px;',
-    'container-name: results-canvas;',
-    'grid-template-columns: minmax(160px, 1fr) minmax(0, auto);',
-    '@container results-canvas (max-width: 700px)',
+    'margin: 0;',
+    'grid-template-columns: minmax(0, 1fr) auto;',
+    '.poiesis-results__toolbar-button',
+    '.poiesis-results__question-panel',
+    '@keyframes poiesis-results-panel-in',
     '-webkit-line-clamp: 1;',
-    'padding: 6px 12px;'
+    'min-height: 48px;'
 ]) {
-    assert.ok(agentStyles.includes(marker), `Compact Results canvas styling is missing ${marker}`);
+    assert.ok(agentStyles.includes(marker), `Results reading canvas styling is missing ${marker}`);
 }
-assert.ok(resultsSkill.includes('padding: clamp(14px, 1.2vw, 20px) clamp(16px, 2vw, 28px);'),
-    'Bundled Results document padding must leave more room for content');
+assert.ok(agentWidget.includes('max-width: 980px !important')
+    && agentWidget.includes('p, li, td, th { font-size: max(15px, .9375rem) !important; }'),
+    'Application-injected Results document must keep a readable measure and principal text size');
 assert.ok(agentWidget.includes('body > :not(script):not(style) > :only-child:not(code):not(pre):not(table):not(img) { max-width: none !important;'),
     'Application-injected Results layout must constrain only a sole second AI wrapper without resizing code, tables, or images');
 assert.ok(uiSmoke.includes("{ timeout: 10_000 }, label")
@@ -2239,9 +2245,16 @@ assert.ok(newChatPosition !== -1, 'Agent rail must contain the localized New Cha
 assert.ok(searchPosition > newChatPosition, 'Localized conversation Search must sit directly under New Chat');
 for (const marker of [
     'railCollapsed: boolean;',
+    'compactRailViewport: boolean;',
+    'responsiveRailOpen: boolean;',
     'protected toggleRail(): void',
     'this.host.state.railCollapsed = !this.host.state.railCollapsed',
-    "data-collapsed={this.host.state.railCollapsed ? 'true' : 'false'}",
+    "data-collapsed={visuallyCollapsed ? 'true' : 'false'}",
+    "window.matchMedia('(max-width: 1000px)')",
+    "data-compact-rail={this.state.compactRailViewport ? 'true' : 'false'}",
+    "data-responsive-rail-open={this.state.responsiveRailOpen ? 'true' : 'false'}",
+    "aria-controls='poiesis-agent-window-rail-navigation'",
+    "data-responsive-overlay={responsiveOverlay ? 'true' : 'false'}",
     'sessionSearchQuery: string;',
     "aria-label='会話を検索'",
     'session.title.toLocaleLowerCase().includes(query)',
@@ -2389,6 +2402,8 @@ for (const marker of [
     'outline: 2px solid var(--poiesis-focus-ring, #c28b60)',
     ".poiesis-agent-window__content[data-mode='code']",
     ".poiesis-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true']",
+    ".poiesis-agent-window__content:not([data-mode='code'])[data-compact-rail='true']",
+    ".poiesis-agent-window__content[data-compact-rail='true'][data-responsive-rail-open='true']",
     ".poiesis-agent-window__rail[data-collapsed='true']",
     '.poiesis-agent-window__session-search',
     '.poiesis-agent-window__workspace-group',
@@ -2434,7 +2449,7 @@ for (const marker of [
     '.poiesis-select__footer',
     '.poiesis-ai-role-pill',
     '.poiesis-ai-role-pill.warning',
-    '.poiesis-results__composer > .poiesis-ai-role-pill',
+    '.poiesis-results__question-panel .poiesis-results__composer',
     '.poiesis-settings-modal__model-field',
     '.poiesis-agent-window__switch',
     '.poiesis-agent-window__composer',
@@ -2448,9 +2463,9 @@ for (const marker of [
     '.poiesis-markdown a:focus-visible',
     'align-self: end',
     '.poiesis-results__main',
-    'grid-template-rows: minmax(0, 1fr) auto auto',
-    '.poiesis-results__task-switcher',
-    'border-left: 1px solid var(--poiesis-chrome-line)'
+    '.poiesis-results__auxiliary',
+    '.poiesis-results__details-list',
+    '.poiesis-results__qa-history'
 ]) {
     assert.ok(agentStyles.includes(marker), `Agent chrome styles are missing ${marker}`);
 }
@@ -2493,7 +2508,7 @@ for (const marker of [
 for (const marker of [
     '--poiesis-control-border: #70726b',
     '--poiesis-results-accent: #6577a0',
-    '--motion-fast: 120ms cubic-bezier(.2, 0, 0, 1)',
+    '--motion-fast: 160ms cubic-bezier(.2, 0, 0, 1)',
     '@media (prefers-reduced-motion: reduce)',
     'animation-duration: 0ms !important',
     '.poiesis-shortcuts__backdrop'

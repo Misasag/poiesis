@@ -585,21 +585,30 @@ async function smokeCitation(page) {
     const session = persisted?.sessions?.find(candidate => (candidate.tasks ?? []).some(task => task.id === taskId));
     const task = session?.tasks?.find(candidate => candidate.id === taskId);
     const resultDocument = task?.resultsDocument ?? session?.resultsDocuments?.find(candidate => candidate.taskId === taskId);
+    await page.click('.poiesis-results__details-trigger');
+    await page.waitForSelector('#poiesis-results-details-panel', { visible: true });
     const assertionUi = await page.evaluate(() => ({
-        badge: document.querySelector('.poiesis-results__assertion-badge')?.textContent?.replace(/\s+/g, ' ').trim(),
-        badgeAriaLabel: document.querySelector('.poiesis-results__assertion-badge')?.getAttribute('aria-label')
+        summary: [...document.querySelectorAll('.poiesis-results__details-list > div')]
+            .find(row => row.querySelector('dt')?.textContent?.trim() === '成果の生成条件')
+            ?.querySelector('dd')?.textContent?.trim(),
+        conditions: [...document.querySelectorAll('.poiesis-results__assertion-list[aria-label="成果の生成条件"] li')]
+            .map(row => ({ text: row.querySelector('p')?.textContent?.trim(), status: row.getAttribute('data-status') }))
     }));
     const assertionState = {
         ...assertionUi,
         assertions: resultDocument?.assertions,
         attempts: resultDocument?.assertionAttempts
     };
-    assert(assertionState.badge === '条件 3/3'
-        && assertionState.badgeAriaLabel === 'Skill 条件 3/3 合格'
+    assert(assertionState.summary === '3/3 通過'
+        && assertionState.conditions.length === 3
+        && assertionState.conditions.every((condition, index) => condition.status === 'pass'
+            && condition.text === assertionState.assertions[index]?.text)
         && assertionState.assertions?.length === 3
         && assertionState.assertions.every(result => result.source === 'app' && result.status === 'pass')
         && assertionState.attempts === 1,
     `AI assertion results were not persisted and rendered: ${JSON.stringify(assertionState)}`);
+    await page.click('[aria-label="詳細を閉じる"]');
+    await page.waitForFunction(() => !document.querySelector('#poiesis-results-details-panel'));
     const frame = await resultsFrame(page);
     await frame.waitForSelector('[data-poiesis-citation="citation-target.txt:4"]');
     const typography = await frame.evaluate(() => ({
@@ -655,34 +664,42 @@ async function smokeFallback(page, diagnostics) {
     `The Agent completion report was not preserved verbatim: ${JSON.stringify(beforeOpen.conversation)}`);
     await page.click('#poiesis-results-tab');
     await page.waitForSelector('.poiesis-results__document');
+    const requirementState = await waitForDurableValue(theiaConfig, DURABLE_REQUIREMENTS_KEY, state =>
+        Object.values(state?.sessions ?? {}).flat().some(requirement => requirement.taskIds?.includes(beforeOpen.task.id)), timeout);
+    const selectedRequirement = Object.values(requirementState.sessions).flat()
+        .find(requirement => requirement.taskIds?.includes(beforeOpen.task.id));
     const fixedHeader = await page.evaluate(() => {
         const header = document.querySelector('.poiesis-results__fixed-header');
-        const taskTitle = document.querySelector('.poiesis-results__requirement-card.active .poiesis-results__requirement-select > span')?.textContent?.trim();
         return {
             title: header?.querySelector('h1')?.textContent?.trim(),
-            taskTitle,
-            status: header?.querySelector('.poiesis-results__status')?.textContent?.trim(),
-            time: header?.querySelector('time')?.textContent?.trim(),
-            timeTitle: header?.querySelector('time')?.getAttribute('title'),
-            diffstat: header?.querySelector('.poiesis-results__diffstat')?.textContent?.replace(/\s+/g, ' ').trim(),
-            badges: header?.querySelector('.poiesis-results__badges')?.textContent?.replace(/\s+/g, ' ').trim(),
-            badgeTitles: [...header?.querySelectorAll('.poiesis-results__badges > span') ?? []]
-                .map(node => node.getAttribute('title'))
+            hasPermanentMetadata: Boolean(header?.querySelector('.poiesis-results__status, time, .poiesis-results__diffstat, .poiesis-results__badges')),
+            outcomeTrigger: header?.querySelector('.poiesis-results__outcome-trigger')?.textContent?.replace(/\s+/g, ' ').trim(),
+            questionTrigger: Boolean(header?.querySelector('#poiesis-results-question-trigger')),
+            detailsTrigger: Boolean(header?.querySelector('.poiesis-results__details-trigger'))
         };
     });
-    assert(fixedHeader.title === fixedHeader.taskTitle,
-        `The fixed header title differs from the Task card: ${JSON.stringify(fixedHeader)}`);
-    assert(fixedHeader.status === '完了' && fixedHeader.time === formatCompactJst(beforeOpen.task.endedAt)
-        && fixedHeader.timeTitle === formatJst(beforeOpen.task.endedAt)
-        && fixedHeader.diffstat?.includes('1ファイル')
-        && fixedHeader.diffstat.includes('+2')
-        && fixedHeader.diffstat.includes('−0')
-        && fixedHeader.badges?.includes('テンプレート · 生成失敗')
-        && !fixedHeader.badges.includes('条件')
-        && fixedHeader.badges.includes('タスク 1')
-        && fixedHeader.badgeTitles.includes('テンプレート表示 · AI 生成に失敗')
-        && fixedHeader.badgeTitles.includes('タスク 1件'),
-    `The fixed Results metadata is incomplete: ${JSON.stringify(fixedHeader)}`);
+    assert(fixedHeader.title === selectedRequirement.title
+        && !fixedHeader.hasPermanentMetadata
+        && fixedHeader.outcomeTrigger === '成果 1'
+        && fixedHeader.questionTrigger
+        && fixedHeader.detailsTrigger,
+    `The Results reading toolbar is incomplete: ${JSON.stringify(fixedHeader)}`);
+    await page.click('.poiesis-results__details-trigger');
+    await page.waitForSelector('#poiesis-results-details-panel');
+    const details = await page.evaluate(() => Object.fromEntries(
+        [...document.querySelectorAll('.poiesis-results__details-list > div')].map(row => [
+            row.querySelector('dt')?.textContent?.trim(),
+            row.querySelector('dd')?.textContent?.replace(/\s+/g, ' ').trim()
+        ])
+    ));
+    assert(details['状態'] === '完了'
+        && details['完了日時'] === formatJst(beforeOpen.task.endedAt)
+        && details['変更']?.includes('1ファイル · +2 −0')
+        && details['成果の作成'] === 'テンプレート表示 · AI 生成に失敗'
+        && details['タスク履歴'] === '1件'
+        && !details['成果の生成条件'],
+    `The disclosed Results metadata is incomplete: ${JSON.stringify(details)}`);
+    await page.click('[aria-label="詳細を閉じる"]');
     const canvasLayout = await page.evaluate(() => {
         const bounds = selector => {
             const element = document.querySelector(selector);
@@ -808,51 +825,49 @@ async function smokeFallback(page, diagnostics) {
     await waitForFinishedResultsContent(page, '[data-live-check-heading]');
     const denseHeader = await page.evaluate(expectedTitle => {
         const header = document.querySelector('.poiesis-results__fixed-header');
-        const badgeNodes = [...header?.querySelectorAll('.poiesis-results__badges > span') ?? []];
-        const skillsBadge = badgeNodes.find(node => node.textContent?.trim().startsWith('Skills '));
-        const rowCenters = [...header?.querySelectorAll('.poiesis-results__status, time, .poiesis-results__diffstat, .poiesis-results__badges > span') ?? []]
-            .map(node => {
-                const bounds = node.getBoundingClientRect();
-                return Math.round(bounds.top + bounds.height / 2);
-            });
         const title = header?.querySelector('h1');
         return {
             height: header?.getBoundingClientRect().height,
             title: title?.textContent?.trim(),
             titleAttribute: title?.getAttribute('title'),
             titleWidth: title?.getBoundingClientRect().width,
-            badges: badgeNodes.map(node => node.textContent?.replace(/\s+/g, ' ').trim()),
-            badgeTitles: badgeNodes.map(node => node.getAttribute('title')),
-            skillsTitle: skillsBadge?.getAttribute('title'),
-            skillsAriaLabel: skillsBadge?.getAttribute('aria-label'),
-            metadataRows: new Set(rowCenters).size,
+            actionCount: header?.querySelectorAll('.poiesis-results__toolbar-actions button').length,
+            permanentMetadata: Boolean(header?.querySelector('.poiesis-results__badges, .poiesis-results__diffstat')),
             matchesExpectedTitle: title?.textContent?.trim() === expectedTitle
         };
     }, denseHeaderTitle);
-    assert(denseHeader.height <= 40 && denseHeader.metadataRows === 1 && denseHeader.titleWidth >= 120,
-        `The dense AI Results header is not one compact row at 1280x720: ${JSON.stringify(denseHeader)}`);
+    assert(denseHeader.height <= 52 && denseHeader.titleWidth >= 120 && denseHeader.actionCount === 3,
+        `The dense AI Results toolbar is not one compact row at 1280x720: ${JSON.stringify(denseHeader)}`);
     assert(denseHeader.matchesExpectedTitle && denseHeader.titleAttribute === denseHeaderTitle
-        && denseHeader.badges.includes('AI · Codex')
-        && denseHeader.badges.includes('条件 7/7')
-        && denseHeader.badges.includes('Skills 4')
-        && denseHeader.badges.includes('タスク 10')
-        && denseHeader.badgeTitles.includes('AI 生成 · Codex')
-        && denseHeader.badgeTitles.includes('Skill 条件 7/7 合格')
-        && denseHeader.badgeTitles.includes('タスク 10件')
-        && denseHeader.skillsTitle?.startsWith('適用 Skills: ')
-        && denseHeader.skillsAriaLabel === denseHeader.skillsTitle,
-    `The compact Results badges are incomplete: ${JSON.stringify(denseHeader)}`);
+        && !denseHeader.permanentMetadata,
+    `Metadata leaked back into the Results title row: ${JSON.stringify(denseHeader)}`);
+    await page.click('.poiesis-results__details-trigger');
+    await page.waitForSelector('#poiesis-results-details-panel');
+    const denseDetails = await page.evaluate(() => ({
+        values: Object.fromEntries([...document.querySelectorAll('.poiesis-results__details-list > div')].map(row => [
+            row.querySelector('dt')?.textContent?.trim(),
+            row.querySelector('dd')?.textContent?.replace(/\s+/g, ' ').trim()
+        ])),
+        assertionCount: document.querySelectorAll('.poiesis-results__assertion-list li').length
+    }));
+    assert(denseDetails.values['成果の作成'] === 'AI 生成 · Codex'
+        && denseDetails.values['成果の生成条件'] === '7/7 通過'
+        && denseHeaderSkills.every(skill => denseDetails.values['適用 Skills']?.includes(skill))
+        && denseDetails.values['タスク履歴'] === '10件'
+        && denseDetails.assertionCount === 7,
+    `The Results details disclosure is incomplete: ${JSON.stringify(denseDetails)}`);
+    await page.click('[aria-label="詳細を閉じる"]');
     const standardLayout = await measureResultsLayout(page);
-    assertResultsLayout(standardLayout, { label: '1280x720 standard', singleRow: true });
+    assertResultsLayout(standardLayout, { label: '1280x720 standard', minimumFrameHeight: 540 });
     await page.screenshot({ path: standardScreenshotPath });
 
     await setUiFontScale(page, 'large');
     await page.setViewport({ width: 1024, height: 720, deviceScaleFactor: 1 });
     const aiFrame = await waitForFinishedResultsContent(page, '[data-live-check-heading]');
     const largeLayout = await measureResultsLayout(page);
-    assertResultsLayout(largeLayout, { label: '1024x720 large', singleRow: false });
-    assert(largeLayout.header.height <= 92 && largeLayout.headerRows <= 3,
-        `The deliberate narrow Results header layout grew unexpectedly: ${JSON.stringify(largeLayout)}`);
+    assertResultsLayout(largeLayout, { label: '1024x720 large', minimumFrameHeight: 500 });
+    assert(largeLayout.header.height <= 64,
+        `The deliberate narrow Results toolbar grew unexpectedly: ${JSON.stringify(largeLayout)}`);
     await page.screenshot({ path: largeScreenshotPath });
     const aiLayout = await aiFrame.evaluate(() => {
         const outer = document.querySelector('body > main');
@@ -871,14 +886,18 @@ async function smokeFallback(page, diagnostics) {
             innerMaxWidth: innerStyle.maxWidth,
             innerMarginInline: innerStyle.marginLeft,
             headingMarginTop: parseFloat(headingStyle.marginTop),
-            headingTop: heading.getBoundingClientRect().top
+            headingTop: heading.getBoundingClientRect().top,
+            bodyFontSize: parseFloat(getComputedStyle(document.body).fontSize),
+            contentWidth: outer.getBoundingClientRect().width
         };
     });
-    assert(aiLayout.outerPaddingTop <= 20 && aiLayout.outerPaddingInline <= 28
-        && aiLayout.outerMaxWidth === 'none' && aiLayout.outerMarginInline === '0px'
+    assert(aiLayout.outerPaddingTop >= 22 && aiLayout.outerPaddingTop <= 42
+        && aiLayout.outerPaddingInline >= 20 && aiLayout.outerPaddingInline <= 48
+        && aiLayout.outerMaxWidth === '980px'
         && aiLayout.innerPaddingTop === 0 && aiLayout.innerPaddingInline === 0
         && aiLayout.innerMaxWidth === 'none' && aiLayout.innerMarginInline === '0px'
-        && aiLayout.headingMarginTop === 0 && aiLayout.headingTop <= 22,
+        && aiLayout.headingMarginTop === 0 && aiLayout.headingTop <= 48
+        && aiLayout.bodyFontSize >= 15 && aiLayout.contentWidth <= 980,
     `The Application-owned AI document margins were not enforced: ${JSON.stringify(aiLayout)}`);
     return {
         standard: standardLayout,
@@ -910,45 +929,37 @@ async function measureResultsLayout(page) {
         };
         const header = document.querySelector('.poiesis-results__fixed-header');
         const title = header?.querySelector('h1');
-        const metaItems = [...header?.querySelectorAll('.poiesis-results__status, time, .poiesis-results__diffstat, .poiesis-results__badges > span') ?? []];
-        const rowCenter = node => {
-            const bounds = node.getBoundingClientRect();
-            return Math.round(bounds.top + bounds.height / 2);
-        };
-        const metaRows = new Set(metaItems.map(rowCenter)).size;
-        const headerRows = new Set([title, ...metaItems].filter(Boolean)
-            .map(rowCenter)).size;
+        const actions = [...header?.querySelectorAll('.poiesis-results__toolbar-actions button') ?? []];
         return {
             viewport: { width: innerWidth, height: innerHeight },
             documentWidth: document.documentElement.scrollWidth,
             rail: rect(document.querySelector('.poiesis-agent-window__rail')),
             main: rect(document.querySelector('.poiesis-results__main')),
-            taskRail: rect(document.querySelector('.poiesis-results__task-switcher')),
             canvas: rect(document.querySelector('.poiesis-results__canvas')),
             header: rect(header),
             frame: rect(document.querySelector('.poiesis-results__document')),
             title: rect(title),
-            metaItems: metaItems.map(rect),
-            metaRows,
-            headerRows
+            actions: actions.map(rect),
+            permanentTaskRail: Boolean(document.querySelector('.poiesis-results__task-switcher')),
+            permanentComposer: Boolean(document.querySelector('.poiesis-results__composer'))
         };
     });
 }
 
-function assertResultsLayout(layout, { label, singleRow }) {
+function assertResultsLayout(layout, { label, minimumFrameHeight }) {
     assert(layout.documentWidth <= layout.viewport.width,
         `${label} introduced horizontal page overflow: ${JSON.stringify(layout)}`);
-    assert(layout.rail.width >= 196 && layout.taskRail.width >= 190 && layout.main.width >= 300,
-        `${label} collapsed an application-owned content column or side rail: ${JSON.stringify(layout)}`);
-    assert(layout.frame.width >= layout.canvas.width - 2,
+    assert(layout.rail.width >= 196 && layout.main.width >= 300 && !layout.permanentTaskRail && !layout.permanentComposer,
+        `${label} did not preserve the normal Results reading state: ${JSON.stringify(layout)}`);
+    assert(layout.main.width === layout.canvas.width && layout.frame.width >= layout.canvas.width - 2,
         `${label} did not preserve the Results document width: ${JSON.stringify(layout)}`);
     assert(layout.title.width >= 80
-        && layout.metaItems.every(bounds => bounds.left >= layout.header.left - 1 && bounds.right <= layout.header.right + 1),
-    `${label} clipped fixed-header content: ${JSON.stringify(layout)}`);
-    if (singleRow) {
-        assert(layout.metaRows === 1 && layout.header.height <= 40,
-            `${label} did not keep all metadata in one compact row: ${JSON.stringify(layout)}`);
-    }
+        && layout.actions.length === 3
+        && layout.actions.every(bounds => bounds.left >= layout.header.left - 1 && bounds.right <= layout.header.right + 1)
+        && layout.title.right <= layout.actions[0].left - 4,
+    `${label} clipped document-toolbar content: ${JSON.stringify(layout)}`);
+    assert(layout.frame.height >= minimumFrameHeight,
+        `${label} did not preserve enough document reading height: ${JSON.stringify(layout)}`);
 }
 
 async function resultsFrame(page) {

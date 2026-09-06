@@ -104,7 +104,7 @@ export class HeaderPart extends AgentWindowPart {
                         <span className='codicon codicon-arrow-left' aria-hidden='true' />
                         <span>{returnLabel}</span>
                     </button>
-                    <span className='poiesis-agent-window__code-workspace'>{this.workspaceContextLabel()}</span>
+                    <span className='poiesis-agent-window__code-workspace' title={this.workspaceContextLabel()}>{this.workspaceContextLabel()}</span>
                 </header>
             );
         }
@@ -140,23 +140,27 @@ export class HeaderPart extends AgentWindowPart {
         return (
             <header className='poiesis-agent-window__header'>
                 <div className='poiesis-agent-window__window-drag-surface' aria-hidden='true' />
-                <div className='poiesis-agent-window__context'>
-                    <div className='poiesis-agent-window__context-scope'>
-                        <small>{this.workspaceContextLabel()}</small>
-                        <button
-                            type='button'
-                            className={`poiesis-agent-window__code-control${this.host.state.codeMode ? ' active' : ''}`}
-                            aria-pressed={this.host.state.codeMode}
-                            onClick={() => this.host.toggleCodeMode()}
-                        >
-                            <span className='codicon codicon-code' aria-hidden='true' />
-                            <span>Code</span>
-                        </button>
-                    </div>
-                    <strong>{this.host.state.codeMode ? 'Code' : session?.hasUserMessage ? session.title : '新しいチャット'}</strong>
+                <div className='poiesis-agent-window__context' aria-label='現在の場所'>
+                    <span className='poiesis-agent-window__context-workspace' title={this.workspaceContextLabel()}>
+                        {this.workspaceContextLabel()}
+                    </span>
+                    <span className='poiesis-agent-window__context-separator' aria-hidden='true'>/</span>
+                    <strong title={session?.hasUserMessage ? session.title : '新しいチャット'}>
+                        {session?.hasUserMessage ? session.title : '新しいチャット'}
+                    </strong>
                 </div>
-                {!this.host.state.codeMode && session?.hasUserMessage && (
-                    <nav className='poiesis-agent-window__tabs' role='tablist' aria-label='Agent と Results の切り替え'>
+                <div className='poiesis-agent-window__header-actions'>
+                    <button
+                        type='button'
+                        className='poiesis-agent-window__code-control'
+                        aria-label='Code を開く'
+                        onClick={() => this.host.toggleCodeMode()}
+                    >
+                        <span className='codicon codicon-code' aria-hidden='true' />
+                        <span>Code</span>
+                    </button>
+                    {session?.hasUserMessage && (
+                        <nav className='poiesis-agent-window__tabs' role='tablist' aria-label='Agent と Results の切り替え'>
                         <button
                             id='poiesis-agent-tab'
                             type='button'
@@ -181,8 +185,9 @@ export class HeaderPart extends AgentWindowPart {
                         >
                             Results
                         </button>
-                    </nav>
-                )}
+                        </nav>
+                    )}
+                </div>
             </header>
         );
     }

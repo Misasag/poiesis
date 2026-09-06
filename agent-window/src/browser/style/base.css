@@ -56,6 +56,8 @@
     --poiesis-chrome-copy: #c8c9c3;
     --poiesis-chrome-muted: #858780;
     --poiesis-results-accent: #6577a0;
+    --poiesis-selection-bg: #29302d;
+    --poiesis-selection-border: #52645b;
     background: var(--poiesis-chrome-bg);
     box-sizing: border-box;
     color: var(--poiesis-chrome-text);
@@ -93,6 +95,10 @@
 }
 
 .poiesis-agent-window__content:not([data-mode='code'])[data-rail-collapsed='true'] {
+    grid-template-columns: 52px minmax(0, 1fr);
+}
+
+.poiesis-agent-window__content:not([data-mode='code'])[data-compact-rail='true'] {
     grid-template-columns: 52px minmax(0, 1fr);
 }
 

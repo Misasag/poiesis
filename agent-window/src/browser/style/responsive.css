@@ -9,21 +9,8 @@
         grid-template-columns: 148px minmax(0, 1fr);
     }
 
-    .poiesis-agent-window__context > strong {
-        max-width: 150px;
-    }
-
-    .poiesis-results {
-        grid-template-columns: minmax(0, 1fr) 128px;
-    }
-
     .poiesis-results__canvas {
-        margin-inline: 8px;
-    }
-
-    .poiesis-results__qa-panel,
-    .poiesis-results__composer {
-        margin-inline: 10px;
+        margin: 0;
     }
 
     .poiesis-agent-window__app-page {
@@ -61,7 +48,7 @@
     --poiesis-results-accent: #6577a0;
     --poiesis-shadow-composer: 0 10px 30px rgb(0 0 0 / 16%);
     --poiesis-shadow-results: 0 8px 24px rgb(0 0 0 / 18%);
-    --motion-fast: 120ms cubic-bezier(.2, 0, 0, 1);
+    --motion-fast: 160ms cubic-bezier(.2, 0, 0, 1);
     font-family: var(--poiesis-font-sans);
     font-size: 13px;
     line-height: 1.48;
@@ -102,4 +89,20 @@ body .lm-Widget.dialogOverlay {
     font-family: var(--poiesis-font-sans);
     font-size: 13px;
     padding: 20px;
+}
+
+@media (max-width: 900px) {
+    .poiesis-results__auxiliary {
+        border-bottom: 0;
+        border-radius: 0;
+        border-top: 0;
+        bottom: 0;
+        right: 0;
+        top: 0;
+        width: min(440px, 100%);
+    }
+
+    .poiesis-results__question-panel {
+        width: 100%;
+    }
 }
