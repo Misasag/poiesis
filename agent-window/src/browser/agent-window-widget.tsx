@@ -267,6 +267,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     public renderCustomizeView(): React.ReactNode { return this.customizePart.renderCustomizeView(); }
     public openCustomize(): void { this.customizePart.openCustomize(); }
     public closeCustomize(update = true): void { this.customizePart.closeCustomize(update); }
+    public prepareCustomizeNavigation(): boolean { return this.customizePart.prepareCustomizeNavigation(); }
     public handleCustomizeEscape(): void { this.customizePart.handleCustomizeEscape(); }
     public installWorkspaceSkillSaveShortcut(): void { this.customizePart.installWorkspaceSkillSaveShortcut(); }
     public scheduleWorkspaceSkillsRefresh(): void { this.customizePart.scheduleWorkspaceSkillsRefresh(); }
@@ -388,12 +389,12 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 } else {
                     this.closeFolderExplorer();
                 }
+            } else if (document.querySelector('.poiesis-select__listbox')) {
+                return;
             } else if (this.state.settingsModalVisible) {
                 event.preventDefault();
                 event.stopPropagation();
                 this.closeSettings();
-            } else if (document.querySelector('.poiesis-select__listbox')) {
-                return;
             } else if (this.state.customizeViewVisible) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -532,14 +533,12 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                     <div className='poiesis-agent-window__viewport'>
                         <div
                             className='poiesis-agent-window__conversation-view'
-                            aria-hidden={this.state.codeMode}
-                            style={this.state.codeMode ? {
+                            aria-hidden={this.state.codeMode || this.state.customizeViewVisible}
+                            style={this.state.codeMode || this.state.customizeViewVisible ? {
                                 width: this.node.querySelector<HTMLElement>('.poiesis-agent-window__conversation-view')?.clientWidth
                             } : undefined}
                         >
-                            {this.state.customizeViewVisible
-                                ? this.renderCustomizeView()
-                            : activeTab === 'agent'
+                            {activeTab === 'agent'
                                 ? <>
                                     {this.renderAgent(session, runningTask)}
                                     {session?.hasUserMessage && (
@@ -561,6 +560,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                                     {this.renderResults(session)}
                                 </>}
                         </div>
+                        {this.state.customizeViewVisible && this.renderCustomizeView()}
                         {this.state.codeMode && this.renderCode()}
                     </div>
                 </main>
@@ -580,6 +580,9 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     }
 
     public toggleCodeMode(): void {
+        if (this.state.customizeViewVisible && !this.prepareCustomizeNavigation()) {
+            return;
+        }
         if (this.state.codeMode) {
             this.detachCodeWidgets();
             this.state.codeMode = false;

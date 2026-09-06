@@ -107,6 +107,20 @@ interface LegacyPoiesisSettings {
 
 const SETTINGS_STORAGE_KEY = 'poiesis.settings.v1';
 
+type SettingsCategory = 'display' | 'ai' | 'results' | 'keyboard' | 'data';
+
+const SETTINGS_CATEGORIES: ReadonlyArray<{
+    id: SettingsCategory;
+    label: string;
+    icon: string;
+}> = [
+    { id: 'display', label: '表示', icon: 'codicon-symbol-color' },
+    { id: 'ai', label: 'AI', icon: 'codicon-sparkle' },
+    { id: 'results', label: 'Results', icon: 'codicon-preview' },
+    { id: 'keyboard', label: 'キーボード', icon: 'codicon-keyboard' },
+    { id: 'data', label: 'データ管理', icon: 'codicon-database' }
+];
+
 export class SettingsPart extends AgentWindowPart {
     protected readonly customModelRoles = new Set<AiRole>();
 
@@ -115,6 +129,12 @@ export class SettingsPart extends AgentWindowPart {
     protected cliDetectionCompletion: Promise<void> = Promise.resolve();
 
     protected clearDataConfirmation = false;
+
+    protected activeSettingsCategory: SettingsCategory = 'display';
+
+    protected settingsPreviousFocus?: HTMLElement;
+
+    protected settingsBackgroundElements: HTMLElement[] = [];
 
     public renderSettingsModal(): React.ReactNode {
         const archivedSessions = this.host.sessions.sessions
@@ -134,152 +154,244 @@ export class SettingsPart extends AgentWindowPart {
                     role='dialog'
                     aria-modal='true'
                     aria-labelledby='poiesis-settings-title'
+                    onKeyDown={event => this.trapSettingsFocus(event)}
                 >
                     <header className='poiesis-settings-modal__header'>
-                        <div>
-                            <span className='codicon codicon-settings-gear' aria-hidden='true' />
-                            <div><h1 id='poiesis-settings-title'>Poiesisの設定</h1><p>アプリの表示とAgent環境を管理します。</p></div>
-                        </div>
-                        <button type='button' aria-label='設定を閉じる' onClick={() => this.closeSettings()} autoFocus>
+                        <h1 id='poiesis-settings-title'>設定</h1>
+                        <button type='button' aria-label='設定を閉じる' onClick={() => this.closeSettings()}>
                             <span className='codicon codicon-close' aria-hidden='true' />
                         </button>
                     </header>
-                    <div className='poiesis-settings-modal__body'>
-                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-general'>
-                            <h2 id='poiesis-settings-general'>一般</h2>
-                            <div className='poiesis-settings-modal__row'>
-                                <div><strong>UI文字サイズ</strong><small>Poiesisのサイドバー、会話、Resultsの表示スケールを変更します。</small></div>
-                                <div className='poiesis-settings-modal__segmented' role='radiogroup' aria-label='UI文字サイズ'>
-                                    {([['small', '小'], ['standard', '標準'], ['large', '大']] as Array<[UiFontScale, string]>).map(([scale, label]) => (
-                                        <label key={scale} className={this.host.state.uiFontScale === scale ? 'active' : ''}>
-                                            <input type='radio' name='poiesis-ui-scale' value={scale} checked={this.host.state.uiFontScale === scale} onChange={() => this.setUiFontScale(scale)} />
-                                            <span>{label}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className='poiesis-settings-modal__row'>
-                                <div>
-                                    <strong>要件の自動分類</strong>
-                                    <small>タスク完了後、直前の要件と関係が薄いと高い確信で判定できた場合だけ、新しい要件として分けます。判定に迷う場合は現在の要件を継続します。</small>
-                                </div>
-                                <label className='poiesis-agent-window__switch'>
-                                    <input
-                                        type='checkbox'
-                                        checked={this.host.state.automaticRequirementClassification}
-                                        aria-label='要件の自動分類'
-                                        onChange={event => this.setAutomaticRequirementClassification(event.currentTarget.checked)}
-                                    />
-                                    <span aria-hidden='true' />
-                                </label>
-                            </div>
-                            <div className='poiesis-settings-modal__row poiesis-settings-modal__shortcuts-row'>
-                                <div><strong>キーボードショートカット</strong><small>Poiesisで実際に使えるキー操作を確認します。</small></div>
-                                <button type='button' className='poiesis-settings-modal__text-button' aria-haspopup='dialog' onClick={() => this.openShortcutsOverlay()}>一覧を開く</button>
-                            </div>
-                        </section>
-
-                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-cli'>
-                            <div className='poiesis-settings-modal__section-heading'>
-                                <h2 id='poiesis-settings-cli'>AI の役割と Model</h2>
-                                <button type='button' className='poiesis-settings-modal__text-button' disabled={this.cliDetectionLoading} onClick={() => void this.refreshCliDetection()}>再検出</button>
-                            </div>
-                            {this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)}
-                            {this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)}
-                        </section>
-
-                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-results'>
-                            <h2 id='poiesis-settings-results'>Results・外部リソース</h2>
-                            <p className='poiesis-settings-modal__section-copy'>成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。</p>
-                            <div className='poiesis-settings-modal__row'>
-                                <div><strong>成果文書の外部リソース読み込みを許可</strong><small>OFFではResults HTMLからのネットワーク画像や外部スタイルをブロックします。</small></div>
-                                <label className='poiesis-agent-window__switch'>
-                                    <input type='checkbox' checked={this.host.state.allowExternalResultsResources} aria-label='成果文書の外部リソースを許可' onChange={event => this.setAllowExternalResultsResources(event.currentTarget.checked)} />
-                                    <span aria-hidden='true' />
-                                </label>
-                            </div>
-                        </section>
-
-                        <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-sessions'>
-                            <h2 id='poiesis-settings-sessions'>セッション・データ管理</h2>
-                            <div className='poiesis-settings-modal__archived'>
-                                <strong>アーカイブ済み</strong>
-                                {archivedSessions.length === 0 && <p>アーカイブ済みのセッションはありません。</p>}
-                                {archivedSessions.map(session => (
-                                    <div className='poiesis-settings-modal__archived-row' key={session.id}>
-                                        <span><strong>{session.title}</strong><small>{this.host.sessionMeta(session)}</small></span>
-                                        {this.host.state.deleteSessionConfirmationId === session.id ? (
-                                            <div className='poiesis-settings-modal__confirm' role='group' aria-label={`${session.title}の完全削除を確認`}>
-                                                <span>完全に削除しますか？</span>
-                                                <button type='button' className='danger' onClick={() => void this.host.deleteSession(session.id)}>削除</button>
-                                                <button type='button' onClick={() => this.host.cancelDeleteSession()}>戻る</button>
-                                            </div>
-                                        ) : (
-                                            <button type='button' className='danger ghost' onClick={() => this.host.beginDeleteSession(session.id)}>完全削除</button>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                            <div className='poiesis-settings-modal__danger-zone'>
-                                <div><strong>保存データをすべてクリア</strong><small>会話、タスク、Resultsの保存状態をこのウィンドウから削除します。</small></div>
-                                {this.clearDataConfirmation ? (
-                                    <div className='poiesis-settings-modal__confirm' role='group' aria-label='保存データのクリアを確認'>
-                                        <span>この操作は取り消せません。</span>
-                                        <button type='button' className='danger' onClick={() => void this.clearSavedSessionData()}>クリア</button>
-                                        <button type='button' onClick={() => { this.clearDataConfirmation = false; this.update(); }}>戻る</button>
-                                    </div>
-                                ) : (
-                                    <button type='button' className='danger' onClick={() => { this.clearDataConfirmation = true; this.update(); }}>保存データをすべてクリア</button>
-                                )}
-                            </div>
-                        </section>
-
+                    <div className='poiesis-settings-modal__shell'>
+                        <nav className='poiesis-settings-modal__nav' aria-label='設定カテゴリ'>
+                            {SETTINGS_CATEGORIES.map(category => (
+                                <button
+                                    key={category.id}
+                                    type='button'
+                                    className={this.activeSettingsCategory === category.id ? 'active' : ''}
+                                    aria-current={this.activeSettingsCategory === category.id ? 'page' : undefined}
+                                    data-settings-initial-focus={this.activeSettingsCategory === category.id ? 'true' : undefined}
+                                    onClick={() => this.selectSettingsCategory(category.id)}
+                                >
+                                    <span className={`codicon ${category.icon}`} aria-hidden='true' />
+                                    <span>{category.label}</span>
+                                </button>
+                            ))}
+                        </nav>
+                        <div className='poiesis-settings-modal__body' key={this.activeSettingsCategory}>
+                            {this.renderSettingsCategory(archivedSessions)}
+                        </div>
                     </div>
-                    <footer className='poiesis-settings-modal__footer'>
-                        <button type='button' onClick={() => void this.openTheiaSettings()}>エディタとTerminalの設定は Theia Settings で</button>
-                    </footer>
                 </section>
             </div>
         );
     }
 
     public renderShortcutsOverlay(): React.ReactNode {
-        const shortcuts = [
-            { label: 'Agentへ送信', keys: ['Ctrl / ⌘', 'Enter'] },
-            { label: 'Resultsへ質問を送信', keys: ['Enter'] },
-            { label: 'Codeでファイルを保存', keys: ['Ctrl / ⌘', 'S'] },
-            { label: 'CodeでTerminalを開閉', keys: ['Ctrl / ⌘', '`'] },
-            { label: 'モーダル／ポップオーバーを閉じる', keys: ['Esc'] }
-        ];
+        return undefined;
+    }
+
+    protected renderSettingsCategory(archivedSessions: readonly WindowAgentSession[]): React.ReactNode {
+        switch (this.activeSettingsCategory) {
+            case 'display': return this.renderDisplaySettings();
+            case 'ai': return this.renderAiSettings();
+            case 'results': return this.renderResultsSettings();
+            case 'keyboard': return this.renderKeyboardSettings();
+            case 'data': return this.renderDataSettings(archivedSessions);
+        }
+    }
+
+    protected renderDisplaySettings(): React.ReactNode {
         return (
-            <div
-                className='poiesis-shortcuts__backdrop'
-                onMouseDown={event => {
-                    if (event.target === event.currentTarget) {
-                        this.closeShortcutsOverlay();
-                    }
-                }}
-            >
-                <section className='poiesis-shortcuts' role='dialog' aria-modal='true' aria-labelledby='poiesis-shortcuts-title'>
-                    <header>
-                        <div><span className='codicon codicon-keyboard' aria-hidden='true' /><h2 id='poiesis-shortcuts-title'>キーボードショートカット</h2></div>
-                        <button type='button' aria-label='キーボードショートカットを閉じる' onClick={() => this.closeShortcutsOverlay()} autoFocus>
-                            <span className='codicon codicon-close' aria-hidden='true' />
-                        </button>
-                    </header>
-                    <div className='poiesis-shortcuts__list'>
-                        {shortcuts.map(shortcut => (
-                            <div className='poiesis-shortcuts__row' key={shortcut.label}>
-                                <span>{shortcut.label}</span>
-                                <span className='poiesis-shortcuts__keys'>
-                                    {shortcut.keys.map(key => <kbd key={key}>{key}</kbd>)}
-                                </span>
-                            </div>
+            <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-display'>
+                <div className='poiesis-settings-modal__section-title'>
+                    <h2 id='poiesis-settings-display'>表示</h2>
+                    <span>Poiesis</span>
+                </div>
+                <div className='poiesis-settings-modal__row'>
+                    <div>
+                        <strong>表示サイズ</strong>
+                        <small>サイドバー、会話、Resultsに反映されます。Codeの表示サイズは別に設定します。</small>
+                    </div>
+                    <div className='poiesis-settings-modal__segmented' role='radiogroup' aria-label='表示サイズ'>
+                        {([['small', '小'], ['standard', '標準'], ['large', '大']] as Array<[UiFontScale, string]>).map(([scale, label]) => (
+                            <label key={scale} className={this.host.state.uiFontScale === scale ? 'active' : ''}>
+                                <input type='radio' name='poiesis-ui-scale' value={scale} checked={this.host.state.uiFontScale === scale} onChange={() => this.setUiFontScale(scale)} />
+                                <span>{label}</span>
+                            </label>
                         ))}
                     </div>
-                </section>
-            </div>
+                </div>
+                <div className='poiesis-settings-modal__row'>
+                    <div>
+                        <strong>Codeの表示と操作</strong>
+                        <small>エディターとターミナルの文字、テーマ、動作を設定します。</small>
+                    </div>
+                    <button type='button' className='poiesis-settings-modal__text-button' onClick={() => void this.openTheiaSettings()}>Code設定を開く</button>
+                </div>
+            </section>
         );
+    }
+
+    protected renderAiSettings(): React.ReactNode {
+        return (
+            <section className='poiesis-settings-modal__section poiesis-settings-modal__section--ai' aria-labelledby='poiesis-settings-ai'>
+                <div className='poiesis-settings-modal__section-heading'>
+                    <div className='poiesis-settings-modal__section-title'>
+                        <h2 id='poiesis-settings-ai'>AI</h2>
+                        <span>役割ごとに選択</span>
+                    </div>
+                    <button type='button' className='poiesis-settings-modal__text-button' disabled={this.cliDetectionLoading} onClick={() => void this.refreshCliDetection()}>
+                        {this.cliDetectionLoading ? '検出中…' : '再検出'}
+                    </button>
+                </div>
+                <div className='poiesis-settings-modal__ai-roles'>
+                    {this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)}
+                    {this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)}
+                </div>
+                {this.renderCliDiagnostics()}
+            </section>
+        );
+    }
+
+    protected renderResultsSettings(): React.ReactNode {
+        return (
+            <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-results'>
+                <div className='poiesis-settings-modal__section-title'>
+                    <h2 id='poiesis-settings-results'>Results</h2>
+                    <span>成果の整理と表示</span>
+                </div>
+                <p className='poiesis-settings-modal__section-copy'>成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。</p>
+                <div className='poiesis-settings-modal__row'>
+                    <div>
+                        <strong>成果を自動で分ける</strong>
+                        <small>完了した成果が直前の成果と別の目的だと高い確度で判断できた場合だけ、新しいまとまりに分けます。</small>
+                    </div>
+                    <label className='poiesis-agent-window__switch'>
+                        <input
+                            type='checkbox'
+                            checked={this.host.state.automaticRequirementClassification}
+                            aria-label='成果を自動で分ける'
+                            onChange={event => this.setAutomaticRequirementClassification(event.currentTarget.checked)}
+                        />
+                        <span aria-hidden='true' />
+                    </label>
+                </div>
+                <div className='poiesis-settings-modal__row'>
+                    <div>
+                        <strong>外部リソースを読み込む</strong>
+                        <small>有効にすると、成果文書内のネットワーク画像や外部スタイルを表示できます。</small>
+                    </div>
+                    <label className='poiesis-agent-window__switch'>
+                        <input
+                            type='checkbox'
+                            checked={this.host.state.allowExternalResultsResources}
+                            aria-label='成果文書の外部リソースを読み込む'
+                            onChange={event => this.setAllowExternalResultsResources(event.currentTarget.checked)}
+                        />
+                        <span aria-hidden='true' />
+                    </label>
+                </div>
+            </section>
+        );
+    }
+
+    protected renderKeyboardSettings(): React.ReactNode {
+        const shortcuts: Array<{ label: string; detail?: string; keys: string[] }> = [
+            { label: 'Agent／Resultsで送信', detail: '日本語入力の変換中は送信しません。', keys: ['Enter'] },
+            { label: 'Agent／Resultsで改行', keys: ['Shift', 'Enter'] },
+            { label: 'Codeで保存', keys: ['Ctrl', 'S'] },
+            { label: 'Codeのサイドバーを開閉', keys: ['Ctrl', 'B'] },
+            { label: 'ファイルを選んで開く', keys: ['Ctrl', 'P'] },
+            { label: 'Codeのターミナルを開閉', keys: ['Ctrl', '`'] },
+            { label: '開いているメニューや画面を閉じる', keys: ['Esc'] }
+        ];
+        return (
+            <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-keyboard'>
+                <div className='poiesis-settings-modal__section-title'>
+                    <h2 id='poiesis-settings-keyboard'>キーボード</h2>
+                    <span>Windows</span>
+                </div>
+                <div className='poiesis-settings-modal__shortcut-list'>
+                    {shortcuts.map(shortcut => (
+                        <div className='poiesis-settings-modal__shortcut-row' key={shortcut.label}>
+                            <span><strong>{shortcut.label}</strong>{shortcut.detail && <small>{shortcut.detail}</small>}</span>
+                            <span className='poiesis-settings-modal__keys'>
+                                {shortcut.keys.map(key => <kbd key={key}>{key}</kbd>)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </section>
+        );
+    }
+
+    protected renderDataSettings(archivedSessions: readonly WindowAgentSession[]): React.ReactNode {
+        const counts = this.savedDataCounts();
+        const countSummary = `会話 ${counts.conversations}件、成果 ${counts.results}件、実行記録 ${counts.tasks}件`;
+        return (
+            <section className='poiesis-settings-modal__section' aria-labelledby='poiesis-settings-data'>
+                <div className='poiesis-settings-modal__section-title'>
+                    <h2 id='poiesis-settings-data'>データ管理</h2>
+                    <span>すべてのフォルダー</span>
+                </div>
+                <p className='poiesis-settings-modal__section-copy'>Poiesisに保存されたすべてのフォルダーの履歴が対象です。フォルダー内のファイルは削除されません。</p>
+                <div className='poiesis-settings-modal__data-summary' aria-label='保存データの件数'>
+                    <span><strong>{counts.conversations}</strong>会話</span>
+                    <span><strong>{counts.results}</strong>成果</span>
+                    <span><strong>{counts.tasks}</strong>実行記録</span>
+                </div>
+                <div className='poiesis-settings-modal__archived'>
+                    <div className='poiesis-settings-modal__subheading'><strong>アーカイブ済み</strong><span>{archivedSessions.length}件</span></div>
+                    {archivedSessions.length === 0 && <p>アーカイブ済みの会話はありません。</p>}
+                    {archivedSessions.map(session => {
+                        const resultCount = this.host.sessions.resultsRequirements(session).length;
+                        return (
+                            <div className='poiesis-settings-modal__archived-row' key={session.id}>
+                                <span>
+                                    <strong>{session.title}</strong>
+                                    <small>{this.host.sessionMeta(session)} · メッセージ {session.messages.length}件 · 成果 {resultCount}件</small>
+                                </span>
+                                {this.host.state.deleteSessionConfirmationId === session.id ? (
+                                    <div className='poiesis-settings-modal__confirm' role='group' aria-label={`${session.title}の完全削除を確認`}>
+                                        <span>この会話の履歴からメッセージ {session.messages.length}件と成果 {resultCount}件を削除します。</span>
+                                        <button type='button' className='danger' onClick={() => void this.host.deleteSession(session.id)}>削除</button>
+                                        <button type='button' onClick={() => this.host.cancelDeleteSession()}>戻る</button>
+                                    </div>
+                                ) : (
+                                    <button type='button' className='danger ghost' onClick={() => this.host.beginDeleteSession(session.id)}>完全削除</button>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+                <div className='poiesis-settings-modal__danger-zone'>
+                    <div>
+                        <strong>保存した履歴をすべてクリア</strong>
+                        <small>{countSummary}が対象です。この操作は取り消せません。</small>
+                    </div>
+                    {this.clearDataConfirmation ? (
+                        <div className='poiesis-settings-modal__confirm' role='group' aria-label='保存した履歴のクリアを確認'>
+                            <span>すべてのフォルダーの履歴から{countSummary}を削除します。</span>
+                            <button type='button' className='danger' onClick={() => void this.clearSavedSessionData()}>すべてクリア</button>
+                            <button type='button' onClick={() => { this.clearDataConfirmation = false; this.update(); }}>戻る</button>
+                        </div>
+                    ) : (
+                        <button type='button' className='danger' onClick={() => { this.clearDataConfirmation = true; this.update(); }}>すべてクリア</button>
+                    )}
+                </div>
+            </section>
+        );
+    }
+
+    protected savedDataCounts(): { conversations: number; tasks: number; results: number } {
+        const sessions = this.host.sessions.sessions.filter(session => session.hasUserMessage);
+        const taskIds = new Set(sessions.flatMap(session => session.taskIds));
+        return {
+            conversations: sessions.length,
+            tasks: taskIds.size,
+            results: sessions.reduce((total, session) => total + this.host.sessions.resultsRequirements(session).length, 0)
+        };
     }
 
     protected renderCliRoleSelector(role: AiRole, label: string, selected: KnownCliId): React.ReactNode {
@@ -291,9 +403,15 @@ export class SettingsPart extends AgentWindowPart {
         const customModel = this.customModelRoles.has(role) || !modelIds.includes(model);
         const modelSelection = customModel ? '__custom__' : model;
         const effortOptions = this.effortOptions(selected);
+        const purpose = role === 'agent'
+            ? '依頼を理解し、コードやファイルを変更します。'
+            : '完了した成果を読みやすい文書にまとめます。';
         return (
             <div className='poiesis-settings-modal__cli-role'>
-                <h3>{label}</h3>
+                <div className='poiesis-settings-modal__role-heading'>
+                    <h3>{label}</h3>
+                    <p>{purpose}</p>
+                </div>
                 <div className='poiesis-settings-modal__cli-list' role='radiogroup' aria-label={label}>
                     {KNOWN_CLI_IDS.map(providerId => {
                         const detection = detections.find(candidate => candidate.id === providerId);
@@ -304,30 +422,28 @@ export class SettingsPart extends AgentWindowPart {
                             role
                         );
                         const executable = availability === 'available';
-                        const status = cliRoleAvailabilityLabel(availability, true);
-                        const detail = availability === 'pending'
-                            ? 'CLI を確認しています'
-                            : availability === 'error'
-                                ? '再検出してください'
-                                : detection?.path ?? `${providerId} CLI`;
+                        const status = availability === 'available'
+                            ? '検出済み'
+                            : availability === 'unsupported'
+                                ? '検出済み（未対応）'
+                                : cliRoleAvailabilityLabel(availability);
                         return (
-                            <label key={`${role}-${providerId}`} className={`poiesis-settings-modal__cli-row${executable ? '' : ' unavailable'}`}>
-                                <input
-                                    type='radio'
-                                    name={`poiesis-${role}-cli`}
-                                    value={providerId}
-                                    checked={selected === providerId}
-                                    disabled={!executable}
-                                    onChange={() => this.setRoleCli(role, providerId)}
-                                />
-                                <span className='poiesis-settings-modal__cli-copy'>
-                                    <strong>{detection?.name ?? CLI_DISPLAY_NAMES[providerId]}</strong>
-                                    <small title={availability === 'available' ? detection?.path : undefined}>
-                                        {detail}{availability === 'available' && detection?.version ? ` · ${detection.version}` : ''}
-                                    </small>
-                                </span>
-                                <span className={`poiesis-settings-modal__cli-status ${this.cliAvailabilityClass(availability)}`}>{status}</span>
-                            </label>
+                            <div className='poiesis-settings-modal__cli-item' key={`${role}-${providerId}`}>
+                                <label className={`poiesis-settings-modal__cli-row${executable ? '' : ' unavailable'}`}>
+                                    <input
+                                        type='radio'
+                                        name={`poiesis-${role}-cli`}
+                                        value={providerId}
+                                        checked={selected === providerId}
+                                        disabled={!executable}
+                                        onChange={() => this.setRoleCli(role, providerId)}
+                                    />
+                                    <span className='poiesis-settings-modal__cli-copy'>
+                                        <strong>{detection?.name ?? CLI_DISPLAY_NAMES[providerId]}</strong>
+                                    </span>
+                                    <span className={`poiesis-settings-modal__cli-status ${this.cliAvailabilityClass(availability)}`}>{status}</span>
+                                </label>
+                            </div>
                         );
                     })}
                 </div>
@@ -340,7 +456,7 @@ export class SettingsPart extends AgentWindowPart {
                                 value={modelSelection}
                                 disabled={cliRoleAvailability(this.host.state.cliDetectionPhase, report, selected, role) !== 'available'}
                                 options={[
-                                    ...selectedDetection.models.map(option => ({ value: option.id, label: option.label })),
+                                    ...selectedDetection.models.map(option => ({ value: option.id, label: option.id ? option.label : '既定' })),
                                     { value: '__custom__', label: 'カスタム…' }
                                 ]}
                                 onChange={value => this.setRoleModelChoice(role, value)}
@@ -360,9 +476,9 @@ export class SettingsPart extends AgentWindowPart {
                         )}
                         {effortOptions.length > 0 && (
                             <label>
-                                <span>effort</span>
+                                <span>処理の深さ</span>
                                 <PoiesisSelect
-                                    ariaLabel={`${label} effort`}
+                                    ariaLabel={`${label}の処理の深さ`}
                                     value={this.roleEffort(role)}
                                     disabled={cliRoleAvailability(this.host.state.cliDetectionPhase, report, selected, role) !== 'available'}
                                     options={effortOptions}
@@ -373,6 +489,33 @@ export class SettingsPart extends AgentWindowPart {
                     </div>
                 )}
             </div>
+        );
+    }
+
+    protected renderCliDiagnostics(): React.ReactNode {
+        const report = this.host.state.cliDetectionReport;
+        const detections = report?.detections ?? [];
+        const current = this.host.state.cliDetectionPhase === 'ready';
+        return (
+            <details className='poiesis-settings-modal__diagnostics'>
+                <summary>診断情報</summary>
+                <dl>
+                    {KNOWN_CLI_IDS.map(providerId => {
+                        const detection = detections.find(candidate => candidate.id === providerId);
+                        const unavailableLabel = this.host.state.cliDetectionPhase === 'pending' ? '確認中' : '確認できませんでした';
+                        return (
+                            <div key={providerId}>
+                                <dt>{detection?.name ?? CLI_DISPLAY_NAMES[providerId]}</dt>
+                                <dd>
+                                    <span>実行ファイル: {current ? detection?.path ?? '見つかりません' : unavailableLabel}</span>
+                                    <span>バージョン: {current ? detection?.version ?? '不明' : '未確認'}</span>
+                                    <span>検出元: {current ? detection?.source === 'well-known' ? '標準の場所' : detection?.source ?? '不明' : '未確認'}</span>
+                                </dd>
+                            </div>
+                        );
+                    })}
+                </dl>
+            </details>
         );
     }
 
@@ -405,23 +548,23 @@ export class SettingsPart extends AgentWindowPart {
                         ? this.roleChoiceValue(providerId, selectedCustom ? '__custom__' : selectedModel)
                         : `unavailable:${role}:${providerId}`,
                     label: status,
-                    triggerLabel: `${name} · ${selectedModel || '既定'}${selectedEffort ? ` · ${selectedEffort}` : ''} · ${status}`,
+                    triggerLabel: `${name} · ${selectedModel || '既定'}${selectedEffort ? ` · ${this.effortLabel(selectedEffort)}` : ''} · ${status}`,
                     group: name,
                     disabled: true
                 }];
             }
-            const group = `${name} · 実行可`;
+            const group = `${name} · 検出済み`;
             return [
                 ...detection.models.map(option => ({
                     value: this.roleChoiceValue(providerId, option.id),
-                    label: option.label,
-                    triggerLabel: `${name} · ${option.id ? option.label : '既定'}${this.effortFor(role, providerId, option.id) ? ` · ${this.effortFor(role, providerId, option.id)}` : ''}`,
+                    label: option.id ? option.label : '既定',
+                    triggerLabel: `${name} · ${option.id ? option.label : '既定'}${this.effortFor(role, providerId, option.id) ? ` · ${this.effortLabel(this.effortFor(role, providerId, option.id))}` : ''}`,
                     group
                 })),
                 {
                     value: this.roleChoiceValue(providerId, '__custom__'),
                     label: 'カスタム…',
-                    triggerLabel: `${name} · ${selected && selectedCustom && selectedModel ? selectedModel : 'カスタム…'}${selected && selectedCustom && selectedEffort ? ` · ${selectedEffort}` : ''}`,
+                    triggerLabel: `${name} · ${selected && selectedCustom && selectedModel ? selectedModel : 'カスタム…'}${selected && selectedCustom && selectedEffort ? ` · ${this.effortLabel(selectedEffort)}` : ''}`,
                     group,
                     keepOpen: true
                 }
@@ -506,9 +649,9 @@ export class SettingsPart extends AgentWindowPart {
                             )}
                             {effortOptions.length > 0 && (
                                 <label className='poiesis-ai-role-pill__effort'>
-                                    <span>effort</span>
+                                    <span>処理の深さ</span>
                                     <PoiesisSelect
-                                        ariaLabel={`${roleLabel} の AI effort`}
+                                        ariaLabel={`${roleLabel}の処理の深さ`}
                                         value={this.roleEffort(role)}
                                         options={effortOptions}
                                         onChange={nextEffort => this.setRoleEffort(role, nextEffort)}
@@ -524,25 +667,55 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     public openSettings(): void {
-        this.host.closeCustomize(false);
+        this.settingsPreviousFocus = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : undefined;
         this.host.state.settingsModalVisible = true;
         this.host.state.shortcutsOverlayVisible = false;
         this.host.state.deleteSessionConfirmationId = undefined;
         this.clearDataConfirmation = false;
         this.update();
+        requestAnimationFrame(() => {
+            this.isolateSettingsBackground();
+            this.node.querySelector<HTMLElement>('[data-settings-initial-focus="true"]')?.focus();
+        });
         void this.refreshCliDetection();
     }
 
-    public closeSettings(): void {
+    public closeSettings(restoreFocus = true): void {
+        const restoreTarget = this.settingsPreviousFocus;
         this.host.state.settingsModalVisible = false;
         this.host.state.shortcutsOverlayVisible = false;
         this.host.state.deleteSessionConfirmationId = undefined;
         this.clearDataConfirmation = false;
+        this.restoreSettingsBackground();
         this.update();
+        if (restoreFocus) {
+            requestAnimationFrame(() => {
+                if (restoreTarget?.isConnected) {
+                    restoreTarget.focus();
+                    return;
+                }
+                const fallback = Array.from(this.node.querySelectorAll<HTMLElement>(
+                    '[aria-label="設定"], [role="tab"][aria-selected="true"], .poiesis-agent-window__code-control, .poiesis-agent-window__composer textarea'
+                )).find(element => element.getClientRects().length > 0);
+                if (fallback) {
+                    fallback.focus();
+                } else {
+                    if (!this.node.hasAttribute('tabindex')) {
+                        this.node.tabIndex = -1;
+                    }
+                    this.node.focus();
+                }
+            });
+        }
+        this.settingsPreviousFocus = undefined;
     }
 
     public openShortcutsOverlay(): void {
-        this.host.state.shortcutsOverlayVisible = true;
+        this.activeSettingsCategory = 'keyboard';
+        this.host.state.shortcutsOverlayVisible = false;
+        this.host.state.settingsModalVisible = true;
         this.update();
     }
 
@@ -551,8 +724,78 @@ export class SettingsPart extends AgentWindowPart {
         this.update();
     }
 
+    protected selectSettingsCategory(category: SettingsCategory): void {
+        if (category === this.activeSettingsCategory) {
+            return;
+        }
+        this.activeSettingsCategory = category;
+        this.host.state.deleteSessionConfirmationId = undefined;
+        this.clearDataConfirmation = false;
+        this.update();
+    }
+
+    protected trapSettingsFocus(event: React.KeyboardEvent<HTMLElement>): void {
+        if (event.key !== 'Tab') {
+            return;
+        }
+        const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>([
+            'button:not([disabled])',
+            'input:not([disabled])',
+            'textarea:not([disabled])',
+            'select:not([disabled])',
+            'a[href]',
+            'summary',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(','))).filter(element => element.getClientRects().length > 0 && element.getAttribute('aria-hidden') !== 'true');
+        if (!focusable.length) {
+            event.preventDefault();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (event.shiftKey && (active === first || !event.currentTarget.contains(active))) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && (active === last || !event.currentTarget.contains(active))) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
+    protected isolateSettingsBackground(): void {
+        this.restoreSettingsBackground();
+        const backdrop = this.node.querySelector<HTMLElement>('.poiesis-settings-modal__backdrop');
+        const container = backdrop?.parentElement;
+        if (!backdrop || !container) {
+            return;
+        }
+        this.settingsBackgroundElements = Array.from(container.children)
+            .filter((element): element is HTMLElement => element instanceof HTMLElement)
+            .filter(element => element !== backdrop && !element.inert);
+        for (const element of this.settingsBackgroundElements) {
+            element.inert = true;
+        }
+    }
+
+    protected restoreSettingsBackground(): void {
+        for (const element of this.settingsBackgroundElements) {
+            if (element.isConnected) {
+                element.inert = false;
+            }
+        }
+        this.settingsBackgroundElements = [];
+    }
+
     protected async openTheiaSettings(): Promise<void> {
-        this.closeSettings();
+        if (this.host.state.customizeViewVisible && !this.host.prepareCustomizeNavigation()) {
+            this.closeSettings(false);
+            return;
+        }
+        this.closeSettings(false);
+        if (this.host.state.customizeViewVisible) {
+            this.host.closeCustomize(false);
+        }
         if (!this.host.state.codeMode) {
             this.host.ensureCodeFileIcons();
             this.host.state.codeMode = true;
@@ -611,9 +854,21 @@ export class SettingsPart extends AgentWindowPart {
 
     protected effortOptions(provider: KnownCliId): PoiesisSelectOption[] {
         return CLI_EFFORT_LEVELS[provider].length > 0 ? [
-            { value: '', label: '既定 (CLIの設定に従う)' },
-            ...CLI_EFFORT_LEVELS[provider].map(value => ({ value, label: value }))
+            { value: '', label: '既定' },
+            ...CLI_EFFORT_LEVELS[provider].map(value => ({ value, label: this.effortLabel(value) }))
         ] : [];
+    }
+
+    protected effortLabel(value: string): string {
+        switch (value) {
+            case 'minimal': return '最小';
+            case 'low': return '軽め';
+            case 'medium': return '標準';
+            case 'high': return '深め';
+            case 'xhigh': return 'かなり深く';
+            case 'max': return '最大';
+            default: return value;
+        }
     }
 
     protected setRoleModelChoice(role: AiRole, value: string): void {

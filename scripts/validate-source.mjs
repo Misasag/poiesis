@@ -1485,7 +1485,7 @@ for (const marker of [
     'Widget.detach(widget)',
     'public openSettings(): void',
     'this.host.state.settingsModalVisible = true',
-    'public closeSettings(): void',
+    'public closeSettings(restoreFocus = true): void',
     'public renderSettingsModal(): React.ReactNode',
     'public renderCustomizeView(): React.ReactNode',
     "role='dialog'",
@@ -1518,12 +1518,12 @@ for (const marker of [
     'protected setRoleModel(',
     'protected setRoleEffort(role: AiRole, effort: string): void',
     'protected effortKey(provider: KnownCliId, model: string): string',
-    "label: '既定 (CLIの設定に従う)'",
+    "label: '既定'",
     'version: 5',
     'effortByModel: Record<AiRole, Record<string, string>>',
     'state.version === 5',
-    '有効なAgent Skillは次のTaskから実装指示へ加わり',
-    '組み込みテンプレートへの切り替え時はResults Skillの追加指示を使いません。',
+    '<span>{label}に渡す内容</span>',
+    '実行できない場合はBundled Resultsに切り替わります。',
     '<strong>Bundled Results</strong>',
     '<strong>AI Results</strong>',
     "className={`poiesis-agent-window__rail-action${this.host.state.customizeViewVisible ? ' active' : ''}`}",
@@ -1553,7 +1553,7 @@ for (const marker of [
     "this.host.renderAiRolePill('results', true)",
     "ariaLabel={`${roleLabel} の AI とモデル`}",
     "aria-label={`${roleLabel} の AI カスタムモデルID`}",
-    "ariaLabel={`${roleLabel} の AI effort`}",
+    "ariaLabel={`${roleLabel}の処理の深さ`}",
     "className='poiesis-ai-role-pill__effort'",
     'cliRoleAvailability(this.host.state.cliDetectionPhase',
     'cliRoleAvailabilityLabel(availability',
@@ -1794,15 +1794,15 @@ for (const marker of [
     '条件 {passed}/{assertions.length}',
     "className={`poiesis-results__assertion-badge ${unresolved.length === 0 ? 'passed' : 'warning'}`}",
     'isMostRecentAgentMessage && index === 0',
-    '条件 {previewItem?.assertions ?? skill.assertions.length}件'
+    '確認項目</dt><dd>{previewItem?.assertions ?? skill.assertions.length}件'
 ]) {
     assert.ok(agentWidget.includes(marker), `Results assertion or preview-card UI is missing ${marker}`);
 }
 for (const marker of [
-    '提案された Skill',
+    '提案されたSkills',
     'protected renderPendingSkillRow(proposal: PendingSkillProposal)',
     "proposal.existing ? '更新提案' : '新規提案'",
-    '.poiesis/pending/skills/{proposal.id}/SKILL.md',
+    "className='poiesis-customize-view__proposal-preview'",
     'protected renderPendingSkillPreview()',
     'diffTextLines(proposal.existing.content, proposal.content)',
     "!proposal.parsed.error && (",
@@ -2121,7 +2121,7 @@ for (const marker of [
     '元の成果に戻しました',
     '自動で分けました',
     'input?.select();',
-    "他のスコープに Skill はありません: {emptyRoots.join('、')}",
+    "{ id: 'global', label: 'すべてのフォルダー', sources: ['user', 'user-agents'] }",
     "onClick={() => this.beginRequirementRename(requirement)}"
 ]) {
     assert.ok(agentWidget.includes(marker), `Requirement UI is missing ${marker}`);
@@ -2131,9 +2131,9 @@ assert.ok(requirementPillSource.indexOf("group: '関連付け'") < requirementPi
     && requirementPillSource.indexOf("group: '新規'") < requirementPillSource.indexOf("group: 'この会話の成果'"),
     'Automatic association, new Results, and existing Results must keep their intended order');
 for (const marker of [
-    '<strong>要件の自動分類</strong>',
-    '判定に迷う場合は現在の要件を継続します。',
-    "aria-label='要件の自動分類'",
+    '<strong>成果を自動で分ける</strong>',
+    '完了した成果が直前の成果と別の目的だと高い確度で判断できた場合だけ',
+    "aria-label='成果を自動で分ける'",
     'automaticRequirementClassification: this.host.state.automaticRequirementClassification'
 ]) {
     assert.ok(agentWidget.includes(marker), `Requirement classification setting is missing ${marker}`);
@@ -2522,9 +2522,9 @@ for (const marker of [
     assert.ok(agentWorkflowSmoke.includes(marker), `Agent workflow smoke is missing ${marker}`);
 }
 for (const marker of [
-    'renderShortcutsOverlay()',
-    'shortcutsOverlayVisible',
-    "event.key !== 'Escape'"
+    "type SettingsCategory = 'display' | 'ai' | 'results' | 'keyboard' | 'data'",
+    'protected trapSettingsFocus(event: React.KeyboardEvent<HTMLElement>): void',
+    "document.querySelector('.poiesis-select__listbox')"
 ]) {
     assert.ok(agentWidget.includes(marker), `Round 10 interaction wiring is missing ${marker}`);
 }
@@ -2534,7 +2534,7 @@ for (const marker of [
     '--motion-fast: 160ms cubic-bezier(.2, 0, 0, 1)',
     '@media (prefers-reduced-motion: reduce)',
     'animation-duration: 0ms !important',
-    '.poiesis-shortcuts__backdrop'
+    '.poiesis-settings-modal__nav'
 ]) {
     assert.ok(agentStyles.includes(marker), `Round 10 UI styles are missing ${marker}`);
 }

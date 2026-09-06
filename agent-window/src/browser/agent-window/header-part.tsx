@@ -127,7 +127,11 @@ export class HeaderPart extends AgentWindowPart {
                             type='button'
                             className='poiesis-agent-window__customize-close'
                             aria-label='カスタマイズを閉じる'
-                            onClick={() => this.host.closeCustomize()}
+                            onClick={() => {
+                                if (this.host.prepareCustomizeNavigation()) {
+                                    this.host.closeCustomize();
+                                }
+                            }}
                         >
                             <span className='codicon codicon-close' aria-hidden='true' />
                         </button>
