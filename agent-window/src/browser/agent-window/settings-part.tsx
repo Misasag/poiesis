@@ -346,6 +346,8 @@ export class SettingsPart extends AgentWindowPart {
                     {archivedSessions.length === 0 && <p>アーカイブ済みの会話はありません。</p>}
                     {archivedSessions.map(session => {
                         const resultCount = this.host.sessions.resultsRequirements(session).length;
+                        const busy = Boolean(this.host.sessions.runningTask(session))
+                            || [...session.resultsNotices.values()].some(notice => notice.status === 'sending');
                         return (
                             <div className='poiesis-settings-modal__archived-row' key={session.id}>
                                 <span>
@@ -359,7 +361,9 @@ export class SettingsPart extends AgentWindowPart {
                                         <button type='button' onClick={() => this.host.cancelDeleteSession()}>戻る</button>
                                     </div>
                                 ) : (
-                                    <button type='button' className='danger ghost' onClick={() => this.host.beginDeleteSession(session.id)}>完全削除</button>
+                                    <button type='button' className='danger ghost' disabled={busy} onClick={() => this.host.beginDeleteSession(session.id)}>
+                                        {busy ? '実行中は削除不可' : '完全削除'}
+                                    </button>
                                 )}
                             </div>
                         );
@@ -667,6 +671,9 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     public openSettings(): void {
+        if (this.host.state.sessionSearchVisible) {
+            this.host.closeSessionSearch(false);
+        }
         this.settingsPreviousFocus = document.activeElement instanceof HTMLElement
             ? document.activeElement
             : undefined;

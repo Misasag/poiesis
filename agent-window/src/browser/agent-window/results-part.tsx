@@ -173,21 +173,21 @@ export class ResultsPart extends AgentWindowPart {
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>タスクに失敗しました</strong>
                                 <p>{latestTask.failure?.summary ?? 'Agent がタスクを完了できませんでした。'}</p>
-                                <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>
+                                {!session?.archived && <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>}
                             </div>
                         )}
                         {latestTask?.status === 'cancelled' && !document && (
                             <div className='poiesis-results__state cancelled' role='status'>
                                 <strong>タスクはキャンセルされました</strong>
                                 <p>成果は確定していません。必要なら同じ依頼を再試行できます。</p>
-                                <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>
+                                {!session?.archived && <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>}
                             </div>
                         )}
                         {latestTask?.status === 'completed' && latestTask.changeSet?.error && !document && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>変更内容を取得できませんでした</strong>
                                 <p>Repository の状態を確認して、タスクを再試行してください。</p>
-                                <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>
+                                {!session?.archived && <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>}
                             </div>
                         )}
                         {selectedRequirement && (document?.status === 'generating' && !document.html
@@ -200,18 +200,18 @@ export class ResultsPart extends AgentWindowPart {
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>成果を作成できませんでした</strong>
                                 <p>成果の作成中に問題が発生しました。再試行してください。</p>
-                                <button type='button' onClick={() => selectedTask
+                                {!session?.archived && <button type='button' onClick={() => selectedTask
                                     ? void this.retryResults(selectedTask.id)
-                                    : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>
+                                    : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>}
                             </div>
                         )}
                         {selectedRequirement && document?.html && document.updateError && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>{document.updateError}</strong>
                                 <p>前回の内容を表示しています。</p>
-                                <button type='button' onClick={() => selectedTask
+                                {!session?.archived && <button type='button' onClick={() => selectedTask
                                     ? void this.retryResults(selectedTask.id)
-                                    : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>
+                                    : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>}
                             </div>
                         )}
                         {selectedRequirement && document?.html && (document.status === 'ready' || document.status === 'generating') && (
@@ -238,7 +238,8 @@ export class ResultsPart extends AgentWindowPart {
                     questionHistory,
                     questionSending ? notice : undefined,
                     draft,
-                    document?.status === 'ready'
+                    document?.status === 'ready',
+                    Boolean(session?.archived)
                 )}
             </section>
         );
@@ -352,7 +353,7 @@ export class ResultsPart extends AgentWindowPart {
                             </small>
                         </button>
                     )}
-                    {!renaming && (
+                    {!renaming && !session?.archived && (
                         <div className='poiesis-results__menu-host'>
                             <button
                                 type='button'
@@ -377,8 +378,8 @@ export class ResultsPart extends AgentWindowPart {
                 {automaticSplitTask && (
                     <div className='poiesis-results__automatic-requirement-note'>
                         <span>自動で分けました</span>
-                        <span aria-hidden='true'>·</span>
-                        <button type='button' onClick={() => this.undoAutomaticRequirementSplit(automaticSplitTask.id)}>戻す</button>
+                        {!session?.archived && <><span aria-hidden='true'>·</span>
+                            <button type='button' onClick={() => this.undoAutomaticRequirementSplit(automaticSplitTask.id)}>戻す</button></>}
                     </div>
                 )}
                 {expanded && (
@@ -421,7 +422,7 @@ export class ResultsPart extends AgentWindowPart {
                         {questionState ? ` · ${questionState}` : ''}
                     </small>
                 </button>
-                {!finalizing && (
+                {!finalizing && !session?.archived && (
                     <div className='poiesis-results__menu-host'>
                         <button
                             type='button'
@@ -904,7 +905,8 @@ export class ResultsPart extends AgentWindowPart {
         history: readonly TaskResultsQuestion[],
         pending: ResultsNotice | undefined,
         draft: string,
-        documentReady: boolean
+        documentReady: boolean,
+        archived: boolean
     ): React.ReactNode {
         return <>
             <div className='poiesis-results__auxiliary-scrim' onPointerDown={() => this.closeResultsQuestionPanel(scopeKey)} />
@@ -940,7 +942,7 @@ export class ResultsPart extends AgentWindowPart {
                                 {entry.error
                                     ? <p>{entry.error}</p>
                                     : this.host.renderMarkdown(entry.answer ?? '')}
-                                {entry.error && (
+                                {entry.error && !archived && (
                                     <button type='button' onClick={() => void this.submitResultsQuestion(scopeKey, entry.question)}>再試行</button>
                                 )}
                             </div>
@@ -964,28 +966,35 @@ export class ResultsPart extends AgentWindowPart {
                     )}
                 </div>
                 <section className='poiesis-results__composer' aria-label='Results の入力欄'>
-                    <PoiesisComposer
-                        key={scopeKey}
-                        autoFocus
-                        value={draft}
-                        placeholder='この成果について質問…'
-                        aria-label='表示中の成果について質問'
-                        rows={3}
-                        maxLength={4_000}
-                        disabled={!documentReady || Boolean(pending)}
-                        onValueChange={value => this.setResultsDraft(scopeKey, value)}
-                        onSubmit={() => void this.submitResultsQuestion(scopeKey)}
-                    />
-                    <button
-                        type='button'
-                        className='poiesis-results__send'
-                        aria-label='Results 内へ送信'
-                        disabled={!documentReady || Boolean(pending) || !draft.trim()}
-                        onClick={() => void this.submitResultsQuestion(scopeKey)}
-                    >
-                        <span className='codicon codicon-arrow-up' aria-hidden='true' />
-                    </button>
-                    {documentReady && this.host.renderAiRolePill('results', true)}
+                    {archived ? (
+                        <div className='poiesis-agent-window__archived-composer-state'>
+                            <span><span className='codicon codicon-archive' aria-hidden='true' />アーカイブ済み</span>
+                            <button type='button' onClick={() => this.host.restoreSession(this.host.sessions.selectedSessionId!)}>復元</button>
+                        </div>
+                    ) : <>
+                        <PoiesisComposer
+                            key={scopeKey}
+                            autoFocus
+                            value={draft}
+                            placeholder='この成果について質問…'
+                            aria-label='表示中の成果について質問'
+                            rows={3}
+                            maxLength={4_000}
+                            disabled={!documentReady || Boolean(pending)}
+                            onValueChange={value => this.setResultsDraft(scopeKey, value)}
+                            onSubmit={() => void this.submitResultsQuestion(scopeKey)}
+                        />
+                        <button
+                            type='button'
+                            className='poiesis-results__send'
+                            aria-label='Results 内へ送信'
+                            disabled={!documentReady || Boolean(pending) || !draft.trim()}
+                            onClick={() => void this.submitResultsQuestion(scopeKey)}
+                        >
+                            <span className='codicon codicon-arrow-up' aria-hidden='true' />
+                        </button>
+                        {documentReady && this.host.renderAiRolePill('results', true)}
+                    </>}
                 </section>
             </section>
         </>;
@@ -1160,6 +1169,9 @@ img, svg, figure { max-width: 100%; }
     }
 
     protected beginRequirementRename(requirement: Requirement): void {
+        if (this.host.sessions.selectedSession()?.archived) {
+            return;
+        }
         this.host.state.openResultsMenuKey = undefined;
         this.renamingRequirementId = requirement.id;
         this.requirementRenameDraft = requirement.title;
@@ -1184,7 +1196,8 @@ img, svg, figure { max-width: 100%; }
     }
 
     protected commitRequirementRename(requirementId: string): void {
-        if (this.renamingRequirementId !== requirementId || !this.requirementRenameDraft.trim()) {
+        if (this.host.sessions.selectedSession()?.archived
+            || this.renamingRequirementId !== requirementId || !this.requirementRenameDraft.trim()) {
             return;
         }
         this.requirementService.rename(requirementId, this.requirementRenameDraft);
@@ -1192,9 +1205,12 @@ img, svg, figure { max-width: 100%; }
     }
 
     protected moveTaskToRequirement(taskId: string, targetRequirementId: string): void {
-        const moved = this.requirementService.moveTask(taskId, targetRequirementId);
         const session = this.host.sessions.selectedSession();
-        if (!moved || !session) {
+        if (!session || session.archived) {
+            return;
+        }
+        const moved = this.requirementService.moveTask(taskId, targetRequirementId);
+        if (!moved) {
             return;
         }
         session.selectedResultsRequirementId = moved.id;
@@ -1207,9 +1223,12 @@ img, svg, figure { max-width: 100%; }
     }
 
     protected splitTaskToNewRequirement(taskId: string): void {
-        const requirement = this.requirementService.splitTaskToNew(taskId);
         const session = this.host.sessions.selectedSession();
-        if (!requirement || !session) {
+        if (!session || session.archived) {
+            return;
+        }
+        const requirement = this.requirementService.splitTaskToNew(taskId);
+        if (!requirement) {
             return;
         }
         session.selectedResultsRequirementId = requirement.id;
@@ -1223,7 +1242,8 @@ img, svg, figure { max-width: 100%; }
     }
 
     public undoAutomaticRequirementSplit(taskId: string): void {
-        if (!this.requirementClassificationService.undo(taskId)) {
+        if (this.host.sessions.selectedSession()?.archived
+            || !this.requirementClassificationService.undo(taskId)) {
             return;
         }
         void this.host.sessions.persistWindowState();
@@ -1277,7 +1297,8 @@ img, svg, figure { max-width: 100%; }
     }
 
     protected beginDeleteResultsTask(taskId: string): void {
-        if (!this.host.sessions.finishedTasks().some(task => task.id === taskId)) {
+        if (this.host.sessions.selectedSession()?.archived
+            || !this.host.sessions.finishedTasks().some(task => task.id === taskId)) {
             return;
         }
         this.deleteTaskConfirmationId = taskId;
@@ -1293,6 +1314,7 @@ img, svg, figure { max-width: 100%; }
     protected async deleteResultsTask(taskId: string): Promise<void> {
         const session = this.host.sessions.selectedSession();
         if (!session
+            || session.archived
             || this.deleteTaskConfirmationId !== taskId
             || !this.host.sessions.finishedTasks(session).some(task => task.id === taskId)) {
             return;
@@ -1330,14 +1352,24 @@ img, svg, figure { max-width: 100%; }
 
     protected setResultsDraft(scopeKey: string, value: string): void {
         const session = this.host.sessions.selectedSession();
-        session?.resultsDrafts.set(scopeKey, value);
-        session?.resultsNotices.delete(scopeKey);
+        if (!session || session.archived) {
+            return;
+        }
+        if (session.resultsDrafts.get(scopeKey) === value) {
+            return;
+        }
+        session.resultsDrafts.set(scopeKey, value);
+        session.resultsNotices.delete(scopeKey);
+        session.updatedAt = Date.now();
         this.host.sessions.persistWindowState();
         this.update();
     }
 
     protected async submitResultsQuestion(scopeKey: string, retryQuestion?: string): Promise<void> {
         const session = this.host.sessions.selectedSession();
+        if (!session || session.archived) {
+            return;
+        }
         const requirementId = scopeKey.startsWith('requirement:') ? scopeKey.slice('requirement:'.length) : undefined;
         const requirement = requirementId ? this.requirementService.get(requirementId) : undefined;
         const task = requirement ? this.host.sessions.finishedTasksForRequirement(requirement).at(-1) : this.taskService.get(scopeKey);
@@ -1349,8 +1381,7 @@ img, svg, figure { max-width: 100%; }
             : task?.changeSet;
         const question = retryQuestion?.trim() || session?.resultsDrafts.get(scopeKey)?.trim();
         const currentNotice = session?.resultsNotices.get(scopeKey);
-        if (!session
-            || !session.workspaceUri
+        if (!session.workspaceUri
             || !task
             || task.status === 'running'
             || requirement && requirement.sessionId !== session.id
@@ -1370,6 +1401,7 @@ img, svg, figure { max-width: 100%; }
         session.resultsDrafts.set(scopeKey, '');
         session.resultsNotices.set(scopeKey, { question, status: 'sending', text: '' });
         session.resultsQaExpanded.set(scopeKey, true);
+        session.updatedAt = Date.now();
         this.host.sessions.persistWindowState();
         this.host.sessions.persistResultsQaPanelState();
         this.update();
@@ -1469,17 +1501,29 @@ img, svg, figure { max-width: 100%; }
     }
 
     protected async retryResults(taskId: string): Promise<void> {
+        const task = this.taskService.get(taskId);
+        const session = task ? this.host.sessions.findSessionForTask(task) : undefined;
+        if (session?.archived) {
+            return;
+        }
         await this.resultsService.retry(taskId);
     }
 
     protected async retryRequirementResults(requirementId: string): Promise<void> {
+        const requirement = this.requirementService.get(requirementId);
+        const session = requirement
+            ? this.host.sessions.sessions.find(candidate => candidate.id === requirement.sessionId)
+            : undefined;
+        if (session?.archived) {
+            return;
+        }
         await this.resultsService.retryRequirement(requirementId);
     }
 
     public async retryTask(taskId: string): Promise<void> {
         const task = this.taskService.get(taskId);
         const session = task ? this.host.sessions.sessions.find(candidate => candidate.taskIds.includes(task.id)) : undefined;
-        if (!task || !session || this.host.sessions.runningTask(session)) {
+        if (!task || !session || session.archived || this.host.sessions.runningTask(session)) {
             return;
         }
         this.host.detachCodeWidgets();

@@ -74,6 +74,11 @@ import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
+import {
+    ConversationSearchMatch,
+    searchConversations,
+    splitHighlightedText
+} from './conversation-search';
 import { liveWorkspaceBranch } from './workspace-context';
 import { sessionHasRailContent } from '../../common/session-persistence';
 
@@ -101,9 +106,17 @@ const MAX_RAIL_WIDTH = 420;
 export class RailPart extends AgentWindowPart {
     protected renameDraft = '';
 
-    protected showArchivedSessions = false;
+    protected readonly expandedArchivedGroups = new Set<string>();
 
     protected sessionSearchInput?: HTMLInputElement;
+
+    protected sessionSearchTrigger?: HTMLButtonElement;
+
+    protected sessionSearchPreviousFocus?: HTMLElement;
+
+    protected sessionSearchActiveIndex = 0;
+
+    protected sessionSearchBackgroundElements: HTMLElement[] = [];
 
     protected workspaceSearchInput?: HTMLInputElement;
 
@@ -126,6 +139,7 @@ export class RailPart extends AgentWindowPart {
     public disposeRailResize(): void {
         this.railResizeCleanup?.dispose();
         this.railResizeCleanup = undefined;
+        this.restoreSessionSearchBackground();
     }
 
     public renderRail(): React.ReactNode {
@@ -178,10 +192,11 @@ export class RailPart extends AgentWindowPart {
                     </button>
                     <button
                         type='button'
+                        ref={button => { this.sessionSearchTrigger = button ?? undefined; }}
                         className={`poiesis-agent-window__rail-action${this.host.state.sessionSearchVisible ? ' pressed' : ''}`}
                         aria-pressed={this.host.state.sessionSearchVisible}
-                        aria-expanded={this.host.state.sessionSearchVisible && !visuallyCollapsed}
-                        aria-controls='poiesis-agent-window-session-search'
+                        aria-expanded={this.host.state.sessionSearchVisible}
+                        aria-controls='poiesis-agent-window-session-search-dialog'
                         title='検索'
                         aria-label='検索'
                         onClick={() => this.showSessionSearch()}
@@ -204,24 +219,6 @@ export class RailPart extends AgentWindowPart {
                         </span>
                         <span className='poiesis-agent-window__rail-action-label'>カスタマイズ</span>
                     </button>
-                    {this.host.state.sessionSearchVisible && !visuallyCollapsed && (
-                        <label className='poiesis-agent-window__session-search' id='poiesis-agent-window-session-search'>
-                            <span className='codicon codicon-search' aria-hidden='true' />
-                            <PoiesisTextInput
-                                elementRef={this.setSessionSearchInput}
-                                type='search'
-                                value={this.host.state.sessionSearchQuery}
-                                placeholder='会話を検索'
-                                aria-label='会話を検索'
-                                onValueChange={value => this.setSessionSearchQuery(value)}
-                                onKeyDown={event => {
-                                    if (event.key === 'Escape') {
-                                        this.closeSessionSearch();
-                                    }
-                                }}
-                            />
-                        </label>
-                    )}
                 </div>
                 <div className='poiesis-agent-window__rail-heading'>
                     <span>ワークスペース</span>
@@ -265,6 +262,148 @@ export class RailPart extends AgentWindowPart {
                 )}
             </aside>
         );
+    }
+
+    public renderSessionSearchDialog(): React.ReactNode {
+        const resultSet = searchConversations(this.host.sessions.sessions, this.host.state.sessionSearchQuery);
+        const activeIndex = resultSet.results.length
+            ? Math.min(this.sessionSearchActiveIndex, resultSet.results.length - 1)
+            : -1;
+        const activeResultId = activeIndex >= 0
+            ? `poiesis-conversation-search-result-${resultSet.results[activeIndex].sessionId}`
+            : undefined;
+        return (
+            <div
+                className='poiesis-conversation-search__backdrop'
+                onMouseDown={event => {
+                    if (event.target === event.currentTarget) {
+                        this.closeSessionSearch();
+                    }
+                }}
+            >
+                <section
+                    id='poiesis-agent-window-session-search-dialog'
+                    className='poiesis-conversation-search'
+                    role='dialog'
+                    aria-modal='true'
+                    aria-labelledby='poiesis-conversation-search-title'
+                    onKeyDown={event => {
+                        if (event.key === 'Tab') {
+                            this.trapSessionSearchFocus(event);
+                        }
+                    }}
+                >
+                    <header className='poiesis-conversation-search__header'>
+                        <h1 id='poiesis-conversation-search-title'>会話を検索</h1>
+                        <button type='button' aria-label='検索を閉じる' onClick={() => this.closeSessionSearch()}>
+                            <span className='codicon codicon-close' aria-hidden='true' />
+                        </button>
+                    </header>
+                    <div className='poiesis-conversation-search__field'>
+                        <span className='codicon codicon-search' aria-hidden='true' />
+                        <PoiesisTextInput
+                            elementRef={this.setSessionSearchInput}
+                            value={this.host.state.sessionSearchQuery}
+                            placeholder='タイトル、メッセージ、下書きを検索'
+                            aria-label='会話を検索'
+                            role='combobox'
+                            aria-expanded='true'
+                            aria-controls='poiesis-conversation-search-results'
+                            aria-activedescendant={activeResultId}
+                            maxLength={500}
+                            onValueChange={value => this.setSessionSearchQuery(value)}
+                            onKeyDown={event => this.handleSessionSearchInputKeyDown(event, resultSet.results, activeIndex)}
+                        />
+                        {resultSet.query && (
+                            <button type='button' aria-label='検索語をクリア' onClick={() => this.clearSessionSearchQuery()}>
+                                <span className='codicon codicon-close' aria-hidden='true' />
+                            </button>
+                        )}
+                    </div>
+                    <div className='poiesis-conversation-search__summary' aria-live='polite'>
+                        <span>{resultSet.query ? '検索結果' : '最近の会話'}</span>
+                        <small>{resultSet.total}件</small>
+                    </div>
+                    <div
+                        id='poiesis-conversation-search-results'
+                        className='poiesis-conversation-search__results'
+                        role='listbox'
+                        aria-label={resultSet.query ? '検索結果' : '最近の会話'}
+                    >
+                        {resultSet.results.map((match, index) => this.renderSessionSearchResult(
+                            match,
+                            resultSet.query,
+                            index === activeIndex
+                        ))}
+                        {!resultSet.results.length && (
+                            <div className='poiesis-conversation-search__empty'>
+                                <span className='codicon codicon-search-stop' aria-hidden='true' />
+                                <strong>{resultSet.query ? '一致する会話はありません' : '最近の会話はありません'}</strong>
+                            </div>
+                        )}
+                    </div>
+                    {resultSet.total > resultSet.results.length && (
+                        <footer className='poiesis-conversation-search__limit'>
+                            全{resultSet.total}件中{resultSet.results.length}件を表示
+                        </footer>
+                    )}
+                </section>
+            </div>
+        );
+    }
+
+    protected renderSessionSearchResult(
+        match: ConversationSearchMatch,
+        query: string,
+        active: boolean
+    ): React.ReactNode {
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === match.sessionId);
+        if (!session) {
+            return undefined;
+        }
+        const activityTime = this.sessionActivityTime(session);
+        return (
+            <button
+                type='button'
+                id={`poiesis-conversation-search-result-${session.id}`}
+                className={`poiesis-conversation-search__result${active ? ' active' : ''}`}
+                role='option'
+                aria-selected={active}
+                tabIndex={-1}
+                key={session.id}
+                data-session-id={session.id}
+                data-match-source={match.source}
+                onMouseMove={() => this.activateSessionSearchResult(session.id)}
+                onClick={() => this.openSessionSearchResult(match, query)}
+            >
+                <span className='poiesis-conversation-search__result-icon' aria-hidden='true'>
+                    <span className='codicon codicon-comment-discussion' />
+                </span>
+                <span className='poiesis-conversation-search__result-copy'>
+                    <strong title={session.title}>{this.renderHighlightedText(session.title, query)}</strong>
+                    <span className='poiesis-conversation-search__result-meta'>
+                        <span>{this.repositoryLabel(session.workspaceUri)}</span>
+                        <time dateTime={new Date(activityTime).toISOString()} title={this.sessionActivityTitle(session)}>
+                            {this.sessionMeta(session)}
+                        </time>
+                        {session.archived && <span className='poiesis-conversation-search__archived'>アーカイブ済み</span>}
+                    </span>
+                    {match.excerpt && (
+                        <span className='poiesis-conversation-search__excerpt'>
+                            {match.sourceLabel && <small>{match.sourceLabel}</small>}
+                            <span>{this.renderHighlightedText(match.excerpt, query)}</span>
+                        </span>
+                    )}
+                </span>
+                <span className='codicon codicon-arrow-right' aria-hidden='true' />
+            </button>
+        );
+    }
+
+    protected renderHighlightedText(value: string, query: string): React.ReactNode {
+        return splitHighlightedText(value, query).map((part, index) => part.highlighted
+            ? <mark key={index}>{part.text}</mark>
+            : <React.Fragment key={index}>{part.text}</React.Fragment>);
     }
 
     protected workspaceSessionGroups(): WorkspaceSessionGroup[] {
@@ -322,6 +461,8 @@ export class RailPart extends AgentWindowPart {
 
     protected renderWorkspaceSessionGroup(group: WorkspaceSessionGroup): React.ReactNode {
         const expanded = this.host.state.expandedWorkspaceGroups.has(group.key);
+        const archivedExpanded = this.expandedArchivedGroups.has(group.key)
+            || group.archivedSessions.some(session => session.id === this.host.sessions.selectedSessionId);
         const pinnedSessions = group.activeSessions.filter(session => session.pinned);
         const recentSessions = group.activeSessions.filter(session => !session.pinned);
         return (
@@ -335,7 +476,7 @@ export class RailPart extends AgentWindowPart {
                     <span className='codicon codicon-folder-opened' aria-hidden='true' />
                     <span className='poiesis-agent-window__workspace-name-copy'>
                         <strong>{group.name}</strong>
-                        <small>{group.branch ? `Local · ${group.branch}` : 'Local'}</small>
+                        {group.branch && <small>{group.branch}</small>}
                     </span>
                     <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
                 </button>
@@ -348,23 +489,21 @@ export class RailPart extends AgentWindowPart {
                 )}
                 {expanded && recentSessions.map(session => this.renderSessionRow(session))}
                 {expanded && !group.activeSessions.length && (
-                    <div className='poiesis-agent-window__session-empty'>
-                        {this.host.state.sessionSearchQuery.trim() ? '一致する会話はありません。' : 'セッションはありません。'}
-                    </div>
+                    <div className='poiesis-agent-window__session-empty'>セッションはありません。</div>
                 )}
                 {expanded && group.archivedSessions.length > 0 && (
                     <>
                         <button
                             type='button'
                             className='poiesis-agent-window__archived-toggle'
-                            aria-expanded={this.showArchivedSessions}
-                            onClick={() => this.toggleArchivedSessions()}
+                            aria-expanded={archivedExpanded}
+                            onClick={() => this.toggleArchivedSessions(group.key)}
                         >
-                            <span className={`codicon codicon-chevron-${this.showArchivedSessions ? 'down' : 'right'}`} aria-hidden='true' />
+                            <span className={`codicon codicon-chevron-${archivedExpanded ? 'down' : 'right'}`} aria-hidden='true' />
                             <span>アーカイブ</span>
                             <small>{group.archivedSessions.length}</small>
                         </button>
-                        {this.showArchivedSessions && group.archivedSessions.map(session => this.renderSessionRow(session))}
+                        {archivedExpanded && group.archivedSessions.map(session => this.renderSessionRow(session))}
                     </>
                 )}
             </div>
@@ -436,7 +575,7 @@ export class RailPart extends AgentWindowPart {
                             ? `${session.title} ・ ${this.repositoryLabel(session.workspaceUri)}へ切り替え`
                             : session.title}
                         aria-current={selected ? 'true' : undefined}
-                        onClick={() => session.archived ? this.restoreSession(session.id, true) : this.host.sessions.selectSession(session.id)}
+                        onClick={() => this.host.sessions.selectSession(session.id)}
                     >
                         {session.pinned && <span className='codicon codicon-pinned' aria-label='ピン留め済み' />}
                         <span className='poiesis-agent-window__session-copy'>
@@ -448,7 +587,13 @@ export class RailPart extends AgentWindowPart {
                                         <span>{state.label}</span>
                                     </small>
                                 )}
-                                <time className='poiesis-agent-window__session-time'>{this.sessionMeta(session)}</time>
+                                <time
+                                    className='poiesis-agent-window__session-time'
+                                    dateTime={new Date(this.sessionActivityTime(session)).toISOString()}
+                                    title={this.sessionActivityTitle(session)}
+                                >
+                                    {this.sessionMeta(session)}
+                                </time>
                             </span>
                         </span>
                     </button>
@@ -480,8 +625,9 @@ export class RailPart extends AgentWindowPart {
                                                 <button type='button' onClick={() => this.cancelDeleteSession()}>戻る</button>
                                             </div>
                                         ) : (
-                                            <button type='button' role='menuitem' className='danger' onClick={() => this.beginDeleteSession(session.id)}>
-                                                <span className='codicon codicon-trash' aria-hidden='true' />完全に削除
+                                            <button type='button' role='menuitem' className='danger' disabled={running} onClick={() => this.beginDeleteSession(session.id)}>
+                                                <span className='codicon codicon-trash' aria-hidden='true' />
+                                                {running ? '実行中は削除不可' : '完全に削除'}
                                             </button>
                                         )}
                                     </>
@@ -513,12 +659,8 @@ export class RailPart extends AgentWindowPart {
     };
 
     public filteredSessions(archived: boolean): WindowAgentSession[] {
-        const query = this.host.state.sessionSearchQuery.trim().toLocaleLowerCase();
         return this.host.sessions.sessions
             .filter(session => session.archived === archived)
-            .filter(session => !query
-                || session.title.toLocaleLowerCase().includes(query)
-                || session.messages.some(message => message.content.toLocaleLowerCase().includes(query)))
             .sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt);
     }
 
@@ -574,26 +716,20 @@ export class RailPart extends AgentWindowPart {
 
     protected async archiveSession(sessionId: string): Promise<void> {
         const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
-        if (!session || this.host.sessions.runningTask(session)) {
+        if (!session || this.sessionHasPendingWork(session)) {
             return;
         }
         session.archived = true;
         session.pinned = false;
         session.updatedAt = Date.now();
         this.host.state.openSessionMenuId = undefined;
-        if (this.host.sessions.selectedSessionId === sessionId) {
-            const next = this.filteredSessions(false)[0];
-            this.host.sessions.selectedSessionId = next?.id;
-            if (!next) {
-                await this.host.sessions.createSession();
-                return;
-            }
-        }
-        this.host.sessions.persistWindowState();
+        this.host.state.expandedWorkspaceGroups.add(this.workspaceGroupKey(session.workspaceUri));
+        this.expandedArchivedGroups.add(this.workspaceGroupKey(session.workspaceUri));
+        await this.host.sessions.persistWindowState();
         this.update();
     }
 
-    protected restoreSession(sessionId: string, select = false): void {
+    public restoreSession(sessionId: string): void {
         const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
         if (!session) {
             return;
@@ -601,11 +737,6 @@ export class RailPart extends AgentWindowPart {
         session.archived = false;
         session.updatedAt = Date.now();
         this.host.state.openSessionMenuId = undefined;
-        if (select) {
-            session.activeTab = 'agent';
-            this.host.sessions.selectSession(session.id);
-            return;
-        }
         this.host.sessions.persistWindowState();
         this.update();
     }
@@ -622,7 +753,8 @@ export class RailPart extends AgentWindowPart {
 
     public async deleteSession(sessionId: string): Promise<void> {
         const session = this.host.sessions.sessions.find(candidate => candidate.id === sessionId && candidate.archived);
-        if (!session || this.host.state.deleteSessionConfirmationId !== sessionId) {
+        if (!session || this.sessionHasPendingWork(session)
+            || this.host.state.deleteSessionConfirmationId !== sessionId) {
             return;
         }
         for (const [taskId, notice] of session.resultsNotices) {
@@ -639,13 +771,28 @@ export class RailPart extends AgentWindowPart {
         }
         this.host.state.openSessionMenuId = undefined;
         this.host.state.deleteSessionConfirmationId = undefined;
+        if (this.host.sessions.selectedSessionId === sessionId) {
+            const currentWorkspaceUri = this.host.sessions.workspaceRoot()?.resource.toString();
+            const next = this.filteredSessions(false).find(candidate =>
+                this.sameWorkspaceUri(candidate.workspaceUri, currentWorkspaceUri));
+            if (next) {
+                this.host.sessions.selectedSessionId = next.id;
+            } else {
+                await this.host.sessions.createSession();
+                return;
+            }
+        }
         this.host.sessions.persistWindowState();
         this.host.sessions.persistResultsQaPanelState();
         this.update();
     }
 
-    protected toggleArchivedSessions(): void {
-        this.showArchivedSessions = !this.showArchivedSessions;
+    protected toggleArchivedSessions(groupKey: string): void {
+        if (this.expandedArchivedGroups.has(groupKey)) {
+            this.expandedArchivedGroups.delete(groupKey);
+        } else {
+            this.expandedArchivedGroups.add(groupKey);
+        }
         this.update();
     }
 
@@ -705,39 +852,194 @@ export class RailPart extends AgentWindowPart {
         if (this.host.state.compactRailViewport) {
             this.host.state.responsiveRailOpen = !this.host.state.responsiveRailOpen;
             this.update();
-            if (this.host.state.responsiveRailOpen && this.host.state.sessionSearchVisible) {
-                requestAnimationFrame(() => this.sessionSearchInput?.focus());
-            }
             return;
         }
         this.host.state.railCollapsed = !this.host.state.railCollapsed;
         this.host.sessions.persistWindowState();
         this.update();
-        if (!this.host.state.railCollapsed && this.host.state.sessionSearchVisible) {
-            requestAnimationFrame(() => this.sessionSearchInput?.focus());
-        }
     }
 
     protected showSessionSearch(): void {
-        if (this.host.state.compactRailViewport) {
-            this.host.state.responsiveRailOpen = true;
-        } else {
-            this.host.state.railCollapsed = false;
+        if (this.host.state.sessionSearchVisible) {
+            this.sessionSearchInput?.focus();
+            return;
         }
+        if (this.host.state.settingsModalVisible || this.host.state.folderExplorerVisible) {
+            return;
+        }
+        this.sessionSearchPreviousFocus = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : this.sessionSearchTrigger;
+        this.sessionSearchActiveIndex = 0;
+        this.host.state.openSessionMenuId = undefined;
+        this.host.state.workspacePickerVisible = false;
+        this.host.state.workspacePickerAnchor = undefined;
+        this.host.state.repositoryPickerVisible = false;
+        this.host.state.repositoryPickerAnchor = undefined;
         this.host.state.sessionSearchVisible = true;
         this.update();
-        requestAnimationFrame(() => this.sessionSearchInput?.focus());
+        requestAnimationFrame(() => {
+            this.isolateSessionSearchBackground();
+            this.sessionSearchInput?.focus();
+        });
     }
 
-    protected closeSessionSearch(): void {
+    public closeSessionSearch(restoreFocus = true): void {
+        const restoreTarget = this.sessionSearchPreviousFocus;
         this.host.state.sessionSearchVisible = false;
         this.host.state.sessionSearchQuery = '';
+        this.sessionSearchActiveIndex = 0;
+        this.restoreSessionSearchBackground();
         this.update();
+        if (restoreFocus) {
+            requestAnimationFrame(() => {
+                if (restoreTarget?.isConnected) {
+                    restoreTarget.focus();
+                } else {
+                    this.sessionSearchTrigger?.focus();
+                }
+            });
+        }
+        this.sessionSearchPreviousFocus = undefined;
     }
 
     protected setSessionSearchQuery(value: string): void {
         this.host.state.sessionSearchQuery = value;
+        this.sessionSearchActiveIndex = 0;
         this.update();
+    }
+
+    protected clearSessionSearchQuery(): void {
+        this.setSessionSearchQuery('');
+        requestAnimationFrame(() => this.sessionSearchInput?.focus());
+    }
+
+    protected activateSessionSearchResult(sessionId: string): void {
+        const results = searchConversations(this.host.sessions.sessions, this.host.state.sessionSearchQuery).results;
+        const index = results.findIndex(result => result.sessionId === sessionId);
+        if (index < 0 || index === this.sessionSearchActiveIndex) {
+            return;
+        }
+        this.sessionSearchActiveIndex = index;
+        this.update();
+    }
+
+    protected handleSessionSearchInputKeyDown(
+        event: React.KeyboardEvent<HTMLInputElement>,
+        results: readonly ConversationSearchMatch[],
+        activeIndex: number
+    ): void {
+        if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
+            return;
+        }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            if (!results.length) {
+                return;
+            }
+            event.preventDefault();
+            const direction = event.key === 'ArrowDown' ? 1 : -1;
+            this.sessionSearchActiveIndex = (activeIndex + direction + results.length) % results.length;
+            const activeSessionId = results[this.sessionSearchActiveIndex].sessionId;
+            this.update();
+            requestAnimationFrame(() => {
+                this.sessionSearchInput?.focus();
+                this.node.querySelector<HTMLElement>(
+                    `#${CSS.escape(`poiesis-conversation-search-result-${activeSessionId}`)}`
+                )?.scrollIntoView({ block: 'nearest' });
+            });
+            return;
+        }
+        if (event.key === 'Enter' && activeIndex >= 0) {
+            event.preventDefault();
+            this.openSessionSearchResult(results[activeIndex], this.host.state.sessionSearchQuery.trim());
+        }
+    }
+
+    protected trapSessionSearchFocus(event: React.KeyboardEvent<HTMLElement>): void {
+        const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>([
+            'button:not([disabled]):not([tabindex="-1"])',
+            'input:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(','))).filter(element => element.getClientRects().length > 0);
+        if (!focusable.length) {
+            event.preventDefault();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (event.shiftKey && (active === first || !event.currentTarget.contains(active))) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && (active === last || !event.currentTarget.contains(active))) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
+    protected openSessionSearchResult(match: ConversationSearchMatch, query: string): void {
+        const session = this.host.sessions.sessions.find(candidate => candidate.id === match.sessionId);
+        if (!session) {
+            return;
+        }
+        if (this.host.state.customizeViewVisible && !this.host.prepareCustomizeNavigation()) {
+            this.closeSessionSearch(false);
+            requestAnimationFrame(() => this.node.querySelector<HTMLElement>(
+                '.poiesis-customize-view__discard-confirm button'
+            )?.focus());
+            return;
+        }
+        if (this.host.state.codeMode) {
+            this.host.detachCodeWidgets();
+            this.host.state.codeMode = false;
+        }
+        if (this.host.state.customizeViewVisible) {
+            this.host.closeCustomize(false);
+        }
+        if (match.source === 'message' || match.source === 'draft') {
+            session.activeTab = 'agent';
+        }
+        const currentWorkspaceUri = this.host.sessions.workspaceRoot()?.resource.toString();
+        const switchesWorkspace = Boolean(session.workspaceUri
+            && !this.host.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri));
+        const revealsAgentContent = match.source === 'message' || match.source === 'draft';
+        if (revealsAgentContent && switchesWorkspace && session.workspaceUri) {
+            this.host.stageAgentSearchReveal(match, query, session.workspaceUri);
+        }
+        const groupKey = this.workspaceGroupKey(session.workspaceUri);
+        this.host.state.expandedWorkspaceGroups.add(groupKey);
+        if (session.archived) {
+            this.expandedArchivedGroups.add(groupKey);
+        }
+        this.closeSessionSearch(false);
+        void this.host.sessions.selectSession(session.id, revealsAgentContent && switchesWorkspace);
+        if (revealsAgentContent && !switchesWorkspace) {
+            this.host.revealAgentSearchMatch(match, query);
+        }
+    }
+
+    protected isolateSessionSearchBackground(): void {
+        this.restoreSessionSearchBackground();
+        const backdrop = this.node.querySelector<HTMLElement>('.poiesis-conversation-search__backdrop');
+        const container = backdrop?.parentElement;
+        if (!backdrop || !container) {
+            return;
+        }
+        this.sessionSearchBackgroundElements = Array.from(container.children)
+            .filter((element): element is HTMLElement => element instanceof HTMLElement)
+            .filter(element => element !== backdrop && !element.inert);
+        for (const element of this.sessionSearchBackgroundElements) {
+            element.inert = true;
+        }
+    }
+
+    protected restoreSessionSearchBackground(): void {
+        for (const element of this.sessionSearchBackgroundElements) {
+            if (element.isConnected) {
+                element.inert = false;
+            }
+        }
+        this.sessionSearchBackgroundElements = [];
     }
 
     protected toggleWorkspaceGroup(groupKey: string): void {
@@ -892,6 +1194,7 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected openKnownWorkspace(workspaceUri: string): void {
+        this.host.sessions.cancelPendingWorkspaceNavigation();
         this.host.state.workspacePickerVisible = false;
         this.host.state.workspacePickerAnchor = undefined;
         this.host.state.workspaceSearchQuery = '';
@@ -1033,6 +1336,7 @@ export class RailPart extends AgentWindowPart {
         if (!selectedPath || (this.folderExplorerSessionId && !session)) {
             return;
         }
+        this.host.sessions.cancelPendingWorkspaceNavigation();
         const folder = URI.fromFilePath(selectedPath);
         if (session) {
             session.workspaceUri = folder.toString();
@@ -1055,7 +1359,7 @@ export class RailPart extends AgentWindowPart {
     }
 
     public sessionMeta(session: WindowAgentSession): string {
-        const ageInMinutes = Math.floor(Math.max(0, Date.now() - session.createdAt) / 60_000);
+        const ageInMinutes = Math.floor(Math.max(0, Date.now() - this.sessionActivityTime(session)) / 60_000);
         if (ageInMinutes < 1) {
             return '今';
         }
@@ -1066,12 +1370,34 @@ export class RailPart extends AgentWindowPart {
         return ageInHours < 24 ? `${ageInHours}時間` : `${Math.floor(ageInHours / 24)}日`;
     }
 
+    protected sessionActivityTime(session: WindowAgentSession): number {
+        return Number.isFinite(session.updatedAt) && session.updatedAt > 0
+            ? session.updatedAt
+            : session.createdAt;
+    }
+
+    protected sessionActivityTitle(session: WindowAgentSession): string {
+        return new Intl.DateTimeFormat('ja-JP', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        }).format(new Date(this.sessionActivityTime(session)));
+    }
+
     protected sessionState(session: WindowAgentSession): {
-        kind: 'running' | 'failed' | 'unread' | 'cancelled' | 'idle';
+        kind: 'running' | 'failed' | 'unread' | 'cancelled' | 'draft' | 'idle';
         label: string;
     } {
         if (this.host.sessions.runningTask(session)) {
             return { kind: 'running', label: '実行中' };
+        }
+        if ([...session.resultsNotices.values()].some(notice => notice.status === 'sending')) {
+            return { kind: 'running', label: '回答中' };
+        }
+        if (session.agentDraft.trim()) {
+            return { kind: 'draft', label: '下書き' };
         }
         if (session.lastTaskStatus === 'failed') {
             return { kind: 'failed', label: '失敗' };
@@ -1088,12 +1414,20 @@ export class RailPart extends AgentWindowPart {
         return { kind: 'idle', label: '' };
     }
 
-    protected sessionStateIcon(kind: 'running' | 'failed' | 'unread' | 'cancelled' | 'idle'): string {
+    protected sessionHasPendingWork(session: WindowAgentSession): boolean {
+        return Boolean(this.host.sessions.runningTask(session))
+            || [...session.resultsNotices.values()].some(notice => notice.status === 'sending');
+    }
+
+    protected sessionStateIcon(kind: 'running' | 'failed' | 'unread' | 'cancelled' | 'draft' | 'idle'): string {
         if (kind === 'failed') {
             return 'codicon-error';
         }
         if (kind === 'cancelled') {
             return 'codicon-circle-slash';
+        }
+        if (kind === 'draft') {
+            return 'codicon-edit';
         }
         return 'codicon-circle-filled';
     }
@@ -1234,12 +1568,6 @@ export class RailPart extends AgentWindowPart {
                         onValueChange={value => this.setRepositorySearchQuery(value)}
                     />
                 </label>
-                {repositoryChoices.length > 0 && (
-                    <>
-                        <div className='poiesis-agent-window__repository-group-label'>最近</div>
-                        {repositoryChoices.slice(0, 2).map(choice => this.renderRepositoryChoice(session, choice, 'codicon-history'))}
-                    </>
-                )}
                 <div className='poiesis-agent-window__repository-group-label'>この PC</div>
                 {filteredChoices.map(choice => this.renderRepositoryChoice(session, choice, 'codicon-device-desktop'))}
                 {!filteredChoices.length && (

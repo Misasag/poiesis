@@ -283,14 +283,14 @@ try {
         `Conversation reading position was not restored: ${JSON.stringify({ savedConversationTop, restoredConversationTop })}`);
 
     await page.click('.poiesis-agent-window__rail-action[aria-label="検索"]');
-    await page.waitForSelector('.poiesis-agent-window__session-search input');
-    await page.type('.poiesis-agent-window__session-search input', '本文だけの検索語');
-    await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__session-row').length === 1);
-    assert(await page.$eval('.poiesis-agent-window__session-row', element => element.getAttribute('data-session-id')) === 'fixture-completed',
+    await page.waitForSelector('.poiesis-conversation-search__field input');
+    await page.type('.poiesis-conversation-search__field input', '本文だけの検索語');
+    await page.waitForFunction(() => document.querySelectorAll('.poiesis-conversation-search__result').length === 1);
+    assert(await page.$eval('.poiesis-conversation-search__result', element => element.getAttribute('data-session-id')) === 'fixture-completed',
         'Session search did not match message text.');
-    await page.focus('.poiesis-agent-window__session-search input');
+    await page.focus('.poiesis-conversation-search__field input');
     await page.keyboard.press('Escape');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__session-search'));
+    await page.waitForFunction(() => !document.querySelector('.poiesis-conversation-search'));
 
     await page.click('[data-session-id="fixture-cancelled"] .poiesis-agent-window__session');
     await waitForActiveSession(page, 'fixture-cancelled');

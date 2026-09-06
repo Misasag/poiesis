@@ -381,6 +381,84 @@
     color: #777a73;
 }
 
+.poiesis-agent-window__composer.archived {
+    padding: 8px 10px;
+}
+
+.poiesis-agent-window__archived-composer {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.poiesis-agent-window__archived-draft {
+    background: var(--poiesis-chrome-panel-raised);
+    border: 1px solid var(--poiesis-chrome-line);
+    border-radius: 7px;
+    box-sizing: border-box;
+    color: var(--poiesis-chrome-text);
+    font: inherit;
+    line-height: 1.5;
+    max-height: 180px;
+    min-height: 64px;
+    overflow: auto;
+    padding: 8px 10px;
+    resize: vertical;
+    width: 100%;
+}
+
+.poiesis-agent-window__archived-draft:focus-visible {
+    border-color: var(--poiesis-focus-ring, #c28b60);
+    outline: none;
+}
+
+.poiesis-agent-window__archived-composer-state {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    min-height: 30px;
+    width: 100%;
+}
+
+.poiesis-agent-window__archived-composer-state > span {
+    align-items: center;
+    color: var(--poiesis-chrome-muted);
+    display: inline-flex;
+    font-size: 12px;
+    gap: 6px;
+}
+
+.poiesis-agent-window__archived-composer-state > button {
+    background: #30322e;
+    border: 1px solid var(--poiesis-chrome-line-strong);
+    border-radius: 6px;
+    color: var(--poiesis-chrome-text);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 5px 10px;
+}
+
+.poiesis-agent-window__archived-composer-state > button:hover,
+.poiesis-agent-window__archived-composer-state > button:focus-visible {
+    background: var(--poiesis-chrome-hover);
+    outline: none;
+}
+
+.poiesis-agent-window__user-message[data-search-highlight='true'],
+.poiesis-agent-window__message[data-search-highlight='true'] {
+    animation: poiesis-message-search-highlight 2.4s ease-out;
+    outline: 2px solid var(--poiesis-focus-ring, #c28b60);
+    outline-offset: 4px;
+}
+
+@keyframes poiesis-message-search-highlight {
+    0%, 35% { background: rgb(194 139 96 / 20%); }
+    100% { background: transparent; }
+}
+
 .poiesis-agent-window__composer-footer {
     align-items: center;
     display: flex;

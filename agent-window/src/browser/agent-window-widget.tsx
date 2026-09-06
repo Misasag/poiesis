@@ -94,6 +94,7 @@ import { ResultsPart } from './agent-window/results-part';
 import { AgentPart } from './agent-window/agent-part';
 import { HeaderPart } from './agent-window/header-part';
 import { RailPart } from './agent-window/rail-part';
+import { ConversationSearchMatch } from './agent-window/conversation-search';
 import { TaskReviewResourceResolver } from './task-review-resource';
 
 @injectable()
@@ -207,6 +208,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
 
     // RailPart.
     public renderRail(): React.ReactNode { return this.railPart.renderRail(); }
+    public renderSessionSearchDialog(): React.ReactNode { return this.railPart.renderSessionSearchDialog(); }
     public renderWorkspacePicker(): React.ReactNode { return this.railPart.renderWorkspacePicker(); }
     public renderRepositoryPicker(session: WindowAgentSession): React.ReactNode {
         return this.railPart.renderRepositoryPicker(session);
@@ -228,6 +230,8 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     }
     public workspaceGroupKey(workspaceUri: string | undefined): string { return this.railPart.workspaceGroupKey(workspaceUri); }
     public filteredSessions(archived: boolean): WindowAgentSession[] { return this.railPart.filteredSessions(archived); }
+    public closeSessionSearch(restoreFocus = true): void { this.railPart.closeSessionSearch(restoreFocus); }
+    public restoreSession(sessionId: string): void { this.railPart.restoreSession(sessionId); }
     public clampRailWidth(width: number): number { return this.railPart.clampRailWidth(width); }
     public disposeRailResize(): void { this.railPart.disposeRailResize(); }
 
@@ -252,6 +256,14 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     }
     public disposeAgentRichContent(): void { this.agentPart.disposeAgentRichContent(); }
     public focusAgentComposer(): void { this.agentPart.focusAgentComposer(); }
+    public revealAgentSearchMatch(match: ConversationSearchMatch, query: string): void {
+        this.agentPart.revealAgentSearchMatch(match, query);
+    }
+    public stageAgentSearchReveal(match: ConversationSearchMatch, query: string, workspaceUri: string): void {
+        this.agentPart.stageAgentSearchReveal(match, query, workspaceUri);
+    }
+    public restorePendingAgentSearchReveal(): void { this.agentPart.restorePendingAgentSearchReveal(); }
+    public clearPendingAgentSearchReveal(): void { this.agentPart.clearPendingAgentSearchReveal(); }
 
     // ResultsPart.
     public renderResults(session: WindowAgentSession | undefined): React.ReactNode { return this.resultsPart.renderResults(session); }
@@ -361,6 +373,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                     '.poiesis-agent-window__rail',
                     '.poiesis-agent-window__workspace-picker',
                     '.poiesis-agent-window__repository-picker',
+                    '.poiesis-conversation-search',
                     '.poiesis-folder-explorer',
                     '.poiesis-settings-modal',
                     '.poiesis-shortcuts'
@@ -391,6 +404,19 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 }
             } else if (document.querySelector('.poiesis-select__listbox')) {
                 return;
+            } else if (this.state.openSessionMenuId) {
+                event.preventDefault();
+                event.stopPropagation();
+                const menuTrigger = this.node.querySelector<HTMLElement>(
+                    `[data-session-id="${CSS.escape(this.state.openSessionMenuId)}"] .poiesis-agent-window__session-menu-trigger`
+                );
+                this.state.openSessionMenuId = undefined;
+                this.update();
+                requestAnimationFrame(() => menuTrigger?.focus());
+            } else if (this.state.sessionSearchVisible) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.closeSessionSearch();
             } else if (this.state.settingsModalVisible) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -408,15 +434,10 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 this.state.workspaceSearchQuery = '';
                 this.state.repositorySearchQuery = '';
                 this.update();
-            } else if (this.state.explorerMoreVisible || this.state.openSessionMenuId) {
+            } else if (this.state.explorerMoreVisible) {
                 event.preventDefault();
-                const menuTrigger = this.state.openSessionMenuId
-                    ? this.node.querySelector<HTMLElement>(`[data-session-id="${CSS.escape(this.state.openSessionMenuId)}"] .poiesis-agent-window__session-menu-trigger`)
-                    : undefined;
                 this.state.explorerMoreVisible = false;
-                this.state.openSessionMenuId = undefined;
                 this.update();
-                requestAnimationFrame(() => menuTrigger?.focus());
             } else if (this.state.responsiveRailOpen) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -488,6 +509,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         }).finally(() => {
             this.sessions.sessionsInitialized = true;
             this.update();
+            requestAnimationFrame(() => this.restorePendingAgentSearchReveal());
         });
         void this.refreshRecentWorkspaces();
         this.update();
@@ -567,6 +589,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 {this.state.workspacePickerVisible && this.state.workspacePickerAnchor && this.renderWorkspacePicker()}
                 {this.state.repositoryPickerVisible && this.state.repositoryPickerAnchor && session && this.renderRepositoryPicker(session)}
                 {this.state.folderExplorerVisible && this.renderFolderExplorer()}
+                {this.state.sessionSearchVisible && this.renderSessionSearchDialog()}
                 {this.state.settingsModalVisible && this.renderSettingsModal()}
                 {this.state.shortcutsOverlayVisible && this.renderShortcutsOverlay()}
             </div>
@@ -612,11 +635,15 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
 
     public async newChat(): Promise<void> {
         await this.sessions.sessionsInitialization;
+        this.clearPendingAgentSearchReveal();
         this.closeCustomize(false);
         this.detachCodeWidgets();
         this.state.codeMode = false;
-        this.state.sessionSearchVisible = false;
-        this.state.sessionSearchQuery = '';
+        if (this.state.sessionSearchVisible) {
+            this.closeSessionSearch(false);
+        } else {
+            this.state.sessionSearchQuery = '';
+        }
         this.state.repositoryPickerVisible = false;
         this.state.repositoryPickerAnchor = undefined;
         this.state.repositorySearchQuery = '';

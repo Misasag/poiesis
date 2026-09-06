@@ -156,9 +156,11 @@ try {
     await page.click('[data-session-id="smoke-alpha"] .poiesis-agent-window__session-menu-trigger');
     await click(page, '.poiesis-agent-window__session-menu button', 'アーカイブ');
     await page.waitForSelector('.poiesis-agent-window__archived-toggle');
-    await page.click('.poiesis-agent-window__archived-toggle');
     await page.waitForSelector('[data-session-id="smoke-alpha"][data-session-archived="true"]');
     await page.click('[data-session-id="smoke-alpha"] .poiesis-agent-window__session');
+    await page.waitForSelector('[data-session-id="smoke-alpha"].active[data-session-archived="true"]');
+    await page.waitForSelector('.poiesis-agent-window__archived-composer-state');
+    await click(page, '.poiesis-agent-window__archived-composer-state button', '復元');
     await page.waitForSelector('[data-session-id="smoke-alpha"][data-session-archived="false"]');
 
     await page.click('[data-session-id="smoke-alpha"] .poiesis-agent-window__session-menu-trigger');

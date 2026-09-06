@@ -24,6 +24,7 @@ import type { ResultsQuestionService } from '../results-question-service';
 import type { ResultsService } from '../results-skill';
 import type { ExecutionTask, TaskService } from '../task-service';
 import type { WorkspaceSkillService } from '../workspace-skill-service';
+import type { ConversationSearchMatch } from './conversation-search';
 import type { AgentWindowTab, SessionStore, WindowAgentSession } from './session-store';
 
 export type UiFontScale = 'small' | 'standard' | 'large';
@@ -141,6 +142,7 @@ export interface AgentWindowHost {
 
     // RailPart-owned operations.
     renderRail(): React.ReactNode;
+    renderSessionSearchDialog(): React.ReactNode;
     renderWorkspacePicker(): React.ReactNode;
     renderRepositoryPicker(session: WindowAgentSession): React.ReactNode;
     renderFolderExplorer(): React.ReactNode;
@@ -156,6 +158,8 @@ export interface AgentWindowHost {
     sameWorkspaceUri(left: string | undefined, right: string | undefined): boolean;
     workspaceGroupKey(workspaceUri: string | undefined): string;
     filteredSessions(archived: boolean): WindowAgentSession[];
+    closeSessionSearch(restoreFocus?: boolean): void;
+    restoreSession(sessionId: string): void;
     clampRailWidth(width: number): number;
     disposeRailResize(): void;
 
@@ -168,6 +172,10 @@ export interface AgentWindowHost {
     disposeAgentRichContentForSession(sessionId: string): void;
     disposeAgentRichContent(): void;
     focusAgentComposer(): void;
+    revealAgentSearchMatch(match: ConversationSearchMatch, query: string): void;
+    stageAgentSearchReveal(match: ConversationSearchMatch, query: string, workspaceUri: string): void;
+    restorePendingAgentSearchReveal(): void;
+    clearPendingAgentSearchReveal(): void;
 
     // ResultsPart-owned operations.
     renderResults(session: WindowAgentSession | undefined): React.ReactNode;

@@ -45,7 +45,7 @@ try {
     assert(mixedComposer === 'あああ確定-ascii混在', `Mixed composer input failed: ${mixedComposer}`);
 
     await page.click('.poiesis-agent-window__rail-action[title="検索"]');
-    const searchSelector = '.poiesis-agent-window__session-search input';
+    const searchSelector = '.poiesis-conversation-search__field input';
     await clearControl(page, searchSelector);
     await commitIme(page, cdp, searchSelector, '会話');
     await cdp.send('Input.insertText', { text: '-search' });

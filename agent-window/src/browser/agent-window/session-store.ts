@@ -185,6 +185,8 @@ export class SessionStore extends AgentWindowPartBase {
 
     public selectedSessionId?: string;
 
+    protected workspaceNavigationRevision = 0;
+
     public sessionSequence = 0;
 
     public readonly watchedScmProviders = new WeakSet<ScmProvider>();
@@ -204,24 +206,44 @@ export class SessionStore extends AgentWindowPartBase {
             ?? this.findSessionByAgentId(task.sessionId);
     }
 
-    public selectSession(sessionId: string): void {
-        const session = this.sessions.find(candidate => candidate.id === sessionId && !candidate.archived);
+    public cancelPendingWorkspaceNavigation(): void {
+        this.workspaceNavigationRevision += 1;
+        this.host.clearPendingAgentSearchReveal();
+    }
+
+    public async selectSession(sessionId: string, preservePendingSearchReveal = false): Promise<void> {
+        const session = this.sessions.find(candidate => candidate.id === sessionId);
         if (!session) {
             return;
+        }
+        if (this.host.state.customizeViewVisible
+            && !this.host.prepareCustomizeNavigation()) {
+            return;
+        }
+        const navigationRevision = ++this.workspaceNavigationRevision;
+        if (!preservePendingSearchReveal) {
+            this.host.clearPendingAgentSearchReveal();
         }
         this.host.closeCustomize(false);
         this.selectedSessionId = sessionId;
         session.unreadTaskCompletion = false;
-        session.updatedAt = Date.now();
         this.host.state.openSessionMenuId = undefined;
         const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
         if (session.workspaceUri && !this.host.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)) {
-            this.persistWindowState();
             this.update();
-            this.workspaceService.open(new URI(session.workspaceUri), { preserveWindow: true });
+            try {
+                await this.persistWindowState();
+            } catch {
+                void this.messageService.error('会話の移動先を保存できなかったため、ワークスペースを開けませんでした。');
+                return;
+            }
+            if (this.selectedSessionId !== sessionId || navigationRevision !== this.workspaceNavigationRevision) {
+                return;
+            }
+            await this.workspaceService.open(new URI(session.workspaceUri), { preserveWindow: true });
             return;
         }
-        if (session.hasUserMessage) {
+        if (session.hasUserMessage && !session.archived) {
             void this.ensureProviderSession(session);
         }
         this.persistWindowState();
@@ -825,7 +847,7 @@ export class SessionStore extends AgentWindowPartBase {
         }
         const activeSessions: WindowAgentSession[] = this.host.filteredSessions(false);
         const currentWorkspaceUri = this.workspaceRoot()?.resource.toString();
-        const selected = activeSessions.find(session =>
+        const selected = this.sessions.find(session =>
             session.id === this.selectedSessionId && this.host.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)
         ) ?? activeSessions.find(session => this.host.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri));
         if (!selected) {
@@ -834,7 +856,7 @@ export class SessionStore extends AgentWindowPartBase {
         }
         this.selectedSessionId = selected.id;
         this.update();
-        if (selected.hasUserMessage) {
+        if (selected.hasUserMessage && !selected.archived) {
             await this.ensureProviderSession(selected);
         }
     }

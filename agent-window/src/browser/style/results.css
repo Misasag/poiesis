@@ -787,6 +787,10 @@
     gap: 5px;
 }
 
+.poiesis-results__composer > .poiesis-agent-window__archived-composer-state {
+    grid-column: 1 / -1;
+}
+
 .poiesis-results__badges > .poiesis-results__assertion-badge.passed {
     border-color: #3f5a46;
     color: #afd0b7;
@@ -1263,7 +1267,6 @@
 
 .poiesis-agent-window__composer:focus-within,
 .poiesis-results__composer:focus-within,
-.poiesis-agent-window__session-search:focus-within,
 .poiesis-agent-window__repository-search:focus-within,
 .poiesis-agent-window__workspace-picker-search:focus-within,
 .poiesis-folder-explorer__toolbar label:focus-within {

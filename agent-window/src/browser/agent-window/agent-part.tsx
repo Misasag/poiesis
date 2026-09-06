@@ -76,6 +76,12 @@ import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed
 import { cliRoleAvailability } from '../../common/cli-detection-lifecycle';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
+import {
+    clearPendingConversationReveal,
+    ConversationSearchMatch,
+    storePendingConversationReveal,
+    takePendingConversationReveal
+} from './conversation-search';
 import { liveWorkspaceBranch } from './workspace-context';
 
 interface AgentHtmlPreview {
@@ -125,7 +131,15 @@ export class AgentPart extends AgentWindowPart {
 
     protected agentFollowRevision = 0;
 
+    protected pendingAgentSearchReveal?: { match: ConversationSearchMatch; query: string };
+
+    protected agentSearchHighlightTimer?: number;
+
     public disposeAgentRichContent(): void {
+        if (this.agentSearchHighlightTimer !== undefined) {
+            window.clearTimeout(this.agentSearchHighlightTimer);
+            this.agentSearchHighlightTimer = undefined;
+        }
         for (const content of this.agentRichContent.values()) {
             this.revokeAgentImageSources(content.imageSources);
         }
@@ -135,6 +149,79 @@ export class AgentPart extends AgentWindowPart {
 
     public focusAgentComposer(): void {
         this.agentComposerInput?.focus();
+    }
+
+    public revealAgentSearchMatch(match: ConversationSearchMatch, query: string): void {
+        this.pendingAgentSearchReveal = { match, query };
+        requestAnimationFrame(() => this.applyPendingAgentSearchReveal(match.sessionId));
+    }
+
+    public stageAgentSearchReveal(match: ConversationSearchMatch, query: string, workspaceUri: string): void {
+        const storage = this.transientRevealStorage();
+        const targetWorkspaceUri = this.host.canonicalWorkspaceUri(workspaceUri);
+        if (!storage || !targetWorkspaceUri || (match.source !== 'message' && match.source !== 'draft')) {
+            return;
+        }
+        clearPendingConversationReveal(storage);
+        storePendingConversationReveal(storage, {
+            sessionId: match.sessionId,
+            workspaceUri: targetWorkspaceUri,
+            source: match.source,
+            messageId: match.messageId,
+            query
+        });
+    }
+
+    public restorePendingAgentSearchReveal(): void {
+        const storage = this.transientRevealStorage();
+        const session = this.host.sessions.selectedSession();
+        const workspaceUri = this.host.canonicalWorkspaceUri(
+            this.host.sessions.workspaceRoot()?.resource.toString()
+        );
+        if (!storage || !session || !workspaceUri) {
+            return;
+        }
+        const reveal = takePendingConversationReveal(storage, {
+            sessionId: session.id,
+            workspaceUri
+        });
+        if (!reveal) {
+            return;
+        }
+        const query = reveal.query.trim();
+        const queryMatches = (value: string): boolean => value.toLocaleLowerCase().includes(query.toLocaleLowerCase());
+        if (reveal.source === 'draft') {
+            if (!queryMatches(session.agentDraft)) {
+                return;
+            }
+        } else {
+            const message = session.messages.find(candidate => candidate.id === reveal.messageId);
+            if (!message || !queryMatches(message.content)) {
+                return;
+            }
+        }
+        session.activeTab = 'agent';
+        this.update();
+        this.revealAgentSearchMatch({
+            sessionId: session.id,
+            source: reveal.source,
+            messageId: reveal.messageId
+        }, query);
+    }
+
+    public clearPendingAgentSearchReveal(): void {
+        const storage = this.transientRevealStorage();
+        if (storage) {
+            clearPendingConversationReveal(storage);
+        }
+    }
+
+    protected transientRevealStorage(): Storage | undefined {
+        try {
+            return window.sessionStorage;
+        } catch {
+            return undefined;
+        }
     }
 
     public renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
@@ -181,6 +268,7 @@ export class AgentPart extends AgentWindowPart {
                                     className={message.role === 'user'
                                         ? 'poiesis-agent-window__user-message'
                                         : 'poiesis-agent-window__message'}
+                                    data-message-id={message.id}
                                     data-task-status={messageTask?.status}
                                 >
                                     {activeTaskMessage && (
@@ -239,11 +327,32 @@ export class AgentPart extends AgentWindowPart {
                     </button>
                 )}
                 <section
-                    className='poiesis-agent-window__composer'
+                    className={`poiesis-agent-window__composer${session?.archived ? ' archived' : ''}`}
                     aria-label='Agent の入力欄'
                     data-task-state={finalizingTask ? 'finalizing' : runningTask ? 'running' : 'idle'}
                 >
-                    <PoiesisComposer
+                    {session?.archived ? (
+                        <div className='poiesis-agent-window__archived-composer'>
+                            {session.agentDraft && (
+                                <PoiesisTextArea
+                                    key={`archived-draft-${session.id}`}
+                                    className='poiesis-agent-window__archived-draft'
+                                    elementRef={this.setAgentComposerInput}
+                                    data-poiesis-session-id={session.id}
+                                    value={session.agentDraft}
+                                    aria-label='保存された下書き'
+                                    readOnly
+                                    rows={Math.min(8, Math.max(3, session.agentDraft.split(/\r?\n/).length))}
+                                    onValueChange={() => undefined}
+                                />
+                            )}
+                            <div className='poiesis-agent-window__archived-composer-state'>
+                                <span><span className='codicon codicon-archive' aria-hidden='true' />アーカイブ済み</span>
+                                <button type='button' onClick={() => this.host.restoreSession(session.id)}>復元</button>
+                            </div>
+                        </div>
+                    ) : <>
+                        <PoiesisComposer
                         key={session?.id ?? 'no-session'}
                         elementRef={this.setAgentComposerInput}
                         data-poiesis-session-id={session?.id}
@@ -261,7 +370,7 @@ export class AgentPart extends AgentWindowPart {
                             }
                         }}
                     />
-                    <div className='poiesis-agent-window__composer-footer'>
+                        <div className='poiesis-agent-window__composer-footer'>
                         {session && newAgent && this.renderNewAgentContext(session)}
                         {session && !newAgent && this.host.renderAiRolePill('agent')}
                         {session && this.renderRequirementPill(session)}
@@ -288,7 +397,8 @@ export class AgentPart extends AgentWindowPart {
                                 <span className='codicon codicon-arrow-up' aria-hidden='true' />
                             </button>
                         )}
-                    </div>
+                        </div>
+                    </>}
                 </section>
                 <div className='poiesis-agent-window__composer-tail' aria-hidden='true' />
             </section>
@@ -1033,7 +1143,7 @@ export class AgentPart extends AgentWindowPart {
         await this.host.sessions.sessionsInitialization;
         const session = this.host.sessions.selectedSession();
         const content = session?.agentDraft.trim() ?? '';
-        if (!session || !session.workspaceUri || !content || this.pendingSends.has(session.id)
+        if (!session || session.archived || !session.workspaceUri || !content || this.pendingSends.has(session.id)
             || this.host.sessions.runningTask(session)) {
             return;
         }
@@ -1253,6 +1363,7 @@ export class AgentPart extends AgentWindowPart {
                 ? Math.min(saved.scrollTop, maximum)
                 : element.scrollHeight;
             this.captureAgentMessagesScroll(sessionId, element);
+            this.applyPendingAgentSearchReveal(sessionId);
         });
     };
 
@@ -1389,10 +1500,14 @@ export class AgentPart extends AgentWindowPart {
 
     protected setAgentDraft(sessionId: string | undefined, value: string): void {
         const session = this.host.sessions.selectedSession();
-        if (!sessionId || session?.id !== sessionId) {
+        if (!sessionId || session?.id !== sessionId || session.archived) {
+            return;
+        }
+        if (session.agentDraft === value) {
             return;
         }
         session.agentDraft = value;
+        session.updatedAt = Date.now();
         this.host.sessions.persistWindowState();
         this.update();
     }
@@ -1421,6 +1536,7 @@ export class AgentPart extends AgentWindowPart {
             const end = Math.min(session.agentDraftSelectionEnd ?? start, input.value.length);
             input.setSelectionRange(start, end, session.agentDraftSelectionDirection ?? 'none');
             input.scrollTop = session.agentDraftScrollTop ?? 0;
+            this.applyPendingAgentSearchReveal(session.id);
         });
     };
 
@@ -1440,6 +1556,56 @@ export class AgentPart extends AgentWindowPart {
         if (persist) {
             void this.host.sessions.persistWindowState();
         }
+    }
+
+    protected applyPendingAgentSearchReveal(sessionId: string): void {
+        const pending = this.pendingAgentSearchReveal;
+        if (!pending
+            || pending.match.sessionId !== sessionId
+            || this.host.sessions.selectedSessionId !== sessionId) {
+            return;
+        }
+        if (pending.match.source === 'draft') {
+            const input = this.agentComposerSessionId === sessionId ? this.agentComposerInput : undefined;
+            if (!input) {
+                return;
+            }
+            const index = input.value.toLocaleLowerCase().indexOf(pending.query.toLocaleLowerCase());
+            input.focus();
+            if (index >= 0) {
+                input.setSelectionRange(index, index + pending.query.length);
+            }
+            this.captureAgentComposerState(sessionId, input);
+            this.pendingAgentSearchReveal = undefined;
+            return;
+        }
+        if (pending.match.source !== 'message' || !pending.match.messageId
+            || this.agentMessagesSessionId !== sessionId || !this.agentMessagesElement) {
+            return;
+        }
+        const message = this.agentMessagesElement.querySelector<HTMLElement>(
+            `[data-message-id="${CSS.escape(pending.match.messageId)}"]`
+        );
+        if (!message) {
+            return;
+        }
+        const containerRect = this.agentMessagesElement.getBoundingClientRect();
+        const messageRect = message.getBoundingClientRect();
+        this.agentMessagesElement.scrollTop += messageRect.top - containerRect.top
+            - Math.max(0, (containerRect.height - messageRect.height) / 2);
+        this.captureAgentMessagesScroll(sessionId, this.agentMessagesElement);
+        this.node.querySelector<HTMLElement>('[data-search-highlight="true"]')?.removeAttribute('data-search-highlight');
+        message.dataset.searchHighlight = 'true';
+        if (this.agentSearchHighlightTimer !== undefined) {
+            window.clearTimeout(this.agentSearchHighlightTimer);
+        }
+        this.agentSearchHighlightTimer = window.setTimeout(() => {
+            if (message.isConnected) {
+                message.removeAttribute('data-search-highlight');
+            }
+            this.agentSearchHighlightTimer = undefined;
+        }, 2_400);
+        this.pendingAgentSearchReveal = undefined;
     }
 
     constructor(host: AgentWindowHost) {

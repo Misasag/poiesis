@@ -2234,7 +2234,7 @@ assert.ok(sessionDurabilityTest.includes('A non-empty draft must remain reachabl
     && sessionDurabilityTest.includes('An empty conversation must not clutter the rail.'),
     'Draft rail regression coverage is incomplete');
 assert.ok(!agentWidget.includes('window.localStorage'), 'The Agent widget must not write browser storage directly');
-assert.ok(!agentWidget.includes('sessionStorage'), 'Window sessions must survive a browser session');
+assert.ok(!sessionStore.includes('sessionStorage'), 'Durable window sessions must not use browser session storage');
 for (const marker of [
     'class BrowserGlobalStorageService',
     'window.localStorage',
@@ -2266,13 +2266,13 @@ for (const marker of [
     "data-responsive-overlay={responsiveOverlay ? 'true' : 'false'}",
     'sessionSearchQuery: string;',
     "aria-label='会話を検索'",
-    'session.title.toLocaleLowerCase().includes(query)',
+    'public renderSessionSearchDialog(): React.ReactNode',
     'readonly expandedWorkspaceGroups: Set<string>;',
     'protected toggleWorkspaceGroup(groupKey: string): void',
     "<div className='poiesis-agent-window__rail-heading'>",
     '<span>ワークスペース</span>',
     'poiesis-agent-window__workspace-group',
-    "<small>{group.branch ? `Local · ${group.branch}` : 'Local'}</small>",
+    '{group.branch && <small>{group.branch}</small>}',
     "className='poiesis-agent-window__session-title'",
     'poiesis-agent-window__session-meta',
     'public sessionMeta(session: WindowAgentSession): string',
@@ -2280,7 +2280,7 @@ for (const marker of [
     'protected beginSessionRename(sessionId: string): void',
     'protected async archiveSession(sessionId: string): Promise<void>',
     'public async deleteSession(sessionId: string): Promise<void>',
-    'protected restoreSession(sessionId: string, select = false): void',
+    'public restoreSession(sessionId: string): void',
     "aria-label='サイドバーの幅を変更'",
     'protected startRailResize(event: React.PointerEvent<HTMLDivElement>): void',
     'public persistWindowState(): Promise<void>',
@@ -2414,7 +2414,7 @@ for (const marker of [
     ".poiesis-agent-window__content:not([data-mode='code'])[data-compact-rail='true']",
     ".poiesis-agent-window__content[data-compact-rail='true'][data-responsive-rail-open='true']",
     ".poiesis-agent-window__rail[data-collapsed='true']",
-    '.poiesis-agent-window__session-search',
+    '.poiesis-conversation-search',
     '.poiesis-agent-window__workspace-group',
     '.poiesis-agent-window__workspace-picker',
     '.poiesis-agent-window__session-meta',
