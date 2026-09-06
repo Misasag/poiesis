@@ -2,15 +2,19 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import {
     GitChangeSetBetweenRequest,
     GitChangeSetCapture,
-    GitSnapshotCapture
+    GitSnapshotCapture,
+    GitSnapshotFileCapture,
+    GitSnapshotFileContent,
+    GitSnapshotFileRequest
 } from '../common/agent-runtime-protocol';
 
 const SNAPSHOT_MISSING_ERROR = 'スナップショットが見つかりません。';
 const GIT_OUTPUT_MAX_BYTES = 100 * 1024 * 1024;
+export const SNAPSHOT_FILE_MAX_BYTES = 50 * 1024 * 1024;
 const NPM_RUNTIME_ARTIFACT_ROOTS = [
     '.npm-cache/_npx',
     '.npm-cache/_cacache',
@@ -57,7 +61,10 @@ export async function isGitRepository(workspacePath: string): Promise<boolean> {
 export class SnapshotStore {
     protected readonly capturedWorkspaces = new Map<string, string>();
 
-    constructor(readonly rootPath = defaultSnapshotStoreRoot()) { }
+    constructor(
+        readonly rootPath = defaultSnapshotStoreRoot(),
+        protected readonly snapshotFileMaxBytes = SNAPSHOT_FILE_MAX_BYTES
+    ) { }
 
     async capture(workspacePath: string): Promise<GitSnapshotCapture> {
         try {
@@ -100,6 +107,48 @@ export class SnapshotStore {
             return await this.diff(repository, fromSnapshotId, toSnapshotId, normalizedPaths, toSnapshotId);
         } catch (error) {
             return { source: 'empty', diff: '', files: [], error: this.errorMessage(error) };
+        }
+    }
+
+    async readFileComparison(request: GitSnapshotFileRequest): Promise<GitSnapshotFileCapture> {
+        const repository = await this.findRepository(
+            [request.fromSnapshotId, request.toSnapshotId],
+            request.workspacePath
+        );
+        if (!repository) {
+            const otherRepository = await this.findRepository([request.fromSnapshotId, request.toSnapshotId]);
+            return {
+                source: 'unavailable',
+                error: otherRepository
+                    ? 'このワークスペースの変更ではありません。'
+                    : '保存された変更を利用できません。'
+            };
+        }
+        const workspacePath = resolve(request.workspacePath);
+        if (this.normalizeWorkspacePath(repository.workspacePath) !== this.normalizeWorkspacePath(workspacePath)) {
+            return { source: 'unavailable', error: 'このワークスペースの変更ではありません。' };
+        }
+        const path = normalizeSnapshotPath(request.path);
+        if (!path) {
+            return { source: 'unavailable', error: 'ファイルを特定できません。' };
+        }
+        try {
+            const [before, after] = await Promise.all([
+                this.readSnapshotFile(repository, request.fromSnapshotId, path),
+                this.readSnapshotFile(repository, request.toSnapshotId, path)
+            ]);
+            if (before.state === 'missing' && after.state === 'missing') {
+                return { source: 'unavailable', path, error: '保存された変更にファイルが見つかりません。' };
+            }
+            return { source: 'snapshot-file', path, before, after };
+        } catch (error) {
+            return {
+                source: 'unavailable',
+                path,
+                error: error instanceof SnapshotFileError
+                    ? error.message
+                    : '保存された変更を読み込めませんでした。'
+            };
         }
     }
 
@@ -207,6 +256,42 @@ export class SnapshotStore {
         }
     }
 
+    protected async readSnapshotFile(
+        repository: SnapshotRepository,
+        snapshotId: string,
+        path: string
+    ): Promise<GitSnapshotFileContent> {
+        const object = `${snapshotId}:${path}`;
+        const exists = await runGit(['--git-dir', repository.gitDir, 'cat-file', '-e', object], repository.workspacePath)
+            .then(() => true, () => false);
+        if (!exists) {
+            return { state: 'missing' };
+        }
+        const type = (await runGit([
+            '--git-dir', repository.gitDir, 'cat-file', '-t', object
+        ], repository.workspacePath)).trim();
+        if (type !== 'blob') {
+            throw new SnapshotFileError('保存された項目はテキストファイルではありません。');
+        }
+        const size = Number((await runGit([
+            '--git-dir', repository.gitDir, 'cat-file', '-s', object
+        ], repository.workspacePath)).trim());
+        if (!Number.isSafeInteger(size) || size < 0 || size > this.snapshotFileMaxBytes) {
+            throw new SnapshotFileError('ファイルが大きすぎるため、変更を表示できません。');
+        }
+        const buffer = await runGitBuffer([
+            '--git-dir', repository.gitDir, 'cat-file', 'blob', object
+        ], repository.workspacePath);
+        if (buffer.includes(0)) {
+            throw new SnapshotFileError('バイナリファイルの変更は表示できません。');
+        }
+        try {
+            return { state: 'text', content: new TextDecoder('utf-8', { fatal: true }).decode(buffer) };
+        } catch {
+            throw new SnapshotFileError('この文字コードのファイルは表示できません。');
+        }
+    }
+
     protected isNpmRuntimeArtifact(path: string): boolean {
         const comparable = this.comparablePath(path);
         return comparable === '.npm-cache/_update-notifier-last-checked'
@@ -220,7 +305,7 @@ export class SnapshotStore {
         return process.platform === 'win32' ? normalized.toLocaleLowerCase() : normalized;
     }
 
-    protected async findRepository(snapshotIds: string[]): Promise<SnapshotRepository | undefined> {
+    protected async findRepository(snapshotIds: string[], expectedWorkspacePath?: string): Promise<SnapshotRepository | undefined> {
         if (snapshotIds.some(snapshotId => !/^[0-9a-f]{40}$/i.test(snapshotId))) {
             return undefined;
         }
@@ -243,11 +328,16 @@ export class SnapshotStore {
                 continue;
             }
             try {
-                const workspacePath = (await runGit([
+                const storedWorkspacePath = (await runGit([
                     '--git-dir', gitDir, 'config', '--get', 'poiesis.workspacePath'
                 ], this.rootPath)).trim();
-                if (workspacePath) {
-                    return { gitDir, workspacePath: resolve(workspacePath) };
+                if (storedWorkspacePath) {
+                    const resolvedWorkspace = resolve(storedWorkspacePath);
+                    if (expectedWorkspacePath && this.normalizeWorkspacePath(resolvedWorkspace)
+                        !== this.normalizeWorkspacePath(expectedWorkspacePath)) {
+                        continue;
+                    }
+                    return { gitDir, workspacePath: resolvedWorkspace };
                 }
             } catch {
                 // Ignore malformed or unrelated bare repositories in the store root.
@@ -257,15 +347,7 @@ export class SnapshotStore {
     }
 
     protected normalizePaths(paths: string[]): string[] {
-        return [...new Set(paths.map(candidate => candidate.replace(/\\/g, '/').replace(/^\.\//, '')))]
-            .filter(candidate => {
-                if (!candidate || candidate.includes('\0') || isAbsolute(candidate)) {
-                    return false;
-                }
-                const resolved = resolve('/', ...candidate.split('/'));
-                const withinRoot = relative('/', resolved);
-                return withinRoot !== '..' && !withinRoot.startsWith(`..${sep}`);
-            })
+        return [...new Set(paths.map(normalizeSnapshotPath).filter((path): path is string => Boolean(path)))]
             .sort();
     }
 
@@ -281,6 +363,21 @@ export class SnapshotStore {
     protected errorMessage(error: unknown): string {
         return error instanceof Error ? error.message : String(error);
     }
+}
+
+class SnapshotFileError extends Error { }
+
+export function normalizeSnapshotPath(candidate: unknown): string | undefined {
+    if (typeof candidate !== 'string' || !candidate || /[\0\r\n]/.test(candidate)
+        || isAbsolute(candidate) || /^[A-Za-z]:[\\/]/.test(candidate)) {
+        return undefined;
+    }
+    const normalized = candidate.replace(/\\/g, '/').replace(/^\.\//, '');
+    const segments = normalized.split('/');
+    if (!normalized || segments.some(segment => !segment || segment === '.' || segment === '..')) {
+        return undefined;
+    }
+    return segments.join('/');
 }
 
 function runGit(
@@ -300,6 +397,28 @@ function runGit(
                 reject(error);
             } else {
                 resolvePromise(stdout);
+            }
+        });
+    });
+}
+
+function runGitBuffer(
+    args: string[],
+    cwd: string,
+    env: NodeJS.ProcessEnv = process.env
+): Promise<Buffer> {
+    return new Promise((resolvePromise, reject) => {
+        execFile('git', args, {
+            cwd,
+            env,
+            windowsHide: true,
+            encoding: 'buffer',
+            maxBuffer: GIT_OUTPUT_MAX_BYTES
+        }, (error, stdout) => {
+            if (error) {
+                reject(error);
+            } else {
+                resolvePromise(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout));
             }
         });
     });

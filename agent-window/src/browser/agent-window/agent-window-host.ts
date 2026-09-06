@@ -11,6 +11,7 @@ import type { ScmService } from '@theia/scm/lib/browser/scm-service';
 import type { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import type { VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
 import type { WorkspaceService } from '@theia/workspace/lib/browser';
+import type { TaskReviewResourceResolver } from '../task-review-resource';
 import type { AgentActivity, AgentEvent, AgentProvider } from '../../common/agent-provider';
 import type { AgentRuntimeServer, AiRole, CliDetectionReport, KnownCliId } from '../../common/agent-runtime-protocol';
 import type { CliDetectionPhase } from '../../common/cli-detection-lifecycle';
@@ -113,6 +114,7 @@ export interface AgentWindowHost {
     readonly resultsGenerationContext: ResultsGenerationContext;
     readonly workspaceSkillService: WorkspaceSkillService;
     readonly messageService: MessageService;
+    readonly taskReviewResourceResolver: TaskReviewResourceResolver;
 
     // Widget-owned composition operations.
     update(): void;
@@ -195,10 +197,13 @@ export interface AgentWindowHost {
     detachCodeWidgets(): void;
     installCodeEditorSaveShortcut(): void;
     installCodeTerminalShortcut(): void;
+    installCodeSidebarShortcut(): void;
     installCodeTabDropTarget(): void;
     openCodeSettings(): Promise<void>;
     openCodeFile(rawUri: string): Promise<void>;
     openCodeCitation(file: URI, startLine: number, endLine: number): Promise<void>;
+    openCodeTaskChanges(taskId: string): Promise<void>;
+    restoreCodeLayout(): Promise<void>;
     disposeCodeResources(): void;
 }
 

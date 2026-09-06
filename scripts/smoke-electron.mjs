@@ -254,8 +254,8 @@ try {
     if (noChangeOnly) {
         await page.type('.poiesis-agent-window__composer textarea', 'Answer without changing files.');
         await page.keyboard.press('Enter');
-        await page.waitForSelector('.poiesis-agent-window__task-state');
-        await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
+        await page.waitForSelector('.poiesis-agent-window__message-state');
+        await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state'));
         await page.waitForFunction(() => {
             const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
             const state = raw ? JSON.parse(raw) : undefined;
@@ -566,6 +566,8 @@ try {
     await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Source Control"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Source Control');
     await page.waitForSelector('.poiesis-agent-window__code-sidebar-actions button[aria-label="Source Control を更新"]');
+    await page.waitForSelector('.poiesis-agent-window__code-git-graph-title[aria-expanded="false"]');
+    await page.$eval('.poiesis-agent-window__code-git-graph-title', element => element.click());
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-title[aria-expanded="true"]');
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-host #scm-history-graph-widget');
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-host .scm-history-graph-row svg');

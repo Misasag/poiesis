@@ -5,10 +5,6 @@
         padding-inline: 11px;
     }
 
-    .poiesis-agent-window__code {
-        grid-template-columns: 148px minmax(0, 1fr);
-    }
-
     .poiesis-results__canvas {
         margin: 0;
     }
@@ -37,7 +33,7 @@
 
 /* Accessibility and readability overrides from the product UI audit. */
 .poiesis-agent-window__content {
-    --poiesis-agent-conversation-width: min(78vw, 960px);
+    --poiesis-agent-conversation-width: min(100%, 784px);
     --poiesis-chrome-muted: #92948d;
     --poiesis-control-border: #70726b;
     --poiesis-focus-ring: #c28b60;
@@ -59,16 +55,13 @@
 /* Keep the conversation fluid below the documented 1280px design floor. */
 @media (max-width: 1279px) {
     .poiesis-agent-window__messages {
-        padding-inline: clamp(16px, 3vw, 32px);
+        padding-inline: 16px;
     }
 
     .poiesis-agent-window__composer {
-        width: min(var(--poiesis-agent-conversation-width), calc(100% - 32px));
+        width: min(var(--poiesis-agent-conversation-width), calc(100% - 40px));
     }
 
-    .poiesis-agent-window__task-state {
-        margin-inline: 16px;
-    }
 }
 
 @media (prefers-reduced-motion: reduce) {

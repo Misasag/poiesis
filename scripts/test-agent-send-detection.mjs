@@ -20,7 +20,11 @@ function subject(path, className, names) {
     const { outputText } = ts.transpileModule(`class Subject { ${members.join('\n')} }\nSubject;`, {
         compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }
     });
-    return new (vm.runInNewContext(outputText, { cliRoleAvailability, console: { warn() {} } }))();
+    return new (vm.runInNewContext(outputText, {
+        cliRoleAvailability,
+        boundedAgentConversation: turns => turns,
+        console: { warn() {} }
+    }))();
 }
 
 function deferred() {
@@ -77,6 +81,8 @@ for (const phase of ['startup', 'rescan']) {
         ]);
         Object.assign(agent, {
             host, agentProvider: provider, update() {},
+            agentLatestAffordances: new Set(),
+            rememberAgentScroll() {}, scheduleAgentFollow() {},
             requirementForSend: session => ({ requirementId: `requirement-${session.id}`, requirementChoice: 'default' }),
             recordPreSpawnFailure() { throw new Error('Unexpected provider preparation failure'); }
         });

@@ -5,7 +5,11 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { SnapshotStore } from '../agent-window/lib/node/snapshot-store.js';
+import {
+    normalizeSnapshotPath,
+    SNAPSHOT_FILE_MAX_BYTES,
+    SnapshotStore
+} from '../agent-window/lib/node/snapshot-store.js';
 
 const execFileAsync = promisify(execFile);
 const root = await mkdtemp(join(tmpdir(), 'poiesis-snapshot-test-'));
@@ -39,6 +43,54 @@ try {
         assert.equal(range.source, 'task-diff');
         assert.deepEqual(range.files, ['one.txt', 'two.txt']);
         assert.match(range.diff, /diff --git a\/one\.txt b\/one\.txt/);
+
+        const comparison = await secondStore.readFileComparison({
+            workspacePath: workspace,
+            fromSnapshotId: baseline.snapshotId,
+            toSnapshotId: current.snapshotId,
+            path: 'one.txt'
+        });
+        assert.equal(comparison.source, 'snapshot-file', JSON.stringify(comparison));
+        assert.deepEqual(comparison.before, { state: 'text', content: 'before\n' });
+        assert.deepEqual(comparison.after, { state: 'text', content: 'after\n' });
+
+        const oversizedComparison = await new SnapshotStore(storeRoot, 3).readFileComparison({
+            workspacePath: workspace,
+            fromSnapshotId: baseline.snapshotId,
+            toSnapshotId: current.snapshotId,
+            path: 'one.txt'
+        });
+        assert.equal(oversizedComparison.source, 'unavailable');
+        assert.equal(oversizedComparison.error, 'ファイルが大きすぎるため、変更を表示できません。');
+
+        const addedComparison = await secondStore.readFileComparison({
+            workspacePath: workspace,
+            fromSnapshotId: baseline.snapshotId,
+            toSnapshotId: current.snapshotId,
+            path: 'two.txt'
+        });
+        assert.deepEqual(addedComparison.before, { state: 'missing' });
+        assert.deepEqual(addedComparison.after, { state: 'text', content: 'added\n' });
+
+        const wrongWorkspace = await secondStore.readFileComparison({
+            workspacePath: join(root, 'not-the-workspace'),
+            fromSnapshotId: baseline.snapshotId,
+            toSnapshotId: current.snapshotId,
+            path: 'one.txt'
+        });
+        assert.equal(wrongWorkspace.source, 'unavailable');
+        assert.equal(wrongWorkspace.error, 'このワークスペースの変更ではありません。');
+
+        for (const path of ['../one.txt', 'src/../../one.txt', '/one.txt', 'C:\\one.txt', 'src//one.txt']) {
+            const invalidPath = await secondStore.readFileComparison({
+                workspacePath: workspace,
+                fromSnapshotId: baseline.snapshotId,
+                toSnapshotId: current.snapshotId,
+                path
+            });
+            assert.equal(invalidPath.source, 'unavailable', `Unsafe snapshot path was accepted: ${path}`);
+            assert.equal(invalidPath.error, 'ファイルを特定できません。');
+        }
 
         const filtered = await secondStore.captureBetween({
             fromSnapshotId: baseline.snapshotId,
@@ -118,7 +170,58 @@ try {
         assert.deepEqual(cumulative.files, ['README.md'],
             `${kind} cumulative filtering must retain source evidence only.`);
         assert.doesNotMatch(cumulative.diff, /\.npm-cache/);
+
+        await writeFile(join(workspace, 'binary.dat'), Buffer.concat([
+            Buffer.alloc(1_024, 65),
+            Buffer.from([0])
+        ]));
+        const binarySnapshot = await firstStore.capture(workspace);
+        const binaryComparison = await secondStore.readFileComparison({
+            workspacePath: workspace,
+            fromSnapshotId: afterLegacySnapshot.snapshotId,
+            toSnapshotId: binarySnapshot.snapshotId,
+            path: 'binary.dat'
+        });
+        assert.equal(binaryComparison.source, 'unavailable');
+        assert.equal(binaryComparison.error, 'バイナリファイルの変更は表示できません。');
+
+        await rm(join(workspace, 'two.txt'));
+        const deletedSnapshot = await firstStore.capture(workspace);
+        const deletedComparison = await secondStore.readFileComparison({
+            workspacePath: workspace,
+            fromSnapshotId: binarySnapshot.snapshotId,
+            toSnapshotId: deletedSnapshot.snapshotId,
+            path: 'two.txt'
+        });
+        assert.deepEqual(deletedComparison.before, { state: 'text', content: 'added\n' });
+        assert.deepEqual(deletedComparison.after, { state: 'missing' });
     }
+
+    const identicalWorkspaceA = join(root, 'identical-a');
+    const identicalWorkspaceB = join(root, 'identical-b');
+    await Promise.all([
+        mkdir(identicalWorkspaceA, { recursive: true }),
+        mkdir(identicalWorkspaceB, { recursive: true })
+    ]);
+    await Promise.all([
+        writeFile(join(identicalWorkspaceA, 'same.txt'), 'identical\n', 'utf8'),
+        writeFile(join(identicalWorkspaceB, 'same.txt'), 'identical\n', 'utf8')
+    ]);
+    const identicalStore = new SnapshotStore(storeRoot);
+    const identicalA = await identicalStore.capture(identicalWorkspaceA);
+    const identicalB = await identicalStore.capture(identicalWorkspaceB);
+    assert.equal(identicalA.snapshotId, identicalB.snapshotId,
+        'Identical workspace trees should reproduce the same Git tree object ID.');
+    const requestedWorkspaceComparison = await new SnapshotStore(storeRoot).readFileComparison({
+        workspacePath: identicalWorkspaceA,
+        fromSnapshotId: identicalA.snapshotId,
+        toSnapshotId: identicalA.snapshotId,
+        path: 'same.txt'
+    });
+    assert.equal(requestedWorkspaceComparison.source, 'snapshot-file',
+        'Snapshot lookup must select the requested workspace when object IDs exist in multiple stores.');
+    assert.deepEqual(requestedWorkspaceComparison.before, { state: 'text', content: 'identical\n' });
+    assert.deepEqual(requestedWorkspaceComparison.after, { state: 'text', content: 'identical\n' });
 
     const missing = await new SnapshotStore(storeRoot).captureBetween({
         fromSnapshotId: '0'.repeat(40),
@@ -126,6 +229,21 @@ try {
     });
     assert.equal(missing.source, 'empty');
     assert.equal(missing.error, 'スナップショットが見つかりません。');
+    const missingComparison = await new SnapshotStore(storeRoot).readFileComparison({
+        workspacePath: root,
+        fromSnapshotId: '0'.repeat(40),
+        toSnapshotId: '1'.repeat(40),
+        path: 'one.txt'
+    });
+    assert.equal(missingComparison.source, 'unavailable');
+    assert.equal(missingComparison.error, '保存された変更を利用できません。');
+    assert.equal(SNAPSHOT_FILE_MAX_BYTES, 50 * 1024 * 1024);
+    assert.equal(normalizeSnapshotPath('./src/file.ts'), 'src/file.ts');
+    assert.equal(normalizeSnapshotPath('src\\file.ts'), 'src/file.ts');
+    assert.equal(normalizeSnapshotPath('../file.ts'), undefined);
+    assert.equal(normalizeSnapshotPath('src/../file.ts'), undefined);
+    assert.equal(normalizeSnapshotPath('src//file.ts'), undefined);
+    assert.equal(normalizeSnapshotPath(''), undefined);
     console.log('snapshot-store tests passed');
 } finally {
     await rm(root, { recursive: true, force: true });

@@ -1169,18 +1169,6 @@
     color: #e7b2aa;
 }
 
-.poiesis-agent-window__code {
-    background: #181818;
-    display: grid;
-    grid-template-columns: 46px var(--poiesis-code-sidebar-width, 260px) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) 22px;
-    height: 100%;
-    min-height: 0;
-    min-width: 0;
-    overflow: hidden;
-    position: relative;
-}
-
 .poiesis-results__composer textarea {
     font-size: 13px;
 }

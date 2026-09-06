@@ -3,6 +3,8 @@ import * as ReactDOM from '@theia/core/shared/react-dom';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { FormatType, open, OpenerService, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser';
 import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
+import { DiffUris } from '@theia/core/lib/browser/diff-uris';
+import { TASK_REVIEW_RESOURCE_SCHEME } from '../task-review-resource';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { CommandService, Disposable, DisposableCollection, MessageService } from '@theia/core/lib/common';
 import { FileUri } from '@theia/core/lib/common/file-uri';
@@ -80,8 +82,21 @@ import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSe
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
 import { codeTabLabel } from './code-tab-label';
 import { PendingEditorPins } from './pending-editor-pins';
-
-type CodeSidebarTab = 'files' | 'search' | 'git' | 'extensions';
+import {
+    CODE_LAYOUT_STORAGE_KEY,
+    codeSidebarContainsFocus,
+    CodeSidebarTab,
+    DEFAULT_CODE_LAYOUT_STATE,
+    DEFAULT_CODE_SIDEBAR_WIDTH,
+    isCodeSidebarVisible,
+    MAX_CODE_SIDEBAR_WIDTH,
+    MIN_CODE_SIDEBAR_WIDTH,
+    normalizeCodeLayoutState,
+    setCodeSidebarViewport,
+    setCodeSidebarVisibility,
+    shouldFocusCodeActivity
+} from './code-layout-state';
+import { CodeReviewRequestToken, LatestCodeReviewRequest } from './latest-code-review-request';
 
 interface CodeEditorStatus {
     encoding?: string;
@@ -89,11 +104,10 @@ interface CodeEditorStatus {
     indentation: string;
 }
 
-const DEFAULT_CODE_SIDEBAR_WIDTH = 260;
-const MIN_CODE_SIDEBAR_WIDTH = 180;
-const MAX_CODE_SIDEBAR_WIDTH = 520;
 const DEFAULT_CODE_PANEL_HEIGHT = 190;
 const MIN_CODE_PANEL_HEIGHT = 96;
+
+type CodeChangeScope = 'task' | 'workspace';
 
 export class CodePart extends AgentWindowPart {
     static readonly FILES_WIDGET_FACTORY_ID = 'files';
@@ -115,7 +129,29 @@ export class CodePart extends AgentWindowPart {
 
     protected codeGitGraphWidget?: Widget;
 
-    protected codeGitGraphExpanded = true;
+    protected codeGitGraphExpanded = DEFAULT_CODE_LAYOUT_STATE.graphExpanded;
+
+    protected codeSidebarCollapsed = DEFAULT_CODE_LAYOUT_STATE.sidebarCollapsed;
+
+    protected codeNarrowViewport = false;
+
+    protected codeNarrowSidebarOpen = false;
+
+    protected codeChangeScope: CodeChangeScope = 'workspace';
+
+    protected codeReviewTaskId?: string;
+
+    protected codeReviewPath?: string;
+
+    protected codeReviewError?: string;
+
+    protected codeReviewLoadingPath?: string;
+
+    protected readonly latestCodeReviewRequest = new LatestCodeReviewRequest();
+
+    protected codeReviewCancellationTarget?: Widget;
+
+    protected codeReviewOpening?: { uri: string; request: CodeReviewRequestToken };
 
     protected codeExtensionsWidget?: Widget;
 
@@ -222,6 +258,10 @@ export class CodePart extends AgentWindowPart {
     protected handleCurrentCodeEditorChanged(): void {
         const editor = this.editorManager.currentEditor;
         if (editor && editor !== this.activeCodeCenterWidget && this.codeCenterWidgets.includes(editor)) {
+            if (editor.editor.uri.toString() !== this.codeReviewOpening?.uri) {
+                this.cancelPendingCodeReviewOpen(editor);
+            }
+            this.dismissNarrowCodeSidebar();
             this.selectCodeCenterWidget(editor);
             return;
         }
@@ -253,7 +293,7 @@ export class CodePart extends AgentWindowPart {
         };
         return (
             <section
-                className='poiesis-agent-window__code'
+                className={`poiesis-agent-window__code${this.isCodeSidebarCollapsed() ? ' sidebar-collapsed' : ''}`}
                 aria-label='Code モード'
                 style={{ '--poiesis-code-sidebar-width': `${this.codeSidebarWidth}px` } as React.CSSProperties}
             >
@@ -271,8 +311,10 @@ export class CodePart extends AgentWindowPart {
                     </div>
                 </nav>
                 <aside
-                    className={`poiesis-agent-window__code-sidebar${this.codeSidebarTab === 'files' ? ' explorer' : ''}`}
+                    id='poiesis-code-sidebar'
+                    className={`poiesis-agent-window__code-sidebar${this.codeSidebarTab === 'files' ? ' explorer' : ''}${this.codeSidebarTab === 'git' && this.codeReviewTask() ? ' has-review-scope' : ''}`}
                     aria-label='Code のサイドバー'
+                    aria-hidden={this.isCodeSidebarCollapsed()}
                 >
                     <div className='poiesis-agent-window__code-sidebar-title'>
                         <span>{sidebarLabels[this.codeSidebarTab]}</span>
@@ -281,8 +323,6 @@ export class CodePart extends AgentWindowPart {
                                 <React.Fragment>
                                     {this.renderExplorerAction('new-file', '新しいファイル', FileNavigatorCommands.NEW_FILE_TOOLBAR.id)}
                                     {this.renderExplorerAction('new-folder', '新しいフォルダー', FileNavigatorCommands.NEW_FOLDER_TOOLBAR.id)}
-                                    {this.renderExplorerAction('refresh', 'Explorer を更新', FileNavigatorCommands.REFRESH_NAVIGATOR.id)}
-                                    {this.renderExplorerAction('collapse-all', 'フォルダーを折りたたむ', FileNavigatorCommands.COLLAPSE_ALL.id)}
                                 </React.Fragment>
                             )}
                             {this.codeSidebarTab === 'search' && (
@@ -292,7 +332,7 @@ export class CodePart extends AgentWindowPart {
                                     {this.renderSearchAction('collapse-all', '検索結果をすべて折りたたむ', SearchInWorkspaceCommands.COLLAPSE_ALL.id)}
                                 </React.Fragment>
                             )}
-                            {this.codeSidebarTab === 'git' && (
+                            {this.codeSidebarTab === 'git' && this.effectiveCodeChangeScope() === 'workspace' && (
                                 <button
                                     type='button'
                                     title='Source Control を更新'
@@ -322,13 +362,16 @@ export class CodePart extends AgentWindowPart {
                             )}
                         </div>
                     </div>
+                    {this.codeSidebarTab === 'git' && this.codeReviewTask() && this.renderCodeChangeScope()}
                     {this.codeSidebarTab === 'files' && (
                         <div className='poiesis-agent-window__code-explorer-root'>
                             <span className='codicon codicon-chevron-down' aria-hidden='true' />
                             <strong>{this.host.sessions.workspaceFolderName()}</strong>
                         </div>
                     )}
-                    {this.codeSidebarTab === 'git' ? (
+                    {this.codeSidebarTab === 'git' && this.effectiveCodeChangeScope() === 'task' && this.codeReviewTask() ? (
+                        this.renderCodeTaskChanges(this.codeReviewTask()!)
+                    ) : this.codeSidebarTab === 'git' ? (
                         <div className={`poiesis-agent-window__code-source-control${this.codeGitGraphExpanded ? ' graph-expanded' : ''}`}>
                             <div className='poiesis-agent-window__code-sidebar-host' ref={this.setCodeSidebarHost} />
                             <button
@@ -338,7 +381,12 @@ export class CodePart extends AgentWindowPart {
                                 aria-expanded={this.codeGitGraphExpanded}
                                 onClick={() => {
                                     this.codeGitGraphExpanded = !this.codeGitGraphExpanded;
+                                    if (!this.codeGitGraphExpanded) {
+                                        this.detachCodeWidget(this.codeGitGraphWidget);
+                                    }
+                                    this.persistCodeLayout();
                                     this.update();
+                                    this.scheduleCodeWidgetAttachments();
                                 }}
                             >
                                 <span
@@ -361,7 +409,7 @@ export class CodePart extends AgentWindowPart {
                     <div
                         className='poiesis-agent-window__code-sidebar-resize'
                         role='separator'
-                        aria-label='Explorerの幅を変更'
+                        aria-label='サイドバーの幅を変更'
                         aria-orientation='vertical'
                         aria-valuemin={MIN_CODE_SIDEBAR_WIDTH}
                         aria-valuemax={MAX_CODE_SIDEBAR_WIDTH}
@@ -377,6 +425,13 @@ export class CodePart extends AgentWindowPart {
                         }}
                     />
                 </aside>
+                <button
+                    type='button'
+                    className='poiesis-agent-window__code-sidebar-backdrop'
+                    aria-label='サイドバーを閉じる'
+                    tabIndex={-1}
+                    onClick={() => this.setCodeSidebarCollapsed(true, true)}
+                />
                 <main className='poiesis-agent-window__code-editor' aria-label='Editor'>
                     <div
                         className='poiesis-agent-window__code-editor-tabs'
@@ -409,7 +464,10 @@ export class CodePart extends AgentWindowPart {
                                         tabIndex={active ? 0 : -1}
                                         title={widget.title.caption || label}
                                         className='poiesis-agent-window__code-editor-tab-label'
-                                        onClick={() => this.selectCodeCenterWidget(widget)}
+                                        onClick={() => {
+                                            this.cancelPendingCodeReviewOpen(widget);
+                                            this.selectCodeCenterWidget(widget);
+                                        }}
                                         onKeyDown={event => this.handleCodeTabKeyDown(event, widget)}
                                     >
                                         {widget.title.iconClass && <span className={widget.title.iconClass} aria-hidden='true' />}
@@ -522,6 +580,94 @@ export class CodePart extends AgentWindowPart {
         );
     }
 
+    protected codeReviewTask(): ExecutionTask | undefined {
+        const task = this.codeReviewTaskId ? this.taskService.get(this.codeReviewTaskId) : undefined;
+        const selectedSession = this.host.sessions.selectedSession();
+        const owningSession = task ? this.host.sessions.findSessionForTask(task) : undefined;
+        return task?.changeSet?.source === 'task-diff' && task.changeSet.files.length > 0
+            && selectedSession && owningSession?.id === selectedSession.id
+            ? task
+            : undefined;
+    }
+
+    protected effectiveCodeChangeScope(): CodeChangeScope {
+        return this.codeChangeScope === 'task' && this.codeReviewTask() ? 'task' : 'workspace';
+    }
+
+    protected renderCodeChangeScope(): React.ReactNode {
+        return (
+            <div className='poiesis-agent-window__code-change-scope' role='group' aria-label='表示する変更'>
+                <button
+                    type='button'
+                    className={this.effectiveCodeChangeScope() === 'task' ? 'active' : ''}
+                    aria-pressed={this.effectiveCodeChangeScope() === 'task'}
+                    onClick={() => this.selectCodeChangeScope('task')}
+                >
+                    このタスク
+                </button>
+                <button
+                    type='button'
+                    className={this.effectiveCodeChangeScope() === 'workspace' ? 'active' : ''}
+                    aria-pressed={this.effectiveCodeChangeScope() === 'workspace'}
+                    onClick={() => this.selectCodeChangeScope('workspace')}
+                >
+                    ワークスペース
+                </button>
+            </div>
+        );
+    }
+
+    protected renderCodeTaskChanges(task: ExecutionTask): React.ReactNode {
+        const diffstat = summarizeTaskChangeSet(task.changeSet);
+        return (
+            <section className='poiesis-agent-window__code-task-changes' aria-label={`${task.title}の変更`}>
+                <header>
+                    <strong title={task.title}>{task.title}</strong>
+                    <span>{diffstat.fileCount} ファイル · +{diffstat.additions} −{diffstat.deletions}</span>
+                </header>
+                <ul>
+                    {diffstat.files.map(file => {
+                        const selected = this.codeReviewPath === file.path;
+                        const status = file.status === 'added' ? '追加' : file.status === 'deleted' ? '削除' : '変更';
+                        const fileName = file.path.split('/').pop() || file.path;
+                        const directory = file.path.includes('/') ? file.path.slice(0, file.path.lastIndexOf('/')) : '';
+                        return (
+                            <li key={file.path} className={selected ? 'selected' : ''}>
+                                <button
+                                    type='button'
+                                    className='poiesis-agent-window__code-task-file'
+                                    aria-current={selected ? 'true' : undefined}
+                                    onClick={() => void this.openCodeTaskFile(task, file.path)}
+                                >
+                                    <span className={`poiesis-agent-window__code-task-file-status ${file.status}`}>{status}</span>
+                                    <span className='poiesis-agent-window__code-task-file-label'>
+                                        <strong>{fileName}</strong>
+                                        {directory && <small>{directory}</small>}
+                                    </span>
+                                    <span className='poiesis-agent-window__code-task-file-lines'>+{file.additions} −{file.deletions}</span>
+                                </button>
+                                <button
+                                    type='button'
+                                    className='poiesis-agent-window__code-task-file-current'
+                                    title='現在のファイルを開く'
+                                    aria-label={`${file.path} の現在のファイルを開く`}
+                                    onClick={() => void this.openCurrentTaskFile(file.path)}
+                                >
+                                    <span className='codicon codicon-go-to-file' aria-hidden='true' />
+                                </button>
+                            </li>
+                        );
+                    })}
+                </ul>
+                {(this.codeReviewLoadingPath || this.codeReviewError) && (
+                    <div className={`poiesis-agent-window__code-task-state${this.codeReviewError ? ' error' : ''}`} role='status'>
+                        {this.codeReviewError ?? '変更を開いています…'}
+                    </div>
+                )}
+            </section>
+        );
+    }
+
     protected renderCodeProblemStatus(): React.ReactNode {
         const { errors, warnings } = this.problemManager.getProblemStat();
         const label = `問題を表示: エラー ${errors}、警告 ${warnings}`;
@@ -556,6 +702,8 @@ export class CodePart extends AgentWindowPart {
     }
 
     protected async openCodeProblems(): Promise<void> {
+        this.cancelPendingCodeReviewOpen();
+        this.dismissNarrowCodeSidebar();
         const problems = await this.widgetManager.getOrCreateWidget(CodePart.PROBLEMS_WIDGET_FACTORY_ID);
         this.registeringCodeProblems = true;
         try {
@@ -753,14 +901,17 @@ export class CodePart extends AgentWindowPart {
     }
 
     protected renderCodeActivity(tab: CodeSidebarTab, icon: string, label: string): React.ReactNode {
+        const selected = this.codeSidebarTab === tab;
         return (
             <button
                 type='button'
-                className={this.codeSidebarTab === tab ? 'active' : ''}
-                aria-pressed={this.codeSidebarTab === tab}
+                className={selected && !this.isCodeSidebarCollapsed() ? 'active' : selected ? 'selected' : ''}
+                data-code-sidebar-tab={tab}
+                aria-pressed={selected && !this.isCodeSidebarCollapsed()}
+                aria-controls='poiesis-code-sidebar'
                 title={label}
                 aria-label={label}
-                onClick={() => this.selectCodeSidebarTab(tab)}
+                onClick={() => this.activateCodeSidebarTab(tab)}
             >
                 <span className={`codicon codicon-${icon}`} aria-hidden='true' />
             </button>
@@ -1132,7 +1283,7 @@ export class CodePart extends AgentWindowPart {
             return this.codeSearchWidget;
         }
         if (this.codeSidebarTab === 'git') {
-            return this.codeGitWidget;
+            return this.effectiveCodeChangeScope() === 'workspace' ? this.codeGitWidget : undefined;
         }
         return this.codeExtensionsWidget;
     }
@@ -1158,8 +1309,14 @@ export class CodePart extends AgentWindowPart {
             this.detachCodeWidgets();
             return;
         }
-        this.attachCodeWidget(this.activeCodeSidebarWidget(), this.codeSidebarHost);
-        if (this.codeSidebarTab === 'git') {
+        if (this.isCodeSidebarCollapsed()) {
+            this.detachCodeWidget(this.activeCodeSidebarWidget());
+            this.detachCodeWidget(this.codeGitGraphWidget);
+        } else {
+            this.attachCodeWidget(this.activeCodeSidebarWidget(), this.codeSidebarHost);
+        }
+        if (!this.isCodeSidebarCollapsed() && this.codeSidebarTab === 'git'
+            && this.effectiveCodeChangeScope() === 'workspace' && this.codeGitGraphExpanded) {
             this.attachCodeWidget(this.codeGitGraphWidget, this.codeGitGraphHost);
         } else {
             this.detachCodeWidget(this.codeGitGraphWidget);
@@ -1354,17 +1511,26 @@ export class CodePart extends AgentWindowPart {
     }
 
     public detachCodeWidgets(): void {
+        this.cancelPendingCodeReviewOpen();
+        this.codeNarrowSidebarOpen = false;
         this.detachCodeWidget(this.activeCodeSidebarWidget());
         this.detachCodeWidget(this.codeGitGraphWidget);
         this.detachCodeWidget(this.activeCodeCenterWidget);
         this.detachCodeWidget(this.codeTerminalWidget);
     }
 
-    protected selectCodeSidebarTab(tab: CodeSidebarTab): void {
+    protected activateCodeSidebarTab(tab: CodeSidebarTab): void {
+        if (tab === this.codeSidebarTab) {
+            this.setCodeSidebarCollapsed(!this.isCodeSidebarCollapsed(), true);
+            return;
+        }
+        this.cancelPendingCodeReviewOpen();
         this.detachCodeWidget(this.activeCodeSidebarWidget());
         this.detachCodeWidget(this.codeGitGraphWidget);
         this.host.state.explorerMoreVisible = false;
         this.codeSidebarTab = tab;
+        this.applyCodeSidebarVisibility(true);
+        this.persistCodeLayout();
         this.update();
         if (tab === 'extensions') {
             void this.ensureCodeExtensionsWidget();
@@ -1388,15 +1554,42 @@ export class CodePart extends AgentWindowPart {
         }
     }
 
+    public async restoreCodeLayout(): Promise<void> {
+        try {
+            const stored = await this.storageService.getData<unknown>(CODE_LAYOUT_STORAGE_KEY);
+            const layout = normalizeCodeLayoutState(stored);
+            this.codeSidebarWidth = layout.sidebarWidth;
+            this.codeSidebarCollapsed = layout.sidebarCollapsed;
+            this.codeSidebarTab = layout.sidebarTab;
+            this.codeGitGraphExpanded = layout.graphExpanded;
+            if (this.codeSidebarTab === 'extensions') {
+                void this.ensureCodeExtensionsWidget();
+            }
+        } catch (error) {
+            console.warn('[Poiesis] Could not restore the Code layout.', error);
+        }
+    }
+
+    protected persistCodeLayout(): void {
+        void this.storageService.setData(CODE_LAYOUT_STORAGE_KEY, {
+            version: 1,
+            sidebarWidth: this.codeSidebarWidth,
+            sidebarCollapsed: this.codeSidebarCollapsed,
+            sidebarTab: this.codeSidebarTab,
+            graphExpanded: this.codeGitGraphExpanded
+        }).catch(error => console.warn('[Poiesis] Could not save the Code layout.', error));
+    }
+
     protected startCodeSidebarResize(event: React.PointerEvent<HTMLDivElement>): void {
         event.preventDefault();
         this.codeSidebarResizeCleanup?.dispose();
         const startX = event.clientX;
         const startWidth = this.codeSidebarWidth;
         const onPointerMove = (moveEvent: PointerEvent): void => {
-            this.setCodeSidebarWidth(startWidth + moveEvent.clientX - startX);
+            this.setCodeSidebarWidth(startWidth + moveEvent.clientX - startX, false);
         };
         const finish = (): void => {
+            this.persistCodeLayout();
             this.codeSidebarResizeCleanup?.dispose();
             this.codeSidebarResizeCleanup = undefined;
         };
@@ -1412,12 +1605,15 @@ export class CodePart extends AgentWindowPart {
         });
     }
 
-    protected setCodeSidebarWidth(width: number): void {
+    protected setCodeSidebarWidth(width: number, persist = true): void {
         this.codeSidebarWidth = Math.max(MIN_CODE_SIDEBAR_WIDTH, Math.min(MAX_CODE_SIDEBAR_WIDTH, width));
         const code = this.node.querySelector<HTMLElement>('.poiesis-agent-window__code');
         code?.style.setProperty('--poiesis-code-sidebar-width', `${this.codeSidebarWidth}px`);
         this.node.querySelector('.poiesis-agent-window__code-sidebar-resize')
             ?.setAttribute('aria-valuenow', `${this.codeSidebarWidth}`);
+        if (persist) {
+            this.persistCodeLayout();
+        }
     }
 
     protected startCodePanelResize(event: React.PointerEvent<HTMLDivElement>): void {
@@ -1477,6 +1673,134 @@ export class CodePart extends AgentWindowPart {
             this.previewCodeCenterWidget = undefined;
             this.update();
         }
+    }
+
+    protected selectCodeChangeScope(scope: CodeChangeScope): void {
+        if (scope === this.codeChangeScope || scope === 'task' && !this.codeReviewTask()) {
+            return;
+        }
+        this.cancelPendingCodeReviewOpen();
+        this.detachCodeWidget(this.activeCodeSidebarWidget());
+        this.detachCodeWidget(this.codeGitGraphWidget);
+        this.codeChangeScope = scope;
+        this.codeReviewError = undefined;
+        this.update();
+        this.scheduleCodeWidgetAttachments();
+    }
+
+    protected cancelPendingCodeReviewOpen(target: Widget | undefined = this.activeCodeCenterWidget): void {
+        this.latestCodeReviewRequest.cancel();
+        this.codeReviewLoadingPath = undefined;
+        const targetIsPendingReview = target instanceof EditorWidget
+            && target.editor.uri.toString() === this.codeReviewOpening?.uri;
+        if (!targetIsPendingReview) {
+            this.codeReviewCancellationTarget = target;
+        }
+    }
+
+    protected isCurrentCodeReviewRequest(
+        request: CodeReviewRequestToken,
+        task: ExecutionTask,
+        path: string
+    ): boolean {
+        return request.isCurrent()
+            && this.codeReviewTaskId === task.id
+            && this.codeChangeScope === 'task'
+            && this.codeReviewPath === path;
+    }
+
+    protected restoreCodeReviewCancellationTarget(): void {
+        const target = this.codeReviewCancellationTarget;
+        if (target && !target.isDisposed && this.codeCenterWidgets.includes(target)
+            && target !== this.activeCodeCenterWidget) {
+            this.selectCodeCenterWidget(target);
+        }
+    }
+
+    protected setCodeSidebarCollapsed(collapsed: boolean, focusActivity = false): void {
+        if (collapsed === this.isCodeSidebarCollapsed()) {
+            return;
+        }
+        const focusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+        const sidebar = this.node.querySelector<HTMLElement>('#poiesis-code-sidebar') ?? undefined;
+        const focusWasInSidebar = codeSidebarContainsFocus(sidebar, focusTarget);
+        if (collapsed) {
+            this.detachCodeWidget(this.activeCodeSidebarWidget());
+            this.detachCodeWidget(this.codeGitGraphWidget);
+        }
+        const persistWidePreference = this.applyCodeSidebarVisibility(!collapsed);
+        this.host.state.explorerMoreVisible = false;
+        if (persistWidePreference) {
+            this.persistCodeLayout();
+        }
+        this.update();
+        this.scheduleCodeWidgetAttachments();
+        requestAnimationFrame(() => {
+            if (shouldFocusCodeActivity(collapsed, focusActivity, focusWasInSidebar)) {
+                this.codeActivityButton()?.focus();
+            } else if (focusTarget?.isConnected) {
+                focusTarget.focus();
+            }
+        });
+    }
+
+    protected isCodeSidebarCollapsed(): boolean {
+        return !isCodeSidebarVisible({
+            wideCollapsed: this.codeSidebarCollapsed,
+            narrowViewport: this.codeNarrowViewport,
+            narrowOpen: this.codeNarrowSidebarOpen
+        });
+    }
+
+    protected applyCodeSidebarVisibility(visible: boolean): boolean {
+        const transition = setCodeSidebarVisibility({
+            wideCollapsed: this.codeSidebarCollapsed,
+            narrowViewport: this.codeNarrowViewport,
+            narrowOpen: this.codeNarrowSidebarOpen
+        }, visible);
+        this.codeSidebarCollapsed = transition.state.wideCollapsed;
+        this.codeNarrowSidebarOpen = transition.state.narrowOpen;
+        return transition.persistWidePreference;
+    }
+
+    protected setCodeSidebarViewport(narrowViewport: boolean): void {
+        if (this.codeNarrowViewport === narrowViewport) {
+            return;
+        }
+        const focusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+        const sidebar = this.node.querySelector<HTMLElement>('#poiesis-code-sidebar') ?? undefined;
+        const focusWasInSidebar = codeSidebarContainsFocus(sidebar, focusTarget);
+        const wasVisible = !this.isCodeSidebarCollapsed();
+        const visibility = setCodeSidebarViewport({
+            wideCollapsed: this.codeSidebarCollapsed,
+            narrowViewport: this.codeNarrowViewport,
+            narrowOpen: this.codeNarrowSidebarOpen
+        }, narrowViewport);
+        this.codeNarrowViewport = visibility.narrowViewport;
+        this.codeNarrowSidebarOpen = visibility.narrowOpen;
+        const collapsed = this.isCodeSidebarCollapsed();
+        if (wasVisible && collapsed) {
+            this.detachCodeWidget(this.activeCodeSidebarWidget());
+            this.detachCodeWidget(this.codeGitGraphWidget);
+        }
+        this.host.state.explorerMoreVisible = false;
+        this.update();
+        this.scheduleCodeWidgetAttachments();
+        if (collapsed && focusWasInSidebar) {
+            requestAnimationFrame(() => this.codeActivityButton()?.focus());
+        }
+    }
+
+    protected dismissNarrowCodeSidebar(): void {
+        if (this.codeNarrowViewport && this.codeNarrowSidebarOpen) {
+            this.setCodeSidebarCollapsed(true);
+        }
+    }
+
+    protected codeActivityButton(): HTMLButtonElement | undefined {
+        return this.node.querySelector<HTMLButtonElement>(
+            `.poiesis-agent-window__code-activity [data-code-sidebar-tab="${this.codeSidebarTab}"]`
+        ) ?? undefined;
     }
 
     protected codeEditorForUri(uri: string): EditorWidget | undefined {
@@ -1573,6 +1897,9 @@ export class CodePart extends AgentWindowPart {
         };
         const onWindowBlur = (): void => this.finishCodeFilePointerDrag();
         const onClick = (event: MouseEvent): void => {
+            if (this.codeFileNode(event.target) && this.codeNarrowViewport) {
+                requestAnimationFrame(() => this.dismissNarrowCodeSidebar());
+            }
             if (!this.suppressNextCodeFileClick) {
                 return;
             }
@@ -1641,12 +1968,15 @@ export class CodePart extends AgentWindowPart {
         if (!rawUri) {
             return;
         }
+        this.cancelPendingCodeReviewOpen();
+        this.dismissNarrowCodeSidebar();
         const uri = new URI(rawUri);
         const uriKey = uri.toString();
         const existing = this.codeEditorForUri(uriKey);
         if (existing) {
             this.pinCodeCenterWidget(existing);
             this.selectCodeCenterWidget(existing);
+            this.codeReviewCancellationTarget = existing;
             return;
         }
         const pinRequest = this.pendingPinnedEditors.begin(uriKey);
@@ -1656,6 +1986,7 @@ export class CodePart extends AgentWindowPart {
                 return;
             }
             this.pinOpenedCodeEditor(opened, uriKey);
+            this.codeReviewCancellationTarget = this.activeCodeCenterWidget;
         } finally {
             pinRequest.dispose();
         }
@@ -1694,6 +2025,42 @@ export class CodePart extends AgentWindowPart {
             event.preventDefault();
             event.stopImmediatePropagation();
             this.toggleCodePanel();
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        this.host.addDisposable(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
+    }
+
+    public installCodeSidebarShortcut(): void {
+        const narrowViewportQuery = window.matchMedia('(max-width: 900px)');
+        this.codeNarrowViewport = narrowViewportQuery.matches;
+        this.codeNarrowSidebarOpen = false;
+        const onViewportChanged = (): void => this.setCodeSidebarViewport(narrowViewportQuery.matches);
+        narrowViewportQuery.addEventListener('change', onViewportChanged);
+        this.host.addDisposable(Disposable.create(() =>
+            narrowViewportQuery.removeEventListener('change', onViewportChanged)));
+        const onKeyDown = (event: KeyboardEvent): void => {
+            if (!this.host.state.codeMode) {
+                return;
+            }
+            const togglePressed = (event.ctrlKey || event.metaKey)
+                && !event.altKey
+                && !event.shiftKey
+                && (event.key.toLocaleLowerCase() === 'b' || event.code === 'KeyB');
+            if (togglePressed) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                this.setCodeSidebarCollapsed(!this.isCodeSidebarCollapsed());
+                return;
+            }
+            if (event.key !== 'Escape' || !this.codeNarrowViewport || this.isCodeSidebarCollapsed()) {
+                return;
+            }
+            if (event.target instanceof Element && event.target.closest('.lm-Widget.dialogOverlay, #quick-input-container')) {
+                return;
+            }
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            this.setCodeSidebarCollapsed(true, true);
         };
         document.addEventListener('keydown', onKeyDown, true);
         this.host.addDisposable(Disposable.create(() => document.removeEventListener('keydown', onKeyDown, true)));
@@ -1792,6 +2159,7 @@ export class CodePart extends AgentWindowPart {
         } else if (event.key === 'End') {
             nextIndex = this.codeCenterWidgets.length - 1;
         }
+        this.cancelPendingCodeReviewOpen(this.codeCenterWidgets[nextIndex]);
         this.selectCodeCenterWidget(this.codeCenterWidgets[nextIndex], true);
     }
 
@@ -1812,6 +2180,13 @@ export class CodePart extends AgentWindowPart {
             return 'Settings';
         }
         if (widget instanceof EditorWidget) {
+            if (DiffUris.isDiffUri(widget.editor.uri)) {
+                const [, after] = DiffUris.decode(widget.editor.uri);
+                if (after?.scheme === TASK_REVIEW_RESOURCE_SCHEME) {
+                    const task = this.taskService.get(after.query);
+                    return `差分 · ${after.path.base}${task ? ` · ${task.title}` : ''}`;
+                }
+            }
             return codeTabLabel(
                 widget.editor.uri.path.toString(),
                 this.codeCenterWidgets
@@ -1822,13 +2197,157 @@ export class CodePart extends AgentWindowPart {
         return widget.title.label || widget.title.caption || 'Editor';
     }
 
+    public async openCodeTaskChanges(taskId: string): Promise<void> {
+        const task = this.taskService.get(taskId);
+        const root = this.host.sessions.workspaceRoot();
+        if (!task || task.changeSet?.source !== 'task-diff' || task.changeSet.files.length === 0 || !root) {
+            await this.messageService.error('このタスクの変更を表示できません。');
+            return;
+        }
+        if (task.workspaceUri && !this.host.sameWorkspaceUri(task.workspaceUri, root.resource.toString())) {
+            await this.messageService.error('このタスクは別のワークスペースで実行されました。');
+            return;
+        }
+        this.cancelPendingCodeReviewOpen();
+        this.host.closeCustomize(false);
+        this.detachCodeWidget(this.activeCodeSidebarWidget());
+        this.detachCodeWidget(this.codeGitGraphWidget);
+        this.ensureCodeFileIcons();
+        this.codeReviewTaskId = task.id;
+        this.codeReviewPath = undefined;
+        this.codeReviewError = undefined;
+        this.codeReviewLoadingPath = undefined;
+        this.codeChangeScope = 'task';
+        this.codeSidebarTab = 'git';
+        this.codeNarrowSidebarOpen = false;
+        const taskChoice = this.latestCodeReviewRequest.begin();
+        this.host.state.codeMode = true;
+        this.persistCodeLayout();
+        this.update();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        if (!taskChoice.isCurrent() || this.codeReviewTaskId !== task.id || this.codeChangeScope !== 'task') {
+            return;
+        }
+        await this.openCodeTaskFile(task, task.changeSet.files[0]);
+    }
+
+    protected async openCodeTaskFile(task: ExecutionTask, rawPath: string): Promise<void> {
+        const path = this.normalizeCodeTaskPath(rawPath);
+        const root = this.host.sessions.workspaceRoot();
+        const request = this.latestCodeReviewRequest.begin();
+        this.codeReviewCancellationTarget = undefined;
+        this.codeReviewPath = path ?? rawPath;
+        this.codeReviewError = undefined;
+        this.codeReviewLoadingPath = rawPath;
+        this.dismissNarrowCodeSidebar();
+        this.update();
+        if (!path || !root || !task.baselineSnapshotId || !task.endSnapshotId) {
+            this.codeReviewLoadingPath = undefined;
+            this.codeReviewError = '保存された変更を利用できません。';
+            this.update();
+            return;
+        }
+        try {
+            const comparison = await this.agentRuntimeServer.readGitSnapshotFile({
+                workspacePath: root.resource.path.fsPath(),
+                fromSnapshotId: task.baselineSnapshotId,
+                toSnapshotId: task.endSnapshotId,
+                path
+            });
+            if (!this.isCurrentCodeReviewRequest(request, task, path)) {
+                return;
+            }
+            if (comparison.source !== 'snapshot-file' || comparison.path !== path
+                || !comparison.before || !comparison.after) {
+                this.codeReviewError = comparison.error || '保存された変更を利用できません。';
+                return;
+            }
+            const before = this.host.taskReviewResourceResolver.register(
+                task.id,
+                path,
+                'before',
+                comparison.before.state === 'text' ? comparison.before.content ?? '' : ''
+            );
+            const after = this.host.taskReviewResourceResolver.register(
+                task.id,
+                path,
+                'after',
+                comparison.after.state === 'text' ? comparison.after.content ?? '' : ''
+            );
+            const diffUri = DiffUris.encode(before, after, `${path} (${task.title})`);
+            const uriKey = diffUri.toString();
+            const existing = this.codeEditorForUri(uriKey);
+            if (existing) {
+                this.pinCodeCenterWidget(existing);
+                this.selectCodeCenterWidget(existing);
+                return;
+            }
+            const pinRequest = this.pendingPinnedEditors.begin(uriKey);
+            this.codeReviewOpening = { uri: uriKey, request };
+            try {
+                const opened = await this.editorManager.open(diffUri, { mode: 'activate' });
+                if (!this.isCurrentCodeReviewRequest(request, task, path)) {
+                    this.restoreCodeReviewCancellationTarget();
+                    return;
+                }
+                if (pinRequest.isActive()) {
+                    this.pinOpenedCodeEditor(opened, uriKey);
+                }
+            } finally {
+                if (this.codeReviewOpening?.request === request) {
+                    this.codeReviewOpening = undefined;
+                }
+                pinRequest.dispose();
+            }
+        } catch (error) {
+            if (this.isCurrentCodeReviewRequest(request, task, path)) {
+                console.warn('[Poiesis] Could not open a saved Task comparison.', error);
+                this.codeReviewError = '保存された変更を開けませんでした。';
+            }
+        } finally {
+            if (this.isCurrentCodeReviewRequest(request, task, path)) {
+                this.codeReviewLoadingPath = undefined;
+                this.update();
+            }
+        }
+    }
+
+    protected async openCurrentTaskFile(rawPath: string): Promise<void> {
+        this.cancelPendingCodeReviewOpen();
+        this.dismissNarrowCodeSidebar();
+        this.update();
+        const path = this.normalizeCodeTaskPath(rawPath);
+        const workspace = this.host.sessions.workspaceRoot()?.resource;
+        const file = path && workspace ? workspace.resolve(path).normalizePath() : undefined;
+        if (!workspace || !file || !workspace.isEqualOrParent(file, false) || !await this.fileService.exists(file)) {
+            await this.messageService.error('現在のファイルがワークスペース内に見つかりません。');
+            return;
+        }
+        await this.openCodeFile(file.toString());
+        this.codeReviewCancellationTarget = this.activeCodeCenterWidget;
+    }
+
+    protected normalizeCodeTaskPath(rawPath: string): string | undefined {
+        const path = rawPath.replace(/\\/g, '/').replace(/^\.\//, '');
+        const segments = path.split('/');
+        return path && !path.includes('\0') && !path.includes('\r') && !path.includes('\n')
+            && !path.startsWith('/') && !/^[A-Za-z]:/.test(path)
+            && segments.every(segment => Boolean(segment) && segment !== '.' && segment !== '..')
+            ? segments.join('/')
+            : undefined;
+    }
+
     public async openCodeSettings(): Promise<void> {
+        this.cancelPendingCodeReviewOpen();
+        this.dismissNarrowCodeSidebar();
         const settings = await this.widgetManager.getOrCreateWidget(CodePart.SETTINGS_WIDGET_FACTORY_ID);
         this.registerCodeWidget(CodePart.SETTINGS_WIDGET_FACTORY_ID, settings);
         this.selectCodeCenterWidget(settings);
     }
 
     public async openCodeCitation(file: URI, startLine: number, endLine: number): Promise<void> {
+        this.cancelPendingCodeReviewOpen();
+        this.dismissNarrowCodeSidebar();
         this.host.closeCustomize(false);
         if (!this.host.state.codeMode) {
             this.ensureCodeFileIcons();
@@ -1850,12 +2369,15 @@ export class CodePart extends AgentWindowPart {
                 return;
             }
             this.pinOpenedCodeEditor(opened, uriKey);
+            this.codeReviewCancellationTarget = this.activeCodeCenterWidget;
         } finally {
             pinRequest.dispose();
         }
     }
 
     public async openCodeFile(rawUri: string): Promise<void> {
+        this.cancelPendingCodeReviewOpen();
+        this.dismissNarrowCodeSidebar();
         this.host.closeCustomize(false);
         if (!this.host.state.codeMode) {
             this.ensureCodeFileIcons();

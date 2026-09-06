@@ -224,6 +224,8 @@ export class CliAgentProvider implements AgentProvider {
             return;
         }
         run.state = 'completing';
+        run.phase = 'finalizing';
+        this.emitProgress(run, true);
         this.flushStdout(run);
         const successful = event.code === 0 && !event.signal;
         this.clearProgressTimer(run);

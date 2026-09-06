@@ -23,7 +23,7 @@ export const PoiesisTaskElapsed = ({
         ? Math.max(0, Math.floor((now - Date.parse(progress.lastOutputAt)) / 1_000))
         : undefined;
     const silentFor = outputAge ?? Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1_000));
-    const status = finalizing ? '成果を作成しています'
+    const status = finalizing ? '成果をまとめています'
         : activity ? activityStatus(activity)
             : outputAge !== undefined
                 ? `応答を待っています · 最終出力 ${outputAge}秒前`

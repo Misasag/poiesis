@@ -136,8 +136,8 @@ async function runAgentTask(page, prompt) {
     await page.keyboard.type(prompt, { delay: 1 });
     await page.waitForFunction(() => !document.querySelector('[aria-label="Agent へ送信"]')?.disabled);
     await page.click('[aria-label="Agent へ送信"]');
-    await page.waitForSelector('.poiesis-agent-window__task-state');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
+    await page.waitForSelector('.poiesis-agent-window__message-state');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state'));
     const state = await page.evaluate(() => ({
         lastMessage: [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')].at(-1)?.textContent?.trim() ?? '',
         error: document.querySelector('.poiesis-agent-window__message-error strong')?.textContent?.trim()

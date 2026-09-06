@@ -29,6 +29,38 @@ const { PendingEditorPins } = require(resolve(
     'agent-window',
     'pending-editor-pins.js'
 ));
+const {
+    codeSidebarContainsFocus,
+    isCodeSidebarVisible,
+    normalizeCodeLayoutState,
+    setCodeSidebarViewport,
+    setCodeSidebarVisibility,
+    shouldFocusCodeActivity
+} = require(resolve(
+    root,
+    'agent-window',
+    'lib',
+    'browser',
+    'agent-window',
+    'code-layout-state.js'
+));
+const { LatestCodeReviewRequest } = require(resolve(
+    root,
+    'agent-window',
+    'lib',
+    'browser',
+    'agent-window',
+    'latest-code-review-request.js'
+));
+const {
+    TaskReviewResourceResolver
+} = require(resolve(
+    root,
+    'agent-window',
+    'lib',
+    'browser',
+    'task-review-resource.js'
+));
 const { resolveBundledRipgrepPath } = require(resolve(
     root,
     'electron-app',
@@ -112,6 +144,130 @@ const replacementRequest = pendingPins.begin(delayedUri);
 staleRequest.dispose();
 assert.equal(pendingPins.has(delayedUri), true, 'A stale completion after disposal must not clear a later pin request.');
 replacementRequest.dispose();
+
+assert.deepEqual(normalizeCodeLayoutState(undefined), {
+    version: 1,
+    sidebarWidth: 260,
+    sidebarCollapsed: false,
+    sidebarTab: 'files',
+    graphExpanded: false
+});
+assert.deepEqual(normalizeCodeLayoutState({
+    version: 1,
+    sidebarWidth: 900,
+    sidebarCollapsed: true,
+    sidebarTab: 'git',
+    graphExpanded: true,
+    untouchedFutureValue: 'preserved outside this state'
+}), {
+    version: 1,
+    sidebarWidth: 520,
+    sidebarCollapsed: true,
+    sidebarTab: 'git',
+    graphExpanded: true
+});
+assert.equal(normalizeCodeLayoutState({ version: 1, sidebarWidth: Number.NaN }).sidebarWidth, 260);
+assert.equal(normalizeCodeLayoutState({ version: 1, sidebarTab: 'unknown' }).sidebarTab, 'files');
+assert.equal(normalizeCodeLayoutState({ version: 2, sidebarCollapsed: true }).sidebarCollapsed, false);
+
+let openWideSidebar = {
+    wideCollapsed: false,
+    narrowViewport: false,
+    narrowOpen: false
+};
+assert.equal(isCodeSidebarVisible(openWideSidebar), true);
+openWideSidebar = setCodeSidebarViewport(openWideSidebar, true);
+assert.equal(isCodeSidebarVisible(openWideSidebar), false,
+    'Entering a narrow viewport must leave the editor unobstructed.');
+let narrowTransition = setCodeSidebarVisibility(openWideSidebar, true);
+assert.equal(narrowTransition.persistWidePreference, false);
+assert.equal(isCodeSidebarVisible(narrowTransition.state), true);
+narrowTransition = setCodeSidebarVisibility(narrowTransition.state, false);
+assert.equal(narrowTransition.persistWidePreference, false,
+    'Dismissing the narrow overlay must not persist a wide collapse preference.');
+openWideSidebar = setCodeSidebarViewport(narrowTransition.state, false);
+assert.equal(isCodeSidebarVisible(openWideSidebar), true,
+    'A previously open wide sidebar must reopen after leaving the narrow viewport.');
+
+let collapsedWideSidebar = {
+    wideCollapsed: true,
+    narrowViewport: false,
+    narrowOpen: false
+};
+collapsedWideSidebar = setCodeSidebarViewport(collapsedWideSidebar, true);
+narrowTransition = setCodeSidebarVisibility(collapsedWideSidebar, true);
+narrowTransition = setCodeSidebarVisibility(narrowTransition.state, false);
+collapsedWideSidebar = setCodeSidebarViewport(narrowTransition.state, false);
+assert.equal(isCodeSidebarVisible(collapsedWideSidebar), false,
+    'A previously collapsed wide sidebar must remain collapsed after a narrow overlay closes.');
+const intentionalWideCollapse = setCodeSidebarVisibility({
+    wideCollapsed: false,
+    narrowViewport: false,
+    narrowOpen: false
+}, false);
+assert.equal(intentionalWideCollapse.persistWidePreference, true);
+assert.equal(intentionalWideCollapse.state.wideCollapsed, true);
+
+let sidebarAttached = true;
+const focusTarget = {};
+const focusWasInSidebar = codeSidebarContainsFocus({
+    contains: candidate => sidebarAttached && candidate === focusTarget
+}, focusTarget);
+sidebarAttached = false;
+assert.equal(focusWasInSidebar, true,
+    'Sidebar focus containment must be captured before the Theia widget is detached.');
+assert.equal(shouldFocusCodeActivity(true, false, focusWasInSidebar), true,
+    'Closing a focused sidebar must move focus to its visible Activity button.');
+assert.equal(shouldFocusCodeActivity(true, false, false), false,
+    'Closing from the editor must preserve editor focus.');
+
+const reviewRequests = new LatestCodeReviewRequest();
+let resolveHistoricalResponse;
+const historicalResponse = new Promise(resolveResponse => {
+    resolveHistoricalResponse = resolveResponse;
+});
+let selectedReviewTarget = 'unchanged';
+const historicalRequest = reviewRequests.begin();
+const deferredHistoricalOpen = historicalResponse.then(() => {
+    if (historicalRequest.isCurrent()) {
+        selectedReviewTarget = 'historical';
+    }
+});
+reviewRequests.cancel();
+selectedReviewTarget = 'current-file';
+resolveHistoricalResponse();
+await deferredHistoricalOpen;
+assert.equal(selectedReviewTarget, 'current-file',
+    'A late historical response must not reselect its diff after the current-file action.');
+const supersededTaskRequest = reviewRequests.begin();
+const latestTaskRequest = reviewRequests.begin();
+assert.equal(supersededTaskRequest.isCurrent(), false,
+    'Choosing another Task or changed file must supersede the earlier historical request.');
+assert.equal(latestTaskRequest.isCurrent(), true);
+
+const reviewResources = new TaskReviewResourceResolver();
+const reviewUri = reviewResources.register('task-visible-id', 'src/todo.js', 'before', 'saved before\n');
+const reviewResource = reviewResources.resolve(reviewUri);
+assert.equal(reviewResource.readOnly, true, 'Historical Task resources must be read-only.');
+assert.equal(reviewResource.saveContents, undefined, 'Historical Task resources must not expose a save operation.');
+assert.equal(await reviewResource.readContents(), 'saved before\n');
+assert.equal(reviewResources.getName(reviewUri), 'todo.js (変更前)');
+assert.equal(reviewResources.getLongName(reviewUri), 'src/todo.js (変更前)');
+assert.doesNotMatch(reviewResources.getLongName(reviewUri), /poiesis-task-review|[0-9a-f]{40}/i);
+
+const codeCss = readFileSync(resolve(root, 'agent-window', 'src', 'browser', 'style', 'code.css'), 'utf8');
+const resultsCss = readFileSync(resolve(root, 'agent-window', 'src', 'browser', 'style', 'results.css'), 'utf8');
+const responsiveCss = readFileSync(resolve(root, 'agent-window', 'src', 'browser', 'style', 'responsive.css'), 'utf8');
+assert.match(codeCss, /grid-template-columns: 44px var\(--poiesis-code-sidebar-width, 260px\) minmax\(0, 1fr\)/,
+    'The wide Code grid must retain the user-selected sidebar width.');
+assert.match(codeCss, /@media \(max-width: 900px\)[\s\S]*grid-template-columns: 44px minmax\(0, 1fr\)/,
+    'The narrow Code grid must overlay the sidebar without squeezing the editor.');
+assert.match(codeCss, /\.poiesis-agent-window__code\.sidebar-collapsed[\s\S]*grid-template-columns: 44px 0 minmax\(0, 1fr\)/,
+    'The collapsed Code grid must return sidebar width to the editor.');
+assert.doesNotMatch(resultsCss, /\.poiesis-agent-window__code\s*\{[\s\S]*?grid-template-columns/,
+    'Code grid ownership must not leak into Results CSS.');
+assert.doesNotMatch(responsiveCss, /\.poiesis-agent-window__code\s*\{[\s\S]*?grid-template-columns/,
+    'Responsive CSS must not override the Code grid.');
 
 const packagedRgPath = 'C:\\Program Files\\Poiesis\\resources\\app.asar\\lib\\backend\\native\\rg.exe';
 assert.equal(

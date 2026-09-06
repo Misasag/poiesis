@@ -80,6 +80,26 @@ export interface GitChangeSetCapture {
     error?: string;
 }
 
+export interface GitSnapshotFileRequest {
+    workspacePath: string;
+    fromSnapshotId: string;
+    toSnapshotId: string;
+    path: string;
+}
+
+export interface GitSnapshotFileContent {
+    state: 'text' | 'missing';
+    content?: string;
+}
+
+export interface GitSnapshotFileCapture {
+    source: 'snapshot-file' | 'unavailable';
+    path?: string;
+    before?: GitSnapshotFileContent;
+    after?: GitSnapshotFileContent;
+    error?: string;
+}
+
 export interface CodexExecutionRequest {
     executionId: string;
     providerId: KnownCliId;
@@ -117,6 +137,7 @@ export interface AgentRuntimeServer extends RpcServer<AgentRuntimeClient> {
     captureGitSnapshot(request: GitSnapshotRequest): Promise<GitSnapshotCapture>;
     captureGitChangeSet(request: GitChangeSetRequest): Promise<GitChangeSetCapture>;
     captureGitChangeSetBetween(request: GitChangeSetBetweenRequest): Promise<GitChangeSetCapture>;
+    readGitSnapshotFile(request: GitSnapshotFileRequest): Promise<GitSnapshotFileCapture>;
     runCodex(request: CodexExecutionRequest): Promise<void>;
     cancelCodex(executionId: string): Promise<void>;
     browseFolders(request: FolderBrowserRequest): Promise<FolderBrowserResult>;

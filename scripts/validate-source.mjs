@@ -25,6 +25,7 @@ const agentWindowPartFiles = [
     'agent-window/src/browser/agent-window/agent-part.tsx',
     'agent-window/src/browser/agent-window/results-part.tsx',
     'agent-window/src/browser/agent-window/code-part.tsx',
+    'agent-window/src/browser/agent-window/code-layout-state.ts',
     'agent-window/src/browser/agent-window/customize-part.tsx',
     'agent-window/src/browser/agent-window/settings-part.tsx'
 ];
@@ -129,6 +130,7 @@ const sessionRestoreBackgroundResultsTest = await read('scripts/test-session-res
 const resultsContinuitySmoke = await read('scripts/smoke-results-continuity.mjs');
 const electronSmoke = await read('scripts/smoke-electron.mjs');
 const agentRichContentSmoke = await read('scripts/smoke-agent-rich-content.mjs');
+const agentWorkflowSmoke = await read('scripts/smoke-agent-workflow.mjs');
 const markdownSmoke = await read('scripts/smoke-markdown.mjs');
 const resultsDocumentSmoke = await read('scripts/smoke-results-document.mjs');
 const resultsQuestionSmoke = await read('scripts/smoke-results-question.mjs');
@@ -1616,7 +1618,8 @@ for (const marker of [
     'const silentFor = outputAge ??',
     'silentFor >= 60',
     '（60秒以上出力がありません）',
-    "finalizing ? '成果を作成しています'",
+    "finalizing ? '成果をまとめています'",
+    "runningMessage?.runProgress?.phase === 'finalizing'",
     'const quiet = !finalizing && silentFor >= 60',
     'コマンド実行中',
     '思考中',
@@ -1626,9 +1629,13 @@ for (const marker of [
 ]) {
     assert.ok(agentWidget.includes(marker), `Honest live run status is missing ${marker}`);
 }
+assert.ok(providerSource.includes("phase: 'starting' | 'waiting' | 'activity' | 'finalizing'")
+    && cliProvider.includes("run.phase = 'finalizing'")
+    && cliProvider.includes('this.emitProgress(run, true)'),
+    'The provider must expose its non-cancellable finalization phase to the composer');
 for (const marker of [
     '.poiesis-agent-window__run-pulse',
-    '@keyframes poiesis-run-pulse',
+    'box-shadow: 0 0 0 2px var(--poiesis-focus-ring-soft);',
     '.poiesis-agent-window__diagnostics pre',
     'max-height: 160px;',
     '@media (prefers-reduced-motion: reduce)',
@@ -1661,11 +1668,11 @@ for (const marker of [
     'keyCode: nativeEvent.keyCode',
     'event.currentTarget.value',
     'progress={message.runProgress}',
-    "activity={[...runningTask.activities ?? []].reverse().find(activity => activity.status === 'running')}",
+    "activity={[...runningTask!.activities ?? []].reverse()",
     'finalizing={finalizingTask}',
     '!finalizingTask && message.runProgress?.diagnostics',
     '<summary>診断ログ</summary>',
-    '<strong>何を作りますか?</strong>'
+    '<h1>何を作りますか？</h1>'
 ]) {
     assert.ok(agentWidget.includes(marker), `Composer UX wiring is missing ${marker}`);
 }
@@ -2099,8 +2106,9 @@ for (const marker of [
     'session.requirementDraftExplicit = true',
     "const requirementChoice: ExecutionTask['requirementChoice']",
     'session.requirementDraftExplicit = false',
-    "triggerLabel: `要件: ${requirement.title}`",
-    "label: '新しい要件として送信'",
+    "triggerLabel: `成果: ${requirement.title}`",
+    "label: '自動で関連付ける'",
+    "label: '新しい成果として送信'",
     'this.requirementService.create(session.id, taskTitleForRequest(request))',
     "this.renderResultsAuxiliaryHeader('成果'",
     '<h1 data-result-title={title} title={title}>{title}</h1>',
@@ -2109,8 +2117,8 @@ for (const marker of [
     'this.requirementService.splitTaskToNew(taskId)',
     'this.beginSplitRequirementRename(requirement);',
     'this.requirementClassificationService.undo(taskId)',
-    '新しい要件「{title}」として分けました',
-    '元の要件に戻しました',
+    '新しい成果「{title}」として分けました',
+    '元の成果に戻しました',
     '自動で分けました',
     'input?.select();',
     "他のスコープに Skill はありません: {emptyRoots.join('、')}",
@@ -2119,8 +2127,9 @@ for (const marker of [
     assert.ok(agentWidget.includes(marker), `Requirement UI is missing ${marker}`);
 }
 const requirementPillSource = agentWidget.match(/protected renderRequirementPill\([\s\S]*?\n    protected renderNewAgentContext/)?.[0] ?? '';
-assert.ok(requirementPillSource.indexOf("group: '新規'") < requirementPillSource.indexOf("group: 'このセッションの要件'"),
-    'The new Requirement group must be listed before session Requirements');
+assert.ok(requirementPillSource.indexOf("group: '関連付け'") < requirementPillSource.indexOf("group: '新規'")
+    && requirementPillSource.indexOf("group: '新規'") < requirementPillSource.indexOf("group: 'この会話の成果'"),
+    'Automatic association, new Results, and existing Results must keep their intended order');
 for (const marker of [
     '<strong>要件の自動分類</strong>',
     '判定に迷う場合は現在の要件を継続します。',
@@ -2393,7 +2402,7 @@ for (const marker of [
     'pointer-events: none',
     '--poiesis-chrome-bg: #181918',
     '--poiesis-chrome-panel: #1d1e1c',
-    'grid-template-columns: var(--poiesis-rail-width, 258px) minmax(0, 1fr)',
+    'grid-template-columns: var(--poiesis-rail-width, 232px) minmax(0, 1fr)',
     '--poiesis-chrome-muted: #92948d',
     '--poiesis-results-muted: #9aa5bd',
     ':is(button, [tabindex]):focus-visible',
@@ -2455,6 +2464,9 @@ for (const marker of [
     '.poiesis-agent-window__composer',
     '.poiesis-agent-window__new-agent-empty',
     '.poiesis-agent-window__new-agent-context',
+    '.poiesis-agent-window__composer-tail',
+    '.poiesis-agent-window__latest',
+    '.poiesis-agent-window__stop',
     '.poiesis-agent-window__content--initializing',
     '.poiesis-agent-window__initializing',
     '.poiesis-agent-window__repository-picker',
@@ -2486,18 +2498,29 @@ assert.match(
 );
 assert.match(agentStyles, /\.poiesis-agent-window__content\s*\{[\s\S]*?font-size:\s*13px;[\s\S]*?zoom:\s*var\(--poiesis-ui-font-scale, 1\);/,
     'Poiesis chrome must use the raised default scale');
-assert.match(agentStyles, /\.poiesis-agent-window__message,[\s\S]*?font-size:\s*14px;/,
-    'Agent conversation text must be at least 14px');
-assert.ok(agentStyles.includes('--poiesis-agent-conversation-width: min(78vw, 960px)'),
-    'Agent conversation must use the responsive 960px width cap');
+assert.match(agentStyles, /\.poiesis-agent-window__message,[\s\S]*?font-size:\s*15px;/,
+    'Agent conversation text must be at least 15px');
+assert.ok(agentStyles.includes('--poiesis-agent-conversation-width: min(100%, 784px)'),
+    'Agent conversation must use the readable 784px width cap');
 assert.match(agentStyles, /\.poiesis-agent-window__messages-inner\s*\{[^}]*max-width:\s*var\(--poiesis-agent-conversation-width\);/,
     'Agent messages must use the expanded conversation width');
 assert.match(agentStyles, /\.poiesis-agent-window__composer\s*\{[^}]*max-width:\s*var\(--poiesis-agent-conversation-width\);/,
     'Agent composer must stay aligned with the expanded conversation width');
 assert.ok(!/font-size:\s*(?:8|9|10|11)px;/.test(agentStyles), 'Poiesis chrome text must not fall below the 12px CSS floor');
 assert.ok(!agentStyles.includes('.poiesis-agent-window__composer-tools'), 'Deferred composer tool styles must not remain');
-assert.match(agentStyles, /@media \(max-width: 1279px\)[\s\S]*?\.poiesis-agent-window__composer\s*\{[^}]*width:\s*min\(var\(--poiesis-agent-conversation-width\), calc\(100% - 32px\)\);/,
+assert.match(agentStyles, /@media \(max-width: 1279px\)[\s\S]*?\.poiesis-agent-window__composer\s*\{[^}]*width:\s*min\(var\(--poiesis-agent-conversation-width\), calc\(100% - 40px\)\);/,
     'Agent composer must shrink fluidly between the native minimum and the design floor');
+for (const marker of [
+    'POIESIS_AGENT_TEST_REPLIES',
+    '.poiesis-agent-window__new-agent-empty h1',
+    '.poiesis-agent-window__message-state[data-phase="running"]',
+    '.poiesis-agent-window__latest',
+    '[aria-label="成果の関連付け"]',
+    'restoredSelection',
+    'horizontalOverflow'
+]) {
+    assert.ok(agentWorkflowSmoke.includes(marker), `Agent workflow smoke is missing ${marker}`);
+}
 for (const marker of [
     'renderShortcutsOverlay()',
     'shortcutsOverlayVisible',

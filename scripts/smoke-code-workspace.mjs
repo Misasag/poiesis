@@ -80,6 +80,32 @@ try {
     assert(initialEditorTabs.length === 0,
         `Code workspace smoke requires a fresh profile with no restored editor tabs: ${JSON.stringify(initialEditorTabs)}.`);
 
+    await page.focus('.poiesis-agent-window__code-control');
+    const editorWidthWithSidebar = await page.$eval('.poiesis-agent-window__code-editor', element => element.getBoundingClientRect().width);
+    await page.keyboard.down('Control');
+    await page.keyboard.press('B');
+    await page.keyboard.up('Control');
+    await page.waitForSelector('.poiesis-agent-window__code.sidebar-collapsed');
+    const editorWidthWithoutSidebar = await page.$eval('.poiesis-agent-window__code-editor', element => element.getBoundingClientRect().width);
+    assert(editorWidthWithoutSidebar > editorWidthWithSidebar,
+        `Ctrl+B did not return sidebar width to the editor: ${editorWidthWithSidebar} -> ${editorWidthWithoutSidebar}.`);
+    assert(await page.$eval('.poiesis-agent-window__code-control', element => element === document.activeElement),
+        'Ctrl+B did not preserve focus outside the collapsed sidebar.');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('B');
+    await page.keyboard.up('Control');
+    await page.waitForSelector('.poiesis-agent-window__code:not(.sidebar-collapsed)');
+    const storedLayout = await page.evaluate(() => {
+        const key = Object.keys(localStorage).find(candidate => candidate.endsWith(':poiesis.code-layout.v1'));
+        return key ? JSON.parse(localStorage.getItem(key) ?? '{}') : undefined;
+    });
+    assert(storedLayout?.sidebarCollapsed === false && storedLayout?.sidebarTab === 'files',
+        `Code sidebar state was not persisted: ${JSON.stringify(storedLayout)}.`);
+    await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Explorer"]', element => element.click());
+    await page.waitForSelector('.poiesis-agent-window__code.sidebar-collapsed');
+    await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Explorer"]', element => element.click());
+    await page.waitForSelector('.poiesis-agent-window__code:not(.sidebar-collapsed)');
+
     await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Search"]', element => element.click());
     await page.waitForSelector('#search-input-field');
     await replaceText(page, '#search-input-field', searchMarker);
@@ -102,8 +128,10 @@ try {
     await page.keyboard.press('Escape');
 
     await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Explorer"]', element => element.click());
-    await page.waitForSelector('.poiesis-agent-window__code-sidebar-actions button[aria-label="Explorer を更新"]');
-    await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="Explorer を更新"]', element => element.click());
+    await page.waitForSelector('.poiesis-agent-window__code-explorer-more button[aria-label="その他の操作"]');
+    await page.$eval('.poiesis-agent-window__code-explorer-more button[aria-label="その他の操作"]', element => element.click());
+    await page.waitForSelector('.poiesis-agent-window__code-explorer-menu [role="menuitem"]');
+    await clickText(page, '.poiesis-agent-window__code-explorer-menu [role="menuitem"]', 'Explorer を更新');
     await expandTreeDirectory(page, alphaDirectoryName);
     await clickTreePath(page, `${alphaDirectoryName}/config.js`, 2);
     await page.waitForFunction(directory => document.querySelectorAll('.poiesis-agent-window__code-editor-tab').length === 1

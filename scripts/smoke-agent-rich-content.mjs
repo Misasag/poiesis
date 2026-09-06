@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import puppeteer from 'puppeteer-core';
+import { DURABLE_SESSION_KEY, DURABLE_SESSION_MIGRATION_KEY, waitForDurableWritesToSettle, writeDurableValue } from './poiesis-smoke-state.mjs';
 
 const root = process.cwd();
 const timeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
@@ -231,17 +232,15 @@ try {
         layouts.push(await assertLayout(page, `${size.width}x${size.height}`));
     }
     layouts.push(await maximizeAndAssert(page));
-    assert(layouts[0].conversationWidth > 680,
-        `Conversation width did not expand beyond the previous 680px limit: ${JSON.stringify(layouts)}`);
-    assert(layouts[1].conversationWidth >= layouts[0].conversationWidth,
-        `Conversation width shrank as the viewport grew: ${JSON.stringify(layouts)}`);
-    assert(Math.abs(layouts[1].conversationWidth - 960) <= 2
-        && Math.abs(layouts[2].conversationWidth - 960) <= 2,
+    assert(layouts[0].conversationWidth >= 760,
+        `Conversation width is too narrow for the reading layout: ${JSON.stringify(layouts)}`);
+    assert(Math.abs(layouts[1].conversationWidth - 784) <= 2
+        && Math.abs(layouts[2].conversationWidth - 784) <= 2,
     `Conversation width cap did not hold at large sizes: ${JSON.stringify(layouts)}`);
 
     await page.click('.poiesis-markdown img[alt="workspace image"]');
     await waitForCodeTab(page, 'workspace-image.svg');
-    await page.click('[aria-label="Agentへ戻る"]');
+    await page.click('[aria-label="Agent に戻る"]');
     await page.waitForSelector('.poiesis-agent-window__agent');
     await page.click('[aria-label="preview.html を Code で開く"]');
     await waitForCodeTab(page, 'preview.html');
@@ -261,8 +260,7 @@ try {
         reload: true,
         imageOpen: 'workspace-image.svg',
         htmlOpen: 'preview.html',
-        previousConversationLimit: 680,
-        conversationWidthCap: 960,
+        conversationWidthCap: 784,
         layouts
     })}`);
 } catch (error) {
@@ -276,9 +274,7 @@ try {
 
 async function installFixture(page, workspacePath) {
     const timestamp = Date.now();
-    await page.evaluate(fixture => {
-        const key = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
-        localStorage.setItem(key, JSON.stringify({
+    const stored = ((fixture) => ({
             version: 1,
             selectedSessionId: 'agent-rich-content-session',
             railWidth: 258,
@@ -329,10 +325,13 @@ async function installFixture(page, workspacePath) {
                 }],
                 resultsDrafts: []
             }]
-        }));
-        localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.migrated.v1', 'true');
-    }, { workspaceUri: pathToFileURL(workspacePath).toString(), timestamp });
-    await page.reload({ waitUntil: 'domcontentloaded' });
+        }))({ workspaceUri: pathToFileURL(workspacePath).toString(), timestamp });
+    const url = page.url();
+    await page.goto('about:blank', { waitUntil: 'load' });
+    await waitForDurableWritesToSettle(theiaConfig, timeout);
+    writeDurableValue(theiaConfig, DURABLE_SESSION_KEY, stored);
+    writeDurableValue(theiaConfig, DURABLE_SESSION_MIGRATION_KEY, true);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
     await waitForApp(page);
 }
 
@@ -381,8 +380,8 @@ async function assertLayout(page, label) {
     assert(snapshot.messages && snapshot.messagesInner && snapshot.composer && snapshot.card && snapshot.frame
         && snapshot.image && snapshot.codeBlock,
     `Rich content layout is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
-    assert(snapshot.messagesInner.width > 680 && snapshot.messagesInner.width <= 961,
-        `Conversation width is outside the expanded bounded range at ${label}: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.messagesInner.width >= 720 && snapshot.messagesInner.width <= 785,
+        `Conversation width is outside the readable bounded range at ${label}: ${JSON.stringify(snapshot)}`);
     assert(Math.abs(snapshot.messagesInner.width - snapshot.composer.width) <= 2,
         `Conversation and composer widths diverged at ${label}: ${JSON.stringify(snapshot)}`);
     assert(snapshot.card.left >= snapshot.messagesInner.left && snapshot.card.right <= snapshot.messagesInner.right + 1,

@@ -461,7 +461,7 @@ async function agentSendSnapshot(page) {
     const state = readDurableValue(theiaConfig, DURABLE_SESSION_KEY);
     const ui = await page.evaluate(() => ({
         userMessages: document.querySelectorAll('[aria-label="あなたのメッセージ"]').length,
-        taskRunning: Boolean(document.querySelector('.poiesis-agent-window__task-state')),
+        taskRunning: Boolean(document.querySelector('.poiesis-agent-window__message-state')),
         draft: document.querySelector('[aria-label="Agent へのメッセージ"]')?.value ?? ''
     }));
     return {
@@ -630,10 +630,10 @@ async function smokeFallback(page, diagnostics) {
     await page.keyboard.type('Create fallback-new.html for the fallback smoke.', { delay: 1 });
     await page.waitForFunction(() => !document.querySelector('[aria-label="Agent へ送信"]')?.disabled);
     await page.click('[aria-label="Agent へ送信"]');
-    await page.waitForSelector('.poiesis-agent-window__task-state');
+    await page.waitForSelector('.poiesis-agent-window__message-state');
     await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
     writeFileSync(resolve(workspace, 'fallback-new.html'), '<!doctype html>\n<title>Fallback smoke</title>\n', 'utf8');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
+    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state'));
     const persistedBeforeOpen = await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
         const task = state?.sessions?.[0]?.tasks?.at(-1);
         return task?.status === 'completed' && task.resultsDocument?.status === 'ready';

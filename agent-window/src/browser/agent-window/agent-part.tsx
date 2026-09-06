@@ -93,6 +93,12 @@ interface AgentRichContentState {
 }
 
 const MAX_AGENT_ACTIVITIES_PER_MESSAGE = 300;
+const MAX_TRANSIENT_AGENT_SCROLL_STATES = 40;
+
+interface AgentScrollState {
+    scrollTop: number;
+    follow: boolean;
+}
 
 export class AgentPart extends AgentWindowPart {
     protected readonly pendingSends = new Set<string>();
@@ -109,6 +115,16 @@ export class AgentPart extends AgentWindowPart {
 
     protected agentComposerSessionId?: string;
 
+    protected agentMessagesElement?: HTMLDivElement;
+
+    protected agentMessagesSessionId?: string;
+
+    protected readonly agentScrollStates = new Map<string, AgentScrollState>();
+
+    protected readonly agentLatestAffordances = new Set<string>();
+
+    protected agentFollowRevision = 0;
+
     public disposeAgentRichContent(): void {
         for (const content of this.agentRichContent.values()) {
             this.revokeAgentImageSources(content.imageSources);
@@ -123,82 +139,110 @@ export class AgentPart extends AgentWindowPart {
 
     public renderAgent(session: WindowAgentSession | undefined, runningTask?: ExecutionTask): React.ReactNode {
         const newAgent = Boolean(session && !session.hasUserMessage);
-        const finalizingTask = Boolean(runningTask && this.taskService.isFinalizing(runningTask.id));
+        const runningMessage = runningTask
+            ? session?.messages.find(message => message.taskId === runningTask.id && message.role === 'agent')
+            : undefined;
+        const finalizingTask = Boolean(runningTask && (this.taskService.isFinalizing(runningTask.id)
+            || runningMessage?.runProgress?.phase === 'finalizing'));
         const latestAgentMessageId = [...(session?.messages ?? [])].reverse()
             .find(message => message.role === 'agent')?.id;
         return (
             <section
                 id={session?.hasUserMessage ? 'poiesis-agent-panel' : undefined}
-                className='poiesis-agent-window__agent'
+                className={`poiesis-agent-window__agent${newAgent ? ' is-empty' : ''}`}
                 role={session?.hasUserMessage ? 'tabpanel' : undefined}
                 aria-labelledby={session?.hasUserMessage ? 'poiesis-agent-tab' : undefined}
                 aria-label={session?.hasUserMessage ? undefined : 'Agent の会話'}
             >
-                <div className='poiesis-agent-window__messages' aria-live='polite'>
+                <div
+                    key={`agent-messages-${session?.id ?? 'none'}`}
+                    className='poiesis-agent-window__messages'
+                    data-poiesis-session-id={session?.id}
+                    aria-busy={Boolean(runningTask)}
+                    aria-live='polite'
+                    aria-relevant='additions text'
+                    ref={this.setAgentMessagesElement}
+                    onScroll={event => this.handleAgentMessagesScroll(session?.id, event.currentTarget)}
+                >
                     <div className='poiesis-agent-window__messages-inner'>
                         {newAgent && session?.messages.length === 0 && (
                             <div className='poiesis-agent-window__new-agent-empty'>
-                                <span className='codicon codicon-comment-add' aria-hidden='true' />
-                                <strong>何を作りますか?</strong>
-                                <small>Repository と branch を確認して、Agent へ依頼します</small>
+                                <h1>何を作りますか？</h1>
                             </div>
                         )}
-                        {(session?.messages ?? []).map(message => (
-                            <section
-                                key={message.id}
-                                aria-label={message.role === 'user' ? 'あなたのメッセージ' : 'Agent のメッセージ'}
-                                className={message.role === 'user'
-                                    ? 'poiesis-agent-window__user-message'
-                                    : 'poiesis-agent-window__message'}
-                            >
-                                {message.role === 'agent' && this.renderAgentActivities(session, message)}
-                                {message.error ? (
-                                    <div className='poiesis-agent-window__message-error' role='alert'>
-                                        <strong>{message.content}</strong>
-                                        {message.errorDetails && (
-                                            <details>
-                                                <summary>詳細</summary>
-                                                <pre>{message.errorDetails}</pre>
-                                            </details>
-                                        )}
-                                        {message.taskId && (
-                                            <button type='button' onClick={() => void this.host.retryTask(message.taskId!)}>再試行</button>
-                                        )}
-                                    </div>
-                                ) : message.role === 'agent'
-                                    ? this.renderAgentMessage(session, message, message.id === latestAgentMessageId)
-                                    : <p>{message.content || '…'}</p>}
-                                {!message.complete && runningTask && runningTask.id === message.taskId && (
-                                    <div className='poiesis-agent-window__message-state'>
-                                        <PoiesisTaskElapsed
-                                            startedAt={runningTask.startedAt}
-                                            progress={message.runProgress}
-                                            activity={[...runningTask.activities ?? []].reverse().find(activity => activity.status === 'running')}
-                                            finalizing={finalizingTask}
-                                        />
-                                        {!finalizingTask && message.runProgress?.diagnostics && (
-                                            <details className='poiesis-agent-window__diagnostics'>
-                                                <summary>診断ログ</summary>
-                                                <pre>{message.runProgress.diagnostics.split(/\r?\n/).slice(-20).join('\n')}</pre>
-                                            </details>
-                                        )}
-                                    </div>
-                                )}
-                            </section>
-                        ))}
+                        {(session?.messages ?? []).map(message => {
+                            const agentMessage = message.role === 'agent';
+                            const messageTask = message.taskId ? this.taskService.get(message.taskId) : undefined;
+                            const activeTaskMessage = agentMessage && Boolean(runningTask && runningTask.id === message.taskId);
+                            return (
+                                <section
+                                    key={message.id}
+                                    aria-label={message.role === 'user' ? 'あなたのメッセージ' : 'Agent のメッセージ'}
+                                    className={message.role === 'user'
+                                        ? 'poiesis-agent-window__user-message'
+                                        : 'poiesis-agent-window__message'}
+                                    data-task-status={messageTask?.status}
+                                >
+                                    {activeTaskMessage && (
+                                        <div
+                                            className='poiesis-agent-window__message-state'
+                                            data-phase={finalizingTask ? 'finalizing' : 'running'}
+                                        >
+                                            <span className='poiesis-visually-hidden' role='status' aria-live='polite'>
+                                                {finalizingTask ? '成果をまとめています' : 'タスクを実行しています'}
+                                            </span>
+                                            <PoiesisTaskElapsed
+                                                startedAt={runningTask!.startedAt}
+                                                progress={message.runProgress}
+                                                activity={[...runningTask!.activities ?? []].reverse()
+                                                    .find(activity => activity.status === 'running')}
+                                                finalizing={finalizingTask}
+                                            />
+                                            {!finalizingTask && message.runProgress?.diagnostics && (
+                                                <details className='poiesis-agent-window__diagnostics'>
+                                                    <summary>診断ログ</summary>
+                                                    <pre>{message.runProgress.diagnostics.split(/\r?\n/).slice(-20).join('\n')}</pre>
+                                                </details>
+                                            )}
+                                        </div>
+                                    )}
+                                    {agentMessage && this.renderAgentActivities(session, message)}
+                                    {message.error ? (
+                                        <div className='poiesis-agent-window__message-error' role='alert'>
+                                            <strong>{message.content}</strong>
+                                            {message.errorDetails && (
+                                                <details>
+                                                    <summary>詳細</summary>
+                                                    <pre>{message.errorDetails}</pre>
+                                                </details>
+                                            )}
+                                            {message.taskId && (
+                                                <button type='button' onClick={() => void this.host.retryTask(message.taskId!)}>再試行</button>
+                                            )}
+                                        </div>
+                                    ) : agentMessage
+                                        ? this.renderAgentMessage(session, message, message.id === latestAgentMessageId)
+                                        : <p>{message.content || '…'}</p>}
+                                </section>
+                            );
+                        })}
                     </div>
                 </div>
-                {runningTask && (
-                    <div className='poiesis-agent-window__task-state' role='status'>
-                        <span>{finalizingTask ? '成果を作成中' : 'タスクを実行中'} · {runningTask.title}</span>
-                        {!finalizingTask && (
-                            <button type='button' onClick={() => void this.cancelRun()}>
-                                キャンセル
-                            </button>
-                        )}
-                    </div>
+                {session?.hasUserMessage && this.agentLatestAffordances.has(session.id) && (
+                    <button
+                        type='button'
+                        className='poiesis-agent-window__latest'
+                        onClick={() => this.scrollAgentToLatest()}
+                    >
+                        <span className='codicon codicon-arrow-down' aria-hidden='true' />
+                        最新へ
+                    </button>
                 )}
-                <section className='poiesis-agent-window__composer' aria-label='Agent の入力欄'>
+                <section
+                    className='poiesis-agent-window__composer'
+                    aria-label='Agent の入力欄'
+                    data-task-state={finalizingTask ? 'finalizing' : runningTask ? 'running' : 'idle'}
+                >
                     <PoiesisComposer
                         key={session?.id ?? 'no-session'}
                         elementRef={this.setAgentComposerInput}
@@ -221,18 +265,32 @@ export class AgentPart extends AgentWindowPart {
                         {session && newAgent && this.renderNewAgentContext(session)}
                         {session && !newAgent && this.host.renderAiRolePill('agent')}
                         {session && this.renderRequirementPill(session)}
-                        <button
-                            className='poiesis-agent-window__send'
-                            type='button'
-                            aria-label='Agent へ送信'
-                            title={runningTask ? 'タスクの実行中は送信できません' : undefined}
-                            disabled={!session?.workspaceUri || Boolean(runningTask) || !session.agentDraft.trim()}
-                            onClick={() => void this.sendAgentMessage()}
-                        >
-                            <span className='codicon codicon-arrow-up' aria-hidden='true' />
-                        </button>
+                        {runningTask && !finalizingTask ? (
+                            <button
+                                className='poiesis-agent-window__stop'
+                                type='button'
+                                aria-label='実行を停止'
+                                onClick={() => void this.cancelRun()}
+                            >
+                                <span className='codicon codicon-debug-stop' aria-hidden='true' />
+                                <span>停止</span>
+                            </button>
+                        ) : finalizingTask ? (
+                            <span className='poiesis-agent-window__finalizing' role='status'>成果をまとめています</span>
+                        ) : (
+                            <button
+                                className='poiesis-agent-window__send'
+                                type='button'
+                                aria-label='Agent へ送信'
+                                disabled={!session?.workspaceUri || !session.agentDraft.trim()}
+                                onClick={() => void this.sendAgentMessage()}
+                            >
+                                <span className='codicon codicon-arrow-up' aria-hidden='true' />
+                            </button>
+                        )}
                     </div>
                 </section>
+                <div className='poiesis-agent-window__composer-tail' aria-hidden='true' />
             </section>
         );
     }
@@ -240,22 +298,29 @@ export class AgentPart extends AgentWindowPart {
     protected renderRequirementPill(session: WindowAgentSession): React.ReactNode {
         const requirements = this.host.sessions.requirementsForSession(session);
         const currentId = this.requirementService.currentRequirementId(session.id);
-        const selected = session.requirementDraft && (session.requirementDraft === 'new'
+        const selectedRequirement = session.requirementDraft && (session.requirementDraft === 'new'
             || requirements.some(requirement => requirement.id === session.requirementDraft))
             ? session.requirementDraft
             : currentId ?? 'new';
+        const selected = session.requirementDraftExplicit ? selectedRequirement : 'auto';
         const options: PoiesisSelectOption[] = [
             {
+                value: 'auto',
+                label: '自動で関連付ける',
+                triggerLabel: '成果',
+                group: '関連付け'
+            },
+            {
                 value: 'new',
-                label: '新しい要件として送信',
-                triggerLabel: '要件: 新規',
+                label: '新しい成果として送信',
+                triggerLabel: '成果: 新規',
                 group: '新規'
             },
             ...requirements.map(requirement => ({
                 value: requirement.id,
-                label: `${requirement.title}（タスク ${requirement.taskIds.length}件）`,
-                triggerLabel: `要件: ${requirement.title}`,
-                group: 'このセッションの要件'
+                label: `${requirement.title}（${requirement.taskIds.length}件）`,
+                triggerLabel: `成果: ${requirement.title}`,
+                group: 'この会話の成果'
             }))
         ];
         return (
@@ -263,13 +328,17 @@ export class AgentPart extends AgentWindowPart {
                 <PoiesisSelect
                     value={selected}
                     options={options}
-                    ariaLabel='送信先の要件'
+                    ariaLabel='成果の関連付け'
                     popoverClassName='poiesis-requirement-pill__popover'
                     popoverMinWidth={280}
                     leadingIconClass='codicon-tag'
                     onChange={value => {
-                        session.requirementDraft = value === 'new' ? 'new' : value;
-                        session.requirementDraftExplicit = true;
+                        if (value === 'auto') {
+                            session.requirementDraftExplicit = false;
+                        } else {
+                            session.requirementDraft = value === 'new' ? 'new' : value;
+                            session.requirementDraftExplicit = true;
+                        }
                         void this.host.sessions.persistWindowState();
                         this.update();
                     }}
@@ -333,15 +402,22 @@ export class AgentPart extends AgentWindowPart {
             : 0;
         return (
             <>
-                {this.renderMarkdown(message.content, current?.imageSources, workspaceUri)}
+                {(message.complete || message.content.trim())
+                    ? this.renderMarkdown(message.content, current?.imageSources, workspaceUri)
+                    : null}
                 {current?.htmlPreviews.map((preview, index) =>
                     this.renderAgentHtmlPreview(messageKey, preview, index, isMostRecentAgentMessage))}
                 {(showChangeSummary || skillProposalCount > 0) && (
                     <div className='poiesis-agent-window__message-actions'>
                         {showChangeSummary && (
-                            <span className='poiesis-agent-window__diffstat-chip'>
+                            <button
+                                type='button'
+                                className='poiesis-agent-window__diffstat-chip'
+                                aria-label={`このタスクの変更を開く: ${diffstat!.fileCount} ファイル、追加 ${diffstat!.additions} 行、削除 ${diffstat!.deletions} 行`}
+                                onClick={() => void this.host.openCodeTaskChanges(task!.id)}
+                            >
                                 変更 {diffstat!.fileCount} ファイル · +{diffstat!.additions} −{diffstat!.deletions}
-                            </span>
+                            </button>
                         )}
                         {skillProposalCount > 0 && (
                             <span className='poiesis-agent-window__skill-proposal-notice'>
@@ -366,14 +442,14 @@ export class AgentPart extends AgentWindowPart {
         if (classification.undone) {
             return (
                 <div className='poiesis-agent-window__requirement-classification undone'>
-                    元の要件に戻しました
+                    元の成果に戻しました
                 </div>
             );
         }
         const title = this.requirementService.get(classification.appliedNewRequirementId)?.title ?? task.title;
         return (
             <div className='poiesis-agent-window__requirement-classification'>
-                <span>新しい要件「{title}」として分けました</span>
+                <span>新しい成果「{title}」として分けました</span>
                 <span aria-hidden='true'>·</span>
                 <button type='button' onClick={() => this.host.undoAutomaticRequirementSplit(task.id)}>戻す</button>
             </div>
@@ -397,48 +473,26 @@ export class AgentPart extends AgentWindowPart {
         const messageKey = `${session?.id ?? 'workspace'}:${message.id}`;
         const expanded = this.agentActivityExpanded.has(messageKey);
         const finished = task ? task.status !== 'running' : message.complete;
-        if (finished) {
-            const commandCount = activities.filter(activity => activity.kind === 'command').length;
-            const fileChangeCount = activities.filter(activity => activity.kind === 'file-change').length;
-            return (
-                <div className={`poiesis-agent-activity${expanded ? ' expanded' : ' collapsed'}`}>
-                    <button
-                        type='button'
-                        className='poiesis-agent-activity__summary'
-                        aria-expanded={expanded}
-                        onClick={() => this.toggleAgentActivity(messageKey)}
-                    >
-                        <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
-                        <span>
-                            作業ログ {activities.length}件 · コマンド {commandCount} · ファイル変更 {fileChangeCount}
-                        </span>
-                    </button>
-                    {expanded && (
-                        <div className='poiesis-agent-activity__rows'>
-                            {activities.map(activity => this.renderAgentActivityRow(activity))}
-                        </div>
-                    )}
-                </div>
-            );
-        }
-        const visibleActivities = expanded ? activities : activities.slice(-8);
+        const commandCount = activities.filter(activity => activity.kind === 'command').length;
+        const fileChangeCount = activities.filter(activity => activity.kind === 'file-change').length;
         return (
-            <div className='poiesis-agent-activity'>
-                <div className='poiesis-agent-activity__header'>
-                    <strong>作業ログ · {activities.length}件</strong>
-                    {activities.length > 8 && (
-                        <button
-                            type='button'
-                            aria-expanded={expanded}
-                            onClick={() => this.toggleAgentActivity(messageKey)}
-                        >
-                            {expanded ? '折りたたむ' : 'すべて表示'}
-                        </button>
-                    )}
-                </div>
-                <div className='poiesis-agent-activity__rows'>
-                    {visibleActivities.map(activity => this.renderAgentActivityRow(activity))}
-                </div>
+            <div className={`poiesis-agent-activity${expanded ? ' expanded' : ' collapsed'}${finished ? '' : ' running'}`}>
+                <button
+                    type='button'
+                    className='poiesis-agent-activity__summary'
+                    aria-expanded={expanded}
+                    onClick={() => this.toggleAgentActivity(messageKey)}
+                >
+                    <span className={`codicon codicon-chevron-${expanded ? 'down' : 'right'}`} aria-hidden='true' />
+                    <span>
+                        作業履歴 {activities.length}件 · コマンド {commandCount} · ファイル変更 {fileChangeCount}
+                    </span>
+                </button>
+                {expanded && (
+                    <div className='poiesis-agent-activity__rows'>
+                        {activities.map(activity => this.renderAgentActivityRow(activity))}
+                    </div>
+                )}
             </div>
         );
     }
@@ -450,7 +504,7 @@ export class AgentPart extends AgentWindowPart {
     protected renderAgentActivityRow(activity: AgentActivity): React.ReactNode {
         const icon = this.agentActivityIcon(activity);
         const statusIcon = activity.status === 'running'
-            ? 'codicon-loading codicon-modifier-spin'
+            ? 'codicon-circle-filled'
             : activity.status === 'failed' ? 'codicon-error' : 'codicon-check';
         const statusLabel = activity.status === 'running'
             ? '実行中'
@@ -1007,7 +1061,13 @@ export class AgentPart extends AgentWindowPart {
             session.title = this.host.sessions.titleForSession(content);
             session.hasUserMessage = true;
         }
+        this.rememberAgentScroll(session.id, {
+            scrollTop: this.agentMessagesElement?.scrollTop ?? 0,
+            follow: true
+        });
+        this.agentLatestAffordances.delete(session.id);
         this.update();
+        this.scheduleAgentFollow(session.id, true);
         await this.host.sessions.persistWindowState();
         await this.host.waitForCurrentCliDetection();
         if (!this.host.sessions.sessions.includes(session) || session.archived) {
@@ -1114,9 +1174,8 @@ export class AgentPart extends AgentWindowPart {
         if (!session) {
             return;
         }
-        const autoFollowActivities = event.type === 'activity'
-            && session.id === this.host.sessions.selectedSessionId
-            && this.isAgentMessagesNearBottom();
+        const autoFollow = session.id === this.host.sessions.selectedSessionId
+            && this.shouldFollowAgentMessages(session.id);
         if (event.type === 'task-started') {
             session.messages.push({ id: `agent-${event.taskId}`, role: 'agent', content: '', complete: false, taskId: event.taskId });
         } else if (event.type === 'activity') {
@@ -1149,22 +1208,122 @@ export class AgentPart extends AgentWindowPart {
             this.host.sessions.persistWindowState();
         }
         this.update();
-        if (autoFollowActivities) {
-            requestAnimationFrame(() => {
-                if (session.id !== this.host.sessions.selectedSessionId) {
-                    return;
-                }
-                const messages = this.node.querySelector<HTMLElement>('.poiesis-agent-window__messages');
-                if (messages) {
-                    messages.scrollTop = messages.scrollHeight;
-                }
-            });
+        if (autoFollow) {
+            this.scheduleAgentFollow(session.id);
         }
     }
 
     protected isAgentMessagesNearBottom(): boolean {
-        const messages = this.node.querySelector<HTMLElement>('.poiesis-agent-window__messages');
+        const messages = this.agentMessagesElement;
         return Boolean(messages && messages.scrollHeight - messages.scrollTop - messages.clientHeight <= 40);
+    }
+
+    protected shouldFollowAgentMessages(sessionId: string): boolean {
+        if (this.agentMessagesSessionId === sessionId && this.agentMessagesElement) {
+            return this.isAgentMessagesNearBottom();
+        }
+        return this.agentScrollStates.get(sessionId)?.follow ?? true;
+    }
+
+    protected readonly setAgentMessagesElement = (element: HTMLDivElement | null): void => {
+        if (!element) {
+            if (this.agentMessagesElement && this.agentMessagesSessionId) {
+                this.captureAgentMessagesScroll(this.agentMessagesSessionId, this.agentMessagesElement);
+            }
+            this.agentMessagesElement = undefined;
+            this.agentMessagesSessionId = undefined;
+            return;
+        }
+        const sessionId = element.dataset.poiesisSessionId;
+        this.agentMessagesElement = element;
+        this.agentMessagesSessionId = sessionId;
+        if (!sessionId) {
+            return;
+        }
+        const revision = ++this.agentFollowRevision;
+        requestAnimationFrame(() => {
+            if (revision !== this.agentFollowRevision
+                || this.agentMessagesElement !== element
+                || this.agentMessagesSessionId !== sessionId) {
+                return;
+            }
+            const saved = this.agentScrollStates.get(sessionId);
+            const maximum = Math.max(0, element.scrollHeight - element.clientHeight);
+            element.scrollTop = saved?.follow === false
+                ? Math.min(saved.scrollTop, maximum)
+                : element.scrollHeight;
+            this.captureAgentMessagesScroll(sessionId, element);
+        });
+    };
+
+    protected handleAgentMessagesScroll(sessionId: string | undefined, element: HTMLDivElement): void {
+        if (!sessionId || this.agentMessagesElement !== element) {
+            return;
+        }
+        this.captureAgentMessagesScroll(sessionId, element);
+    }
+
+    protected captureAgentMessagesScroll(sessionId: string, element: HTMLDivElement): void {
+        const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
+        const follow = distance <= 40;
+        this.rememberAgentScroll(sessionId, { scrollTop: element.scrollTop, follow });
+        const showLatest = !follow && element.scrollHeight > element.clientHeight + 1;
+        const changed = showLatest !== this.agentLatestAffordances.has(sessionId);
+        if (showLatest) {
+            this.agentLatestAffordances.add(sessionId);
+        } else {
+            this.agentLatestAffordances.delete(sessionId);
+        }
+        if (changed && sessionId === this.host.sessions.selectedSessionId) {
+            this.update();
+        }
+    }
+
+    protected rememberAgentScroll(sessionId: string, state: AgentScrollState): void {
+        this.agentScrollStates.delete(sessionId);
+        this.agentScrollStates.set(sessionId, state);
+        while (this.agentScrollStates.size > MAX_TRANSIENT_AGENT_SCROLL_STATES) {
+            const oldest = this.agentScrollStates.keys().next().value as string | undefined;
+            if (!oldest) {
+                break;
+            }
+            this.agentScrollStates.delete(oldest);
+            this.agentLatestAffordances.delete(oldest);
+        }
+    }
+
+    protected scheduleAgentFollow(sessionId: string, force = false): void {
+        if (force) {
+            this.rememberAgentScroll(sessionId, {
+                scrollTop: this.agentScrollStates.get(sessionId)?.scrollTop ?? 0,
+                follow: true
+            });
+        }
+        const revision = ++this.agentFollowRevision;
+        requestAnimationFrame(() => {
+            if (revision !== this.agentFollowRevision
+                || sessionId !== this.host.sessions.selectedSessionId
+                || this.agentMessagesSessionId !== sessionId
+                || !this.agentMessagesElement
+                || this.agentScrollStates.get(sessionId)?.follow === false) {
+                return;
+            }
+            this.agentMessagesElement.scrollTop = this.agentMessagesElement.scrollHeight;
+            this.captureAgentMessagesScroll(sessionId, this.agentMessagesElement);
+        });
+    }
+
+    protected scrollAgentToLatest(): void {
+        const sessionId = this.host.sessions.selectedSessionId;
+        const element = this.agentMessagesElement;
+        if (!sessionId || !element || this.agentMessagesSessionId !== sessionId) {
+            return;
+        }
+        this.rememberAgentScroll(sessionId, { scrollTop: element.scrollTop, follow: true });
+        this.agentLatestAffordances.delete(sessionId);
+        element.scrollTop = element.scrollHeight;
+        this.captureAgentMessagesScroll(sessionId, element);
+        this.update();
     }
 
     protected upsertAgentActivity(current: AgentActivity[] | undefined, incoming: AgentActivity): AgentActivity[] {

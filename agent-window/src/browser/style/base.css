@@ -63,7 +63,7 @@
     color: var(--poiesis-chrome-text);
     display: grid;
     gap: 0;
-    grid-template-columns: var(--poiesis-rail-width, 258px) minmax(0, 1fr);
+    grid-template-columns: var(--poiesis-rail-width, 232px) minmax(0, 1fr);
     height: 100%;
     margin: 0;
     max-width: none;
@@ -160,6 +160,20 @@
     height: 100%;
     min-height: 0;
     min-width: 0;
+    position: relative;
+}
+
+.poiesis-visually-hidden {
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
 }
 
 .poiesis-agent-window__app-header {

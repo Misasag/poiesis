@@ -151,8 +151,8 @@ try {
         : Promise.resolve(undefined);
     await page.focus('[aria-label="Agent へのメッセージ"]');
     await page.keyboard.press('Enter');
-    await page.waitForSelector('.poiesis-agent-window__task-state');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
+    await page.waitForSelector('.poiesis-agent-window__message-state');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state'));
     const agentModelArgs = await agentModelArgsPromise;
     if (useComposerPill) {
         pillChecks.ongoingAgent = await composerPillSnapshot(page, 'agent');
@@ -177,10 +177,10 @@ try {
         await fill(page, 'キャンセル動作の確認です。ファイルを変更せず、作業を始めてください。');
         await page.focus('[aria-label="Agent へのメッセージ"]');
         await page.keyboard.press('Enter');
-        await page.waitForSelector('.poiesis-agent-window__task-state');
+        await page.waitForSelector('.poiesis-agent-window__message-state');
         await new Promise(resolve => setTimeout(resolve, 750));
-        await clickText(page, '.poiesis-agent-window__task-state button', 'キャンセル');
-        await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__task-state'));
+        await page.click('[aria-label="実行を停止"]');
+        await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state'));
     }
 
     await clickText(page, '.poiesis-agent-window__tabs button', 'Results');

@@ -71,7 +71,7 @@ import { Requirement } from './requirement-model';
 import { RequirementService } from './requirement-service';
 import { RequirementClassificationService } from './requirement-classification-service';
 const SETTINGS_STORAGE_KEY = 'poiesis.settings.v1';
-const DEFAULT_RAIL_WIDTH = 258;
+const DEFAULT_RAIL_WIDTH = 232;
 const MIN_RAIL_WIDTH = 196;
 const MAX_RAIL_WIDTH = 420;
 const DEFAULT_CODE_SIDEBAR_WIDTH = 260;
@@ -94,6 +94,7 @@ import { ResultsPart } from './agent-window/results-part';
 import { AgentPart } from './agent-window/agent-part';
 import { HeaderPart } from './agent-window/header-part';
 import { RailPart } from './agent-window/rail-part';
+import { TaskReviewResourceResolver } from './task-review-resource';
 
 @injectable()
 export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
@@ -176,7 +177,8 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         @inject(ResultsQuestionService) public readonly resultsQuestionService: ResultsQuestionService,
         @inject(ResultsGenerationContext) public readonly resultsGenerationContext: ResultsGenerationContext,
         @inject(WorkspaceSkillService) public readonly workspaceSkillService: WorkspaceSkillService,
-        @inject(MessageService) public readonly messageService: MessageService
+        @inject(MessageService) public readonly messageService: MessageService,
+        @inject(TaskReviewResourceResolver) public readonly taskReviewResourceResolver: TaskReviewResourceResolver
     ) {
         super();
     }
@@ -281,12 +283,15 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     public detachCodeWidgets(): void { this.codePart.detachCodeWidgets(); }
     public installCodeEditorSaveShortcut(): void { this.codePart.installCodeEditorSaveShortcut(); }
     public installCodeTerminalShortcut(): void { this.codePart.installCodeTerminalShortcut(); }
+    public installCodeSidebarShortcut(): void { this.codePart.installCodeSidebarShortcut(); }
     public installCodeTabDropTarget(): void { this.codePart.installCodeTabDropTarget(); }
     public openCodeSettings(): Promise<void> { return this.codePart.openCodeSettings(); }
     public openCodeFile(rawUri: string): Promise<void> { return this.codePart.openCodeFile(rawUri); }
     public openCodeCitation(file: URI, startLine: number, endLine: number): Promise<void> {
         return this.codePart.openCodeCitation(file, startLine, endLine);
     }
+    public openCodeTaskChanges(taskId: string): Promise<void> { return this.codePart.openCodeTaskChanges(taskId); }
+    public restoreCodeLayout(): Promise<void> { return this.codePart.restoreCodeLayout(); }
     public disposeCodeResources(): void { this.codePart.disposeCodeResources(); }
 
     @postConstruct()
@@ -404,9 +409,13 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 this.update();
             } else if (this.state.explorerMoreVisible || this.state.openSessionMenuId) {
                 event.preventDefault();
+                const menuTrigger = this.state.openSessionMenuId
+                    ? this.node.querySelector<HTMLElement>(`[data-session-id="${CSS.escape(this.state.openSessionMenuId)}"] .poiesis-agent-window__session-menu-trigger`)
+                    : undefined;
                 this.state.explorerMoreVisible = false;
                 this.state.openSessionMenuId = undefined;
                 this.update();
+                requestAnimationFrame(() => menuTrigger?.focus());
             } else if (this.state.responsiveRailOpen) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -422,6 +431,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         this.installWorkspaceSkillSaveShortcut();
         this.installCodeEditorSaveShortcut();
         this.installCodeTerminalShortcut();
+        this.installCodeSidebarShortcut();
         this.installCodeTabDropTarget();
         this.codePart.installCodeStatusListeners();
         const receiveResultsMessage = (event: MessageEvent): void => this.handleResultsFrameMessage(event);
@@ -468,7 +478,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
             this.sessions.watchScmProvider(repository.provider);
         }
 
-        this.sessions.sessionsInitialization = this.restorePoiesisSettings()
+        this.sessions.sessionsInitialization = Promise.all([this.restorePoiesisSettings(), this.restoreCodeLayout()])
             .then(async () => {
                 void this.refreshCliDetection();
                 await this.sessions.initializeSessions();
@@ -520,9 +530,14 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 <main className='poiesis-agent-window__workspace'>
                     {this.renderHeader()}
                     <div className='poiesis-agent-window__viewport'>
-                        {this.state.codeMode
-                            ? this.renderCode()
-                            : this.state.customizeViewVisible
+                        <div
+                            className='poiesis-agent-window__conversation-view'
+                            aria-hidden={this.state.codeMode}
+                            style={this.state.codeMode ? {
+                                width: this.node.querySelector<HTMLElement>('.poiesis-agent-window__conversation-view')?.clientWidth
+                            } : undefined}
+                        >
+                            {this.state.customizeViewVisible
                                 ? this.renderCustomizeView()
                             : activeTab === 'agent'
                                 ? <>
@@ -545,6 +560,8 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                                     />
                                     {this.renderResults(session)}
                                 </>}
+                        </div>
+                        {this.state.codeMode && this.renderCode()}
                     </div>
                 </main>
                 {this.state.workspacePickerVisible && this.state.workspacePickerAnchor && this.renderWorkspacePicker()}

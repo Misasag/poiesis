@@ -323,7 +323,7 @@ try {
     }
     assert(!await page.$('.poiesis-agent-window__code-status-eol'), 'EOL status must be absent with no editor open');
     assert(!await page.$('.poiesis-agent-window__code-status-indentation'), 'Indentation status must be absent with no editor open');
-    for (const label of ['新しいファイル', '新しいフォルダー', 'Explorer を更新', 'フォルダーを折りたたむ']) {
+    for (const label of ['新しいファイル', '新しいフォルダー', 'その他の操作']) {
         assert(await page.$(`.poiesis-agent-window__code-sidebar-actions button[aria-label="${label}"]`), `Explorer action is missing: ${label}`);
     }
     const explorerWidth = await page.$eval('.poiesis-agent-window__code-sidebar', element => element.getBoundingClientRect().width);
@@ -332,7 +332,9 @@ try {
     await page.waitForFunction(width => document.querySelector('.poiesis-agent-window__code-sidebar')?.getBoundingClientRect().width === width + 12, {}, explorerWidth);
     await page.click('.poiesis-agent-window__code-sidebar-resize', { count: 2, delay: 80 });
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar')?.getBoundingClientRect().width === 260);
-    await page.click('.poiesis-agent-window__code-sidebar-actions button[aria-label="Explorer を更新"]');
+    await page.click('.poiesis-agent-window__code-explorer-more button[aria-label="その他の操作"]');
+    await page.waitForSelector('.poiesis-agent-window__code-explorer-menu[role="menu"]');
+    await click(page, '.poiesis-agent-window__code-explorer-menu [role="menuitem"]', 'Explorer を更新');
     await page.waitForSelector('#files .theia-FileStatNode');
     assert(await page.$('#files .theia-FileStatNode[title$=".gitignore"] .git-icon.file-icon'), 'Explorer must show a Git icon for .gitignore');
     const revealExplorerNode = async (label, align = 'end') => {
@@ -377,7 +379,9 @@ try {
         await revealExplorerNode(child);
     }
     assert(await page.$('#files .theia-FileStatNode[title$="smoke-ui.mjs"] .js-icon.file-icon'), 'Explorer must show a JavaScript icon for .js/.mjs files');
-    await page.click('.poiesis-agent-window__code-sidebar-actions button[aria-label="フォルダーを折りたたむ"]');
+    await page.click('.poiesis-agent-window__code-explorer-more button[aria-label="その他の操作"]');
+    await page.waitForSelector('.poiesis-agent-window__code-explorer-menu[role="menu"]');
+    await click(page, '.poiesis-agent-window__code-explorer-menu [role="menuitem"]', 'フォルダーを折りたたむ');
     await page.waitForFunction(() => ![...document.querySelectorAll('#files .theia-FileStatNode')]
         .some(element => element.getAttribute('title')?.endsWith('smoke-ui.mjs')));
     await page.click('.poiesis-agent-window__code-explorer-more button[aria-label="その他の操作"]');
@@ -457,6 +461,8 @@ try {
     assert(await page.evaluate(() => !window.getSelection()?.toString()), 'Changes accordion text was selected');
     await page.click('[data-node-id="workingTree"] + .noWrapInfo');
     await page.waitForFunction(() => !document.querySelector('[data-node-id="workingTree"]')?.classList.contains('theia-mod-collapsed'));
+    await page.waitForSelector('.poiesis-agent-window__code-git-graph-title[aria-expanded="false"]');
+    await page.click('.poiesis-agent-window__code-git-graph-title');
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-title[aria-expanded="true"]');
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-host #scm-history-graph-widget');
     await page.waitForSelector('.poiesis-agent-window__code-git-graph-host .scm-history-graph-row svg');

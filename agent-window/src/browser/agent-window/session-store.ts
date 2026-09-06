@@ -92,7 +92,7 @@ export const RESULTS_QA_PANEL_STORAGE_KEY = 'poiesis.results-qa-panel.sessions.v
 
 export { MAX_PERSISTED_RESULTS_HTML_CHARS } from '../../common/session-persistence';
 
-export const DEFAULT_RAIL_WIDTH = 258;
+export const DEFAULT_RAIL_WIDTH = 232;
 
 export interface ChatMessage {
     id: string;

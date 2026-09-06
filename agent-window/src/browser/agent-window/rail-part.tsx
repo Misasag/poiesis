@@ -94,7 +94,7 @@ interface WorkspaceSessionGroup {
     archivedSessions: WindowAgentSession[];
 }
 
-const DEFAULT_RAIL_WIDTH = 258;
+const DEFAULT_RAIL_WIDTH = 232;
 const MIN_RAIL_WIDTH = 196;
 const MAX_RAIL_WIDTH = 420;
 
@@ -405,6 +405,7 @@ export class RailPart extends AgentWindowPart {
                 data-session-id={session.id}
                 data-session-archived={session.archived ? 'true' : 'false'}
                 data-session-pinned={session.pinned ? 'true' : 'false'}
+                data-session-state={state.kind}
             >
                 {renaming ? (
                     <PoiesisTextInput
@@ -438,12 +439,18 @@ export class RailPart extends AgentWindowPart {
                         onClick={() => session.archived ? this.restoreSession(session.id, true) : this.host.sessions.selectSession(session.id)}
                     >
                         {session.pinned && <span className='codicon codicon-pinned' aria-label='ピン留め済み' />}
-                        <span className={`poiesis-agent-window__status-dot ${state.kind}`} aria-hidden='true' />
                         <span className='poiesis-agent-window__session-copy'>
                             <span className='poiesis-agent-window__session-title'>{session.title}</span>
-                            {state.label && <small className={`poiesis-agent-window__session-meta ${state.kind}`}>{state.label}</small>}
+                            <span className='poiesis-agent-window__session-meta-row'>
+                                {state.kind !== 'idle' && (
+                                    <small className={`poiesis-agent-window__session-meta ${state.kind}`}>
+                                        <span className={`codicon ${this.sessionStateIcon(state.kind)}`} aria-hidden='true' />
+                                        <span>{state.label}</span>
+                                    </small>
+                                )}
+                                <time className='poiesis-agent-window__session-time'>{this.sessionMeta(session)}</time>
+                            </span>
                         </span>
-                        <time className='poiesis-agent-window__session-time'>{this.sessionMeta(session)}</time>
                     </button>
                 )}
                 {!renaming && (
@@ -1079,6 +1086,16 @@ export class RailPart extends AgentWindowPart {
             return { kind: 'idle', label: '完了' };
         }
         return { kind: 'idle', label: '' };
+    }
+
+    protected sessionStateIcon(kind: 'running' | 'failed' | 'unread' | 'cancelled' | 'idle'): string {
+        if (kind === 'failed') {
+            return 'codicon-error';
+        }
+        if (kind === 'cancelled') {
+            return 'codicon-circle-slash';
+        }
+        return 'codicon-circle-filled';
     }
 
     public renderFolderExplorer(): React.ReactNode {

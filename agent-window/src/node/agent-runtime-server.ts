@@ -13,6 +13,8 @@ import {
     GitChangeSetCapture,
     GitChangeSetRequest,
     GitSnapshotCapture,
+    GitSnapshotFileCapture,
+    GitSnapshotFileRequest,
     GitSnapshotRequest,
     KnownCliId
 } from '../common/agent-runtime-protocol';
@@ -104,6 +106,14 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
 
     async captureGitChangeSetBetween(request: GitChangeSetBetweenRequest): Promise<GitChangeSetCapture> {
         return this.snapshotStore.captureBetween(request);
+    }
+
+    async readGitSnapshotFile(request: GitSnapshotFileRequest): Promise<GitSnapshotFileCapture> {
+        if (!request.workspacePath) {
+            return { source: 'unavailable', error: 'ワークスペースを開いてください。' };
+        }
+        const workspacePath = await this.resolveWorkspace(request.workspacePath);
+        return this.snapshotStore.readFileComparison({ ...request, workspacePath });
     }
 
     async runCodex({ executionId, providerId, model, effort, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
