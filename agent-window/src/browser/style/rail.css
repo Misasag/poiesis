@@ -1368,3 +1368,135 @@
 .poiesis-folder-explorer button:disabled {
     cursor: not-allowed;
 }
+
+/* Agent revision 2: dense, unboxed navigation with neutral full-fill selection. */
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__rail-action {
+    color: var(--poiesis-chrome-copy);
+    font-size: 13px;
+    min-height: 31px;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__rail-action-icon,
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__rail-heading,
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__repository-open,
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__rail-toggle {
+    color: var(--poiesis-chrome-muted);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__rail-action.pressed {
+    background: var(--poiesis-selection-bg);
+    box-shadow: none;
+    color: var(--poiesis-chrome-text);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__workspace-name {
+    font-size: 13px;
+    min-height: 34px;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__workspace-name strong {
+    font-weight: 560;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__workspace-group.current .poiesis-agent-window__workspace-name > .codicon:first-child {
+    color: var(--poiesis-chrome-muted);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-row {
+    color: #b7b9b1;
+    margin-block: 1px;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-row.active {
+    background: var(--poiesis-selection-bg);
+    box-shadow: none;
+    color: var(--poiesis-chrome-text);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session {
+    min-height: 36px;
+    padding: 7px 9px;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-copy {
+    gap: 0 8px;
+    grid-template-columns: minmax(0, 1fr) max-content;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-title {
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-meta-row {
+    display: contents;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-meta {
+    grid-column: 1;
+    grid-row: 2;
+    margin-top: 3px;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-time {
+    align-self: center;
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-row.active .poiesis-agent-window__session,
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-row:not([data-session-state='idle']) .poiesis-agent-window__session {
+    align-items: flex-start;
+    min-height: 51px;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-row.active .poiesis-agent-window__session-title {
+    color: var(--poiesis-chrome-text);
+    font-weight: 560;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-time {
+    color: var(--poiesis-chrome-quiet);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-meta {
+    color: var(--poiesis-chrome-muted);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-meta.idle,
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-meta.unread {
+    color: var(--poiesis-success);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-meta.failed {
+    color: #d39a94;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__session-meta.cancelled {
+    color: #c3a676;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] :is(
+    .poiesis-agent-window__session-section-label,
+    .poiesis-agent-window__session-empty
+) {
+    color: var(--poiesis-chrome-quiet);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] :is(
+    .poiesis-agent-window__rail-footer,
+    .poiesis-agent-window__archived-toggle,
+    .poiesis-agent-window__workspace-picker-label,
+    .poiesis-agent-window__workspace-picker-item small,
+    .poiesis-agent-window__repository-group-label,
+    .poiesis-agent-window__repository-option small,
+    .poiesis-conversation-search__field input::placeholder,
+    .poiesis-conversation-search__excerpt small
+) {
+    color: var(--poiesis-chrome-muted);
+}

@@ -76,6 +76,38 @@
     width: 100%;
 }
 
+/* Approved Agent surface tokens. Results, Code, Customize, and Settings keep their own palettes. */
+.poiesis-agent-window__content[data-mode='agent'] {
+    --poiesis-chrome-bg: #181918;
+    --poiesis-chrome-panel: #20211f;
+    --poiesis-chrome-panel-raised: #242522;
+    --poiesis-chrome-hover: #2a2b28;
+    --poiesis-chrome-line: #30322d;
+    --poiesis-chrome-line-strong: #484a44;
+    --poiesis-chrome-text: #eeeee9;
+    --poiesis-chrome-copy: #d2d3cd;
+    --poiesis-chrome-muted: #a6a8a0;
+    --poiesis-chrome-quiet: #999c94;
+    --poiesis-control-border: #484a44;
+    --poiesis-focus-ring: #c28b60;
+    --poiesis-focus-ring-soft: rgb(194 139 96 / 15%);
+    --poiesis-selection-bg: #2c2d2a;
+    --poiesis-success: #acbba1;
+    --poiesis-shadow-composer: 0 8px 22px rgb(0 0 0 / 10%);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] :is(
+    button,
+    input,
+    select,
+    textarea,
+    [role='button'],
+    [tabindex]:not([tabindex='-1'])
+):focus-visible {
+    outline: 2px solid var(--poiesis-focus-ring);
+    outline-offset: 2px;
+}
+
 .poiesis-agent-window__content[data-mode='code'] {
     grid-template-columns: minmax(0, 1fr);
 }

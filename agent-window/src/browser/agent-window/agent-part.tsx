@@ -270,6 +270,9 @@ export class AgentPart extends AgentWindowPart {
                                         : 'poiesis-agent-window__message'}
                                     data-message-id={message.id}
                                     data-task-status={messageTask?.status}
+                                    data-short-lead={agentMessage && !message.error && this.hasShortOpeningParagraph(message.content)
+                                        ? 'true'
+                                        : undefined}
                                 >
                                     {activeTaskMessage && (
                                         <div
@@ -371,8 +374,7 @@ export class AgentPart extends AgentWindowPart {
                         }}
                     />
                         <div className='poiesis-agent-window__composer-footer'>
-                        {session && newAgent && this.renderNewAgentContext(session)}
-                        {session && !newAgent && this.host.renderAiRolePill('agent')}
+                        {session && this.renderNewAgentContext(session, newAgent)}
                         {session && this.renderRequirementPill(session)}
                         {runningTask && !finalizingTask ? (
                             <button
@@ -457,24 +459,31 @@ export class AgentPart extends AgentWindowPart {
         );
     }
 
-    protected renderNewAgentContext(session: WindowAgentSession): React.ReactNode {
+    protected renderNewAgentContext(session: WindowAgentSession, allowWorkspaceChange = true): React.ReactNode {
         const currentWorkspaceUri = this.host.sessions.workspaceRoot()?.resource.toString();
         const branch = this.host.sameWorkspaceUri(session.workspaceUri, currentWorkspaceUri)
             ? liveWorkspaceBranch(this.scmService, session.workspaceUri)
             : session.branch;
         return (
             <div className='poiesis-agent-window__new-agent-context'>
-                <button
-                    type='button'
-                    className='poiesis-agent-window__context-pill primary'
-                    aria-expanded={this.host.state.repositoryPickerVisible}
-                    aria-controls='poiesis-agent-window-repository-picker'
-                    onClick={event => this.host.toggleRepositoryPicker(event.currentTarget)}
-                >
-                    <span className='codicon codicon-folder' aria-hidden='true' />
-                    <span>{this.host.repositoryLabel(session.workspaceUri)}</span>
-                    <span className='codicon codicon-chevron-down' aria-hidden='true' />
-                </button>
+                {allowWorkspaceChange ? (
+                    <button
+                        type='button'
+                        className='poiesis-agent-window__context-pill primary'
+                        aria-expanded={this.host.state.repositoryPickerVisible}
+                        aria-controls='poiesis-agent-window-repository-picker'
+                        onClick={event => this.host.toggleRepositoryPicker(event.currentTarget)}
+                    >
+                        <span className='codicon codicon-folder' aria-hidden='true' />
+                        <span>{this.host.repositoryLabel(session.workspaceUri)}</span>
+                        <span className='codicon codicon-chevron-down' aria-hidden='true' />
+                    </button>
+                ) : (
+                    <span className='poiesis-agent-window__context-pill static' title='この会話のワークスペース'>
+                        <span className='codicon codicon-folder' aria-hidden='true' />
+                        <span>{this.host.repositoryLabel(session.workspaceUri)}</span>
+                    </span>
+                )}
                 {branch && (
                     <span className='poiesis-agent-window__context-pill static' title='現在のローカルブランチ'>
                         <span className='codicon codicon-git-branch' aria-hidden='true' />
@@ -629,13 +638,21 @@ export class AgentPart extends AgentWindowPart {
                 {activity.kind === 'message'
                     ? <p className='poiesis-agent-activity__message-detail' title={activity.detail}>{activity.detail}</p>
                     : <span className='poiesis-agent-activity__detail' title={activity.detail}>{activity.detail}</span>}
-                <span
-                    className={`poiesis-agent-activity__status poiesis-agent-activity__status--${activity.status} codicon ${statusIcon}`}
-                    aria-label={statusLabel}
-                    title={statusLabel}
-                />
+                <span className={`poiesis-agent-activity__status poiesis-agent-activity__status--${activity.status}`}>
+                    <span className={`codicon ${statusIcon}`} aria-hidden='true' />
+                    <span>{statusLabel}</span>
+                </span>
             </div>
         );
+    }
+
+    protected hasShortOpeningParagraph(content: string): boolean {
+        const normalized = content.replace(/\r\n?/g, '\n').trimStart();
+        const firstBlock = normalized.split(/\n\s*\n/, 1)[0]?.trim() ?? '';
+        if (!firstBlock || firstBlock.length > 120) {
+            return false;
+        }
+        return !/^(?: {0,3}(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s?|```|~~~)| {4}\S)/m.test(firstBlock);
     }
 
     protected agentActivityIcon(activity: AgentActivity): string {

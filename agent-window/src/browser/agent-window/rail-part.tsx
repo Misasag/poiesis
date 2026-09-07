@@ -534,6 +534,8 @@ export class RailPart extends AgentWindowPart {
         const renaming = session.id === this.host.state.renamingSessionId;
         const menuOpen = session.id === this.host.state.openSessionMenuId;
         const state = this.sessionState(session);
+        const showState = state.kind !== 'idle'
+            || (selected && session.activeTab === 'agent' && Boolean(state.label));
         const running = state.kind === 'running';
         const switchesWorkspace = Boolean(session.workspaceUri
             && !this.sameWorkspaceUri(session.workspaceUri, this.host.sessions.workspaceRoot()?.resource.toString()));
@@ -581,7 +583,7 @@ export class RailPart extends AgentWindowPart {
                         <span className='poiesis-agent-window__session-copy'>
                             <span className='poiesis-agent-window__session-title'>{session.title}</span>
                             <span className='poiesis-agent-window__session-meta-row'>
-                                {state.kind !== 'idle' && (
+                                {showState && (
                                     <small className={`poiesis-agent-window__session-meta ${state.kind}`}>
                                         <span className={`codicon ${this.sessionStateIcon(state.kind)}`} aria-hidden='true' />
                                         <span>{state.label}</span>
@@ -1428,6 +1430,9 @@ export class RailPart extends AgentWindowPart {
         }
         if (kind === 'draft') {
             return 'codicon-edit';
+        }
+        if (kind === 'idle') {
+            return 'codicon-check';
         }
         return 'codicon-circle-filled';
     }

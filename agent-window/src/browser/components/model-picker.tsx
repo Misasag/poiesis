@@ -346,6 +346,7 @@ export const ModelPicker = ({
                     ref={popoverRef}
                     id={pickerId}
                     className={`poiesis-model-picker__popover${customDraft ? ' custom-mode' : ''}`}
+                    data-ai-role={role}
                     role='dialog'
                     aria-modal='false'
                     aria-label={`${roleLabel} のモデルを選択`}

@@ -1,0 +1,1663 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Poiesis Agent画面 デザイン比較</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+      font-synthesis: none;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    body {
+      background: #111210;
+      color: #efeee9;
+    }
+
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    .icon-definitions {
+      height: 0;
+      overflow: hidden;
+      position: absolute;
+      width: 0;
+    }
+
+    .icon {
+      display: block;
+      fill: none;
+      flex: 0 0 auto;
+      height: 16px;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.6;
+      width: 16px;
+    }
+
+    .icon.small {
+      height: 14px;
+      width: 14px;
+    }
+
+    .review-shell {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      height: 100dvh;
+      min-height: 0;
+      min-width: 0;
+    }
+
+    .review-bar {
+      align-items: center;
+      background: #171816;
+      border-bottom: 1px solid #30312e;
+      display: flex;
+      gap: 14px;
+      min-height: 56px;
+      padding: 8px 14px;
+      position: relative;
+      z-index: 10;
+    }
+
+    .review-title-line {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .review-title-line h1 {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -.01em;
+      line-height: 1.35;
+      margin: 0;
+    }
+
+    .review-status {
+      border: 1px solid #464842;
+      border-radius: 999px;
+      color: #bfc1ba;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1;
+      padding: 4px 7px;
+      white-space: nowrap;
+    }
+
+    .review-note {
+      color: #a4a69f;
+      font-size: 12px;
+      line-height: 1.45;
+      margin: 0;
+      min-width: 0;
+    }
+
+    .review-note strong {
+      color: #c6c7c1;
+      font-weight: 520;
+    }
+
+    .review-toggle {
+      align-items: center;
+      border: 1px solid #454741;
+      border-radius: 8px;
+      display: flex;
+      flex: none;
+      gap: 3px;
+      padding: 3px;
+    }
+
+    .review-toggle button {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: #adafa8;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 520;
+      line-height: 1;
+      min-height: 30px;
+      min-width: 92px;
+      padding: 7px 11px;
+    }
+
+    .review-toggle button:hover {
+      background: #292a27;
+      color: #efeee9;
+    }
+
+    .review-toggle button[aria-pressed="true"] {
+      background: #eeeeea;
+      border-color: #eeeeea;
+      color: #20211f;
+    }
+
+    .review-toggle button:focus-visible {
+      outline: 2px solid #c28b60;
+      outline-offset: 2px;
+    }
+
+    .review-meta {
+      align-items: center;
+      display: flex;
+      flex: 1 1 auto;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .reference-open {
+      background: transparent;
+      border: 1px solid #454741;
+      border-radius: 7px;
+      color: #c7c8c2;
+      cursor: pointer;
+      flex: none;
+      font-size: 12px;
+      min-height: 32px;
+      padding: 6px 10px;
+    }
+
+    .reference-open:hover {
+      background: #252623;
+      color: #f0f0eb;
+    }
+
+    .reference-open:focus-visible,
+    .reference-dialog button:focus-visible,
+    .reference-dialog a:focus-visible {
+      outline: 2px solid #c28b60;
+      outline-offset: 2px;
+    }
+
+    .reference-dialog {
+      background: #1b1c1a;
+      border: 1px solid #444640;
+      border-radius: 12px;
+      color: #edede8;
+      max-height: min(82dvh, 780px);
+      max-width: min(1060px, calc(100vw - 32px));
+      padding: 0;
+      width: 100%;
+    }
+
+    .reference-dialog::backdrop {
+      background: rgb(5 6 5 / 72%);
+    }
+
+    .reference-dialog-inner {
+      max-height: inherit;
+      overflow: auto;
+      padding: 18px 20px 22px;
+    }
+
+    .reference-dialog-header {
+      align-items: center;
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .reference-dialog h2 {
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    .reference-close {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      border-radius: 6px;
+      color: #b7b9b1;
+      cursor: pointer;
+      display: inline-flex;
+      height: 32px;
+      justify-content: center;
+      padding: 0;
+      width: 32px;
+    }
+
+    .reference-close:hover {
+      background: #292a27;
+      color: #f0f0eb;
+    }
+
+    .reference-grid {
+      display: grid;
+      gap: 22px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .reference-figure {
+      margin: 0;
+      min-width: 0;
+    }
+
+    .reference-figure + .reference-figure {
+      border-left: 1px solid #343631;
+      padding-left: 22px;
+    }
+
+    .reference-figure img {
+      aspect-ratio: 16 / 10;
+      background: #10110f;
+      border: 1px solid #3d3f3a;
+      border-radius: 7px;
+      display: block;
+      height: auto;
+      object-fit: cover;
+      width: 100%;
+    }
+
+    .reference-figure h3 {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.5;
+      margin: 11px 0 2px;
+    }
+
+    .reference-context {
+      color: #a4a69f;
+      font-size: 12px;
+      line-height: 1.55;
+      margin: 0 0 9px;
+    }
+
+    .reference-points {
+      color: #d1d2cc;
+      font-size: 13px;
+      line-height: 1.65;
+      margin: 0 0 10px;
+      padding-left: 1.25em;
+    }
+
+    .reference-points li + li {
+      margin-top: 4px;
+    }
+
+    .reference-figure a {
+      color: #d8d9d3;
+      font-size: 12px;
+      text-underline-offset: 3px;
+    }
+
+    .preview-stage {
+      min-height: 0;
+      min-width: 0;
+      padding: 8px 12px 12px;
+    }
+
+    .product {
+      --canvas: #181918;
+      --rail: #20211f;
+      --surface: #20211f;
+      --raised: #242522;
+      --hover: #2a2b28;
+      --line: #30322d;
+      --line-strong: #484a44;
+      --text: #eeeee9;
+      --copy: #d2d3cd;
+      --muted: #a6a8a0;
+      --quiet: #999c94;
+      --accent: #c28b60;
+      --accent-soft: rgb(194 139 96 / 15%);
+      --selection: #2c2d2a;
+      --success: #acbba1;
+      --warning: #c3a676;
+      --error: #d39a94;
+      --rail-width: 232px;
+      --conversation-width: 784px;
+      --header-height: 50px;
+      --control-radius: 6px;
+      --panel-radius: 12px;
+      background: var(--canvas);
+      border: 1px solid #343531;
+      border-radius: 10px;
+      box-shadow: 0 18px 48px rgb(0 0 0 / 24%);
+      color: var(--text);
+      display: grid;
+      font-size: 13px;
+      grid-template-columns: var(--rail-width) minmax(0, 1fr);
+      height: 100%;
+      line-height: 1.48;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+      transition: grid-template-columns 160ms cubic-bezier(.2, 0, 0, 1);
+    }
+
+    .product[data-variant="baseline"] {
+      --canvas: #181918;
+      --rail: #1d1e1c;
+      --surface: #20211f;
+      --raised: #222320;
+      --hover: #2b2c29;
+      --line: #30312f;
+      --line-strong: #70726b;
+      --text: #efeee9;
+      --copy: #d7d6d0;
+      --muted: #92948d;
+      --quiet: #777a73;
+      --accent: #899784;
+      --accent-soft: rgb(137 151 132 / 16%);
+      --selection: #29302d;
+      --success: #a7b59a;
+      --selection-line: #52645b;
+      --conversation-width: 784px;
+      --header-height: 46px;
+    }
+
+    .product[data-variant="proposed"] {
+      border-color: #353732;
+      box-shadow: none;
+    }
+
+    .product.rail-collapsed {
+      grid-template-columns: 52px minmax(0, 1fr);
+    }
+
+    .product button,
+    .product textarea {
+      font: inherit;
+    }
+
+    .product button:focus-visible,
+    .product textarea:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .rail {
+      background: var(--rail);
+      border-right: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .rail-top {
+      display: grid;
+      gap: 3px;
+      padding: 9px 8px 7px;
+    }
+
+    .rail-controls {
+      display: flex;
+      justify-content: flex-end;
+      min-height: 30px;
+    }
+
+    .rail-toggle {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      border-radius: var(--control-radius);
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+      height: 30px;
+      justify-content: center;
+      padding: 0;
+      width: 30px;
+    }
+
+    .rail-toggle:hover {
+      background: var(--hover);
+      color: var(--text);
+    }
+
+    .rail-actions {
+      display: grid;
+      gap: 2px;
+    }
+
+    .rail-action {
+      align-items: center;
+      border-radius: var(--control-radius);
+      color: var(--copy);
+      display: flex;
+      font-size: 13px;
+      gap: 9px;
+      min-height: 31px;
+      padding: 5px 8px;
+      white-space: nowrap;
+    }
+
+    .rail-action .icon {
+      color: var(--muted);
+    }
+
+    .rail-heading {
+      align-items: center;
+      color: var(--muted);
+      display: flex;
+      font-size: 12px;
+      justify-content: space-between;
+      min-height: 31px;
+      padding: 8px 12px 5px;
+    }
+
+    .rail-heading .icon {
+      color: var(--quiet);
+    }
+
+    .sessions {
+      min-height: 0;
+      overflow: auto;
+      padding: 2px 7px 10px;
+      scrollbar-width: thin;
+    }
+
+    .workspace {
+      min-width: 0;
+    }
+
+    .workspace-name {
+      align-items: center;
+      color: #d2d1cb;
+      display: grid;
+      font-size: 13px;
+      gap: 7px;
+      grid-template-columns: 16px minmax(0, 1fr) 14px;
+      min-height: 34px;
+      padding: 5px 6px;
+    }
+
+    .workspace-name .folder-icon {
+      color: #bba17f;
+    }
+
+    .workspace-name-copy {
+      display: grid;
+      min-width: 0;
+    }
+
+    .workspace-name strong {
+      font-weight: 560;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .workspace-name small {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .session-section-label {
+      color: var(--quiet);
+      font-size: 12px;
+      line-height: 1.4;
+      margin: 7px 8px 3px 24px;
+    }
+
+    .session {
+      border-radius: 7px;
+      color: #adafa8;
+      display: grid;
+      gap: 2px;
+      margin: 2px 0 2px 18px;
+      min-height: 48px;
+      padding: 7px 8px;
+    }
+
+    .product[data-variant="proposed"] .workspace-name .folder-icon {
+      color: var(--muted);
+    }
+
+    .product[data-variant="proposed"] .session {
+      align-items: center;
+      color: #b7b9b1;
+      gap: 0 8px;
+      grid-template-columns: minmax(0, 1fr) max-content;
+      margin-block: 1px;
+      min-height: 36px;
+      padding: 7px 9px;
+    }
+
+    .product[data-variant="proposed"] .session.selected {
+      align-items: start;
+      grid-template-rows: auto auto;
+      min-height: 51px;
+    }
+
+    .session.selected {
+      background: var(--selection);
+      color: var(--text);
+    }
+
+    .product[data-variant="baseline"] .session.selected {
+      box-shadow: inset 2px 0 var(--selection-line);
+    }
+
+    .product[data-variant="proposed"] .session.selected .session-title {
+      color: var(--text);
+      font-weight: 560;
+    }
+
+    .product[data-variant="proposed"] .session-title {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .session-title {
+      font-size: 13px;
+      font-weight: 520;
+      line-height: 1.4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .session-meta {
+      align-items: center;
+      color: var(--muted);
+      display: flex;
+      font-size: 12px;
+      gap: 5px;
+      line-height: 1.4;
+    }
+
+    .session-meta .completed {
+      align-items: center;
+      color: var(--success);
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .session-meta time {
+      color: var(--quiet);
+      margin-left: auto;
+    }
+
+    .product[data-variant="proposed"] .session-meta {
+      display: contents;
+    }
+
+    .product[data-variant="proposed"] .session-meta .completed {
+      font-size: 12px;
+      grid-column: 1;
+      grid-row: 2;
+      margin-top: 3px;
+    }
+
+    .product[data-variant="proposed"] .session-meta time {
+      align-self: center;
+      grid-column: 2;
+      grid-row: 1;
+      margin-left: 0;
+    }
+
+    .rail-footer {
+      align-items: center;
+      color: var(--muted);
+      display: flex;
+      font-size: 12px;
+      justify-content: space-between;
+      min-height: 48px;
+      padding: 9px 14px 11px;
+    }
+
+    .rail-footer .settings {
+      align-items: center;
+      color: var(--muted);
+      display: inline-flex;
+      height: 28px;
+      justify-content: center;
+      width: 28px;
+    }
+
+    .product.rail-collapsed .rail-top {
+      padding-inline: 7px;
+    }
+
+    .product.rail-collapsed .rail-controls,
+    .product.rail-collapsed .rail-action {
+      justify-content: center;
+    }
+
+    .product.rail-collapsed .rail-action {
+      padding-inline: 0;
+    }
+
+    .product.rail-collapsed .rail-action span,
+    .product.rail-collapsed .rail-heading,
+    .product.rail-collapsed .sessions,
+    .product.rail-collapsed .rail-footer-label {
+      display: none;
+    }
+
+    .product.rail-collapsed .rail-footer {
+      justify-content: center;
+      padding-inline: 0;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: var(--header-height) minmax(0, 1fr);
+      min-height: 0;
+      min-width: 0;
+    }
+
+    .app-header {
+      align-items: center;
+      background: var(--canvas);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      min-width: 0;
+      padding: 7px 13px 7px 16px;
+    }
+
+    .breadcrumb {
+      align-items: center;
+      color: var(--muted);
+      display: flex;
+      font-size: 12px;
+      gap: 7px;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .breadcrumb span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .breadcrumb .workspace-crumb {
+      color: #b2b3ad;
+      flex: 0 1 auto;
+    }
+
+    .breadcrumb .branch-crumb {
+      align-items: center;
+      display: inline-flex;
+      flex: 0 1 auto;
+      gap: 5px;
+    }
+
+    .breadcrumb .separator {
+      color: #585a54;
+      flex: none;
+    }
+
+    .breadcrumb strong {
+      color: var(--muted);
+      font-weight: 520;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .product[data-variant="proposed"] .breadcrumb {
+      gap: 8px;
+    }
+
+    .product[data-variant="proposed"] .breadcrumb strong {
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 560;
+    }
+
+    .product[data-variant="proposed"] .breadcrumb .workspace-crumb,
+    .product[data-variant="proposed"] .breadcrumb .branch-crumb {
+      color: var(--muted);
+    }
+
+    .header-actions {
+      align-items: center;
+      display: flex;
+      flex: none;
+      gap: 6px;
+    }
+
+    .quiet-control,
+    .tabs span {
+      align-items: center;
+      border-radius: var(--control-radius);
+      color: #b8b9b3;
+      display: inline-flex;
+      font-size: 12px;
+      gap: 5px;
+      justify-content: center;
+      min-height: 30px;
+      padding: 5px 9px;
+    }
+
+    .quiet-control {
+      border: 1px solid transparent;
+    }
+
+    .tabs {
+      align-items: center;
+      display: flex;
+      gap: 2px;
+    }
+
+    .tabs span {
+      color: var(--muted);
+      position: relative;
+    }
+
+    .tabs .active {
+      color: var(--text);
+      font-weight: 560;
+    }
+
+    .product[data-variant="proposed"] .tabs .active {
+      background: var(--selection);
+    }
+
+    .product[data-variant="baseline"] .tabs .active {
+      background: var(--hover);
+      font-weight: 600;
+    }
+
+    .conversation-view {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      min-height: 0;
+      min-width: 0;
+    }
+
+    .conversation-scroll {
+      min-height: 0;
+      min-width: 0;
+      overflow: auto;
+      padding: 24px clamp(20px, 6vw, 64px) 18px;
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+    }
+
+    .conversation {
+      margin: 0 auto;
+      max-width: var(--conversation-width);
+      min-width: 0;
+      width: 100%;
+    }
+
+    .user-message,
+    .agent-message {
+      font-size: 15px;
+      line-height: 1.72;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .user-message {
+      background: #252623;
+      border: 1px solid transparent;
+      border-radius: 8px 8px 3px 8px;
+      color: #e7e6e1;
+      margin: 0 0 24px auto;
+      max-width: 78%;
+      padding: 9px 12px;
+      width: fit-content;
+    }
+
+    .product[data-variant="proposed"] .user-message,
+    .product[data-variant="proposed"] .agent-message {
+      font-size: 16px;
+      line-height: 1.75;
+    }
+
+    .product[data-variant="proposed"] .user-message {
+      background: #252623;
+      border-radius: 10px 10px 4px 10px;
+      color: #e4e5df;
+      margin-bottom: 26px;
+      max-width: 76%;
+      padding: 10px 13px;
+    }
+
+    .user-message p,
+    .agent-message p {
+      margin: 0;
+    }
+
+    .activity {
+      background: #1d1e1c;
+      border: 1px solid var(--line);
+      border-radius: var(--control-radius);
+      color: var(--muted);
+      font-size: 12px;
+      margin: 0 0 18px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .activity-summary {
+      align-items: center;
+      background: transparent;
+      border: 0;
+      color: #b7b8b2;
+      cursor: pointer;
+      display: flex;
+      gap: 7px;
+      min-height: 34px;
+      padding: 7px 9px;
+      text-align: left;
+      width: 100%;
+    }
+
+    .activity-summary:hover {
+      background: var(--hover);
+      color: var(--text);
+    }
+
+    .activity-summary > span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .activity-summary .chevron {
+      transition: transform 160ms cubic-bezier(.2, 0, 0, 1);
+    }
+
+    .activity.expanded .activity-summary .chevron {
+      transform: rotate(90deg);
+    }
+
+    .activity-rows {
+      border-top: 1px solid var(--line);
+      display: none;
+    }
+
+    .activity.expanded .activity-rows {
+      display: block;
+    }
+
+    .activity-row {
+      align-items: center;
+      display: grid;
+      gap: 7px;
+      grid-template-columns: 15px max-content minmax(0, 1fr) max-content;
+      min-height: 30px;
+      padding: 5px 9px;
+    }
+
+    .activity-row + .activity-row {
+      border-top: 1px solid rgb(255 255 255 / 4%);
+    }
+
+    .activity-row strong {
+      color: #c4c5bf;
+      font-weight: 520;
+      white-space: nowrap;
+    }
+
+    .activity-detail {
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .activity-state {
+      align-items: center;
+      color: var(--success);
+      display: inline-flex;
+      gap: 4px;
+      white-space: nowrap;
+    }
+
+    .product[data-variant="proposed"] .activity {
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      margin-bottom: 22px;
+      overflow: visible;
+    }
+
+    .product[data-variant="proposed"] .activity-summary {
+      color: var(--muted);
+      min-height: 32px;
+      padding: 5px 0;
+    }
+
+    .product[data-variant="proposed"] .activity-summary:hover {
+      background: transparent;
+      color: var(--text);
+    }
+
+    .product[data-variant="proposed"] .activity-rows {
+      border-top: 0;
+      padding: 5px 0 3px 21px;
+    }
+
+    .product[data-variant="proposed"] .activity-row {
+      gap: 8px;
+      grid-template-columns: 15px 36px minmax(0, 1fr) max-content;
+      min-height: 28px;
+      padding: 4px 0;
+    }
+
+    .product[data-variant="proposed"] .activity-row + .activity-row {
+      border-top: 0;
+    }
+
+    .product[data-variant="proposed"] .activity-row strong {
+      color: #c9cac4;
+    }
+
+    .agent-message {
+      color: var(--copy);
+      margin: 0 0 20px;
+    }
+
+    .agent-message .lead {
+      color: var(--text);
+      font-weight: 520;
+      margin-bottom: 8px;
+    }
+
+    .product[data-variant="proposed"] .agent-message .lead {
+      font-size: 17px;
+      font-weight: 540;
+      line-height: 1.65;
+      margin-bottom: 10px;
+    }
+
+    .agent-message ul {
+      margin: 8px 0 9px;
+      padding-left: 1.35em;
+    }
+
+    .agent-message li {
+      margin: 3px 0;
+      padding-left: 2px;
+    }
+
+    .agent-message li::marker {
+      color: var(--accent);
+    }
+
+    .product[data-variant="proposed"] .agent-message ul {
+      margin-block: 10px 12px;
+      padding-left: 1.4em;
+    }
+
+    .product[data-variant="proposed"] .agent-message li {
+      margin: 4px 0;
+    }
+
+    .product[data-variant="proposed"] .agent-message li::marker {
+      color: #8d9088;
+    }
+
+    .change-summary {
+      align-items: center;
+      color: var(--muted);
+      display: flex;
+      font-size: 12px;
+      gap: 6px;
+      margin-top: 13px;
+    }
+
+    .change-summary .icon {
+      color: var(--success);
+    }
+
+    .composer-wrap {
+      background: var(--canvas);
+      padding: 8px clamp(20px, 6vw, 64px) 16px;
+    }
+
+    .composer {
+      background: var(--raised);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--panel-radius);
+      box-shadow: 0 10px 30px rgb(0 0 0 / 16%);
+      display: grid;
+      gap: 9px;
+      margin: 0 auto;
+      max-width: var(--conversation-width);
+      min-width: 0;
+      padding: 10px 10px 9px 12px;
+      width: 100%;
+    }
+
+    .composer:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-soft), 0 10px 30px rgb(0 0 0 / 16%);
+    }
+
+    .product[data-variant="proposed"] .composer {
+      box-shadow: 0 8px 22px rgb(0 0 0 / 10%);
+      gap: 8px;
+      padding: 11px 10px 9px 12px;
+    }
+
+    .product[data-variant="proposed"] .composer:focus-within {
+      box-shadow: 0 0 0 2px var(--accent-soft), 0 8px 22px rgb(0 0 0 / 10%);
+    }
+
+    .composer textarea {
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.55;
+      max-height: 116px;
+      min-height: 42px;
+      outline: none;
+      padding: 2px 1px;
+      resize: none;
+      width: 100%;
+    }
+
+    .composer textarea:focus-visible {
+      outline: none;
+    }
+
+    .composer-footer {
+      align-items: center;
+      display: flex;
+      gap: 6px;
+      justify-content: space-between;
+      min-width: 0;
+    }
+
+    .composer-tools {
+      align-items: center;
+      display: flex;
+      flex: 1 1 auto;
+      gap: 6px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .tool-group {
+      align-items: center;
+      display: flex;
+      flex: 0 1 auto;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .product[data-variant="proposed"] .tool-group {
+      background: transparent;
+      border: 0;
+      gap: 1px;
+      padding: 0;
+    }
+
+    .product[data-variant="proposed"] .tool-group + .tool-group {
+      margin-left: 8px;
+    }
+
+    .tool-chip {
+      align-items: center;
+      background: #242522;
+      border: 1px solid #555851;
+      border-radius: var(--control-radius);
+      color: #d1d1cb;
+      display: inline-flex;
+      flex: 0 1 auto;
+      font-size: 12px;
+      gap: 5px;
+      min-height: 28px;
+      min-width: 0;
+      padding: 4px 7px;
+      white-space: nowrap;
+    }
+
+    .product[data-variant="proposed"] .tool-chip {
+      background: transparent;
+      border: 0;
+      color: #c9cac4;
+      padding-inline: 5px;
+    }
+
+    .tool-chip .label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tool-chip.workspace-chip .label {
+      max-width: 118px;
+    }
+
+    .tool-chip.model-chip .icon,
+    .tool-chip.result-chip .icon {
+      color: #c8a078;
+    }
+
+    .product[data-variant="proposed"] .tool-chip .icon {
+      color: var(--muted);
+    }
+
+    .send-control {
+      align-items: center;
+      background: #e7e3da;
+      border-radius: 7px;
+      color: #222320;
+      display: inline-flex;
+      flex: none;
+      height: 30px;
+      justify-content: center;
+      width: 30px;
+    }
+
+    .product[data-variant="baseline"] .rail-action {
+      color: #a9aaa4;
+      font-size: 12px;
+      min-height: 30px;
+      padding: 5px 8px;
+    }
+
+    .product[data-variant="baseline"] .workspace-name {
+      font-size: 12px;
+      min-height: 27px;
+      padding-block: 4px;
+    }
+
+    .product[data-variant="baseline"] .workspace-name .folder-icon {
+      color: #aeb9d1;
+    }
+
+    .product[data-variant="baseline"] .user-message {
+      background: #292a27;
+      border-radius: 10px 10px 3px 10px;
+      margin-bottom: 28px;
+      max-width: 76%;
+    }
+
+    .product[data-variant="baseline"] .activity {
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .product[data-variant="baseline"] .activity-summary {
+      min-height: 31px;
+      padding: 6px 1px;
+    }
+
+    .product[data-variant="baseline"] .activity-rows {
+      background: rgb(255 255 255 / 1.5%);
+    }
+
+    .product[data-variant="baseline"] .agent-message {
+      margin-bottom: 30px;
+    }
+
+    .product[data-variant="baseline"] .composer-wrap {
+      padding-bottom: 16px;
+    }
+
+    .product[data-variant="baseline"] .composer {
+      gap: 8px;
+      padding: 9px 10px 8px 12px;
+    }
+
+    @media (max-width: 1100px) {
+      .review-bar {
+        gap: 10px;
+        padding-inline: 12px;
+      }
+
+      .review-note {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .preview-stage {
+        padding: 6px 8px 8px;
+      }
+
+      .product {
+        --rail-width: 216px;
+      }
+
+      .conversation-scroll,
+      .composer-wrap {
+        padding-inline: 20px;
+      }
+
+      .tool-chip.workspace-chip .label {
+        max-width: 92px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .review-bar {
+        flex-wrap: wrap;
+      }
+
+      .review-toggle {
+        margin-left: auto;
+      }
+
+      .review-meta {
+        display: none;
+      }
+
+      .product {
+        --rail-width: 52px;
+      }
+
+      .rail-action span,
+      .rail-heading,
+      .sessions,
+      .rail-footer-label {
+        display: none;
+      }
+
+      .rail-controls,
+      .rail-action,
+      .rail-footer {
+        justify-content: center;
+      }
+
+      .reference-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .reference-figure + .reference-figure {
+        border-left: 0;
+        border-top: 1px solid #343631;
+        padding-left: 0;
+        padding-top: 20px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .product,
+      .activity-summary .chevron {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <svg class="icon-definitions" aria-hidden="true">
+    <symbol id="i-sidebar" viewBox="0 0 24 24">
+      <rect x="3.5" y="4" width="17" height="16" rx="2"></rect>
+      <path d="M9 4v16"></path>
+    </symbol>
+    <symbol id="i-chat-add" viewBox="0 0 24 24">
+      <path d="M19 14a3 3 0 0 1-3 3H9l-4 3v-3a3 3 0 0 1-2-3V8a3 3 0 0 1 3-3h6"></path>
+      <path d="M18 3v6M15 6h6"></path>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24">
+      <circle cx="10.5" cy="10.5" r="6.5"></circle>
+      <path d="m15.5 15.5 5 5"></path>
+    </symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24">
+      <path d="M4 7h10M18 7h2M4 17h2M10 17h10"></path>
+      <circle cx="16" cy="7" r="2"></circle>
+      <circle cx="8" cy="17" r="2"></circle>
+    </symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24">
+      <path d="M3.5 7.5v9.5a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-7l-2-2h-4a2 2 0 0 0-2 2Z"></path>
+    </symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24">
+      <path d="m9 6 6 6-6 6"></path>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24">
+      <path d="M12 5v14M5 12h14"></path>
+    </symbol>
+    <symbol id="i-check-circle" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.5"></circle>
+      <path d="m8 12 2.6 2.6L16.5 9"></path>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.5 1.5M16.5 16.5 18 18M18 6l-1.5 1.5M7.5 16.5 6 18"></path>
+    </symbol>
+    <symbol id="i-branch" viewBox="0 0 24 24">
+      <circle cx="7" cy="5" r="2"></circle>
+      <circle cx="17" cy="8" r="2"></circle>
+      <circle cx="7" cy="19" r="2"></circle>
+      <path d="M7 7v10M9 9c5 0 8 0 8-3"></path>
+    </symbol>
+    <symbol id="i-code" viewBox="0 0 24 24">
+      <path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5M13.5 4l-3 16"></path>
+    </symbol>
+    <symbol id="i-file" viewBox="0 0 24 24">
+      <path d="M6 3.5h8l4 4V20H6zM14 3.5V8h4"></path>
+    </symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24">
+      <rect x="3.5" y="5" width="17" height="14" rx="2"></rect>
+      <path d="m7 9 3 3-3 3M12.5 15H17"></path>
+    </symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24">
+      <path d="m14.5 5.5 4 4M5 19l1-4 9.5-9.5a2.1 2.1 0 0 1 3 3L9 18z"></path>
+    </symbol>
+    <symbol id="i-model" viewBox="0 0 24 24">
+      <rect x="5" y="5" width="14" height="14" rx="3"></rect>
+      <path d="M9 2.5v2M15 2.5v2M9 19.5v2M15 19.5v2M2.5 9h2M19.5 9h2M2.5 15h2M19.5 15h2M9 9h6v6H9z"></path>
+    </symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24">
+      <path d="M4 5.5V12l7 7 8-8-7-7H5.5A1.5 1.5 0 0 0 4 5.5Z"></path>
+      <circle cx="8.5" cy="8.5" r="1"></circle>
+    </symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24">
+      <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"></path>
+    </symbol>
+    <symbol id="i-close" viewBox="0 0 24 24">
+      <path d="m6 6 12 12M18 6 6 18"></path>
+    </symbol>
+  </svg>
+
+  <main class="review-shell">
+    <header class="review-bar">
+      <div class="review-title-line">
+        <h1>Agent画面 デザイン比較</h1>
+        <span class="review-status">改訂2・提案中</span>
+      </div>
+      <div class="review-meta" aria-label="レビュー上の注意">
+        <p class="review-note">現行ベースは実装スタイルからの再構成です。製品コードは未変更です。</p>
+      </div>
+      <div class="review-toggle" role="group" aria-label="比較する表示">
+        <button type="button" data-variant-button="baseline" aria-pressed="false" aria-controls="agent-preview">現行ベース</button>
+        <button type="button" data-variant-button="proposed" aria-pressed="true" aria-controls="agent-preview">再提案</button>
+      </div>
+      <button class="reference-open" type="button" data-reference-open aria-haspopup="dialog" aria-controls="reference-dialog">参考にした画面</button>
+    </header>
+
+    <section class="preview-stage" aria-label="Agent画面の比較プレビュー">
+      <div class="product" id="agent-preview" data-variant="proposed" data-review-state="proposal">
+        <aside class="rail" id="preview-rail" aria-label="会話ナビゲーション">
+          <div class="rail-top">
+            <div class="rail-controls">
+              <button class="rail-toggle" type="button" aria-expanded="true" aria-controls="preview-rail" title="左サイドバーを折りたたむ">
+                <svg class="icon" aria-hidden="true"><use href="#i-sidebar"></use></svg>
+                <span hidden>左サイドバーを折りたたむ</span>
+              </button>
+            </div>
+            <nav class="rail-actions" aria-label="主な操作">
+              <span class="rail-action"><svg class="icon" aria-hidden="true"><use href="#i-chat-add"></use></svg><span>新しいチャット</span></span>
+              <span class="rail-action"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg><span>検索</span></span>
+              <span class="rail-action"><svg class="icon" aria-hidden="true"><use href="#i-sliders"></use></svg><span>カスタマイズ</span></span>
+            </nav>
+          </div>
+
+          <div class="rail-heading">
+            <span>ワークスペース</span>
+            <svg class="icon small" aria-label="フォルダーを開く"><use href="#i-plus"></use></svg>
+          </div>
+
+          <div class="sessions">
+            <section class="workspace" aria-label="poiesis ワークスペース">
+              <div class="workspace-name">
+                <svg class="icon folder-icon" aria-hidden="true"><use href="#i-folder"></use></svg>
+                <span class="workspace-name-copy"><strong>poiesis</strong><small>main</small></span>
+                <svg class="icon small" aria-hidden="true" style="transform: rotate(90deg)"><use href="#i-chevron"></use></svg>
+              </div>
+              <div class="session-section-label">最近</div>
+              <div class="session selected" aria-current="page">
+                <span class="session-title">検索体験の改善</span>
+                <span class="session-meta">
+                  <span class="completed"><svg class="icon small" aria-hidden="true"><use href="#i-check-circle"></use></svg>完了</span>
+                  <time datetime="2026-09-07T14:18:00+09:00">12分</time>
+                </span>
+              </div>
+              <div class="session">
+                <span class="session-title">Resultsの要約調整</span>
+                <span class="session-meta"><time datetime="2026-09-06">昨日</time></span>
+              </div>
+              <div class="session">
+                <span class="session-title">設定画面の整理</span>
+                <span class="session-meta"><time datetime="2026-09-05">9月5日</time></span>
+              </div>
+            </section>
+          </div>
+
+          <footer class="rail-footer">
+            <span class="rail-footer-label">Poiesis</span>
+            <span class="settings" aria-label="設定"><svg class="icon small" aria-hidden="true"><use href="#i-settings"></use></svg></span>
+          </footer>
+        </aside>
+
+        <section class="main">
+          <header class="app-header">
+            <div class="breadcrumb" aria-label="現在の場所">
+              <span class="workspace-crumb">poiesis</span>
+              <span class="separator" aria-hidden="true">/</span>
+              <span class="branch-crumb"><svg class="icon small" aria-hidden="true"><use href="#i-branch"></use></svg>main</span>
+              <span class="separator" aria-hidden="true">/</span>
+              <strong>検索体験の改善</strong>
+            </div>
+            <div class="header-actions">
+              <span class="quiet-control"><svg class="icon small" aria-hidden="true"><use href="#i-code"></use></svg>Code</span>
+              <div class="tabs" aria-label="AgentとResults">
+                <span class="active">Agent</span>
+                <span>Results</span>
+              </div>
+            </div>
+          </header>
+
+          <section class="conversation-view" aria-label="Agentの会話">
+            <div class="conversation-scroll" data-scroll-region>
+              <div class="conversation" data-sample-content>
+                <section class="user-message" aria-label="あなたのメッセージ">
+                  <p>検索結果の一覧を、内容を追いやすくしつつ密度は落とさない方向で整えてください。既存の検索導線とキーボード操作は保ってください。</p>
+                </section>
+
+                <section class="activity" aria-label="作業履歴">
+                  <button class="activity-summary" type="button" aria-expanded="false" aria-controls="activity-rows">
+                    <svg class="icon small chevron" aria-hidden="true"><use href="#i-chevron"></use></svg>
+                    <span>作業履歴 4件 · コマンド 1 · ファイル変更 2</span>
+                  </button>
+                  <div class="activity-rows" id="activity-rows">
+                    <div class="activity-row">
+                      <svg class="icon small" aria-hidden="true"><use href="#i-search"></use></svg>
+                      <strong>検索</strong>
+                      <span class="activity-detail">検索一覧とキーボード操作の実装を確認</span>
+                      <span class="activity-state"><svg class="icon small" aria-hidden="true"><use href="#i-check-circle"></use></svg>完了</span>
+                    </div>
+                    <div class="activity-row">
+                      <svg class="icon small" aria-hidden="true"><use href="#i-terminal"></use></svg>
+                      <strong>検証</strong>
+                      <span class="activity-detail">検索操作のテストを実行</span>
+                      <span class="activity-state"><svg class="icon small" aria-hidden="true"><use href="#i-check-circle"></use></svg>完了</span>
+                    </div>
+                    <div class="activity-row">
+                      <svg class="icon small" aria-hidden="true"><use href="#i-edit"></use></svg>
+                      <strong>変更</strong>
+                      <span class="activity-detail">一覧の余白と選択状態を調整</span>
+                      <span class="activity-state"><svg class="icon small" aria-hidden="true"><use href="#i-check-circle"></use></svg>完了</span>
+                    </div>
+                    <div class="activity-row">
+                      <svg class="icon small" aria-hidden="true"><use href="#i-file"></use></svg>
+                      <strong>変更</strong>
+                      <span class="activity-detail">結果件数と補助情報の並びを整理</span>
+                      <span class="activity-state"><svg class="icon small" aria-hidden="true"><use href="#i-check-circle"></use></svg>完了</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="agent-message" aria-label="Agentのメッセージ">
+                  <p class="lead">検索結果の読み順と操作密度を整えました。</p>
+                  <ul>
+                    <li>検索語と結果件数を同じ行へまとめ、一覧へ視線が移りやすい順序にしました。</li>
+                    <li>選択中の項目は背景の明度差と文字の強弱で示し、キーボードの焦点表示も残しました。</li>
+                    <li>補助情報は12pxを下限に揃え、行間を保ったまま項目間の余白を詰めました。</li>
+                  </ul>
+                  <p>検索、上下キーでの移動、Enterでの選択はこれまでどおり利用できます。</p>
+                  <div class="change-summary"><svg class="icon small" aria-hidden="true"><use href="#i-check-circle"></use></svg><span>完了 · 2ファイルを更新 · 検証済み</span></div>
+                </section>
+              </div>
+            </div>
+
+            <div class="composer-wrap">
+              <section class="composer" aria-label="Agentの入力欄">
+                <textarea rows="2" aria-label="Agentへのメッセージ">次に、結果を選択したときの詳細表示も同じ基準で整えてください。</textarea>
+                <div class="composer-footer">
+                  <div class="composer-tools" aria-label="送信設定">
+                    <div class="tool-group" aria-label="作業場所">
+                      <span class="tool-chip workspace-chip"><svg class="icon small" aria-hidden="true"><use href="#i-folder"></use></svg><span class="label">poiesis</span><svg class="icon small" aria-hidden="true" style="transform: rotate(90deg)"><use href="#i-chevron"></use></svg></span>
+                      <span class="tool-chip"><svg class="icon small" aria-hidden="true"><use href="#i-branch"></use></svg><span class="label">main</span></span>
+                    </div>
+                    <div class="tool-group" aria-label="実行設定">
+                      <span class="tool-chip model-chip"><svg class="icon small" aria-hidden="true"><use href="#i-model"></use></svg><span class="label">GPT-6-Astra</span></span>
+                      <span class="tool-chip result-chip"><svg class="icon small" aria-hidden="true"><use href="#i-tag"></use></svg><span class="label">成果</span><svg class="icon small" aria-hidden="true" style="transform: rotate(90deg)"><use href="#i-chevron"></use></svg></span>
+                    </div>
+                  </div>
+                  <span class="send-control" aria-label="Agentへ送信"><svg class="icon" aria-hidden="true"><use href="#i-arrow-up"></use></svg></span>
+                </div>
+              </section>
+            </div>
+          </section>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="reference-dialog" id="reference-dialog" aria-labelledby="reference-title">
+    <div class="reference-dialog-inner">
+      <header class="reference-dialog-header">
+        <h2 id="reference-title">参考にした画面</h2>
+        <button class="reference-close" type="button" data-reference-close aria-label="参考画面を閉じる">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"></use></svg>
+        </button>
+      </header>
+      <div class="reference-grid">
+        <figure class="reference-figure">
+          <img src="assets/refero-linear.jpg" alt="Linearの暗色マーケティングページ。下部に製品画面が表示されている">
+          <figcaption>
+            <h3>Linear</h3>
+            <p class="reference-context">マーケティングページ下部に写る製品画面を参照。上部の大見出しや光彩は対象外です。</p>
+            <ul class="reference-points">
+              <li>整列したナビゲーションを参考に、サイドバーの項目名と日時の配置を調整。</li>
+              <li>見出し・本文・低優先度履歴の差を、会話の文字サイズと余白へ反映。</li>
+            </ul>
+            <a href="https://styles.refero.design/style/90ce5883-bb24-4466-93f7-801cd617b0d1">Referoの参照ページを開く</a>
+          </figcaption>
+        </figure>
+        <figure class="reference-figure">
+          <img src="assets/refero-chatgpt.jpg" alt="ChatGPTのログアウト状態の明色画面。左ナビゲーションと中央の入力欄が表示されている">
+          <figcaption>
+            <h3>ChatGPT</h3>
+            <p class="reference-context">ログアウト状態の明色画面を参照。配色、ログイン操作、音声機能は採用していません。</p>
+            <ul class="reference-points">
+              <li>枠を増やさないナビゲーションを、サイドバーでも維持。</li>
+              <li>入力欄全体を一つの面にまとめ、内部の操作ボタンの枠を除去。</li>
+            </ul>
+            <a href="https://styles.refero.design/style/52a007ed-ad1b-46a6-bd44-b76f91df6d0c">Referoの参照ページを開く</a>
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    (() => {
+      const product = document.querySelector('.product');
+      const scroller = document.querySelector('[data-scroll-region]');
+      const composer = document.querySelector('.composer textarea');
+      const variantButtons = [...document.querySelectorAll('[data-variant-button]')];
+      const railToggle = document.querySelector('.rail-toggle');
+      const activity = document.querySelector('.activity');
+      const activityButton = document.querySelector('.activity-summary');
+      const referenceDialog = document.querySelector('.reference-dialog');
+      const referenceOpen = document.querySelector('[data-reference-open]');
+      const referenceClose = document.querySelector('[data-reference-close]');
+      let referenceTrigger = null;
+
+      const setVariant = variant => {
+        const scrollTop = scroller.scrollTop;
+        const selectionStart = composer.selectionStart;
+        const selectionEnd = composer.selectionEnd;
+        const selectionDirection = composer.selectionDirection;
+        product.dataset.variant = variant;
+        variantButtons.forEach(button => {
+          button.setAttribute('aria-pressed', String(button.dataset.variantButton === variant));
+        });
+        requestAnimationFrame(() => {
+          scroller.scrollTop = scrollTop;
+          composer.setSelectionRange(selectionStart, selectionEnd, selectionDirection);
+        });
+      };
+
+      variantButtons.forEach((button, index) => {
+        button.addEventListener('click', () => setVariant(button.dataset.variantButton));
+        button.addEventListener('keydown', event => {
+          let nextIndex;
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+            nextIndex = (index - 1 + variantButtons.length) % variantButtons.length;
+          } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+            nextIndex = (index + 1) % variantButtons.length;
+          } else if (event.key === 'Home') {
+            nextIndex = 0;
+          } else if (event.key === 'End') {
+            nextIndex = variantButtons.length - 1;
+          }
+          if (nextIndex !== undefined) {
+            event.preventDefault();
+            variantButtons[nextIndex].focus();
+            setVariant(variantButtons[nextIndex].dataset.variantButton);
+          }
+        });
+      });
+
+      railToggle.addEventListener('click', () => {
+        const collapsed = product.classList.toggle('rail-collapsed');
+        railToggle.setAttribute('aria-expanded', String(!collapsed));
+        railToggle.title = collapsed ? '左サイドバーを展開' : '左サイドバーを折りたたむ';
+        railToggle.querySelector('span').textContent = railToggle.title;
+      });
+
+      activityButton.addEventListener('click', () => {
+        const expanded = activity.classList.toggle('expanded');
+        activityButton.setAttribute('aria-expanded', String(expanded));
+      });
+
+      referenceOpen.addEventListener('click', () => {
+        referenceTrigger = document.activeElement;
+        referenceDialog.showModal();
+      });
+
+      referenceClose.addEventListener('click', () => referenceDialog.close());
+      referenceDialog.addEventListener('click', event => {
+        if (event.target === referenceDialog) {
+          referenceDialog.close();
+        }
+      });
+      referenceDialog.addEventListener('close', () => {
+        if (referenceTrigger instanceof HTMLElement) {
+          referenceTrigger.focus();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

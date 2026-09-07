@@ -531,6 +531,19 @@
     padding: 5px 8px;
 }
 
+.poiesis-model-picker__popover[data-ai-role='agent'] .poiesis-model-picker__option > .codicon {
+    color: #a6a8a0;
+}
+
+.poiesis-model-picker__popover[data-ai-role='agent'] .poiesis-model-picker__settings {
+    color: #d2d3cd;
+}
+
+.poiesis-model-picker__popover[data-ai-role='agent'] .poiesis-model-picker__custom-actions button.primary {
+    background: #d2d3cd;
+    border-color: #d2d3cd;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .poiesis-model-picker__popover {
         animation: none;

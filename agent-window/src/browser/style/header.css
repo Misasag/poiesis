@@ -225,3 +225,29 @@
 .poiesis-agent-window__code-header .poiesis-agent-window__code-control {
     border-color: var(--poiesis-chrome-line-strong);
 }
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__header {
+    border-bottom-color: var(--poiesis-chrome-line);
+    min-height: 50px;
+    padding: 7px 13px 7px 16px;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__context {
+    gap: 8px;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__context-workspace {
+    color: var(--poiesis-chrome-muted);
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__context > strong {
+    color: var(--poiesis-chrome-text);
+    font-size: 14px;
+    font-weight: 560;
+}
+
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__tabs button.active {
+    background: var(--poiesis-selection-bg);
+    color: var(--poiesis-chrome-text);
+    font-weight: 560;
+}
