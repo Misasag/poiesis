@@ -1407,6 +1407,18 @@
     z-index: 1;
 }
 
+.poiesis-results__capture-notice {
+    background: #ece7dc;
+    border: 0;
+    color: #65513a;
+    gap: 6px;
+    padding: 14px 18px;
+}
+
+.poiesis-results__capture-notice strong {
+    color: #443726;
+}
+
 .poiesis-results__auxiliary-scrim {
     background: rgb(0 0 0 / 18%);
     inset: 0;

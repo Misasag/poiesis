@@ -264,7 +264,7 @@ export class TaskService {
             }
         };
         this.tasks.set(task.id, task);
-        const baselineCapture = this.captureBaseline(workspacePath).then(capture => {
+        const baselineCapture = this.captureBaseline(workspacePath, task.id).then(capture => {
             const current = this.tasks.get(task.id);
             if (current && capture.snapshotId) {
                 this.tasks.set(task.id, { ...current, baselineSnapshotId: capture.snapshotId });
@@ -318,8 +318,8 @@ export class TaskService {
         return this.finish(taskId, 'completed', 'ended', undefined, completionSummary, outcomeKind);
     }
 
-    async cancel(taskId: string): Promise<ExecutionTask | undefined> {
-        return this.finish(taskId, 'cancelled', 'cancelled');
+    async cancel(taskId: string, skipChangeCapture = false): Promise<ExecutionTask | undefined> {
+        return this.finish(taskId, 'cancelled', 'cancelled', undefined, undefined, undefined, skipChangeCapture);
     }
 
     async fail(taskId: string, failure?: TaskFailure): Promise<ExecutionTask | undefined> {
@@ -431,8 +431,8 @@ export class TaskService {
         await this.terminalFinalizationPromises.get(taskId);
     }
 
-    async whenBaselineCaptured(taskId: string): Promise<void> {
-        await this.baselineCaptures.get(taskId);
+    async whenBaselineCaptured(taskId: string): Promise<GitSnapshotCapture | undefined> {
+        return this.baselineCaptures.get(taskId);
     }
 
     get(taskId: string): ExecutionTask | undefined {
@@ -543,14 +543,26 @@ export class TaskService {
         eventType: Extract<TaskEvent['type'], 'ended' | 'failed' | 'cancelled'>,
         failure?: TaskFailure,
         completionSummary?: string,
-        outcomeKind?: TaskOutcomeKind
+        outcomeKind?: TaskOutcomeKind,
+        skipChangeCapture = false
     ): Promise<ExecutionTask | undefined> {
         const current = this.tasks.get(taskId);
         if (!current || current.status !== 'running') {
             return current;
         }
 
-        const capture = await this.captureChangeSet(taskId);
+        let capture: GitChangeSetCapture;
+        if (skipChangeCapture) {
+            this.baselineCaptures.delete(taskId);
+            capture = {
+                source: 'empty',
+                diff: '',
+                files: [],
+                error: '準備中にキャンセルされたため、変更は記録していません。'
+            };
+        } else {
+            capture = await this.captureChangeSet(taskId);
+        }
         const refreshed = this.tasks.get(taskId) ?? current;
         const task: ExecutionTask = {
             ...refreshed,
@@ -608,12 +620,13 @@ export class TaskService {
         }
     }
 
-    protected async captureBaseline(workspacePath?: string): Promise<GitSnapshotCapture> {
+    protected async captureBaseline(workspacePath: string | undefined, taskId: string): Promise<GitSnapshotCapture> {
         try {
             const root = this.workspaceService.tryGetRoots()[0]
                 ?? (this.workspaceService.workspace?.isDirectory ? this.workspaceService.workspace : undefined);
             return await this.runtimeServer.captureGitSnapshot({
-                workspacePath: workspacePath ?? root?.resource.path.fsPath()
+                workspacePath: workspacePath ?? root?.resource.path.fsPath(),
+                taskId
             });
         } catch (error) {
             return {
@@ -647,7 +660,8 @@ export class TaskService {
         }
         try {
             return await this.runtimeServer.captureGitChangeSet({
-                baselineSnapshotId: baseline.snapshotId
+                baselineSnapshotId: baseline.snapshotId,
+                taskId
             });
         } catch (error) {
             return {

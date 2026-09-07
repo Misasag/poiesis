@@ -812,11 +812,15 @@ export class SessionStore extends AgentWindowPartBase {
         const tasks = this.finishedTasksForRequirement(requirement);
         const files = [...new Set(tasks.flatMap(task => task.changeSet?.files ?? []))].sort();
         const diff = tasks.map(task => task.changeSet?.diff ?? '').filter(Boolean).join('\n');
+        const error = [...new Set(tasks
+            .map(task => task.changeSet?.error?.trim())
+            .filter((reason): reason is string => Boolean(reason)))].join(' / ') || undefined;
         return {
             source: diff ? 'task-diff' : 'empty',
             diff,
             files,
-            capturedAt: tasks.at(-1)?.changeSet?.capturedAt ?? new Date().toISOString()
+            capturedAt: tasks.at(-1)?.changeSet?.capturedAt ?? new Date().toISOString(),
+            error
         };
     }
 

@@ -86,16 +86,19 @@ export interface CliDetectionReport {
 
 export interface GitSnapshotRequest {
     workspacePath?: string;
+    taskId?: string;
 }
 
 export interface GitSnapshotCapture {
     source: 'git-snapshot' | 'empty';
     snapshotId?: string;
     error?: string;
+    blocksAgentStart?: boolean;
 }
 
 export interface GitChangeSetRequest {
     baselineSnapshotId: string;
+    taskId?: string;
 }
 
 export interface GitChangeSetBetweenRequest {

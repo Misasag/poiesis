@@ -47,7 +47,7 @@ export interface AgentActivity {
 }
 
 export interface AgentRunProgress {
-    phase: 'starting' | 'waiting' | 'activity' | 'finalizing';
+    phase: 'preparing' | 'starting' | 'waiting' | 'activity' | 'finalizing';
     lastOutputAt?: string;
     diagnostics?: string;
 }

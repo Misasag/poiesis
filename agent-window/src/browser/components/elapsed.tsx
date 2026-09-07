@@ -23,12 +23,14 @@ export const PoiesisTaskElapsed = ({
         ? Math.max(0, Math.floor((now - Date.parse(progress.lastOutputAt)) / 1_000))
         : undefined;
     const silentFor = outputAge ?? Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1_000));
+    const preparing = progress?.phase === 'preparing';
     const status = finalizing ? '成果をまとめています'
+        : preparing ? '変更前のファイルを記録しています'
         : activity ? activityStatus(activity)
             : outputAge !== undefined
                 ? `応答を待っています · 最終出力 ${outputAge}秒前`
                 : 'Agent を起動しています';
-    const quiet = !finalizing && silentFor >= 60 ? '（60秒以上出力がありません）' : '';
+    const quiet = !finalizing && !preparing && silentFor >= 60 ? '（60秒以上出力がありません）' : '';
     return (
         <span className='poiesis-agent-window__run-status' role='timer' aria-live='off' aria-atomic='true'>
             <span className='poiesis-agent-window__run-pulse' aria-hidden='true' />

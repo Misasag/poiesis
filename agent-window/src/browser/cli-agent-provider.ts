@@ -132,7 +132,7 @@ export class CliAgentProvider implements AgentProvider {
             stdoutBuffer: '',
             diagnostics: '',
             failureDiagnostics: '',
-            phase: 'starting',
+            phase: 'preparing',
             state: 'starting'
         };
         this.runs.set(sessionId, run);
@@ -149,11 +149,16 @@ export class CliAgentProvider implements AgentProvider {
             if (workspaceSkills.diagnostics.length > 0) {
                 this.emitProgress(run);
             }
-            await this.taskService.whenBaselineCaptured(task.id);
+            const baselineCapture = await this.taskService.whenBaselineCaptured(task.id);
             if (this.runs.get(sessionId) !== run || run.state === 'cancelling') {
                 return;
             }
-            run.state = 'running';
+            if (baselineCapture?.blocksAgentStart) {
+                await this.failRun(run, '準備を安全に完了できなかったため、Agent を開始しませんでした。');
+                return;
+            }
+            run.phase = 'starting';
+            this.emitProgress(run, true);
             await this.runtimeServer.runCodex({
                 executionId: run.executionId,
                 providerId: session.providerId,
@@ -162,7 +167,8 @@ export class CliAgentProvider implements AgentProvider {
                 workspacePath: session.workspacePath,
                 prompt: buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)
             });
-            if (this.runs.get(sessionId) === run) {
+            if (this.runs.get(sessionId) === run && run.state === 'starting') {
+                run.state = 'running';
                 run.phase = 'waiting';
                 this.emitProgress(run);
             }
@@ -180,13 +186,14 @@ export class CliAgentProvider implements AgentProvider {
             return;
         }
 
+        const preparing = run.phase === 'preparing';
         run.state = 'cancelling';
         try {
             await this.runtimeServer.cancelCodex(run.executionId);
         } finally {
             if (this.runs.get(sessionId) === run) {
                 this.clearProgressTimer(run);
-                await this.taskService.cancel(run.taskId);
+                await this.taskService.cancel(run.taskId, preparing);
                 this.runs.delete(sessionId);
                 this.eventEmitter.fire({
                     type: 'task-cancelled',

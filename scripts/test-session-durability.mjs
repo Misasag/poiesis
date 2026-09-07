@@ -34,6 +34,8 @@ const tasks = Array.from({ length: 15 }, (_, index) => {
 });
 
 const persisted = tasksForDurableSession(tasks);
+tasks[1].changeSet.error = '変更の記録が時間内に完了しませんでした。';
+const persistedWithUnavailableReason = tasksForDurableSession(tasks);
 assert.equal(persisted.length, 15, 'Durable session storage must not discard Tasks after the tenth turn.');
 const roundTripped = JSON.parse(JSON.stringify(persisted));
 const restored = restoredDurableTaskCandidates(roundTripped);
@@ -41,10 +43,15 @@ assert.equal(restored.length, 15, 'All persisted Tasks must restore after reload
 assert.equal(restored[0].resultsDocument?.html, '<html><body>保持する成果</body></html>');
 assert.equal(taskProducesResult(restored[0]), true, 'A backward-compatible Result must remain reachable after restoration.');
 assert.equal(restored.at(-1)?.request, '後続の質問 14');
+assert.equal(
+    JSON.parse(JSON.stringify(persistedWithUnavailableReason))[1].changeSet.error,
+    '変更の記録が時間内に完了しませんでした。',
+    'Persisted Task change evidence must retain why capture was unavailable.'
+);
 const draftSession = { archived: false, hasUserMessage: false, agentDraft: '送信前の下書き' };
 assert.equal(sessionHasRailContent(draftSession), true, 'A non-empty draft must remain reachable in the rail.');
 assert.equal(canReuseSessionForNewChat(draftSession), false, 'New Chat must not overwrite or trap a non-empty draft.');
 assert.equal(sessionHasRailContent({ ...draftSession, agentDraft: '   ' }), false,
     'An empty conversation must not clutter the rail.');
 
-console.log('SESSION_DURABILITY_TEST={"tasksPersisted":15,"tasksRestored":15,"legacyResultRetained":true}');
+console.log('SESSION_DURABILITY_TEST={"tasksPersisted":15,"tasksRestored":15,"legacyResultRetained":true,"captureErrorRetained":true}');

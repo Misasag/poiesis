@@ -142,8 +142,13 @@ export function resolveKnownCliInvocation(
 }
 
 /** Kills a process tree without ever creating a visible taskkill console or waiting forever. */
-export function killHiddenProcessTree(child: ChildProcess, timeoutMs = 2_000): Promise<void> {
-    if (process.platform !== 'win32' || child.pid === undefined) {
+export function killHiddenProcessTree(
+    child: ChildProcess,
+    timeoutMs = 2_000,
+    requireTreeTermination = false,
+    spawnTreeKiller: typeof spawn = spawn
+): Promise<void> {
+    if (process.platform !== 'win32') {
         try {
             child.kill();
         } catch {
@@ -151,15 +156,25 @@ export function killHiddenProcessTree(child: ChildProcess, timeoutMs = 2_000): P
         }
         return Promise.resolve();
     }
-    return new Promise(resolvePromise => {
+    if (child.pid === undefined) {
+        try {
+            child.kill();
+        } catch {
+            // A process without an assigned ID may already have failed to spawn.
+        }
+        return requireTreeTermination
+            ? Promise.reject(new Error('Process tree termination could not be verified.'))
+            : Promise.resolve();
+    }
+    return new Promise((resolvePromise, reject) => {
         let settled = false;
         let timeout: NodeJS.Timeout | undefined;
-        const killer = spawn('taskkill.exe', ['/pid', String(child.pid), '/T', '/F'], {
+        const killer = spawnTreeKiller('taskkill.exe', ['/pid', String(child.pid), '/T', '/F'], {
             windowsHide: true,
             shell: false,
             stdio: 'ignore'
         });
-        const finish = (): void => {
+        const finish = (error?: Error): void => {
             if (settled) {
                 return;
             }
@@ -177,11 +192,18 @@ export function killHiddenProcessTree(child: ChildProcess, timeoutMs = 2_000): P
             } catch {
                 // The child may already have exited.
             }
-            resolvePromise();
+            if (error && requireTreeTermination) {
+                reject(error);
+            } else {
+                resolvePromise();
+            }
         };
-        timeout = setTimeout(finish, Math.max(100, Math.min(timeoutMs, 5_000)));
-        killer.once('error', finish);
-        killer.once('close', finish);
+        timeout = setTimeout(
+            () => finish(new Error('Process tree termination timed out.')),
+            Math.max(100, Math.min(timeoutMs, 5_000))
+        );
+        killer.once('error', () => finish(new Error('Process tree termination could not be started.')));
+        killer.once('close', code => finish(code === 0 ? undefined : new Error('Process tree termination failed.')));
     });
 }
 

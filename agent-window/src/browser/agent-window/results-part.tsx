@@ -120,6 +120,11 @@ export class ResultsPart extends AgentWindowPart {
         const document = selectedTask
             ? this.resultsService.get(selectedTask.id)
             : selectedRequirement ? this.resultsService.getRequirement(selectedRequirement.id) : undefined;
+        const visibleChangeSet = selectedTask?.changeSet
+            ?? (selectedRequirement
+                ? this.resultsService.getRequirementChangeSet(selectedRequirement.id)
+                    ?? this.host.sessions.fallbackRequirementChangeSet(selectedRequirement)
+                : undefined);
         const draft = scopeKey ? session?.resultsDrafts.get(scopeKey) ?? '' : '';
         const notice = scopeKey ? session?.resultsNotices.get(scopeKey) : undefined;
         const questionSending = notice?.status === 'sending';
@@ -183,11 +188,10 @@ export class ResultsPart extends AgentWindowPart {
                                 {!session?.archived && <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>}
                             </div>
                         )}
-                        {latestTask?.status === 'completed' && latestTask.changeSet?.error && !document && (
-                            <div className='poiesis-results__state error' role='alert'>
-                                <strong>変更内容を取得できませんでした</strong>
-                                <p>Repository の状態を確認して、タスクを再試行してください。</p>
-                                {!session?.archived && <button type='button' onClick={() => void this.retryTask(latestTask.id)}>再試行</button>}
+                        {visibleChangeSet?.error && (
+                            <div className='poiesis-results__state poiesis-results__capture-notice' role='status'>
+                                <strong>変更の記録を利用できません</strong>
+                                <p>{visibleChangeSet.error}</p>
                             </div>
                         )}
                         {selectedRequirement && (document?.status === 'generating' && !document.html
@@ -660,7 +664,9 @@ export class ResultsPart extends AgentWindowPart {
                     )}
                     <div>
                         <dt>変更</dt>
-                        <dd>{diffstat.fileCount}ファイル · +{diffstat.additions} −{diffstat.deletions}</dd>
+                        <dd>{changeSet?.error
+                            ? '確認できません'
+                            : `${diffstat.fileCount}ファイル · +${diffstat.additions} −${diffstat.deletions}`}</dd>
                     </div>
                     <div>
                         <dt>成果の作成</dt>

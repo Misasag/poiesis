@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, parse } from 'node:path';
 import { promisify } from 'node:util';
 import {
     normalizeSnapshotPath,
@@ -223,6 +223,182 @@ try {
     assert.deepEqual(requestedWorkspaceComparison.before, { state: 'text', content: 'identical\n' });
     assert.deepEqual(requestedWorkspaceComparison.after, { state: 'text', content: 'identical\n' });
 
+    const containedWorkspace = join(root, 'contained-internals');
+    const containedStore = join(containedWorkspace, '.snapshot-store');
+    const containedTemporaryDirectory = join(containedWorkspace, '.temporary');
+    await Promise.all([
+        mkdir(containedWorkspace, { recursive: true }),
+        mkdir(containedTemporaryDirectory, { recursive: true })
+    ]);
+    await writeFile(join(containedWorkspace, 'kept.txt'), 'keep\n', 'utf8');
+    const staleTemporaryRoot = join(containedTemporaryDirectory, 'poiesis-snapshot-index-stale');
+    await mkdir(staleTemporaryRoot, { recursive: true });
+    await writeFile(join(staleTemporaryRoot, 'index.lock'), 'stale\n', 'utf8');
+    const containedSnapshotStore = new SnapshotStore(containedStore, SNAPSHOT_FILE_MAX_BYTES, {
+        homePath: join(root, 'unrelated-home'),
+        temporaryDirectory: containedTemporaryDirectory
+    });
+    const containedBaseline = await containedSnapshotStore.capture(containedWorkspace);
+    assert.equal(containedBaseline.source, 'git-snapshot', JSON.stringify(containedBaseline));
+    const containedGitDir = join(
+        containedStore,
+        createHash('sha1').update(resolveForSnapshot(containedWorkspace), 'utf8').digest('hex') + '.git'
+    );
+    const containedTree = await execFileAsync('git', [
+        '--git-dir', containedGitDir, 'ls-tree', '-r', '--name-only', containedBaseline.snapshotId
+    ], { cwd: containedWorkspace });
+    assert.deepEqual(containedTree.stdout.trim().split(/\r?\n/).filter(Boolean), ['kept.txt'],
+        'Snapshot storage and temporary indexes inside a Workspace must not enter its tree.');
+    await writeFile(join(containedStore, 'untracked-internal.txt'), 'internal\n', 'utf8');
+    await writeFile(join(staleTemporaryRoot, 'later.lock'), 'later\n', 'utf8');
+    const legacyInternalSnapshot = await writeLegacySnapshot(
+        containedStore,
+        containedWorkspace,
+        containedBaseline.snapshotId,
+        ['.snapshot-store/untracked-internal.txt', '.temporary/poiesis-snapshot-index-stale/later.lock']
+    );
+    const containedCurrent = await containedSnapshotStore.capture(containedWorkspace);
+    const containedRange = await containedSnapshotStore.captureBetween({
+        fromSnapshotId: containedBaseline.snapshotId,
+        toSnapshotId: containedCurrent.snapshotId
+    });
+    assert.equal(containedRange.source, 'empty');
+    assert.deepEqual(containedRange.files, [],
+        'Internal storage changes must not appear in change evidence.');
+    const legacyInternalRange = await containedSnapshotStore.captureBetween({
+        fromSnapshotId: legacyInternalSnapshot,
+        toSnapshotId: containedCurrent.snapshotId
+    });
+    assert.equal(legacyInternalRange.source, 'empty');
+    assert.deepEqual(legacyInternalRange.files, [],
+        'Previously recorded internal files must not reappear as deletion evidence.');
+
+    const broadParent = join(root, 'broad-parent');
+    const testHome = join(broadParent, 'home');
+    const testHomeAlias = join(root, 'home-alias');
+    const guardStore = join(root, 'guard-store');
+    await mkdir(testHome, { recursive: true });
+    await symlink(testHome, testHomeAlias, process.platform === 'win32' ? 'junction' : 'dir');
+    const guardSnapshotStore = new SnapshotStore(guardStore, SNAPSHOT_FILE_MAX_BYTES, { homePath: testHome });
+    for (const broadWorkspace of [testHome, testHomeAlias, broadParent]) {
+        const skipped = await guardSnapshotStore.capture(broadWorkspace);
+        assert.equal(skipped.source, 'empty');
+        assert.equal(skipped.error, 'ホームフォルダー全体では変更を記録しません。');
+    }
+    const skippedRoot = await guardSnapshotStore.capture(parse(root).root);
+    assert.equal(skippedRoot.source, 'empty');
+    assert.equal(skippedRoot.error, 'ドライブ全体では変更を記録しません。');
+    await mkdir(guardStore, { recursive: true });
+    const skippedStore = await guardSnapshotStore.capture(guardStore);
+    assert.equal(skippedStore.source, 'empty');
+    assert.equal(skippedStore.error, '変更記録の保存場所は記録対象にできません。');
+
+    const legacyHome = join(root, 'legacy-home');
+    const legacyHomeStoreRoot = join(root, 'legacy-home-store');
+    await mkdir(legacyHome, { recursive: true });
+    await writeFile(join(legacyHome, 'preserved.txt'), 'legacy baseline\n', 'utf8');
+    const legacyWriter = new SnapshotStore(legacyHomeStoreRoot, SNAPSHOT_FILE_MAX_BYTES, {
+        homePath: join(root, 'other-home')
+    });
+    const legacyHomeBaseline = await legacyWriter.capture(legacyHome);
+    assert.equal(legacyHomeBaseline.source, 'git-snapshot', JSON.stringify(legacyHomeBaseline));
+    await writeFile(join(legacyHome, 'preserved.txt'), 'must not be captured\n', 'utf8');
+    const guardedLegacyStore = new SnapshotStore(legacyHomeStoreRoot, SNAPSHOT_FILE_MAX_BYTES, {
+        homePath: legacyHome
+    });
+    const guardedLegacyChangeSet = await guardedLegacyStore.captureChangeSet(legacyHomeBaseline.snapshotId);
+    assert.equal(guardedLegacyChangeSet.source, 'empty');
+    assert.equal(guardedLegacyChangeSet.error, 'ホームフォルダー全体では変更を記録しません。');
+    assert.equal(guardedLegacyChangeSet.endSnapshotId, undefined,
+        'A legacy broad-scope baseline must not cause a new ending tree to be written.');
+    const legacyHomeComparison = await guardedLegacyStore.readFileComparison({
+        workspacePath: legacyHome,
+        fromSnapshotId: legacyHomeBaseline.snapshotId,
+        toSnapshotId: legacyHomeBaseline.snapshotId,
+        path: 'preserved.txt'
+    });
+    assert.equal(legacyHomeComparison.source, 'snapshot-file', JSON.stringify(legacyHomeComparison));
+    assert.deepEqual(legacyHomeComparison.before, { state: 'text', content: 'legacy baseline\n' },
+        'Guarding a new broad capture must not make valid legacy history unreadable.');
+
+    const concurrentWorkspace = join(root, 'concurrent-workspace');
+    const concurrentStoreRoot = join(root, 'concurrent-store');
+    await mkdir(concurrentWorkspace, { recursive: true });
+    await writeFile(join(concurrentWorkspace, 'shared.txt'), 'before\n', 'utf8');
+    const concurrentStore = new SnapshotStore(concurrentStoreRoot, SNAPSHOT_FILE_MAX_BYTES, {
+        homePath: join(root, 'other-home')
+    });
+    const concurrentBaseline = await concurrentStore.capture(concurrentWorkspace);
+    assert.equal(concurrentBaseline.source, 'git-snapshot', JSON.stringify(concurrentBaseline));
+    await writeFile(join(concurrentWorkspace, 'shared.txt'), 'after\n', 'utf8');
+    const concurrentChangeSets = await Promise.all([
+        concurrentStore.captureChangeSet(concurrentBaseline.snapshotId, 'concurrent-a'),
+        concurrentStore.captureChangeSet(concurrentBaseline.snapshotId, 'concurrent-b')
+    ]);
+    for (const changeSet of concurrentChangeSets) {
+        assert.equal(changeSet.source, 'task-diff', JSON.stringify(changeSet));
+        assert.deepEqual(changeSet.files, ['shared.txt']);
+        assert.match(changeSet.endSnapshotId ?? '', /^[0-9a-f]{40}$/);
+        assert.equal(changeSet.error, undefined,
+            'Concurrent ending captures on one Workspace must not report a false missing snapshot.');
+    }
+
+    const isolatedWorkspace = join(root, 'isolated-config-workspace');
+    const isolatedStoreRoot = join(root, 'isolated-config-store');
+    const controlledConfig = join(root, 'controlled-global.gitconfig');
+    const controlledHooks = join(root, 'controlled-hooks');
+    const hookMarker = join(root, 'hook-invoked.txt');
+    const filterMarker = join(root, 'filter-invoked.txt');
+    const processMarker = join(root, 'filter-process-invoked.txt');
+    const fsmonitorMarker = join(root, 'fsmonitor-invoked.txt');
+    const filterScript = join(root, 'filter-clean.sh');
+    const processScript = join(root, 'filter-process.sh');
+    const fsmonitorScript = join(root, 'fsmonitor.sh');
+    await Promise.all([
+        mkdir(isolatedWorkspace, { recursive: true }),
+        mkdir(controlledHooks, { recursive: true })
+    ]);
+    await execFileAsync('git', ['init'], { cwd: isolatedWorkspace });
+    await writeExecutableScript(join(controlledHooks, 'post-index-change'), hookMarker, true);
+    await writeExecutableScript(filterScript, filterMarker, true);
+    await writeExecutableScript(processScript, processMarker, false);
+    await writeExecutableScript(fsmonitorScript, fsmonitorMarker, false);
+    await execFileAsync('git', ['config', '--file', controlledConfig, 'core.hooksPath', shellPath(controlledHooks)]);
+    await execFileAsync('git', ['config', '--file', controlledConfig, 'core.fsmonitor', shellPath(fsmonitorScript)]);
+    await execFileAsync('git', ['config', '--file', controlledConfig, 'filter.tripwire.clean', shellPath(filterScript)]);
+    await execFileAsync('git', ['config', '--file', controlledConfig, 'filter.tripwire.process', shellPath(processScript)]);
+    await execFileAsync('git', ['config', '--file', controlledConfig, 'filter.tripwire.required', 'true']);
+    await writeFile(join(isolatedWorkspace, '.gitattributes'), '*.lfs filter=tripwire text\n', 'utf8');
+    const rawBefore = 'version https://git-lfs.github.com/spec/v1\nbefore raw workspace bytes\n';
+    const rawAfter = 'version https://git-lfs.github.com/spec/v1\nafter raw workspace bytes\n';
+    await writeFile(join(isolatedWorkspace, 'asset.lfs'), rawBefore, 'utf8');
+    const isolatedStore = new SnapshotStore(isolatedStoreRoot, SNAPSHOT_FILE_MAX_BYTES, {
+        homePath: join(root, 'other-home'),
+        gitEnvironment: {
+            ...process.env,
+            GIT_CONFIG_GLOBAL: controlledConfig,
+            GIT_CONFIG_NOSYSTEM: '1'
+        }
+    });
+    const isolatedBaseline = await isolatedStore.capture(isolatedWorkspace);
+    assert.equal(isolatedBaseline.source, 'git-snapshot', JSON.stringify(isolatedBaseline));
+    await writeFile(join(isolatedWorkspace, 'asset.lfs'), rawAfter, 'utf8');
+    const isolatedCurrent = await isolatedStore.capture(isolatedWorkspace);
+    assert.equal(isolatedCurrent.source, 'git-snapshot', JSON.stringify(isolatedCurrent));
+    const rawComparison = await isolatedStore.readFileComparison({
+        workspacePath: isolatedWorkspace,
+        fromSnapshotId: isolatedBaseline.snapshotId,
+        toSnapshotId: isolatedCurrent.snapshotId,
+        path: 'asset.lfs'
+    });
+    assert.equal(rawComparison.source, 'snapshot-file', JSON.stringify(rawComparison));
+    assert.deepEqual(rawComparison.before, { state: 'text', content: rawBefore });
+    assert.deepEqual(rawComparison.after, { state: 'text', content: rawAfter });
+    for (const marker of [hookMarker, filterMarker, processMarker, fsmonitorMarker]) {
+        assert.equal(await exists(marker), false,
+            `Snapshot Git unexpectedly invoked configured external behavior: ${marker}`);
+    }
+
     const missing = await new SnapshotStore(storeRoot).captureBetween({
         fromSnapshotId: '0'.repeat(40),
         toSnapshotId: '1'.repeat(40)
@@ -263,7 +439,7 @@ async function writeNpmRuntimeArtifacts(workspace, marker) {
     }
 }
 
-async function writeLegacySnapshot(storeRoot, workspace, baseSnapshotId) {
+async function writeLegacySnapshot(storeRoot, workspace, baseSnapshotId, paths = ['.npm-cache']) {
     const normalized = resolveForSnapshot(workspace);
     const repository = join(storeRoot, `${createHash('sha1').update(normalized, 'utf8').digest('hex')}.git`);
     const temporaryRoot = await mkdtemp(join(tmpdir(), 'poiesis-legacy-snapshot-index-'));
@@ -275,11 +451,35 @@ async function writeLegacySnapshot(storeRoot, workspace, baseSnapshotId) {
     };
     try {
         await execFileAsync('git', ['read-tree', baseSnapshotId], { cwd: workspace, env });
-        await execFileAsync('git', ['add', '-A', '-f', '--', '.npm-cache'], { cwd: workspace, env });
+        await execFileAsync('git', ['add', '-A', '-f', '--', ...paths], { cwd: workspace, env });
         const { stdout } = await execFileAsync('git', ['write-tree'], { cwd: workspace, env, encoding: 'utf8' });
         return stdout.trim();
     } finally {
         await rm(temporaryRoot, { recursive: true, force: true });
+    }
+}
+
+async function writeExecutableScript(path, marker, passthrough) {
+    const body = [
+        '#!/bin/sh',
+        `printf invoked > "${shellPath(marker)}"`,
+        passthrough ? 'cat' : 'exit 1',
+        ''
+    ].join('\n');
+    await writeFile(path, body, 'utf8');
+    await chmod(path, 0o755);
+}
+
+function shellPath(path) {
+    return path.replace(/\\/g, '/').replace(/"/g, '\\"');
+}
+
+async function exists(path) {
+    try {
+        await access(path);
+        return true;
+    } catch {
+        return false;
     }
 }
 

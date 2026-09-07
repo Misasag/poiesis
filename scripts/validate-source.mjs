@@ -42,6 +42,7 @@ const agentWidget = (await Promise.all([
     'agent-window/src/browser/components/elapsed.tsx'
 ].map(read))).join('\n');
 const sessionStore = await read('agent-window/src/browser/agent-window/session-store.ts');
+const resultsPartSource = await read('agent-window/src/browser/agent-window/results-part.tsx');
 const agentPartSource = await read('agent-window/src/browser/agent-window/agent-part.tsx');
 const railPartSource = await read('agent-window/src/browser/agent-window/rail-part.tsx');
 const workspaceContext = await read('agent-window/src/browser/agent-window/workspace-context.ts');
@@ -125,6 +126,7 @@ const skillBundleContract = await read('agent-window/src/common/skill-bundle.ts'
 const runtimeServer = await read('agent-window/src/node/agent-runtime-server.ts');
 const snapshotStore = await read('agent-window/src/node/snapshot-store.ts');
 const snapshotStoreTest = await read('scripts/test-snapshot-store.mjs');
+const snapshotCancellationTest = await read('scripts/test-snapshot-cancellation.mjs');
 const requirementModelTest = await read('scripts/test-requirement-model.mjs');
 const requirementClassifierTest = await read('scripts/test-requirement-classifier.mjs');
 const outcomeSemanticsTest = await read('scripts/test-outcome-semantics.mjs');
@@ -501,7 +503,7 @@ for (const marker of [
     'const completion = parseAgentCompletion(',
     'await this.taskService.end(',
     'await this.runtimeServer.cancelCodex',
-    'await this.taskService.cancel(run.taskId)',
+    'await this.taskService.cancel(run.taskId, preparing)',
     'buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)'
 ]) {
     assert.ok(cliProvider.includes(marker), `CLI AgentProvider is missing ${marker}`);
@@ -565,7 +567,7 @@ for (const marker of [
     'outcomeKind?: TaskOutcomeKind',
     'completionSummary?: string',
     "async fail(taskId: string, failure?: TaskFailure)",
-    "async cancel(taskId: string)",
+    "async cancel(taskId: string, skipChangeCapture = false)",
     "kind: 'workspace-snapshot'",
     'baselineCaptures',
     'captureGitSnapshot',
@@ -615,13 +617,13 @@ for (const marker of [
     "'.npm-cache/_logs'",
     "'.npm-cache/_update-notifier-last-checked'",
     'NPM_RUNTIME_ARTIFACT_EXCLUDES',
-    'trackedRuntimeArtifactPaths(repository.workspacePath)',
+    'trackedRuntimeArtifactPaths(',
     '!this.isNpmRuntimeArtifact(path) || trackedRuntimeArtifacts.has',
     "'--', ...filteredFiles"
 ]) {
     assert.ok(snapshotStore.includes(marker), `Snapshot npm runtime filtering is missing ${marker}`);
 }
-assert.ok(runtimeServer.includes('this.snapshotStore.captureChangeSet(baselineSnapshotId)'));
+assert.ok(runtimeServer.includes('this.snapshotStore.captureChangeSet(baselineSnapshotId, taskId)'));
 assert.ok(runtimeServer.includes('this.snapshotStore.captureBetween(request)'));
 assert.ok(snapshotStoreTest.includes("for (const kind of ['git', 'plain'])"));
 assert.ok(snapshotStoreTest.includes('const secondStore = new SnapshotStore(storeRoot)'));
@@ -632,6 +634,31 @@ assert.ok(snapshotStoreTest.includes('cache-only changes must not become task ev
     && snapshotStoreTest.includes('cumulative filtering must retain source evidence only.')
     && snapshotStoreTest.includes('A user-authored Git tracked file under a similarly named directory must be preserved.'),
     'Snapshot runtime-cache regression coverage is incomplete');
+assert.ok(snapshotStoreTest.includes('A legacy broad-scope baseline must not cause a new ending tree to be written.')
+    && snapshotStoreTest.includes('Snapshot Git unexpectedly invoked configured external behavior:')
+    && snapshotStoreTest.includes('raw workspace bytes')
+    && snapshotStoreTest.includes('Concurrent ending captures on one Workspace must not report a false missing snapshot.'),
+    'Snapshot broad-scope and external Git behavior isolation coverage is incomplete');
+assert.ok(rootPackage.scripts['test:snapshot-cancellation']?.includes('scripts/test-snapshot-cancellation.mjs'),
+    'The bounded snapshot cancellation test script is not registered');
+assert.ok(snapshotCancellationTest.includes('Repository lookup must not spawn another Git process')
+    && snapshotCancellationTest.includes('A cleanup error swallowed by optional tracked-path discovery')
+    && snapshotCancellationTest.includes('A cancellation during workspace resolution must prevent later snapshot registration.')
+    && snapshotCancellationTest.includes("for (const failure of ['spawn-error', 'nonzero', 'timeout'])"),
+    'Snapshot cancellation edge-case coverage is incomplete');
+for (const marker of [
+    'visibleChangeSet?.error && (',
+    '<strong>変更の記録を利用できません</strong>',
+    "? '確認できません'",
+    'error: unavailableReason'
+]) {
+    assert.ok(agentWindowSource.includes(marker), `Unavailable change evidence UI is missing ${marker}`);
+}
+const unavailableChangeNotice = resultsPartSource.match(/\{visibleChangeSet\?\.error && \([\s\S]*?\n\s*\)\}/)?.[0];
+assert.ok(unavailableChangeNotice && !unavailableChangeNotice.includes('retryTask('),
+    'An unavailable change recording must not offer a full-task retry.');
+assert.ok(sessionStore.includes('task.changeSet?.error?.trim()'),
+    'Requirement fallback aggregation must retain change capture errors');
 assert.ok(!taskService.includes("kind: 'placeholder'"), 'TaskService must capture a real baseline');
 for (const marker of [
     'restore(tasks: readonly ExecutionTask[])',
@@ -1066,7 +1093,8 @@ for (const marker of [
     "item: { type: 'agent_message', text: testReply }",
     'const resolvedWorkspace = await this.resolveWorkspace(workspacePath)',
     "this.providerRegistry.resolve('agent', providerId, model, effort)",
-    'this.snapshotStore.capture(await this.resolveWorkspace(workspacePath))'
+    'this.snapshotStore.capture(resolvedWorkspace, taskId)',
+    'this.throwIfExecutionCancelled(taskId)'
 ]) {
     assert.ok(runtimeServer.includes(marker), `Codex runtime is missing ${marker}`);
 }
@@ -1130,7 +1158,7 @@ for (const marker of [
     'nodeExecutable(shimDirectory)',
     'windowsHide: true',
     'shell: false',
-    "spawn('taskkill.exe'",
+    "spawnTreeKiller('taskkill.exe'",
     "stdio: 'ignore'"
 ]) {
     assert.ok(hiddenProcess.includes(marker), `Hidden process boundary is missing ${marker}`);
@@ -1153,6 +1181,24 @@ assert.ok(resultsGenerationServer.includes('spawnHiddenCli(providerId, command, 
 assert.ok(requirementClassificationServer.includes('spawnHiddenCli(providerId, command, args, { cwd, env, input })'));
 assert.ok(resultsGenerationServer.includes('return killHiddenProcessTree(child)'));
 assert.ok(snapshotStore.includes('windowsHide: true'), 'Git calls must stay hidden');
+for (const marker of [
+    'DEFAULT_CAPTURE_TIMEOUT_MS = 10_000',
+    'killHiddenProcessTree(child, timeoutMs, true)',
+    'context.blocksAgentStart || error instanceof SnapshotCleanupError',
+    'this.snapshotStore.cancel(executionId)',
+    'ホームフォルダー全体では変更を記録しません。',
+    'ドライブ全体では変更を記録しません。',
+    '変更記録の保存場所は記録対象にできません。',
+    'TEMPORARY_INDEX_PREFIX',
+    'class SnapshotCaptureLock',
+    'this.unsafeCleanupError = cleanupError',
+    'context?.throwIfAborted();',
+    "const SNAPSHOT_ATTRIBUTES = '* -filter -text -ident -working-tree-encoding -eol\\n'",
+    "'-c', 'core.fsmonitor=false'",
+    'core.hooksPath'
+]) {
+    assert.ok(agentWindowSource.includes(marker), `Bounded snapshot capture is missing ${marker}`);
+}
 assert.ok(!runtimeServer.includes('resolveSampleWorkspace'), 'Codex must run in the open Workspace');
 assert.ok(!runtimeServer.includes('C:\\Users\\owner\\github\\poiesis'), 'Codex runtime must not hard-code the repository root');
 
@@ -1750,6 +1796,7 @@ for (const marker of [
 assert.ok(agentWidget.includes("value.replace(/\\s+/g, ' ').trim()"),
     'Final-report activity filtering must normalize whitespace');
 for (const marker of [
+    '変更前のファイルを記録しています',
     'Agent を起動しています',
     '応答を待っています · 最終出力 ${outputAge}秒前',
     'const silentFor = outputAge ??',
@@ -1757,7 +1804,7 @@ for (const marker of [
     '（60秒以上出力がありません）',
     "finalizing ? '成果をまとめています'",
     "runningMessage?.runProgress?.phase === 'finalizing'",
-    'const quiet = !finalizing && silentFor >= 60',
+    'const quiet = !finalizing && !preparing && silentFor >= 60',
     'コマンド実行中',
     '思考中',
     "className='poiesis-agent-window__run-pulse'",
@@ -1766,7 +1813,7 @@ for (const marker of [
 ]) {
     assert.ok(agentWidget.includes(marker), `Honest live run status is missing ${marker}`);
 }
-assert.ok(providerSource.includes("phase: 'starting' | 'waiting' | 'activity' | 'finalizing'")
+assert.ok(providerSource.includes("phase: 'preparing' | 'starting' | 'waiting' | 'activity' | 'finalizing'")
     && cliProvider.includes("run.phase = 'finalizing'")
     && cliProvider.includes('this.emitProgress(run, true)'),
     'The provider must expose its non-cancellable finalization phase to the composer');

@@ -39,6 +39,7 @@ interface CodexRun {
 export class AgentRuntimeServerImpl implements AgentRuntimeServer {
     protected readonly snapshotStore = new SnapshotStore();
     protected readonly codexRuns = new Map<string, CodexRun>();
+    protected readonly cancelledExecutions = new Set<string>();
     protected agentTestReplySequence = 0;
     protected client?: AgentRuntimeClient;
 
@@ -53,11 +54,13 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
     }
 
     dispose(): void {
+        this.snapshotStore.dispose();
         for (const run of this.codexRuns.values()) {
             run.cancelled = true;
             run.process.kill();
         }
         this.codexRuns.clear();
+        this.cancelledExecutions.clear();
         this.client = undefined;
     }
 
@@ -117,15 +120,22 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         return folderPath;
     }
 
-    async captureGitSnapshot({ workspacePath }: GitSnapshotRequest): Promise<GitSnapshotCapture> {
+    async captureGitSnapshot({ workspacePath, taskId }: GitSnapshotRequest): Promise<GitSnapshotCapture> {
         if (!workspacePath) {
             return { source: 'empty', error: 'No workspace root is open.' };
         }
-        return this.snapshotStore.capture(await this.resolveWorkspace(workspacePath));
+        if (taskId) {
+            this.throwIfExecutionCancelled(taskId);
+        }
+        const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
+        if (taskId) {
+            this.throwIfExecutionCancelled(taskId);
+        }
+        return this.snapshotStore.capture(resolvedWorkspace, taskId);
     }
 
-    async captureGitChangeSet({ baselineSnapshotId }: GitChangeSetRequest): Promise<GitChangeSetCapture> {
-        return this.snapshotStore.captureChangeSet(baselineSnapshotId);
+    async captureGitChangeSet({ baselineSnapshotId, taskId }: GitChangeSetRequest): Promise<GitChangeSetCapture> {
+        return this.snapshotStore.captureChangeSet(baselineSnapshotId, taskId);
     }
 
     async captureGitChangeSetBetween(request: GitChangeSetBetweenRequest): Promise<GitChangeSetCapture> {
@@ -148,6 +158,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         if (this.codexRuns.has(executionId)) {
             throw new Error(`Codex execution already exists: ${executionId}`);
         }
+        this.throwIfExecutionCancelled(executionId);
         if (!workspacePath) {
             throw new Error('No workspace root is open.');
         }
@@ -246,9 +257,11 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         }
 
         const provider = await this.providerRegistry.resolve('agent', providerId, model, effort);
+        this.throwIfExecutionCancelled(executionId);
 
         const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
         const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(resolvedWorkspace);
+        this.throwIfExecutionCancelled(executionId);
         const args = agentCliArgs({
             providerId: provider.id,
             model: provider.model,
@@ -325,12 +338,21 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
     }
 
     async cancelCodex(executionId: string): Promise<void> {
+        this.cancelledExecutions.add(executionId);
         const run = this.codexRuns.get(executionId);
-        if (!run) {
-            return;
+        if (run) {
+            run.cancelled = true;
         }
-        run.cancelled = true;
-        await this.killProcess(run.process);
+        await Promise.all([
+            this.snapshotStore.cancel(executionId),
+            run ? this.killProcess(run.process) : Promise.resolve()
+        ]);
+    }
+
+    protected throwIfExecutionCancelled(executionId: string): void {
+        if (this.cancelledExecutions.has(executionId)) {
+            throw new Error('Task execution was cancelled.');
+        }
     }
 
     protected async resolveWorkspace(workspacePath: string): Promise<string> {

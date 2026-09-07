@@ -115,7 +115,7 @@ export class BundledResultsSkill implements ResultsSkill {
             ? `<ul aria-label="変更ファイル一覧">${fileRows}
       </ul>`
             : `<p class="no-changes">${changeSet.error
-                ? '変更ファイルを取得できませんでした。Repository の状態を確認してください。'
+                ? '変更ファイルを確認できませんでした。'
                 : '変更ファイルはありません。'}</p>`;
         const html = `<!doctype html>
 <html lang="ja">
@@ -991,7 +991,11 @@ export class ResultsService {
         const first = tasks[0];
         const last = tasks.at(-1);
         const paths = [...new Set(tasks.flatMap(task => task.changeSet?.files ?? []))].sort();
-        if (first?.baselineSnapshotId && last?.endSnapshotId) {
+        const unavailableReasons = [...new Set(tasks
+            .map(task => task.changeSet?.error?.trim())
+            .filter((error): error is string => Boolean(error)))];
+        let unavailableReason = unavailableReasons.join(' / ') || undefined;
+        if (!unavailableReason && first?.baselineSnapshotId && last?.endSnapshotId) {
             try {
                 const capture = await this.runtimeServer.captureGitChangeSetBetween({
                     fromSnapshotId: first.baselineSnapshotId,
@@ -1008,7 +1012,9 @@ export class ResultsService {
                     this.requirementChangeSets.set(requirement.id, changeSet);
                     return changeSet;
                 }
+                unavailableReason = capture.error;
             } catch {
+                unavailableReason = '変更内容をまとめて確認できませんでした。';
                 // Legacy concatenation below keeps Results available when the durable store is missing.
             }
         }
@@ -1020,7 +1026,8 @@ export class ResultsService {
             source: diffs.length ? 'task-diff' : 'empty',
             diff: diffs.length ? `${note}\n\n${diffs.join('\n\n')}` : '',
             files: paths,
-            capturedAt: new Date().toISOString()
+            capturedAt: new Date().toISOString(),
+            error: unavailableReason
         };
         this.requirementChangeSets.set(requirement.id, changeSet);
         return changeSet;

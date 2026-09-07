@@ -37,7 +37,7 @@ Object.defineProperty(globalThis, 'navigator', {
 require('@theia/core/lib/browser/frontend-application-config-provider').FrontendApplicationConfigProvider.set({});
 
 const { CliAgentProvider } = require('../agent-window/lib/browser/cli-agent-provider.js');
-const { AiResultsSkill, ResultsService } = require('../agent-window/lib/browser/results-skill.js');
+const { AiResultsSkill, BundledResultsSkill, ResultsService } = require('../agent-window/lib/browser/results-skill.js');
 const { TaskService } = require('../agent-window/lib/browser/task-service.js');
 
 function deferred() {
@@ -306,6 +306,32 @@ assert.equal(rejectedDocument?.error, 'injected fallback failure');
 assert(hasAgentEvent('message-completed', rejectedTaskId),
     'A rejected background Results update must not retract the completed Agent response.');
 
+const unavailableReason = '変更の記録が時間内に完了しませんでした。';
+taskService.get(rejectedTaskId).changeSet.error = unavailableReason;
+const unavailableAggregate = await resultsService.cumulativeChangeSet({
+    id: 'requirement-unavailable',
+    title: '記録できない変更',
+    taskIds: [rejectedTaskId]
+});
+assert.equal(unavailableAggregate.error, unavailableReason,
+    'Requirement Results aggregation must preserve the unavailable capture reason.');
+const bundledResults = new BundledResultsSkill();
+const unavailableDocument = await bundledResults.generate({
+    task: taskService.get(rejectedTaskId),
+    changeSet: unavailableAggregate
+});
+assert.match(unavailableDocument.html, /変更ファイルを確認できませんでした。/);
+assert.doesNotMatch(unavailableDocument.html, /変更ファイルはありません。/,
+    'Unavailable capture must not be presented as a verified zero-change result.');
+const verifiedZeroDocument = await bundledResults.generate({
+    task: taskService.get(rejectedTaskId),
+    changeSet: { source: 'empty', diff: '', files: [], capturedAt: new Date().toISOString() }
+});
+assert.match(verifiedZeroDocument.html, /変更ファイルはありません。/,
+    'A successfully captured zero-change result must retain its existing presentation.');
+
+const preparationBehavior = await verifyPreparationCancellationAndFailure();
+
 console.log(`DEFERRED_RESULTS_COMPLETION_TEST=${JSON.stringify({
     agentCompletedBeforeResults: true,
     secondTurnBeforeResults: true,
@@ -313,8 +339,159 @@ console.log(`DEFERRED_RESULTS_COMPLETION_TEST=${JSON.stringify({
     terminalPathsReady: ['completed', 'failed', 'cancelled'],
     taskWorkspaceRetained: generationRequests[0].workspaceUri,
     resultPersisted: true,
-    rejectedBackgroundHandled: true
+    rejectedBackgroundHandled: true,
+    unavailableReasonPreserved: true,
+    verifiedZeroChangesUnchanged: true,
+    preparationBehavior
 })}`);
+
+async function verifyPreparationCancellationAndFailure() {
+    const baselineRelease = deferred();
+    const baselineStarted = deferred();
+    const baselineFinished = deferred();
+    const cancellationRuntime = new FakeRuntimeServer();
+    cancellationRuntime.captureGitSnapshot = async ({ taskId }) => {
+        cancellationRuntime.operations.push(`baseline-start:${taskId}`);
+        baselineStarted.resolve();
+        await baselineRelease.promise;
+        cancellationRuntime.operations.push(`baseline-finished:${taskId}`);
+        baselineFinished.resolve();
+        return { source: 'empty', error: '変更の記録をキャンセルしました。' };
+    };
+    cancellationRuntime.captureGitChangeSet = async () => {
+        cancellationRuntime.operations.push('unexpected-post-capture');
+        return { source: 'empty', diff: '', files: [] };
+    };
+    cancellationRuntime.cancelCodex = async executionId => {
+        cancellationRuntime.operations.push(`cancel:${executionId}`);
+        baselineRelease.resolve();
+        await baselineFinished.promise;
+    };
+    const cancelled = await preparationProvider(cancellationRuntime, 'cancel');
+    const sendPromise = cancelled.provider.sendMessage(cancelled.session.id, cancelled.message('準備中に停止します。'));
+    await baselineStarted.promise;
+    const taskId = cancelled.events.find(event => event.type === 'task-started')?.taskId;
+    assert(taskId);
+    await cancelled.provider.cancel(cancelled.session.id);
+    await sendPromise;
+    assert.equal(cancellationRuntime.runRequests.length, 0,
+        'Cancelling preparation must prevent the Agent process from launching.');
+    assert.equal(cancellationRuntime.operations.includes('unexpected-post-capture'), false,
+        'Cancelling preparation must not start a post-task snapshot.');
+    assert.equal(cancelled.taskService.get(taskId)?.status, 'cancelled');
+
+    const launchStarted = deferred();
+    const launchAcknowledged = deferred();
+    const stopFinished = deferred();
+    const startupRuntime = new FakeRuntimeServer();
+    startupRuntime.runCodex = async request => {
+        startupRuntime.runRequests.push(request);
+        launchStarted.resolve();
+        await launchAcknowledged.promise;
+    };
+    startupRuntime.cancelCodex = async () => { await stopFinished.promise; };
+    startupRuntime.captureGitChangeSet = async () => {
+        startupRuntime.operations.push('startup-change-captured');
+        return { source: 'task-diff', diff: 'startup change', files: ['startup.txt'] };
+    };
+    const startup = await preparationProvider(startupRuntime, 'startup-race');
+    const startupSend = startup.provider.sendMessage(
+        startup.session.id,
+        startup.message('起動応答待ちのキャンセルを確認します。')
+    );
+    await launchStarted.promise;
+    const startupTaskId = startup.events.find(event => event.type === 'task-started')?.taskId;
+    assert(startupTaskId);
+    const startupCancel = startup.provider.cancel(startup.session.id);
+    launchAcknowledged.resolve();
+    await startupSend;
+    assert.equal(startup.provider.runs.get(startup.session.id)?.state, 'cancelling',
+        'A launch acknowledgement must not undo pending cancellation.');
+    assert.equal(startup.events.some(event => event.type === 'progress' && event.progress.phase === 'waiting'), false,
+        'A launch acknowledgement must not emit a waiting phase during cancellation.');
+    stopFinished.resolve();
+    await startupCancel;
+    assert.equal(startupRuntime.operations.includes('startup-change-captured'), true,
+        'Cancellation after baseline capture must preserve changes made during process startup.');
+    assert.deepEqual(startup.taskService.get(startupTaskId)?.changeSet?.files, ['startup.txt']);
+
+    let cleanupFinished = false;
+    const failedRuntime = new FakeRuntimeServer();
+    failedRuntime.captureGitSnapshot = async () => {
+        await Promise.resolve();
+        cleanupFinished = true;
+        return { source: 'empty', error: '変更の記録が時間内に完了しませんでした。' };
+    };
+    failedRuntime.runCodex = async request => {
+        assert.equal(cleanupFinished, true,
+            'The Agent may start after failed capture only when subprocess cleanup has finished.');
+        failedRuntime.runRequests.push(request);
+    };
+    const failed = await preparationProvider(failedRuntime, 'failed');
+    await failed.provider.sendMessage(failed.session.id, failed.message('記録失敗後に開始します。'));
+    assert.equal(failedRuntime.runRequests.length, 1);
+    const phases = failed.events
+        .filter(event => event.type === 'progress')
+        .map(event => event.progress.phase);
+    assert.deepEqual(phases.slice(0, 2), ['preparing', 'starting'],
+        'Preparation and Agent startup must be reported as distinct phases.');
+
+    const blockedRuntime = new FakeRuntimeServer();
+    blockedRuntime.captureGitSnapshot = async () => ({
+        source: 'empty',
+        error: '変更の記録を安全に停止できなかったため、Agent を開始しませんでした。',
+        blocksAgentStart: true
+    });
+    const blocked = await preparationProvider(blockedRuntime, 'blocked');
+    await blocked.provider.sendMessage(blocked.session.id, blocked.message('安全に停止できない場合は開始しません。'));
+    const blockedTaskId = blocked.events.find(event => event.type === 'task-started')?.taskId;
+    assert(blockedTaskId);
+    assert.equal(blockedRuntime.runRequests.length, 0,
+        'Unconfirmed capture cleanup must block Agent launch.');
+    assert.equal(blocked.taskService.get(blockedTaskId)?.status, 'failed');
+    return {
+        cancellationPreventedAgentLaunch: true,
+        cancellationPreventedPostCapture: true,
+        launchAcknowledgementKeptCancelling: true,
+        startupChangesCaptured: true,
+        failureWaitedForCleanup: true,
+        unconfirmedCleanupBlockedAgentLaunch: true,
+        phases: phases.slice(0, 2)
+    };
+}
+
+async function preparationProvider(runtimeServer, suffix) {
+    const runtimeClient = new FakeRuntimeClient();
+    const taskService = new TaskService(
+        runtimeServer,
+        workspaceService,
+        globalStorageService,
+        legacyStorageService
+    );
+    const workspaceSkillService = {
+        async buildPrompt() { return { content: '', includedSkillIds: [], diagnostics: [], assertions: [] }; }
+    };
+    const provider = new CliAgentProvider(runtimeServer, runtimeClient, mockProvider, taskService, workspaceSkillService);
+    const events = [];
+    provider.onEvent(event => events.push(event));
+    const workspaceUri = `file:///C:/work/${suffix}`;
+    const session = await provider.createSession({ workspaceUri, providerId: 'codex' });
+    return {
+        provider,
+        session,
+        taskService,
+        events,
+        message: content => ({
+            role: 'user',
+            content,
+            ownerSessionId: `conversation-${suffix}`,
+            requirementId: `requirement-${suffix}`,
+            requirementChoice: 'default',
+            workspaceUri,
+            conversation: []
+        })
+    };
+}
 
 async function startTurn(content) {
     const before = agentEvents.filter(event => event.type === 'task-started').length;
