@@ -1265,7 +1265,6 @@
     outline: none;
 }
 
-.poiesis-agent-window__composer:focus-within,
 .poiesis-results__composer:focus-within,
 .poiesis-agent-window__repository-search:focus-within,
 .poiesis-agent-window__workspace-picker-search:focus-within,

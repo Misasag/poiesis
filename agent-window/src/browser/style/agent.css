@@ -368,7 +368,7 @@
     width: calc(100% - clamp(40px, 12vw, 128px));
 }
 
-.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__composer:focus-within {
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__composer:has(> textarea:focus) {
     outline: 2px solid var(--poiesis-focus-ring);
     outline-offset: 2px;
 }
@@ -391,7 +391,7 @@
     color: var(--poiesis-chrome-quiet, #999c94);
 }
 
-.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__composer textarea:focus-visible {
+.poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__composer:has(> textarea:focus) > textarea:focus {
     outline: none;
 }
 

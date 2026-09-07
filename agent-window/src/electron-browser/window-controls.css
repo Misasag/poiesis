@@ -6,7 +6,7 @@
     user-select: none;
 }
 
-.poiesis-agent-window__header {
+#poiesis-window-host .poiesis-agent-window__header {
     padding-right: 154px;
     position: relative;
 }
