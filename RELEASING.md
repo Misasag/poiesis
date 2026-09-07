@@ -6,6 +6,8 @@
 
 リリース前に version と lockfile を更新し、必要なローカル検証を終えて commit する。
 
+公開する version は、最新の公開版だけでなく、ローカルで作成・インストールした版よりも大きくする。内容が異なっても version が同じなら自動更新の対象にならない。Windows のインストール済み version は `%LOCALAPPDATA%\Programs\Poiesis\Poiesis.exe` の `VersionInfo.ProductVersion` と `%APPDATA%\Poiesis\logs\updater.log` で確認する。既存のタグや配布ファイルを差し替えて同じ version を再利用しない。
+
 ```powershell
 npm version patch --workspace=@poiesis/theia-electron-app --no-git-tag-version
 npm run validate:source
