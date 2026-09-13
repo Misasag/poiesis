@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const read = path => readFile(resolve(root, path), 'utf8');
+const read = async path => (await readFile(resolve(root, path), 'utf8')).replace(/\r\n/g, '\n');
 const readTree = async path => {
     const directory = resolve(root, path);
     const entries = await readdir(directory, { withFileTypes: true });
