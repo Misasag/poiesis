@@ -24,6 +24,7 @@ import type { ResultsQuestionService } from '../results-question-service';
 import type { ResultsService } from '../results-skill';
 import type { ExecutionTask, TaskService } from '../task-service';
 import type { WorkspaceSkillService } from '../workspace-skill-service';
+import type { ThemePreferenceService } from '../theme-preference-service';
 import type { ConversationSearchMatch } from './conversation-search';
 import type { AgentWindowTab, SessionStore, WindowAgentSession } from './session-store';
 
@@ -117,6 +118,7 @@ export interface AgentWindowHost {
     readonly workspaceSkillService: WorkspaceSkillService;
     readonly messageService: MessageService;
     readonly taskReviewResourceResolver: TaskReviewResourceResolver;
+    readonly themePreferenceService: ThemePreferenceService;
 
     // Widget-owned composition operations.
     update(): void;
@@ -240,6 +242,7 @@ export abstract class AgentWindowPartBase {
     protected get extensionsSearchModel(): VSXExtensionsSearchModel { return this.host.extensionsSearchModel; }
     protected get storageService(): StorageService { return this.host.storageService; }
     protected get globalStorageService(): GlobalStorageService { return this.host.globalStorageService; }
+    protected get themePreferenceService(): ThemePreferenceService { return this.host.themePreferenceService; }
     protected get folderExplorerService(): FolderExplorerService { return this.host.folderExplorerService; }
     protected get agentRuntimeServer(): AgentRuntimeServer { return this.host.agentRuntimeServer; }
     protected get resultsQuestionService(): ResultsQuestionService { return this.host.resultsQuestionService; }

@@ -1,0 +1,597 @@
+/* Light mode is opt-in so every existing dark value remains unchanged. */
+html[data-poiesis-color-mode='light'] #poiesis-window-host {
+    background: #f3f3f0;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__content {
+    --poiesis-chrome-bg: #f7f7f4;
+    --poiesis-chrome-panel: #efefeb;
+    --poiesis-chrome-panel-raised: #ffffff;
+    --poiesis-chrome-hover: #e2e3de;
+    --poiesis-chrome-line: #d5d6d0;
+    --poiesis-chrome-line-strong: #b8bab2;
+    --poiesis-chrome-text: #23241f;
+    --poiesis-chrome-copy: #454740;
+    --poiesis-chrome-muted: #62655d;
+    --poiesis-chrome-quiet: #62655d;
+    --poiesis-control-border: #aeb1a8;
+    --poiesis-focus-ring: #87552f;
+    --poiesis-focus-ring-soft: rgb(135 85 47 / 14%);
+    --poiesis-results-accent: #526b9e;
+    --poiesis-results-muted: #52627e;
+    --poiesis-selection-bg: #dfe7e1;
+    --poiesis-selection-border: #82998a;
+    --poiesis-success: #496c50;
+    --poiesis-shadow-composer: 0 8px 24px rgb(40 42 36 / 10%);
+    color-scheme: light;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__content[data-mode='agent'] {
+    --poiesis-chrome-bg: #f7f7f4;
+    --poiesis-chrome-panel: #efefeb;
+    --poiesis-chrome-panel-raised: #ffffff;
+    --poiesis-chrome-hover: #e2e3de;
+    --poiesis-chrome-line: #d5d6d0;
+    --poiesis-chrome-line-strong: #b8bab2;
+    --poiesis-chrome-text: #23241f;
+    --poiesis-chrome-copy: #454740;
+    --poiesis-chrome-muted: #62655d;
+    --poiesis-chrome-quiet: #62655d;
+    --poiesis-control-border: #aeb1a8;
+    --poiesis-focus-ring: #87552f;
+    --poiesis-focus-ring-soft: rgb(135 85 47 / 14%);
+    --poiesis-selection-bg: #dfe7e1;
+    --poiesis-success: #496c50;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__header,
+    .poiesis-agent-window__code,
+    .poiesis-agent-window__code-sidebar,
+    .poiesis-agent-window__code-activity,
+    .poiesis-agent-window__code-panel,
+    .poiesis-agent-window__code-status,
+    .poiesis-results
+) {
+    background: var(--poiesis-chrome-bg);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__header {
+    border-bottom-color: var(--poiesis-chrome-line);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__app-page,
+    .poiesis-folder-explorer__body,
+    .poiesis-results__qa-history
+) {
+    background: #f7f7f4;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__app-nav,
+    .poiesis-folder-explorer__toolbar,
+    .poiesis-results__fixed-header,
+    .poiesis-results__qa-panel,
+    .poiesis-results__qa-toggle,
+    .poiesis-results__qa-entry,
+    .poiesis-results__requirement-card,
+    .poiesis-results__question-panel .poiesis-results__composer,
+    .poiesis-customize-view__new-skill,
+    .poiesis-customize-view__editor,
+    .poiesis-customize-view__proposal-preview,
+    .poiesis-settings-modal__nav
+) {
+    background: var(--poiesis-chrome-panel);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-folder-explorer,
+    .poiesis-conversation-search,
+    .poiesis-settings-modal,
+    .poiesis-agent-window__workspace-picker,
+    .poiesis-agent-window__repository-picker,
+    .poiesis-results__auxiliary
+) {
+    background: var(--poiesis-chrome-panel-raised);
+    border-color: var(--poiesis-chrome-line-strong);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-select__trigger,
+    .poiesis-model-picker__trigger,
+    .poiesis-settings-modal__text-button,
+    .poiesis-settings-modal__confirm button,
+    .poiesis-settings-modal__danger-zone > button,
+    .poiesis-settings-modal__archived-row > button,
+    .poiesis-customize-view__primary-action,
+    .poiesis-customize-view__new-skill button,
+    .poiesis-customize-view__editor button,
+    .poiesis-customize-view__discard-confirm button,
+    .poiesis-customize-view__proposal-actions button,
+    .poiesis-agent-window__archived-composer-state > button,
+    .poiesis-folder-explorer__footer button
+) {
+    background: #ffffff;
+    border-color: var(--poiesis-control-border);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-select__trigger:hover:not(:disabled),
+    .poiesis-model-picker__trigger:hover,
+    .poiesis-settings-modal__text-button:hover,
+    .poiesis-customize-view button:hover:not(:disabled),
+    .poiesis-folder-explorer__footer button:hover:not(:disabled)
+) {
+    background: var(--poiesis-chrome-hover);
+    border-color: #8f9289;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-select__listbox,
+    .poiesis-model-picker__popover,
+    .poiesis-agent-window__session-menu,
+    .poiesis-results__card-menu,
+    .poiesis-agent-window__code-explorer-menu
+) {
+    background: #ffffff;
+    border-color: var(--poiesis-chrome-line-strong);
+    box-shadow: 0 14px 36px rgb(35 36 31 / 18%);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-select__option.active,
+    .poiesis-model-picker__option.active,
+    .poiesis-agent-window__session-menu button:hover,
+    .poiesis-agent-window__session-menu button:focus-visible,
+    .poiesis-results__card-menu button:hover,
+    .poiesis-results__card-menu button:focus-visible,
+    .poiesis-results__move-submenu > summary:hover,
+    .poiesis-results__move-submenu > summary:focus-visible,
+    .poiesis-agent-window__code-explorer-menu button:hover,
+    .poiesis-agent-window__code-explorer-menu button:focus-visible
+) {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-model-picker__search input,
+    .poiesis-model-picker__custom input,
+    .poiesis-model-picker__custom .poiesis-select__trigger,
+    .poiesis-model-picker__effort .poiesis-select__trigger,
+    .poiesis-customize-view__new-skill input,
+    .poiesis-customize-view__new-skill .poiesis-select__trigger,
+    .poiesis-customize-view .poiesis-customize-view__editor-input,
+    .poiesis-folder-explorer__toolbar label,
+    .poiesis-agent-window__workspace-picker-search,
+    .poiesis-agent-window__repository-search,
+    .poiesis-conversation-search__field,
+    .poiesis-agent-window__session-rename,
+    .poiesis-results__question-panel .poiesis-results__composer textarea
+) {
+    background: #ffffff;
+    border-color: var(--poiesis-control-border);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__workspace-picker-item,
+    .poiesis-agent-window__repository-option,
+    .poiesis-agent-window__workspace-name,
+    .poiesis-agent-window__session-row,
+    .poiesis-agent-window__session-menu button,
+    .poiesis-folder-explorer__folder-row
+) {
+    color: var(--poiesis-chrome-copy);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__workspace-picker-item:hover,
+    .poiesis-agent-window__workspace-picker-item:focus-visible,
+    .poiesis-agent-window__repository-option:hover,
+    .poiesis-agent-window__repository-option:focus-visible,
+    .poiesis-agent-window__repository-option.selected,
+    .poiesis-folder-explorer__folder-row:hover,
+    .poiesis-folder-explorer__folder-row:focus-visible,
+    .poiesis-agent-window__session-menu-trigger:hover,
+    .poiesis-agent-window__session-menu-trigger:focus-visible
+) {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__tabs,
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__code-control {
+    background: #ffffff;
+    border-color: var(--poiesis-control-border);
+    color: var(--poiesis-chrome-copy);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__tabs button,
+    .poiesis-agent-window__context-workspace,
+    .poiesis-agent-window__context-scope small,
+    .poiesis-agent-window__code-workspace,
+    .poiesis-agent-window__context > strong
+) {
+    color: var(--poiesis-chrome-muted);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__tabs button.active {
+    background: var(--poiesis-selection-bg);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__user-message {
+    background: #e7e8e3;
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-activity,
+    .poiesis-agent-window__skill-proposal-notice,
+    .poiesis-agent-window__requirement-classification,
+    .poiesis-agent-window__finalizing,
+    .poiesis-agent-window__context-pill,
+    .poiesis-agent-window__content[data-mode='agent'] .poiesis-agent-window__composer-footer .poiesis-model-picker__trigger
+) {
+    color: var(--poiesis-chrome-muted);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-activity__header strong,
+    .poiesis-agent-activity__row > strong,
+    .poiesis-markdown pre code
+) {
+    color: var(--poiesis-chrome-copy);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__latest,
+    .poiesis-markdown code,
+    .poiesis-settings-modal kbd,
+    .poiesis-customize-view__dirty
+) {
+    background: #e8e9e4;
+    color: var(--poiesis-chrome-copy);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-markdown pre,
+    .poiesis-agent-window__message-error pre,
+    .poiesis-agent-html-preview,
+    .poiesis-customize-view__proposal-preview pre,
+    .poiesis-customize-view__proposal-diff,
+    .poiesis-customize-view__prompt-preview-content pre,
+    .poiesis-customize-view__skill-details dl,
+    .poiesis-settings-modal__diagnostics dl
+) {
+    background: #f0f1ec;
+    border-color: var(--poiesis-chrome-line-strong);
+    color: var(--poiesis-chrome-copy);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-html-preview__header {
+    background: #e8e9e4;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-markdown a {
+    color: #7b4a25;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__message-error,
+    .poiesis-agent-window__stop,
+    .poiesis-customize-view__discard-confirm,
+    .poiesis-customize-view__proposal-row.has-error .poiesis-customize-view__skill-card
+) {
+    background: #faece9;
+    border-color: #c9958e;
+    color: #7b332e;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__send,
+html[data-poiesis-color-mode='light'] .poiesis-results__send {
+    background: #31332e;
+    color: #ffffff;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__send .codicon,
+    .poiesis-results__send .codicon
+) {
+    color: #ffffff;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__send:hover:not(:disabled),
+    .poiesis-results__send:hover:not(:disabled)
+) {
+    background: #444740;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__nav button:hover,
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__nav button:focus-visible {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__nav button.active {
+    background: var(--poiesis-selection-bg);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__nav .codicon {
+    color: var(--poiesis-chrome-muted);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__cli-status {
+    color: #8c3e32;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__cli-status.found {
+    color: #416849;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__cli-status.pending {
+    color: var(--poiesis-chrome-muted);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__cli-status.unsupported {
+    color: #77501e;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__cli-help button {
+    color: #7b4a25;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__diagnostics dt {
+    color: var(--poiesis-chrome-muted);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__segmented {
+    background: #e5e6e1;
+    border-color: var(--poiesis-control-border);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-settings-modal__segmented label.active span {
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgb(35 36 31 / 14%);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__code-sidebar-tabs,
+    .poiesis-agent-window__code-editor-tabs,
+    .poiesis-agent-window__code-editor-tab,
+    .poiesis-agent-window__code-terminal-select .poiesis-select__trigger
+) {
+    background: #ececea;
+    border-color: var(--poiesis-chrome-line);
+    color: var(--poiesis-chrome-muted);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__code-sidebar-tabs button.active,
+    .poiesis-agent-window__code-editor-tab.active,
+    .poiesis-agent-window__code-editor-tab:hover
+) {
+    background: #ffffff;
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__code-git-graph-title,
+    .poiesis-agent-window__code-sidebar-title,
+    .poiesis-agent-window__code-change-scope,
+    .poiesis-agent-window__code-task-changes > header,
+    .poiesis-agent-window__code-task-state,
+    .poiesis-agent-window__code-panel,
+    .poiesis-agent-window__code-status
+) {
+    border-color: var(--poiesis-chrome-line);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__code-git-graph-title,
+    .poiesis-agent-window__code-task-changes > header strong,
+    .poiesis-agent-window__code-task-file,
+    .poiesis-agent-window__code-explorer-root
+) {
+    color: var(--poiesis-chrome-copy);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__code-activity button,
+    .poiesis-agent-window__code-sidebar-title,
+    .poiesis-agent-window__code-sidebar-title button,
+    .poiesis-agent-window__code-change-scope button,
+    .poiesis-agent-window__code-task-changes > header span,
+    .poiesis-agent-window__code-task-file-label small,
+    .poiesis-agent-window__code-task-file-lines,
+    .poiesis-agent-window__code-panel-tab,
+    .poiesis-agent-window__code-panel-tabs button,
+    .poiesis-agent-window__code-status
+) {
+    color: var(--poiesis-chrome-muted);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__code-activity button:hover,
+    .poiesis-agent-window__code-activity button:focus-visible,
+    .poiesis-agent-window__code-activity button.active,
+    .poiesis-agent-window__code-change-scope button:hover,
+    .poiesis-agent-window__code-change-scope button:focus-visible,
+    .poiesis-agent-window__code-change-scope button.active,
+    .poiesis-agent-window__code-task-changes li:hover,
+    .poiesis-agent-window__code-task-changes li:focus-within,
+    .poiesis-agent-window__code-task-changes li.selected,
+    .poiesis-agent-window__code-sidebar-host .theia-TreeNode:hover,
+    .poiesis-agent-window__code-sidebar-host .theia-TreeNode.theia-mod-selected,
+    .poiesis-agent-window__code-panel-tabs button:hover:not(:disabled),
+    .poiesis-agent-window__code-panel-tabs button:focus-visible,
+    .poiesis-agent-window__code-status button:hover,
+    .poiesis-agent-window__code-status button:focus-visible,
+    .poiesis-agent-window__code-status button.active
+) {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-results__canvas,
+html[data-poiesis-color-mode='light'] .poiesis-results__document {
+    background: #f8f7f3;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-results__status,
+    .poiesis-results__badges > span,
+    .poiesis-results__task-count,
+    .poiesis-results__task-delete-confirm
+) {
+    background: #e6e7e2;
+    border-color: var(--poiesis-chrome-line-strong);
+    color: var(--poiesis-chrome-copy);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-results__composer {
+    background: #edf2fb;
+    border-color: #7389b5;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-results__composer textarea {
+    background: #ffffff;
+    color: #28344d;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-results__requirement-card.active,
+html[data-poiesis-color-mode='light'] .poiesis-results__task-select.active {
+    background: #e4eaf6;
+    border-color: #9aabd0;
+    color: #293a5d;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-results__more:hover,
+    .poiesis-results__more:focus-visible,
+    .poiesis-results__task-delete:hover,
+    .poiesis-results__task-delete:focus-visible,
+    .poiesis-results__task-select:hover,
+    .poiesis-results__task-select:focus-visible
+) {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-customize-view__skill-card:hover,
+    .poiesis-customize-view__skill-card:focus-visible,
+    .poiesis-customize-view__skill-row.is-selected,
+    .poiesis-customize-view__proposal-row.is-selected
+) {
+    background: var(--poiesis-selection-bg);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-customize-view {
+    --poiesis-chrome-copy: #454740;
+    --poiesis-chrome-muted: #62655d;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-customize-view__group-title,
+    .poiesis-customize-view__new-skill label > span,
+    .poiesis-customize-view__secondary-details .poiesis-disclosure__summary-content > span,
+    .poiesis-customize-view__prompt-preview .poiesis-disclosure__summary-content > span
+) {
+    color: var(--poiesis-chrome-copy);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-customize-view__source-badge {
+    border-color: var(--poiesis-control-border) !important;
+    color: var(--poiesis-chrome-muted) !important;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-customize-view__skill-error,
+    .poiesis-customize-view__skill-note,
+    .poiesis-customize-view__new-skill > p,
+    .poiesis-customize-view__discard-confirm > span
+) {
+    color: #8c3e32;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-customize-view__dirty.active {
+    background: #f2e7d7;
+    color: #77501e;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__customize-icon,
+    .poiesis-agent-window__customize-title > span
+) {
+    background: #e5e6e1;
+    border-color: var(--poiesis-chrome-line-strong);
+    color: var(--poiesis-chrome-copy);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__switch > span {
+    background: #b8bbb3;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__switch > span::after {
+    background: #ffffff;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-agent-window__switch input:checked + span {
+    background: #496c50;
+}
+
+html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogBlock,
+html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogContent,
+html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogControl {
+    background: #ffffff;
+    border-color: #c6c8c0;
+    color: #454740;
+}
+
+html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogTitle {
+    background: #efefeb;
+    border-color: #d5d6d0;
+    color: #23241f;
+}
+
+html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogTitle i.closeButton {
+    color: #676a62;
+}
+
+html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogTitle i.closeButton:hover {
+    background: #e2e3de;
+    color: #23241f;
+}
+
+html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogControl .theia-button {
+    background: #ffffff;
+    border-color: #aeb1a8;
+    color: #23241f;
+}
+
+html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogControl .theia-button:hover {
+    background: #e2e3de;
+}
+
+html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogControl .theia-button.main {
+    background: #87552f;
+    border-color: #704323;
+    color: #ffffff;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__content ::-webkit-scrollbar-thumb,
+    .poiesis-settings-modal ::-webkit-scrollbar-thumb,
+    body .lm-Widget.dialogOverlay ::-webkit-scrollbar-thumb
+) {
+    background: #b1b4ab;
+}

@@ -96,6 +96,7 @@ import { HeaderPart } from './agent-window/header-part';
 import { RailPart } from './agent-window/rail-part';
 import { ConversationSearchMatch } from './agent-window/conversation-search';
 import { TaskReviewResourceResolver } from './task-review-resource';
+import { ThemePreferenceService } from './theme-preference-service';
 
 @injectable()
 export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
@@ -180,7 +181,8 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         @inject(ResultsGenerationContext) public readonly resultsGenerationContext: ResultsGenerationContext,
         @inject(WorkspaceSkillService) public readonly workspaceSkillService: WorkspaceSkillService,
         @inject(MessageService) public readonly messageService: MessageService,
-        @inject(TaskReviewResourceResolver) public readonly taskReviewResourceResolver: TaskReviewResourceResolver
+        @inject(TaskReviewResourceResolver) public readonly taskReviewResourceResolver: TaskReviewResourceResolver,
+        @inject(ThemePreferenceService) public readonly themePreferenceService: ThemePreferenceService
     ) {
         super();
     }
@@ -322,6 +324,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         this.id = AgentWindowWidget.ID;
         this.addClass('poiesis-agent-window');
         this.toDispose.push(Disposable.create(() => this.disposeAgentRichContent()));
+        this.toDispose.push(this.themePreferenceService.onDidChange(() => this.update()));
 
         const compactRailQuery = window.matchMedia('(max-width: 1000px)');
         const syncCompactRailViewport = (): void => {

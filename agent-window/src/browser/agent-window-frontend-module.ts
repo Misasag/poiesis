@@ -8,7 +8,7 @@ import { AgentWindowContribution } from './agent-window-contribution';
 import { AgentWindowWidget } from './agent-window-widget';
 import { AgentRuntimeClientImpl } from './agent-runtime-client';
 import { CliAgentProvider } from './cli-agent-provider';
-import { DesignShotContribution } from './design-shot-contribution';
+import { ThemePreferenceService } from './theme-preference-service';
 import { AgentProvider } from '../common/agent-provider';
 import { AgentRuntimeServer, agentRuntimeServerPath } from '../common/agent-runtime-protocol';
 import { MockAgentProvider } from './mock-agent-provider';
@@ -47,6 +47,7 @@ import '../../src/browser/style/code.css';
 import '../../src/browser/style/customize.css';
 import '../../src/browser/style/settings.css';
 import '../../src/browser/style/responsive.css';
+import '../../src/browser/style/theme.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     rebind(FrontendApplication).to(PoiesisFrontendApplication).inSingletonScope();
@@ -91,8 +92,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     bind(GlobalStorageService).toService(BrowserGlobalStorageService);
     bind(WorkspaceSkillService).toSelf().inSingletonScope();
 
-    bind(DesignShotContribution).toSelf().inSingletonScope();
-    bind(FrontendApplicationContribution).toService(DesignShotContribution);
+    bind(ThemePreferenceService).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(ThemePreferenceService);
 
     bind(AgentWindowWidget).toSelf().inSingletonScope();
     bind(AgentWindowContribution).toSelf().inSingletonScope();

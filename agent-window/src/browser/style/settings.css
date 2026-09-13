@@ -17,9 +17,9 @@
     color: var(--poiesis-chrome-copy);
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    height: min(760px, calc(100vh - 32px));
+    height: min(760px, calc(100vh / var(--poiesis-ui-font-scale, 1) - 32px));
     overflow: hidden;
-    width: min(960px, calc(100vw - 32px));
+    width: min(960px, calc(100vw / var(--poiesis-ui-font-scale, 1) - 32px));
 }
 
 .poiesis-settings-modal__header {
@@ -232,6 +232,16 @@
 .poiesis-settings-modal__segmented label.active span {
     background: #343632;
     color: var(--poiesis-chrome-text);
+}
+
+.poiesis-settings-modal__theme-options {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 100%;
+}
+
+.poiesis-settings-modal__theme-options span {
+    white-space: nowrap;
 }
 
 .poiesis-settings-modal__segmented input:focus-visible + span {
@@ -625,8 +635,8 @@
     }
 
     .poiesis-settings-modal {
-        height: calc(100vh - 24px);
-        width: calc(100vw - 24px);
+        height: calc(100vh / var(--poiesis-ui-font-scale, 1) - 24px);
+        width: calc(100vw / var(--poiesis-ui-font-scale, 1) - 24px);
     }
 
     .poiesis-settings-modal__shell {
@@ -672,6 +682,23 @@
         align-items: start;
         gap: 10px;
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .poiesis-settings-modal__theme-options {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        justify-self: stretch;
+        width: 100%;
+    }
+
+    .poiesis-settings-modal__theme-options label:last-child {
+        grid-column: 1 / -1;
+    }
+
+    .poiesis-settings-modal__theme-options span {
+        justify-content: center;
+        text-align: center;
+        width: 100%;
     }
 
     .poiesis-settings-modal__model-field {

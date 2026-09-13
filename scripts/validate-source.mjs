@@ -58,7 +58,8 @@ const agentStyles = (await Promise.all([
     'agent-window/src/browser/style/code.css',
     'agent-window/src/browser/style/customize.css',
     'agent-window/src/browser/style/settings.css',
-    'agent-window/src/browser/style/responsive.css'
+    'agent-window/src/browser/style/responsive.css',
+    'agent-window/src/browser/style/theme.css'
 ].map(read))).join('\n');
 const typography = await read('agent-window/src/browser/typography.ts');
 const safeMarkdown = await read('agent-window/src/browser/safe-markdown.ts');
@@ -66,7 +67,8 @@ const moduleSource = await read('agent-window/src/browser/agent-window-frontend-
 const poiesisFrontendApplication = await read('agent-window/src/browser/poiesis-frontend-application.ts');
 const poiesisWorkspaceTrustService = await read('agent-window/src/browser/poiesis-workspace-trust-service.ts');
 const poiesisFileResourceResolver = await read('agent-window/src/browser/poiesis-file-resource-resolver.ts');
-const designShotContribution = await read('agent-window/src/browser/design-shot-contribution.ts');
+const themePreferenceService = await read('agent-window/src/browser/theme-preference-service.ts');
+const themePreferenceTest = await read('scripts/test-theme-preference.mjs');
 const backendModule = await read('agent-window/src/node/agent-window-backend-module.ts');
 const agentContribution = await read('agent-window/src/browser/agent-window-contribution.ts');
 const providerSource = await read('agent-window/src/common/agent-provider.ts');
@@ -2805,18 +2807,34 @@ assert.ok(!poiesisFrontendApplication.includes('super.attachShell'), 'Poiesis mu
 assert.ok(!poiesisFrontendApplication.includes('Widget.attach'), 'Poiesis frontend must not attach ApplicationShell directly');
 assert.ok(moduleSource.includes('rebind(FrontendApplication).to(PoiesisFrontendApplication).inSingletonScope()'));
 for (const marker of [
-    "import { ThemeService } from '@theia/core/lib/browser/theming'",
-    'this.themeService.onDidColorThemeChange',
-    'void this.preferenceService.ready.then',
-    "this.themeService.setCurrentTheme('dark', false)"
+    "export type PoiesisThemePreference = 'light' | 'dark' | 'system'",
+    "const THEME_STORAGE_KEY = 'poiesis.theme-preference.v1'",
+    "window.matchMedia('(prefers-color-scheme: dark)')",
+    "if (this.currentPreference === 'system')",
+    'this.themeService.setCurrentTheme(mode, false)',
+    'root.dataset.poiesisThemePreference',
+    'root.dataset.poiesisColorMode',
+    'this.storageService.getData<unknown>(THEME_STORAGE_KEY)',
+    'this.storageService.setData<PersistedThemePreference>(THEME_STORAGE_KEY'
 ]) {
-    assert.ok(designShotContribution.includes(marker), `Poiesis startup theme lock is missing ${marker}`);
+    assert.ok(themePreferenceService.includes(marker), `Poiesis theme preference is missing ${marker}`);
 }
-assert.ok(
-    !designShotContribution.includes('getDesignVariant'),
-    'Poiesis startup theme lock must also run outside design-shot variants'
-);
-assert.ok(moduleSource.includes('bind(FrontendApplicationContribution).toService(DesignShotContribution)'));
+for (const marker of [
+    "['light', 'ライト']",
+    "['dark', 'ダーク']",
+    "['system', 'システムに合わせる']",
+    "aria-label='表示テーマ'",
+    "type='radio'"
+]) {
+    assert.ok(agentWidget.includes(marker), `Display theme settings are missing ${marker}`);
+}
+assert.ok(moduleSource.includes('bind(FrontendApplicationContribution).toService(ThemePreferenceService)'));
+assert.ok(moduleSource.includes("import '../../src/browser/style/theme.css'"));
+assert.ok(agentStyles.includes("html[data-poiesis-color-mode='light']"));
+assert.ok(!themePreferenceService.includes("event.newTheme.id !== 'dark'"), 'Code theme changes must not trigger a forced-dark loop');
+for (const marker of ['late restore', 'OS changes must not override an explicit choice', 'Disposal must remove']) {
+    assert.ok(themePreferenceTest.includes(marker), `Theme preference behavior test is missing ${marker}`);
+}
 assert.ok(!agentWidget.includes('this.title.label'), 'Agent / Results must not define a Theia tab title');
 assert.ok(!agentWidget.includes('this.title.closable'), 'Poiesis outer content must not opt into closable Theia tab chrome');
 assert.ok(!agentStyles.includes('theia-tabBar-tab-row'), 'Agent / Results must not hide Theia tab rows with CSS');

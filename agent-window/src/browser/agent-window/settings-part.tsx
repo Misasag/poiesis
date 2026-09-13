@@ -77,6 +77,7 @@ import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart, UiFontScale } from './agent-window-host';
+import { PoiesisThemePreference } from '../theme-preference-service';
 
 interface PersistedPoiesisSettings {
     version: 5;
@@ -219,6 +220,26 @@ export class SettingsPart extends AgentWindowPart {
                 <div className='poiesis-settings-modal__section-title'>
                     <h2 id='poiesis-settings-display'>表示</h2>
                     <span>Poiesis</span>
+                </div>
+                <div className='poiesis-settings-modal__row poiesis-settings-modal__theme-row'>
+                    <div>
+                        <strong>テーマ</strong>
+                        <small>PoiesisとCodeの表示テーマを切り替えます。</small>
+                    </div>
+                    <div className='poiesis-settings-modal__segmented poiesis-settings-modal__theme-options' role='radiogroup' aria-label='表示テーマ'>
+                        {([['light', 'ライト'], ['dark', 'ダーク'], ['system', 'システムに合わせる']] as Array<[PoiesisThemePreference, string]>).map(([preference, label]) => (
+                            <label key={preference} className={this.themePreferenceService.preference === preference ? 'active' : ''}>
+                                <input
+                                    type='radio'
+                                    name='poiesis-display-theme'
+                                    value={preference}
+                                    checked={this.themePreferenceService.preference === preference}
+                                    onChange={() => this.themePreferenceService.setPreference(preference)}
+                                />
+                                <span>{label}</span>
+                            </label>
+                        ))}
+                    </div>
                 </div>
                 <div className='poiesis-settings-modal__row'>
                     <div>
