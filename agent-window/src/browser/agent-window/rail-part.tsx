@@ -54,14 +54,12 @@ import {
     renderSafeMarkdown
 } from '../safe-markdown';
 import {
-    PendingSkillProposal,
     WorkspaceSkillDefinition,
     WorkspaceSkillDiscoveryRoot,
     WorkspaceSkillPreview,
     WorkspaceSkillService,
     WorkspaceSkillSource
 } from '../workspace-skill-service';
-import { diffTextLines } from '../text-diff';
 import { formatTaskElapsedTime, shouldSubmitComposer } from '../composer-behavior';
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from '../typography';
 import { formatExecutionEvidence } from '../results-document-normalizer';

@@ -75,7 +75,6 @@
     "test:deferred-results-completion": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-deferred-results-completion.mjs",
     "test:session-restore-background-results": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-session-restore-background-results.mjs",
     "test:skill-document": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-skill-document.mjs",
-    "test:text-diff": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-text-diff.mjs",
     "test:customize-editor": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-customize-editor-lifecycle.mjs",
     "validate:source": "node scripts/validate-source.mjs"
   },

@@ -48,10 +48,10 @@ export function buildAgentExecutionPrompt(
             JSON.stringify(context)
         ].join('\n')
         : '';
-    const skillProposalContract = [
+    const skillFileContract = [
         '',
-        '## Application-owned Skill proposal channel',
-        '非自明な検証手順、ビルド手順、または繰り返し使える作業ルールを見つけた場合だけ、`.poiesis/pending/skills/<skill-id>/SKILL.md` に Skill の提案を書いてよい（既存 Skill と同じ id なら更新提案）。`.poiesis/skills` 配下の既存 Skill を直接編集してはならない。提案は1タスクにつき最大2件、frontmatter は name / description / metadata.poiesis.kind を含める。'
+        '## Application-owned Skill files',
+        'Skill は `.poiesis/skills/<skill-id>/SKILL.md` に置く。Agent は、現在の依頼でユーザーが明示的に作成または編集を求めた場合に限り Skill を作成・編集してよい。それ以外では `.poiesis/skills` 配下を変更してはならない。作成時の frontmatter には name / description / metadata.poiesis.kind（agent または results）を含める。'
     ].join('\n');
     const completionContract = [
         '',
@@ -62,5 +62,5 @@ export function buildAgentExecutionPrompt(
         'Judge the completed outcome and request together. Do not decide from one keyword, response length, or a mere mention of design or change. A failed or cancelled attempt without a usable outcome is not a result.',
         'The application removes this marker before display. If it is missing or malformed, the application falls back to observable workspace changes and does not treat an unsupported success claim as a Result.'
     ].join('\n');
-    return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.${conversationSection}\n\n## Current request\n${request}${workspaceSkillPrompt}${skillProposalContract}${completionContract}`;
+    return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.${conversationSection}\n\n## Current request\n${request}${workspaceSkillPrompt}${skillFileContract}${completionContract}`;
 }

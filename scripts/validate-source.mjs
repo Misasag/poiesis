@@ -110,8 +110,6 @@ const durableStorageProtocol = await read('agent-window/src/common/durable-stora
 const durableStorageServer = await read('agent-window/src/node/durable-storage-server.ts');
 const skillDocument = await read('agent-window/src/browser/skill-document.ts');
 const workspaceSkillService = await read('agent-window/src/browser/workspace-skill-service.ts');
-const textDiff = await read('agent-window/src/browser/text-diff.ts');
-const textDiffTest = await read('scripts/test-text-diff.mjs');
 const cliDetector = await read('agent-window/src/node/cli-detector.ts');
 const cliProviderRegistry = await read('agent-window/src/node/cli-provider-registry.ts');
 const knownCliRegistry = await read('agent-window/src/node/known-cli-registry.ts');
@@ -782,14 +780,6 @@ assert.ok(resultsContinuitySmoke.includes('POIESIS_AGENT_TEST_EXPECT_PROMPTS')
     && resultsContinuitySmoke.includes('The unsent draft disappeared from the conversation rail.'),
     'The production-path Results continuity smoke is incomplete');
 for (const marker of [
-    'skillProposals?: string[]',
-    'setSkillProposals(taskId: string, ids: readonly string[])',
-    'onDidRecordSkillProposals',
-    'normalizeSkillProposals(candidate.skillProposals)'
-]) {
-    assert.ok(taskService.includes(marker), `Task Skill proposal persistence is missing ${marker}`);
-}
-for (const marker of [
     'export interface Requirement',
     'migrateRequirementModel(',
     'moveTaskInRequirementModel(',
@@ -903,22 +893,6 @@ assert.ok(requirementModelTest.includes('migrateRequirementModel(tasks, [], next
 assert.ok(requirementModelTest.includes('assert.deepEqual([...occurrences.values()], [1, 1, 1])'));
 assert.ok(requirementModelTest.includes('assert.equal(restoredLegacy.titleShortened, true)'));
 assert.ok(requirementModelTest.includes('assert.equal(restoredAgain.title, secondLongTitle)'));
-
-for (const marker of [
-    'export function diffTextLines(',
-    'new Uint32Array(right.length + 1)',
-    "kind: 'unchanged'",
-    "kind: 'removed'",
-    "kind: 'added'",
-    "value.replace(/\\r\\n?/g, '\\n')"
-]) {
-    assert.ok(textDiff.includes(marker), `Pure text diff is missing ${marker}`);
-}
-for (const marker of ['removed:old', 'added:new', "before: 'a\\r\\nold\\r\\nb'"]) {
-    assert.ok(textDiffTest.includes(marker), `Text diff test coverage is missing ${marker}`);
-}
-assert.ok(rootPackage.scripts['test:text-diff']?.includes('scripts/test-text-diff.mjs'),
-    'The text diff test script is not registered');
 
 for (const marker of [
     "KNOWN_CLI_IDS = ['codex', 'claude', 'grok', 'gemini']",
@@ -1409,13 +1383,10 @@ for (const marker of [
     assert.ok(skillsContract.includes(marker), `Skills contract document is missing ${marker}`);
 }
 for (const marker of [
-    '### Skill の提案',
-    '<workspace>/.poiesis/pending/skills/<skill-id>/SKILL.md',
-    'ユーザーが明示的に承認した提案だけ',
-    'promptへ一切注入しない',
-    'ApplicationはWorkspaceの`.gitignore`を書き換えない'
+    'ユーザーは Customize で Skill を作成・編集します。',
+    'Agent は、現在の依頼でユーザーが明示的に作成または編集を求めた場合に限り Skill を作成・編集します。'
 ]) {
-    assert.ok(skillsContract.includes(marker), `Skill proposal documentation is missing ${marker}`);
+    assert.ok(skillsContract.includes(marker), `Skill authorship contract is missing ${marker}`);
 }
 assert.ok(skillsContract.includes('`builtin.ai-results`'), 'Skills contract must describe the AI Results bundle');
 for (const marker of ['固定ヘッダー', 'JST完了時刻', 'Markdown全文', 'diffstat chip', '所有Taskへ保存', '番号付きの動作確認手順']) {
@@ -1886,24 +1857,6 @@ for (const marker of [
     assert.ok(workspaceSkillService.includes(marker), `Workspace Skill execution boundary is missing ${marker}`);
 }
 for (const marker of [
-    'export interface PendingSkillProposal',
-    "root.resolve('.poiesis/pending/skills')",
-    'async listPending(root: URI)',
-    'parsed: ParsedSkillDocument',
-    'async approvePending(id: string)',
-    'async rejectPending(id: string)',
-    "activeDirectory.resolve('SKILL.md')",
-    'await this.fileService.move(',
-    'await this.fileService.delete(directory, {'
-]) {
-    assert.ok(workspaceSkillService.includes(marker), `Pending Skill quarantine boundary is missing ${marker}`);
-}
-const discoveryMethod = workspaceSkillService.slice(
-    workspaceSkillService.indexOf('async getDiscoveryRoots('),
-    workspaceSkillService.indexOf('async list(root: URI)')
-);
-assert.ok(!discoveryMethod.includes('.poiesis/pending'), 'Pending Skills must not be active discovery roots');
-for (const marker of [
     'export function parseSkillDocument(',
     "content.slice(frontmatter[0].length).trim()",
     'metadataPoiesisKind(lines)',
@@ -1918,13 +1871,13 @@ for (const marker of [
 assert.ok(cliProvider.includes("buildPrompt(session.workspaceUri, 'agent')"));
 assert.ok(cliProvider.includes('buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)'));
 for (const marker of [
-    'Application-owned Skill proposal channel',
-    '.poiesis/pending/skills/<skill-id>/SKILL.md',
-    '.poiesis/skills` 配下の既存 Skill を直接編集してはならない',
-    '提案は1タスクにつき最大2件',
-    'metadata.poiesis.kind'
+    '## Application-owned Skill files',
+    '.poiesis/skills/<skill-id>/SKILL.md',
+    '現在の依頼でユーザーが明示的に作成または編集を求めた場合に限り',
+    'それ以外では `.poiesis/skills` 配下を変更してはならない',
+    '作成時の frontmatter には name / description / metadata.poiesis.kind（agent または results）を含める。'
 ]) {
-    assert.ok(agentPrompt.includes(marker), `Implementer Skill proposal contract is missing ${marker}`);
+    assert.ok(agentPrompt.includes(marker), `Implementer Skill file contract is missing ${marker}`);
 }
 for (const marker of [
     'const completion = parseAgentCompletion(',
@@ -1968,14 +1921,6 @@ for (const marker of [
     assert.ok(resultsSkill.includes(marker), `Results assertion integration is missing ${marker}`);
 }
 for (const marker of [
-    'void this.recordPendingSkillProposals(task).catch',
-    'protected async recordPendingSkillProposals(task: ExecutionTask)',
-    'this.workspaceSkillService.listPending(new URI(task.workspaceUri))',
-    'this.taskService.setSkillProposals(task.id, proposals.map(proposal => proposal.id))'
-]) {
-    assert.ok(resultsSkill.includes(marker), `Post-Task Skill proposal recording is missing ${marker}`);
-}
-for (const marker of [
     'const accessibleLabel = `Skill 条件 ${passed}/${assertions.length} 合格`;',
     '条件 {passed}/{assertions.length}',
     "className={`poiesis-results__assertion-badge ${unresolved.length === 0 ? 'passed' : 'warning'}`}",
@@ -1983,32 +1928,6 @@ for (const marker of [
     'Results 確認項目 ${previewItem?.assertions ?? skill.assertions.length}件'
 ]) {
     assert.ok(agentWidget.includes(marker), `Results assertion or preview-card UI is missing ${marker}`);
-}
-for (const marker of [
-    "className='poiesis-customize-view__group-title'>提案",
-    'protected renderPendingSkillRow(proposal: PendingSkillProposal)',
-    "proposal.existing ? '更新提案' : '新規提案'",
-    "poiesis-customize-view__proposal-preview'",
-    'protected renderPendingSkillPreview(proposal: PendingSkillProposal)',
-    'diffTextLines(proposal.existing.content, proposal.content)',
-    "!proposal.parsed.error && (",
-    'this.workspaceSkillService.approvePending(proposal.id)',
-    'this.workspaceSkillService.rejectPending(proposal.id)',
-    "root.resolve('.poiesis/pending/skills')",
-    'this.workspaceSkillService.listPending(root)',
-    'Skill の提案が {skillProposalCount}件あります',
-    'カスタマイズで確認'
-]) {
-    assert.ok(agentWidget.includes(marker), `Pending Skill Customize UI is missing ${marker}`);
-}
-for (const marker of [
-    '.poiesis-customize-view__proposal-diff-line.added',
-    'var(--theia-gitDecoration-addedResourceForeground)',
-    '.poiesis-customize-view__proposal-diff-line.removed',
-    'var(--theia-gitDecoration-deletedResourceForeground)',
-    '.poiesis-agent-window__skill-proposal-notice'
-]) {
-    assert.ok(agentStyles.includes(marker), `Pending Skill UI styling is missing ${marker}`);
 }
 for (const marker of [
     'Round 15 Agent marker',
@@ -2364,15 +2283,6 @@ assert.ok(uiSmoke.includes("{ timeout: 10_000 }, label")
     && uiSmoke.includes('attempt < 2 && !point')
     && uiSmoke.includes('if (!point && attempt === 0) await revealFile()'),
     'Explorer file clicks must wait for layout and retry revealing once');
-for (const marker of [
-    'poiesis-proposal-smoke',
-    'Proposed smoke skill',
-    "button.textContent?.trim() === '承認'",
-    "assert(existsSync(approvedProposalPath)",
-    "assert(!existsSync(pendingProposalDirectory)"
-]) {
-    assert.ok(uiSmoke.includes(marker), `Customize proposal smoke is missing ${marker}`);
-}
 const settingsModalSource = agentWidget.match(/protected renderSettingsModal\(\): React\.ReactNode \{[\s\S]*?\n    protected renderShortcutsOverlay/)?.[0] ?? '';
 assert.ok(!settingsModalSource.includes('poiesis-settings-skills'), 'Settings modal must not contain Skills');
 assert.ok(!settingsModalSource.includes('poiesis-settings-plugins'), 'Settings modal must not contain Plugins');

@@ -55,14 +55,12 @@ import {
     renderSafeMarkdown
 } from '../safe-markdown';
 import {
-    PendingSkillProposal,
     WorkspaceSkillDefinition,
     WorkspaceSkillDiscoveryRoot,
     WorkspaceSkillPreview,
     WorkspaceSkillService,
     WorkspaceSkillSource
 } from '../workspace-skill-service';
-import { diffTextLines } from '../text-diff';
 import { formatTaskElapsedTime, shouldSubmitComposer } from '../composer-behavior';
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from '../typography';
 import { formatExecutionEvidence } from '../results-document-normalizer';
@@ -517,9 +515,6 @@ export class AgentPart extends AgentWindowPart {
             && task.changeSet?.source === 'task-diff'
             && task.changeSet.files.length > 0;
         const diffstat = showChangeSummary ? summarizeTaskChangeSet(task.changeSet) : undefined;
-        const skillProposalCount = message.complete && task?.status === 'completed'
-            ? task.skillProposals?.length ?? 0
-            : 0;
         return (
             <>
                 {(message.complete || message.content.trim())
@@ -527,24 +522,16 @@ export class AgentPart extends AgentWindowPart {
                     : null}
                 {current?.htmlPreviews.map((preview, index) =>
                     this.renderAgentHtmlPreview(messageKey, preview, index, isMostRecentAgentMessage))}
-                {(showChangeSummary || skillProposalCount > 0) && (
+                {showChangeSummary && (
                     <div className='poiesis-agent-window__message-actions'>
-                        {showChangeSummary && (
-                            <button
-                                type='button'
-                                className='poiesis-agent-window__diffstat-chip'
-                                aria-label={`このタスクの変更を開く: ${diffstat!.fileCount} ファイル、追加 ${diffstat!.additions} 行、削除 ${diffstat!.deletions} 行`}
-                                onClick={() => void this.host.openCodeTaskChanges(task!.id)}
-                            >
-                                変更 {diffstat!.fileCount} ファイル · +{diffstat!.additions} −{diffstat!.deletions}
-                            </button>
-                        )}
-                        {skillProposalCount > 0 && (
-                            <span className='poiesis-agent-window__skill-proposal-notice'>
-                                <span>Skill の提案が {skillProposalCount}件あります</span>
-                                <button type='button' onClick={() => this.host.openCustomize()}>カスタマイズで確認</button>
-                            </span>
-                        )}
+                        <button
+                            type='button'
+                            className='poiesis-agent-window__diffstat-chip'
+                            aria-label={`このタスクの変更を開く: ${diffstat!.fileCount} ファイル、追加 ${diffstat!.additions} 行、削除 ${diffstat!.deletions} 行`}
+                            onClick={() => void this.host.openCodeTaskChanges(task!.id)}
+                        >
+                            変更 {diffstat!.fileCount} ファイル · +{diffstat!.additions} −{diffstat!.deletions}
+                        </button>
                     </div>
                 )}
                 {task && this.renderAutomaticRequirementClassification(task)}

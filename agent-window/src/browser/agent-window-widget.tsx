@@ -57,14 +57,12 @@ import {
     renderSafeMarkdown
 } from './safe-markdown';
 import {
-    PendingSkillProposal,
     WorkspaceSkillDefinition,
     WorkspaceSkillDiscoveryRoot,
     WorkspaceSkillPreview,
     WorkspaceSkillService,
     WorkspaceSkillSource
 } from './workspace-skill-service';
-import { diffTextLines } from './text-diff';
 import { formatTaskElapsedTime, shouldSubmitComposer } from './composer-behavior';
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from './typography';
 import { formatExecutionEvidence } from './results-document-normalizer';
@@ -477,7 +475,6 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
 
         this.toDispose.push(this.agentProvider.onEvent(event => this.handleAgentEvent(event)));
         this.toDispose.push(this.taskService.onDidChangeTask(event => this.sessions.handleTaskChange(event)));
-        this.toDispose.push(this.taskService.onDidRecordSkillProposals(() => this.sessions.handleSkillProposalsChanged()));
         this.toDispose.push(this.resultsService.onDidChange(document => this.sessions.handleResultsDocumentChanged(document)));
         this.toDispose.push(this.requirementService.onDidChange(event => this.sessions.handleRequirementChange(event)));
         this.toDispose.push(this.requirementClassificationService.onDidClassify(task =>

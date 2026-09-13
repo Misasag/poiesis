@@ -151,8 +151,7 @@ const workspaceSkillService = {
             if (resultPromptCalls === 1) await firstPromptGate.promise;
         }
         return { content: '', includedSkillIds: [], diagnostics: [], assertions: [] };
-    },
-    async listPending() { return []; }
+    }
 };
 
 const generatedHtml = '<!doctype html><html lang="ja"><body><main><h2>変更内容</h2><p>更新しました。</p><a data-poiesis-citation="README.md:1">README.md</a></main></body></html>';

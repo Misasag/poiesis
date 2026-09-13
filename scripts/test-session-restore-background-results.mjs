@@ -284,7 +284,7 @@ const resultsSkill = {
         return { html: '<html><body><h2>到達しない成果</h2></body></html>', generator: 'ai' };
     }
 };
-const workspaceSkillService = { async listPending() { return []; } };
+const workspaceSkillService = {};
 const resultsService = new ResultsService(
     taskService,
     resultsSkill,

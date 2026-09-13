@@ -57,14 +57,12 @@ import {
     renderSafeMarkdown
 } from '../safe-markdown';
 import {
-    PendingSkillProposal,
     WorkspaceSkillDefinition,
     WorkspaceSkillDiscoveryRoot,
     WorkspaceSkillPreview,
     WorkspaceSkillService,
     WorkspaceSkillSource
 } from '../workspace-skill-service';
-import { diffTextLines } from '../text-diff';
 import { formatTaskElapsedTime, shouldSubmitComposer } from '../composer-behavior';
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from '../typography';
 import { formatExecutionEvidence } from '../results-document-normalizer';
@@ -924,11 +922,6 @@ export class SessionStore extends AgentWindowPartBase {
             void this.host.ensureResultsSkillNames();
         }
         this.persistWindowState();
-        this.update();
-    }
-
-    public handleSkillProposalsChanged(): void {
-        void this.persistWindowState();
         this.update();
     }
 

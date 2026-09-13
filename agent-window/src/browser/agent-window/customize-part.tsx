@@ -4,10 +4,8 @@ import { FileUri } from '@theia/core/lib/common/file-uri';
 import URI from '@theia/core/lib/common/uri';
 import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
 import { SkillBundleKind } from '../../common/skill-bundle';
-import { diffTextLines } from '../text-diff';
 import { POIESIS_FONT_MONO } from '../typography';
 import {
-    PendingSkillProposal,
     WorkspaceSkillDefinition,
     WorkspaceSkillDiscoveryRoot,
     WorkspaceSkillPreview,
@@ -32,7 +30,6 @@ interface WorkspaceSkillEditor {
 
 export class CustomizePart extends AgentWindowPart {
     protected workspaceSkills: WorkspaceSkillDefinition[] = [];
-    protected pendingSkillProposals: PendingSkillProposal[] = [];
     protected workspaceSkillsLoading = false;
     protected workspaceSkillsError?: string;
     protected workspaceSkillsRefreshGeneration = 0;
@@ -56,9 +53,6 @@ export class CustomizePart extends AgentWindowPart {
     protected newSkillCreating = false;
 
     protected selectedWorkspaceSkill?: WorkspaceSkillDefinition;
-    protected selectedPendingSkillId?: string;
-    protected pendingSkillActionId?: string;
-    protected pendingSkillActionError?: string;
     protected workspaceSkillEditor?: WorkspaceSkillEditor;
     protected workspaceSkillEditorLoading = false;
     protected workspaceSkillEditorError?: string;
@@ -95,10 +89,8 @@ export class CustomizePart extends AgentWindowPart {
     };
 
     public renderCustomizeView(): React.ReactNode {
-        const proposal = this.pendingSkillProposals.find(candidate => candidate.id === this.selectedPendingSkillId);
         const detailVisible = Boolean(
-            proposal
-            || this.selectedWorkspaceSkill
+            this.selectedWorkspaceSkill
             || this.workspaceSkillEditor
             || this.workspaceSkillEditorLoading
             || this.workspaceSkillEditorError
@@ -106,11 +98,9 @@ export class CustomizePart extends AgentWindowPart {
         return (
             <section className={`poiesis-customize-view${detailVisible ? ' is-detail' : ''}`} aria-label='カスタマイズ'>
                 <div className={`poiesis-customize-view__page${detailVisible ? ' is-detail' : ''}`}>
-                    {proposal
-                        ? this.renderPendingSkillPreview(proposal)
-                        : detailVisible
-                            ? this.renderWorkspaceSkillEditor()
-                            : this.renderCustomizeList()}
+                    {detailVisible
+                        ? this.renderWorkspaceSkillEditor()
+                        : this.renderCustomizeList()}
                 </div>
             </section>
         );
@@ -241,11 +231,8 @@ export class CustomizePart extends AgentWindowPart {
         const query = this.customizeQueries.skills.trim().toLocaleLowerCase('ja-JP');
         const scopedSkills = this.workspaceSkills.filter(skill => this.skillMatchesScope(skill));
         const skills = scopedSkills.filter(skill => this.skillMatchesQuery(skill, query));
-        const proposals = this.customizeScope === 'user'
-            ? []
-            : this.pendingSkillProposals.filter(proposal => this.proposalMatchesQuery(proposal, query));
-        const hasAnySkills = this.workspaceSkills.length > 0 || this.pendingSkillProposals.length > 0;
-        const hasMatches = skills.length > 0 || proposals.length > 0;
+        const hasAnySkills = this.workspaceSkills.length > 0;
+        const hasMatches = skills.length > 0;
         return (
             <section
                 id='poiesis-customize-skills-panel'
@@ -259,11 +246,9 @@ export class CustomizePart extends AgentWindowPart {
                 {!this.workspaceSkillsLoading && !this.workspaceSkillsError && hasAnySkills && !hasMatches ? this.renderNoMatchesCard() : undefined}
                 {!this.workspaceSkillsLoading && !this.workspaceSkillsError && hasMatches && (
                     <div className='poiesis-customize-view__groups'>
-                        {proposals.length > 0 && this.renderProposalGroup(proposals)}
                         {this.renderWorkspaceSkillGroups(skills)}
                     </div>
                 )}
-                {this.pendingSkillActionError && <div className='poiesis-customize-view__proposal-error' role='alert'>{this.pendingSkillActionError}</div>}
                 {!this.workspaceSkillsLoading && !this.workspaceSkillsError && this.renderGenerationDetails()}
             </section>
         );
@@ -309,20 +294,6 @@ export class CustomizePart extends AgentWindowPart {
 
     protected renderNoMatchesCard(): React.ReactNode {
         return <div className='poiesis-customize-view__empty-state poiesis-agent-window__customize-card'><h2>一致するSkillはありません</h2></div>;
-    }
-
-    protected renderProposalGroup(proposals: PendingSkillProposal[]): React.ReactNode {
-        const groupId = 'proposals';
-        const visible = this.visibleGroupItems(groupId, proposals);
-        return (
-            <section className='poiesis-customize-view__scope-group' aria-labelledby='poiesis-customize-proposals-title'>
-                <h2 id='poiesis-customize-proposals-title' className='poiesis-customize-view__group-title'>提案 <span>{proposals.length}</span></h2>
-                <div className='poiesis-customize-view__group-card poiesis-agent-window__customize-card'>
-                    {visible.map(proposal => this.renderPendingSkillRow(proposal))}
-                </div>
-                {this.renderGroupMoreButton(groupId, proposals.length)}
-            </section>
-        );
     }
 
     protected renderWorkspaceSkillGroups(skills: WorkspaceSkillDefinition[]): React.ReactNode {
@@ -390,39 +361,6 @@ export class CustomizePart extends AgentWindowPart {
                     <input type='checkbox' checked={skill.enabled} disabled={shadowed} aria-label={`${skill.name}を有効にする`} onChange={event => void this.setWorkspaceSkillEnabled(skill, event.currentTarget.checked)} />
                     <span aria-hidden='true' />
                 </label>
-                <span className='codicon codicon-chevron-right poiesis-customize-view__row-chevron' aria-hidden='true' />
-            </div>
-        );
-    }
-
-    protected renderPendingSkillRow(proposal: PendingSkillProposal): React.ReactNode {
-        const processing = this.pendingSkillActionId === proposal.id;
-        const titleId = `poiesis-proposal-${this.domId(proposal.id)}-title`;
-        const descriptionId = `${titleId}-description`;
-        return (
-            <div className={`poiesis-customize-view__proposal-row${proposal.parsed.error ? ' has-error' : ''}`} key={proposal.id}>
-                <button type='button' className='poiesis-customize-view__row-target' aria-labelledby={`${titleId} ${descriptionId}`} onClick={() => this.selectPendingSkillProposal(proposal.id)} />
-                <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-lightbulb' aria-hidden='true' /></div>
-                <div className='poiesis-customize-view__row-copy'>
-                    <div className='poiesis-agent-window__customize-title'>
-                        <strong id={titleId}>{proposal.parsed.name}</strong>
-                        <span>{proposal.parsed.kind === 'agent' ? 'Agent' : 'Results'}</span>
-                        <span className='poiesis-customize-view__proposal-badge'>{proposal.existing ? '更新提案' : '新規提案'}</span>
-                    </div>
-                    <p id={descriptionId} className={`poiesis-customize-view__row-description${proposal.parsed.error ? ' error' : ''}`}>
-                        {proposal.parsed.error ?? proposal.parsed.description ?? '説明はありません'}
-                    </p>
-                </div>
-                <div className='poiesis-customize-view__proposal-actions' role='group' aria-label={`提案「${proposal.parsed.name}」への対応`}>
-                    <button type='button' aria-label={`提案「${proposal.parsed.name}」を却下`} disabled={Boolean(this.pendingSkillActionId)} onClick={() => void this.rejectPendingSkill(proposal)}>
-                        {processing ? '処理中…' : '却下'}
-                    </button>
-                    {!proposal.parsed.error && (
-                        <button type='button' className='primary' aria-label={`提案「${proposal.parsed.name}」を承認`} disabled={Boolean(this.pendingSkillActionId)} onClick={() => void this.approvePendingSkill(proposal)}>
-                            {processing ? '処理中…' : '承認'}
-                        </button>
-                    )}
-                </div>
                 <span className='codicon codicon-chevron-right poiesis-customize-view__row-chevron' aria-hidden='true' />
             </div>
         );
@@ -519,44 +457,6 @@ export class CustomizePart extends AgentWindowPart {
         );
     }
 
-    protected renderPendingSkillPreview(proposal: PendingSkillProposal): React.ReactNode {
-        const diff = proposal.existing ? diffTextLines(proposal.existing.content, proposal.content) : undefined;
-        const processing = this.pendingSkillActionId === proposal.id;
-        return (
-            <article className='poiesis-customize-view__detail poiesis-customize-view__proposal-preview' aria-label={`${proposal.parsed.name}の提案内容`}>
-                <header className='poiesis-customize-view__detail-header'>
-                    <button type='button' className='poiesis-customize-view__back' aria-label='Skills一覧に戻る' onClick={() => this.closeProposalDetail()}>
-                        <span className='codicon codicon-chevron-left' aria-hidden='true' /><span>Skills</span>
-                    </button>
-                    <div className='poiesis-customize-view__detail-heading'>
-                        <strong>{proposal.parsed.name}</strong>
-                        <div className='poiesis-customize-view__detail-meta'>
-                            <span className='poiesis-customize-view__proposal-badge'>{proposal.existing ? '更新提案' : '新規提案'}</span>
-                            <span>{proposal.existing ? '既存 Skill との差分 · 読み取り専用' : '提案された文書 · 読み取り専用'}</span>
-                        </div>
-                    </div>
-                    <div className='poiesis-customize-view__detail-actions poiesis-customize-view__proposal-detail-actions'>
-                        <button type='button' disabled={Boolean(this.pendingSkillActionId)} onClick={() => void this.rejectPendingSkill(proposal)}>{processing ? '処理中…' : '却下'}</button>
-                        {!proposal.parsed.error && <button type='button' className='primary' disabled={Boolean(this.pendingSkillActionId)} onClick={() => void this.approvePendingSkill(proposal)}>{processing ? '処理中…' : '承認'}</button>}
-                    </div>
-                </header>
-                {proposal.parsed.error && <div className='poiesis-customize-view__detail-error' role='alert'>{proposal.parsed.error}</div>}
-                <div className='poiesis-customize-view__proposal-body'>
-                    {diff ? (
-                        <div className='poiesis-customize-view__proposal-diff' role='region' aria-label='Skill提案の差分'>
-                            {diff.map((line, index) => (
-                                <div className={`poiesis-customize-view__proposal-diff-line ${line.kind}`} key={`${index}:${line.kind}`}>
-                                    <span aria-hidden='true'>{line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : ' '}</span><span>{line.text || ' '}</span>
-                                </div>
-                            ))}
-                        </div>
-                    ) : <pre>{proposal.content}</pre>}
-                </div>
-                {this.pendingSkillActionError && <div className='poiesis-customize-view__detail-error' role='alert'>{this.pendingSkillActionError}</div>}
-            </article>
-        );
-    }
-
     protected renderGenerationDetails(): React.ReactNode {
         return (
             <details className='poiesis-customize-view__generation-details poiesis-agent-window__customize-card'>
@@ -619,10 +519,6 @@ export class CustomizePart extends AgentWindowPart {
 
     protected skillMatchesQuery(skill: WorkspaceSkillDefinition, query: string): boolean {
         return !query || [skill.name, skill.id, skill.description].some(value => value.toLocaleLowerCase('ja-JP').includes(query));
-    }
-
-    protected proposalMatchesQuery(proposal: PendingSkillProposal, query: string): boolean {
-        return !query || [proposal.parsed.name, proposal.id, proposal.parsed.description ?? ''].some(value => value.toLocaleLowerCase('ja-JP').includes(query));
     }
 
     protected setCustomizeQuery(query: string): void {
@@ -874,7 +770,6 @@ export class CustomizePart extends AgentWindowPart {
         const restoreCode = update && this.customizeOpenedFromCode;
         this.customizeOpenedFromCode = false;
         this.clearWorkspaceSkillDetail();
-        this.selectedPendingSkillId = undefined;
         this.host.state.customizeViewVisible = false;
         this.disposeWorkspaceSkillWatchers();
         if (restoreCode) {
@@ -903,8 +798,6 @@ export class CustomizePart extends AgentWindowPart {
     public handleCustomizeEscape(): void {
         if (this.workspaceSkillDiscardConfirmation) {
             this.cancelWorkspaceSkillClose();
-        } else if (this.selectedPendingSkillId) {
-            this.closeProposalDetail();
         } else if (this.selectedWorkspaceSkill || this.workspaceSkillEditor || this.workspaceSkillEditorLoading) {
             this.requestReturnToSkillsList();
         } else if (this.newSkillFormVisible) {
@@ -950,65 +843,6 @@ export class CustomizePart extends AgentWindowPart {
         this.update();
     }
 
-    protected selectPendingSkillProposal(id: string): void {
-        this.captureCustomizeListScroll();
-        this.clearWorkspaceSkillDetail();
-        this.selectedPendingSkillId = id;
-        this.pendingSkillActionError = undefined;
-        this.update();
-    }
-
-    protected closeProposalDetail(): void {
-        this.selectedPendingSkillId = undefined;
-        this.pendingSkillActionError = undefined;
-        this.update();
-        this.restoreCustomizeListScroll();
-    }
-
-    protected async approvePendingSkill(proposal: PendingSkillProposal): Promise<void> {
-        if (this.pendingSkillActionId || proposal.parsed.error) {
-            return;
-        }
-        this.pendingSkillActionId = proposal.id;
-        this.pendingSkillActionError = undefined;
-        this.update();
-        try {
-            await this.workspaceSkillService.approvePending(proposal.id);
-            if (this.selectedPendingSkillId === proposal.id) {
-                this.selectedPendingSkillId = undefined;
-            }
-            await this.refreshWorkspaceSkills();
-            this.restoreCustomizeListScroll();
-        } catch (error) {
-            this.pendingSkillActionError = `Skill提案を承認できませんでした: ${error instanceof Error ? error.message : String(error)}`;
-        } finally {
-            this.pendingSkillActionId = undefined;
-            this.update();
-        }
-    }
-
-    protected async rejectPendingSkill(proposal: PendingSkillProposal): Promise<void> {
-        if (this.pendingSkillActionId) {
-            return;
-        }
-        this.pendingSkillActionId = proposal.id;
-        this.pendingSkillActionError = undefined;
-        this.update();
-        try {
-            await this.workspaceSkillService.rejectPending(proposal.id);
-            if (this.selectedPendingSkillId === proposal.id) {
-                this.selectedPendingSkillId = undefined;
-            }
-            await this.refreshWorkspaceSkills();
-            this.restoreCustomizeListScroll();
-        } catch (error) {
-            this.pendingSkillActionError = `Skill提案を却下できませんでした: ${error instanceof Error ? error.message : String(error)}`;
-        } finally {
-            this.pendingSkillActionId = undefined;
-            this.update();
-        }
-    }
-
     protected async openWorkspaceSkillInline(skill: WorkspaceSkillDefinition): Promise<void> {
         if (this.workspaceSkillEditor?.uri === skill.uri) {
             return;
@@ -1020,7 +854,6 @@ export class CustomizePart extends AgentWindowPart {
             return;
         }
         this.captureCustomizeListScroll();
-        this.selectedPendingSkillId = undefined;
         this.clearWorkspaceSkillDetail();
         this.selectedWorkspaceSkill = skill;
         this.workspaceSkillEditorLoading = true;
@@ -1185,7 +1018,7 @@ export class CustomizePart extends AgentWindowPart {
         }
         this.workspaceSkillWatchers?.dispose();
         const watchers = new DisposableCollection();
-        const watchRoots = [...discoveryRoots.map(discoveryRoot => discoveryRoot.uri), root.resolve('.poiesis/pending/skills')];
+        const watchRoots = discoveryRoots.map(discoveryRoot => discoveryRoot.uri);
         for (const watchRoot of watchRoots) {
             try {
                 watchers.push(this.fileService.watch(watchRoot, { recursive: true, excludes: [] }));
@@ -1216,7 +1049,6 @@ export class CustomizePart extends AgentWindowPart {
         this.update();
         if (!root) {
             this.workspaceSkills = [];
-            this.pendingSkillProposals = [];
             this.workspaceSkillPreviews = undefined;
             this.workspaceSkillsLoading = false;
             this.workspaceSkillsError = 'Skillsを表示するにはフォルダーを開いてください。';
@@ -1225,18 +1057,13 @@ export class CustomizePart extends AgentWindowPart {
         }
         void this.installWorkspaceSkillWatchers();
         try {
-            const [definitions, pending, agentPreview, resultsPreview] = await Promise.all([
+            const [definitions, agentPreview, resultsPreview] = await Promise.all([
                 this.workspaceSkillService.list(root),
-                this.workspaceSkillService.listPending(root),
                 this.workspaceSkillService.preview(root.toString(), 'agent'),
                 this.workspaceSkillService.preview(root.toString(), 'results')
             ]);
             if (generation === this.workspaceSkillsRefreshGeneration) {
                 this.workspaceSkills = definitions;
-                this.pendingSkillProposals = pending;
-                if (this.selectedPendingSkillId && !pending.some(proposal => proposal.id === this.selectedPendingSkillId)) {
-                    this.selectedPendingSkillId = undefined;
-                }
                 if (this.selectedWorkspaceSkill) {
                     this.selectedWorkspaceSkill = definitions.find(skill => skill.uri === this.selectedWorkspaceSkill?.uri) ?? this.selectedWorkspaceSkill;
                 }
@@ -1246,7 +1073,6 @@ export class CustomizePart extends AgentWindowPart {
         } catch (error) {
             if (generation === this.workspaceSkillsRefreshGeneration) {
                 this.workspaceSkills = [];
-                this.pendingSkillProposals = [];
                 this.workspaceSkillPreviews = undefined;
                 this.workspaceSkillsError = `ユーザー Skill を読み込めませんでした: ${error instanceof Error ? error.message : String(error)}`;
             }

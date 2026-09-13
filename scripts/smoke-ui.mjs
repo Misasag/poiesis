@@ -30,10 +30,6 @@ const existingSkillDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'po
 const existingSkillPath = resolve(existingSkillDirectory, 'skill.md');
 const createdSkillDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'poiesis-customize-created-smoke');
 const createdSkillPath = resolve(createdSkillDirectory, 'SKILL.md');
-const pendingProposalDirectory = resolve(repositoryRoot, '.poiesis', 'pending', 'skills', 'poiesis-proposal-smoke');
-const pendingProposalPath = resolve(pendingProposalDirectory, 'SKILL.md');
-const approvedProposalDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'poiesis-proposal-smoke');
-const approvedProposalPath = resolve(approvedProposalDirectory, 'SKILL.md');
 const skillEditMarker = 'Edited and saved by the Poiesis Customize smoke.';
 removeTerminalFixture();
 
@@ -51,14 +47,11 @@ const browser = await puppeteer.launch({
 });
 
 try {
-    if (existsSync(existingSkillDirectory) || existsSync(createdSkillDirectory)
-        || existsSync(pendingProposalDirectory) || existsSync(approvedProposalDirectory)) {
+    if (existsSync(existingSkillDirectory) || existsSync(createdSkillDirectory)) {
         throw new Error('Customize smoke skill fixture already exists.');
     }
     mkdirSync(existingSkillDirectory, { recursive: true });
     writeFileSync(existingSkillPath, `---\nname: Existing smoke skill\ndescription: Workspace scan fixture\nkind: agent\n---\n\n# Existing smoke skill\n`, 'utf8');
-    mkdirSync(pendingProposalDirectory, { recursive: true });
-    writeFileSync(pendingProposalPath, `---\nname: Proposed smoke skill\ndescription: Approval flow fixture\nmetadata:\n  poiesis:\n    kind: agent\n---\n\n# Proposed smoke skill\n`, 'utf8');
     writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n${scmFixtureMarker}\n`, 'utf8');
     const page = await browser.newPage();
     const reactUnmountWarnings = [];
@@ -835,22 +828,6 @@ try {
         `Customize must be an inline central view: ${JSON.stringify(expandedCustomize)}`);
     assert(expandedCustomize.builtIns === 2, `Expected two built-in Skills, got ${expandedCustomize.builtIns}`);
     assert(expandedCustomize.existingSkill, 'Workspace user skill was not scanned');
-    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__proposal-row')]
-        .some(row => row.textContent?.includes('Proposed smoke skill')));
-    assert((await page.$eval('.poiesis-customize-view', element => element.textContent ?? '')).includes('提案された Skill'),
-        'Pending Skill proposal section was not shown');
-    await page.evaluate(() => {
-        const row = [...document.querySelectorAll('.poiesis-customize-view__proposal-row')]
-            .find(candidate => candidate.textContent?.includes('Proposed smoke skill'));
-        const approve = [...(row?.querySelectorAll('button') ?? [])]
-            .find(button => button.textContent?.trim() === '承認');
-        if (!(approve instanceof HTMLElement)) throw new Error('Pending Skill proposal approval button was not found');
-        approve.click();
-    });
-    await page.waitForFunction(() => ![...document.querySelectorAll('.poiesis-customize-view__proposal-row')]
-        .some(row => row.textContent?.includes('Proposed smoke skill')));
-    assert(existsSync(approvedProposalPath), 'Pending Skill proposal was not moved into active skills');
-    assert(!existsSync(pendingProposalDirectory), 'Pending Skill proposal folder was not removed after approval');
     assert(expandedCustomize.plugins, 'Plugins section did not move to Customize');
     assert(!expandedCustomize.hooks, 'Unsupported Hooks section is visible');
     assert(!await page.$('.poiesis-agent-window__plugins-host'), 'Poiesis Customize must not host the Code extensions manager');
@@ -948,7 +925,6 @@ try {
         collapsedRailOpened: true,
         resize: { width: 1024, height: 600 },
         scaffolded: '.poiesis/skills/poiesis-customize-created-smoke/SKILL.md',
-        approvedProposal: '.poiesis/skills/poiesis-proposal-smoke/SKILL.md',
         editedAndSaved: true
     };
 
@@ -987,14 +963,12 @@ function removeTerminalFixture() {
 }
 
 function removeSkillFixtures() {
-    for (const directory of [existingSkillDirectory, createdSkillDirectory, pendingProposalDirectory, approvedProposalDirectory]) {
+    for (const directory of [existingSkillDirectory, createdSkillDirectory]) {
         if (existsSync(directory)) {
             rmSync(directory, { recursive: true, force: true });
         }
     }
     for (const directory of [
-        resolve(repositoryRoot, '.poiesis', 'pending', 'skills'),
-        resolve(repositoryRoot, '.poiesis', 'pending'),
         resolve(repositoryRoot, '.poiesis', 'skills'),
         resolve(repositoryRoot, '.poiesis')
     ]) {

@@ -228,7 +228,7 @@ try {
 
 async function clickCard(page, text) {
     await page.evaluate(label => {
-        const row = [...document.querySelectorAll('.poiesis-customize-view__skill-row, .poiesis-customize-view__proposal-row')]
+        const row = [...document.querySelectorAll('.poiesis-customize-view__skill-row')]
             .find(candidate => candidate.textContent?.includes(label));
         const target = row?.querySelector('.poiesis-customize-view__row-target');
         if (!(target instanceof HTMLElement)) throw new Error(`Skill row not found: ${label}`);

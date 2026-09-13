@@ -58,7 +58,6 @@ class FakeTaskService {
         const task = this.tasks.get(id);
         if (task) task.resultsDocument = document;
     }
-    setSkillProposals() {}
     setRequirementId(id, requirementId) {
         const value = { ...this.tasks.get(id), requirementId };
         this.tasks.set(id, value);
@@ -108,7 +107,7 @@ const service = new ResultsService(
     resultsSkill,
     requirementService,
     { suggestTitle: async () => undefined, classify: async () => undefined },
-    { listPending: async () => [] },
+    {},
     { captureGitChangeSetBetween: async () => ({ source: 'empty', diff: '', files: [] }) }
 );
 service.init();
@@ -211,7 +210,7 @@ const taskUpdateService = new ResultsService(
     },
     taskUpdateRequirementService,
     { suggestTitle: async () => undefined, classify: async () => undefined },
-    { listPending: async () => [] },
+    {},
     { captureGitChangeSetBetween: async () => ({ source: 'empty', diff: '', files: [] }) }
 );
 taskUpdateService.init();
@@ -259,7 +258,7 @@ const aggregateFailureService = new ResultsService(
     },
     aggregateFailureRequirementService,
     { suggestTitle: async () => undefined, classify: async () => undefined },
-    { listPending: async () => [] },
+    {},
     { captureGitChangeSetBetween: async () => ({ source: 'empty', diff: '', files: [] }) }
 );
 aggregateFailureService.init();
@@ -366,7 +365,7 @@ const restoredFailureService = new ResultsService(
     },
     restoredFailureRequirementService,
     { suggestTitle: async () => undefined, classify: async () => undefined },
-    { listPending: async () => [] },
+    {},
     { captureGitChangeSetBetween: async () => ({ source: 'empty', diff: '', files: [] }) }
 );
 restoredFailureService.init();
@@ -420,7 +419,7 @@ for (const coverage of ['older-legacy-aggregate', 'copied-task-document', 'persi
     const restoredService = new ResultsService(
         restoredTasks, restoredSkill, restoredRequirements,
         { suggestTitle: async () => undefined, classify: async () => undefined },
-        { listPending: async () => [] },
+        {},
         { captureGitChangeSetBetween: async () => ({ source: 'empty', diff: '', files: [] }) }
     );
     restoredService.init();
@@ -451,7 +450,7 @@ for (const coverage of ['older-legacy-aggregate', 'copied-task-document', 'persi
         { async generate() { redundantCalls++; throw new Error('Unexpected generation after a settled reload.'); } },
         reloadedRequirements,
         { suggestTitle: async () => undefined, classify: async () => undefined },
-        { listPending: async () => [] },
+        {},
         { captureGitChangeSetBetween: async () => ({ source: 'empty', diff: '', files: [] }) }
     );
     reloadedService.init();

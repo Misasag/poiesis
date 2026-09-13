@@ -325,22 +325,6 @@
     color: var(--poiesis-chrome-text);
 }
 
-.poiesis-agent-window__skill-proposal-notice {
-    align-items: center;
-    color: #8f928b;
-    display: inline-flex;
-    flex-wrap: wrap;
-    font-size: 12px;
-    gap: 8px;
-}
-
-.poiesis-agent-window__skill-proposal-notice button {
-    border: 0;
-    padding: 0;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-}
-
 .poiesis-agent-window__requirement-classification {
     align-items: center;
     color: #8f928b;

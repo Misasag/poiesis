@@ -1,5 +1,4 @@
 import { Emitter, Event } from '@theia/core/lib/common';
-import URI from '@theia/core/lib/common/uri';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import {
     ExecutionTask,
@@ -718,9 +717,6 @@ export class ResultsService {
             console.warn('[Poiesis][Requirement title] Suggestion failed unexpectedly.', error)
         );
         const generation = this.generateTask(task).then(() => {
-            void this.recordPendingSkillProposals(task).catch(error =>
-                console.warn('[Poiesis] Could not record pending Skill proposals.', error)
-            );
             void this.requirementClassificationService.classify(task.id)
                 .catch(error =>
                     console.warn('[Poiesis][Requirement classification] Classification failed unexpectedly.', error)
@@ -737,15 +733,6 @@ export class ResultsService {
         });
         this.generationPromises.set(task.id, generation);
         return generation;
-    }
-
-    protected async recordPendingSkillProposals(task: ExecutionTask): Promise<void> {
-        if (!task.workspaceUri) {
-            this.taskService.setSkillProposals(task.id, []);
-            return;
-        }
-        const proposals = await this.workspaceSkillService.listPending(new URI(task.workspaceUri));
-        this.taskService.setSkillProposals(task.id, proposals.map(proposal => proposal.id));
     }
 
     protected async generateTask(task: ExecutionTask): Promise<void> {
