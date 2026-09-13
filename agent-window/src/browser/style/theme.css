@@ -503,6 +503,8 @@ html[data-poiesis-color-mode='light'] .poiesis-customize-view {
 html[data-poiesis-color-mode='light'] :is(
     .poiesis-customize-view__group-title,
     .poiesis-customize-view__new-skill label > span,
+    .poiesis-customize-view__secondary-details > summary > span,
+    .poiesis-customize-view__prompt-preview > summary > span,
     .poiesis-customize-view__secondary-details .poiesis-disclosure__summary-content > span,
     .poiesis-customize-view__prompt-preview .poiesis-disclosure__summary-content > span
 ) {
@@ -516,6 +518,7 @@ html[data-poiesis-color-mode='light'] .poiesis-customize-view__source-badge {
 
 html[data-poiesis-color-mode='light'] :is(
     .poiesis-customize-view__skill-error,
+    .poiesis-customize-view__state.error,
     .poiesis-customize-view__skill-note,
     .poiesis-customize-view__new-skill > p,
     .poiesis-customize-view__discard-confirm > span

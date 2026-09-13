@@ -136,8 +136,9 @@ try {
     await page.click('.poiesis-agent-window__code-control');
     await page.click('[aria-label="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
+    await page.waitForSelector('.poiesis-customize-view__skill-card p, .poiesis-customize-view__state');
     assert(luminance(await backgroundOf(page, '.poiesis-agent-window__content')) > 0.7, 'Customize chrome did not follow light mode');
-    await assertTextContrast(page, '.poiesis-customize-view__section-copy, .poiesis-customize-view__skill-card p', '.poiesis-agent-window__content');
+    await assertTextContrast(page, '.poiesis-customize-view__section-copy, .poiesis-customize-view__skill-card p, .poiesis-customize-view__state', '.poiesis-agent-window__content');
     await page.screenshot({ path: resolve(artifactDirectory, `${artifactStamp}-light-customize.png`), fullPage: true });
 
     await page.click('[aria-label="カスタマイズ"]');
