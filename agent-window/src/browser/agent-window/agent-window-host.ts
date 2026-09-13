@@ -6,6 +6,7 @@ import type URI from '@theia/core/lib/common/uri';
 import type { Widget } from '@theia/core/shared/@lumino/widgets';
 import type { EditorManager } from '@theia/editor/lib/browser';
 import type { FileService } from '@theia/filesystem/lib/browser/file-service';
+import type { MonacoEditorProvider } from '@theia/monaco/lib/browser/monaco-editor-provider';
 import type { ProblemManager } from '@theia/markers/lib/browser/problem/problem-manager';
 import type { ScmService } from '@theia/scm/lib/browser/scm-service';
 import type { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
@@ -102,6 +103,7 @@ export interface AgentWindowHost {
     readonly terminalService: TerminalService;
     readonly widgetManager: WidgetManager;
     readonly editorManager: EditorManager;
+    readonly monacoEditorProvider: MonacoEditorProvider;
     readonly openerService: OpenerService;
     readonly fileService: FileService;
     readonly problemManager: ProblemManager;
@@ -233,6 +235,7 @@ export abstract class AgentWindowPartBase {
     protected get terminalService(): TerminalService { return this.host.terminalService; }
     protected get widgetManager(): WidgetManager { return this.host.widgetManager; }
     protected get editorManager(): EditorManager { return this.host.editorManager; }
+    protected get monacoEditorProvider(): MonacoEditorProvider { return this.host.monacoEditorProvider; }
     protected get openerService(): OpenerService { return this.host.openerService; }
     protected get fileService(): FileService { return this.host.fileService; }
     protected get problemManager(): ProblemManager { return this.host.problemManager; }

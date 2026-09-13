@@ -73,6 +73,7 @@ import { PoiesisSelect, PoiesisSelectOption } from '../components/poiesis-select
 import { PoiesisTextArea, PoiesisTextInput } from '../components/poiesis-inputs';
 import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
+import { PoiesisDisclosureSummary } from '../components/poiesis-disclosure';
 import { cliRoleAvailability } from '../../common/cli-detection-lifecycle';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
@@ -302,8 +303,8 @@ export class AgentPart extends AgentWindowPart {
                                         <div className='poiesis-agent-window__message-error' role='alert'>
                                             <strong>{message.content}</strong>
                                             {message.errorDetails && (
-                                                <details>
-                                                    <summary>詳細</summary>
+                                                <details className='poiesis-agent-window__error-details'>
+                                                    <PoiesisDisclosureSummary>エラーの詳細</PoiesisDisclosureSummary>
                                                     <pre>{message.errorDetails}</pre>
                                                 </details>
                                             )}

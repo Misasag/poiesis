@@ -10,6 +10,7 @@ import URI from '@theia/core/lib/common/uri';
 import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { Widget } from '@theia/core/shared/@lumino/widgets';
 import { EditorManager, EditorWidget } from '@theia/editor/lib/browser';
+import { MonacoEditorProvider } from '@theia/monaco/lib/browser/monaco-editor-provider';
 import { ScmCommand, ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-provider';
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
@@ -166,6 +167,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         @inject(TerminalService) public readonly terminalService: TerminalService,
         @inject(WidgetManager) public readonly widgetManager: WidgetManager,
         @inject(EditorManager) public readonly editorManager: EditorManager,
+        @inject(MonacoEditorProvider) public readonly monacoEditorProvider: MonacoEditorProvider,
         @inject(OpenerService) public readonly openerService: OpenerService,
         @inject(FileService) public readonly fileService: FileService,
         @inject(ProblemManager) public readonly problemManager: ProblemManager,
@@ -640,6 +642,9 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
 
     public async newChat(): Promise<void> {
         await this.sessions.sessionsInitialization;
+        if (this.state.customizeViewVisible && !this.prepareCustomizeNavigation()) {
+            return;
+        }
         this.clearPendingAgentSearchReveal();
         this.closeCustomize(false);
         this.detachCodeWidgets();

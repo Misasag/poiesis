@@ -1650,7 +1650,7 @@ for (const marker of [
     'protected async openWorkspaceSkillInline(skill: WorkspaceSkillDefinition): Promise<void>',
     'protected async saveWorkspaceSkill(): Promise<void>',
     'public installWorkspaceSkillSaveShortcut(): void',
-    'protected requestCloseWorkspaceSkill(): void',
+    'protected requestReturnToSkillsList(): void',
     'protected async openWorkspaceSkillInCode(rawUri: string): Promise<void>',
     'const PoiesisSelect = (',
     "role='combobox'",
@@ -1980,16 +1980,16 @@ for (const marker of [
     '条件 {passed}/{assertions.length}',
     "className={`poiesis-results__assertion-badge ${unresolved.length === 0 ? 'passed' : 'warning'}`}",
     'isMostRecentAgentMessage && index === 0',
-    '確認項目</dt><dd>{previewItem?.assertions ?? skill.assertions.length}件'
+    'Results 確認項目 ${previewItem?.assertions ?? skill.assertions.length}件'
 ]) {
     assert.ok(agentWidget.includes(marker), `Results assertion or preview-card UI is missing ${marker}`);
 }
 for (const marker of [
-    '提案されたSkills',
+    "className='poiesis-customize-view__group-title'>提案",
     'protected renderPendingSkillRow(proposal: PendingSkillProposal)',
     "proposal.existing ? '更新提案' : '新規提案'",
-    "className='poiesis-customize-view__proposal-preview'",
-    'protected renderPendingSkillPreview()',
+    "poiesis-customize-view__proposal-preview'",
+    'protected renderPendingSkillPreview(proposal: PendingSkillProposal)',
     'diffTextLines(proposal.existing.content, proposal.content)',
     "!proposal.parsed.error && (",
     'this.workspaceSkillService.approvePending(proposal.id)',
@@ -2636,7 +2636,7 @@ for (const marker of [
     '.poiesis-agent-window__app-nav',
     '.poiesis-agent-window__customize-card',
     '.poiesis-customize-view',
-    '.poiesis-customize-view__skill-card',
+    '.poiesis-customize-view__skill-row',
     '.poiesis-customize-view__editor',
     '.poiesis-customize-view__new-skill',
     '.poiesis-select__listbox',

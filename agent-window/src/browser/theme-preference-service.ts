@@ -70,6 +70,11 @@ export class ThemePreferenceService implements FrontendApplicationContribution {
         this.disposables.push(Disposable.create(() => this.mediaQuery?.removeEventListener('change', onSystemThemeChange)));
         this.disposables.push(this.themeService.onDidColorThemeChange(event => {
             document.documentElement.dataset.poiesisDesignTheme = event.newTheme.id;
+            if (!this.disposed && event.newTheme.id !== this.effectiveMode) {
+                // Theia can restore its persisted workbench theme after Poiesis has
+                // restored the display preference. Keep Code and terminal tokens in sync.
+                this.applyEffectiveTheme();
+            }
         }));
 
         // Poiesis historically opened dark. Apply that stable fallback while the profile is read.
@@ -146,7 +151,7 @@ export class ThemePreferenceService implements FrontendApplicationContribution {
         root.style.colorScheme = mode;
         if (this.themeService.getCurrentTheme().id !== mode) {
             // This is an application display choice, not a permanent override of Code's
-            // advanced workbench.colorTheme setting. Apply again only on a user or OS change.
+            // advanced workbench.colorTheme setting.
             this.themeService.setCurrentTheme(mode, false);
         }
         root.dataset.poiesisDesignTheme = this.themeService.getCurrentTheme().id;

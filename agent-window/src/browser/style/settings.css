@@ -388,9 +388,8 @@
     padding-bottom: 8px;
 }
 
-.poiesis-settings-modal__diagnostics summary {
-    cursor: pointer;
-    padding: 4px 0;
+.poiesis-settings-modal__diagnostics > .poiesis-disclosure__summary {
+    padding-block: 4px;
     width: fit-content;
 }
 

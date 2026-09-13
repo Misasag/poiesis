@@ -71,6 +71,12 @@ try {
     assert(luminance(dark.settingsBackground) < 0.2, `Settings chrome is not dark: ${JSON.stringify(dark)}`);
     assert(luminance(dark.theiaEditorBackground) < 0.2, `Theia editor tokens are not dark: ${JSON.stringify(dark)}`);
     await page.screenshot({ path: darkScreenshot, fullPage: true });
+    await page.click('[aria-label="設定を閉じる"]');
+    await page.click('[aria-label="カスタマイズ"]');
+    await page.waitForSelector('.poiesis-customize-view__primary-action');
+    await assertControlContrast(page, '.poiesis-customize-view__primary-action');
+    await page.click('[aria-label="カスタマイズ"]');
+    await openSettings(page);
 
     await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
     await chooseTheme(page, 'system');
@@ -136,9 +142,10 @@ try {
     await page.click('.poiesis-agent-window__code-control');
     await page.click('[aria-label="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
-    await page.waitForSelector('.poiesis-customize-view__skill-card p, .poiesis-customize-view__state');
+    await page.waitForSelector('.poiesis-customize-view__row-description, .poiesis-customize-view__empty-state p, .poiesis-customize-view__state-card');
     assert(luminance(await backgroundOf(page, '.poiesis-agent-window__content')) > 0.7, 'Customize chrome did not follow light mode');
-    await assertTextContrast(page, '.poiesis-customize-view__section-copy, .poiesis-customize-view__skill-card p, .poiesis-customize-view__state', '.poiesis-agent-window__content');
+    await assertTextContrast(page, '.poiesis-customize-view__row-description, .poiesis-customize-view__empty-state p, .poiesis-customize-view__state-card', '.poiesis-agent-window__content');
+    await assertControlContrast(page, '.poiesis-customize-view__primary-action');
     await page.screenshot({ path: resolve(artifactDirectory, `${artifactStamp}-light-customize.png`), fullPage: true });
 
     await page.click('[aria-label="カスタマイズ"]');
@@ -440,6 +447,21 @@ async function assertTextContrast(page, selector, surfaceSelector) {
         const background = luminance(colors.background);
         const ratio = (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
         assert(ratio >= 4.5, `Low text contrast (${ratio.toFixed(2)}): ${text.text}`);
+    }
+}
+
+async function assertControlContrast(page, selector) {
+    const controls = await page.$$eval(selector, elements => elements.map(element => ({
+        background: getComputedStyle(element).backgroundColor,
+        color: getComputedStyle(element).color,
+        text: element.textContent?.trim().slice(0, 60)
+    })));
+    assert(controls.length > 0, `No controls found for contrast check: ${selector}`);
+    for (const control of controls) {
+        const foreground = luminance(control.color);
+        const background = luminance(control.background);
+        const ratio = (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+        assert(ratio >= 4.5, `Low control contrast (${ratio.toFixed(2)}): ${control.text}`);
     }
 }
 

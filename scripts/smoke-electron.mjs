@@ -13,7 +13,7 @@ const round12ScreenshotDirectory = resolve(root, '_codex', 'round12-screenshots'
 const round12StandardScreenshotPath = resolve(round12ScreenshotDirectory, 'results-electron-1280x720-standard.png');
 const round12LargeScreenshotPath = resolve(round12ScreenshotDirectory, 'results-electron-1024x720-large.png');
 const windowDragOnly = process.env.POIESIS_WINDOW_DRAG_ONLY === '1';
-const customizeWindowOnly = process.env.POIESIS_CUSTOMIZE_WINDOW_ONLY === '1';
+const customizeWindowOnly = process.env.POIESIS_CUSTOMIZE_WINDOW_ONLY?.trim() === '1';
 const settingsWindowOnly = process.env.POIESIS_SETTINGS_WINDOW_ONLY === '1';
 const composerOnly = process.env.POIESIS_COMPOSER_ONLY === '1';
 const taskFeedbackOnly = process.env.POIESIS_TASK_FEEDBACK_ONLY === '1';
@@ -357,6 +357,10 @@ try {
     await clickByText(page, '.poiesis-agent-window__code-control', 'Code');
     await page.waitForSelector('.poiesis-agent-window__code', { timeout: uiTimeout });
     await page.waitForSelector('#files .theia-FileStatNode', { timeout: uiTimeout });
+    const panelToggle = '.poiesis-agent-window__code-status button[aria-label="パネルを切り替える"]';
+    if (await page.$eval(panelToggle, button => button.getAttribute('aria-expanded') !== 'true')) {
+        await page.click(panelToggle);
+    }
     await page.waitForFunction(() => Boolean(document.querySelector('.poiesis-agent-window__code-terminal-host > *')), {
         timeout: uiTimeout
     });
@@ -409,7 +413,7 @@ try {
             await clickByText(page, '.lm-Widget.dialogOverlay .dialogControl button', 'キャンセル');
             await page.waitForFunction(() => !document.querySelector('.lm-Widget.dialogOverlay'));
         }
-        await clickByText(page, '.poiesis-agent-window__code-control', 'Code');
+        await page.click('.poiesis-agent-window__code-control');
         await page.waitForSelector('.poiesis-agent-window__agent');
         const surfaceSelector = settingsWindowOnly ? '.poiesis-settings-modal' : '.poiesis-customize-view';
         if (settingsWindowOnly) {
@@ -422,8 +426,8 @@ try {
             ? await assertSettingsToggleKeepsLayout(page)
             : undefined;
         if (customizeWindowOnly) {
-            await clickByText(page, '.poiesis-customize-view__text-button', '新しいSkill');
-            await page.click('[aria-label="新しいSkillの種類"]');
+            await clickByText(page, '.poiesis-customize-view__primary-action', '新しいSkill');
+            await page.click('[aria-label="新しいSkillの役割"]');
             await page.waitForSelector('.poiesis-select__listbox');
         }
         moveElectronWindow(startProcess.pid, 1024, 600);
@@ -437,7 +441,7 @@ try {
         await page.waitForSelector('.poiesis-window-controls__button[data-window-action="restore"]');
         modalWindowChecks.maximized = await assertElectronLayout(page, settingsWindowOnly ? 'agent' : 'customize', settingsWindowOnly);
         if (customizeWindowOnly) {
-            await page.click('[aria-label="新しいSkillの種類"]');
+            await page.click('[aria-label="新しいSkillの役割"]');
             await page.waitForSelector('.poiesis-select__listbox');
             modalWindowChecks.dropdownMaximized = await assertPoiesisSelectUnclipped(page, 'Customize dropdown after maximize');
         }
@@ -445,7 +449,7 @@ try {
         await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
         modalWindowChecks.restored = await assertElectronLayout(page, settingsWindowOnly ? 'agent' : 'customize', settingsWindowOnly);
         if (customizeWindowOnly) {
-            await page.click('[aria-label="新しいSkillの種類"]');
+            await page.click('[aria-label="新しいSkillの役割"]');
             await page.waitForSelector('.poiesis-select__listbox');
             modalWindowChecks.dropdownRestored = await assertPoiesisSelectUnclipped(page, 'Customize dropdown after restore');
             await page.keyboard.press('Escape');
@@ -1484,7 +1488,7 @@ async function assertElectronLayout(page, expectedMode, expectSettings = false) 
 async function assertPoiesisSelectUnclipped(page, label) {
     const snapshot = await page.$eval('.poiesis-select__listbox', element => {
         const bounds = element.getBoundingClientRect();
-        const trigger = document.querySelector('[aria-label="新しいSkillの種類"]')?.getBoundingClientRect();
+        const trigger = document.querySelector('[aria-label="新しいSkillの役割"]')?.getBoundingClientRect();
         return {
             viewport: { width: innerWidth, height: innerHeight },
             left: bounds.left,

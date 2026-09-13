@@ -15,12 +15,13 @@ const repositoryRoot = process.cwd();
 const existingDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'round13-existing-smoke');
 const existingPath = resolve(existingDirectory, 'skill.md');
 const createdDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'round13-created-smoke');
-const createdPath = resolve(createdDirectory, 'skill.md');
+const createdPath = resolve(createdDirectory, 'SKILL.md');
+const existingContent = '---\nname: Round 13 existing\ndescription: Inline editor smoke fixture\nkind: agent\n---\n\n# Round 13 existing\n';
 for (const directory of [existingDirectory, createdDirectory]) {
     if (existsSync(directory)) throw new Error(`Smoke fixture already exists: ${directory}`);
 }
 mkdirSync(existingDirectory, { recursive: true });
-writeFileSync(existingPath, '---\nname: Round 13 existing\ndescription: Inline editor smoke fixture\nkind: agent\n---\n\n# Round 13 existing\n', 'utf8');
+writeFileSync(existingPath, existingContent, 'utf8');
 
 const browser = await puppeteer.launch({
     executablePath,
@@ -37,8 +38,8 @@ try {
     const previousMode = await page.$eval('.poiesis-agent-window__content', element => element.dataset.mode);
     await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
-    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
-        .some(card => card.textContent?.includes('Round 13 existing')));
+    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__skill-row')]
+        .some(row => row.textContent?.includes('Round 13 existing')));
     const inlineView = await page.evaluate(() => ({
         mode: document.querySelector('.poiesis-agent-window__content')?.dataset.mode,
         rail: Boolean(document.querySelector('.poiesis-agent-window__rail')),
@@ -48,54 +49,119 @@ try {
     assert(inlineView.mode === 'customize' && inlineView.rail && !inlineView.modal && inlineView.active === 'page',
         `Customize is not an active central view: ${JSON.stringify(inlineView)}`);
 
-    await clickCard(page, 'Bundled Results');
-    await page.waitForSelector('.poiesis-customize-view__builtin-preview');
-    assert((await page.$eval('.poiesis-customize-view__builtin-preview', element => element.textContent ?? '')).includes('読み取り専用'),
-        'Built-in skill did not show a read-only preview.');
+    await page.click('.poiesis-customize-view__generation-details > summary');
+    const generationDisclosure = await page.$eval('.poiesis-customize-view__generation-details', element => ({
+        text: element.textContent ?? '',
+        meters: [...element.querySelectorAll('meter')].map(meter => ({ value: meter.value, max: meter.max }))
+    }));
+    assert(generationDisclosure.text.includes('AI Results')
+        && generationDisclosure.text.includes('Bundled Results')
+        && generationDisclosure.text.includes('自動的に使われる処理です。')
+        && generationDisclosure.meters.length === 2
+        && generationDisclosure.meters.every(meter => meter.max === 24_000),
+    `Generation disclosure did not preserve built-in explanations and prompt meters: ${JSON.stringify(generationDisclosure)}`);
 
     await clickCard(page, 'Round 13 existing');
-    await page.waitForSelector('.poiesis-customize-view__editor-input');
-    assert((await page.$eval('.poiesis-customize-view__editor-input', element => element.value)).includes('# Round 13 existing'),
-        'Existing skill content was not loaded into the inline editor.');
-    await page.focus('.poiesis-customize-view__editor-input');
+    await page.waitForSelector('.poiesis-customize-view__monaco .monaco-editor');
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__monaco .view-lines')
+        ?.textContent?.replace(/\u00a0/g, ' ').includes('Round 13 existing'));
+
+    // Keep Code's model reference alive while Customize opens and later discards the same URI.
+    await page.click('.poiesis-customize-view__code-link');
+    await page.waitForSelector('.poiesis-agent-window__code-editor-host .monaco-editor');
+    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-name')
+        ?.textContent?.trim().toLocaleLowerCase() === 'skill.md');
+    await page.click('.poiesis-agent-window__code-control');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code'));
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
+    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__skill-row')]
+        .some(row => row.textContent?.includes('Round 13 existing')));
+    await clickCard(page, 'Round 13 existing');
+    await page.waitForSelector('.poiesis-customize-view__monaco .monaco-editor');
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__monaco .view-lines')
+        ?.textContent?.replace(/\u00a0/g, ' ').includes('Round 13 existing'));
+
+    const cleanExternalContent = `${existingContent}\nClean external Round 13 update.\n`;
+    writeFileSync(existingPath, cleanExternalContent, 'utf8');
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__monaco .view-lines')
+        ?.textContent?.replace(/\u00a0/g, ' ').includes('Clean external Round 13 update.'));
+    const monacoInstanceStable = await page.$eval('.poiesis-customize-view__monaco .monaco-editor', element => {
+        element.dataset.round13Instance = 'existing';
+        return document.querySelectorAll('.poiesis-customize-view__monaco .monaco-editor').length === 1;
+    });
+    assert(monacoInstanceStable, 'Customize created more than one Monaco editor for a Skill URI.');
+    await page.click('.poiesis-customize-view__monaco .monaco-editor');
+    await page.keyboard.down('Control');
     await page.keyboard.press('End');
+    await page.keyboard.up('Control');
     await page.keyboard.type('\nunsaved-round13');
-    await clickByText(page, '.poiesis-customize-view__editor footer button', '閉じる');
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__save-status.active')?.textContent?.includes('未保存'));
+    const dirtyExternalContent = `${cleanExternalContent}\nDirty external Round 13 update.\n`;
+    writeFileSync(existingPath, dirtyExternalContent, 'utf8');
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 2_000));
+    const dirtyExternalState = await page.$eval('.poiesis-customize-view__monaco .view-lines', element =>
+        (element.textContent ?? '').replace(/\u00a0/g, ' '));
+    assert(dirtyExternalState.includes('unsaved-round13') && !dirtyExternalState.includes('Dirty external Round 13 update.'),
+        'An external reload overwrote the dirty inline editor.');
+    assert(await page.$eval('.poiesis-customize-view__monaco .monaco-editor', element => element.dataset.round13Instance === 'existing'),
+        'React update replaced the inline Monaco DOM while editing.');
+    await page.click('[aria-label="Skills一覧に戻る"]');
     await page.waitForSelector('.poiesis-customize-view__discard-confirm');
     await clickByText(page, '.poiesis-customize-view__discard-confirm button', '編集を続ける');
-    assert(await page.$('.poiesis-customize-view__editor-input'), 'Continue editing closed the editor.');
-    await clickByText(page, '.poiesis-customize-view__editor footer button', '閉じる');
+    assert(await page.$('.poiesis-customize-view__monaco .monaco-editor'), 'Continue editing closed the editor.');
+    await page.click('[aria-label="Skills一覧に戻る"]');
     await clickByText(page, '.poiesis-customize-view__discard-confirm button', '破棄して閉じる');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view__editor'));
+    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view__detail'));
+    assert(!await page.$('.poiesis-customize-view__monaco .monaco-editor'), 'Discard did not dispose the inline Monaco editor.');
     assert(!readFileSync(existingPath, 'utf8').includes('unsaved-round13'), 'Discard wrote the unsaved change to disk.');
 
+    await clickCard(page, 'Round 13 existing');
+    await page.waitForSelector('.poiesis-customize-view__monaco .monaco-editor');
+    await page.waitForFunction(() => {
+        const text = document.querySelector('.poiesis-customize-view__monaco .view-lines')?.textContent?.replace(/\u00a0/g, ' ') ?? '';
+        return text.includes('Dirty external Round 13 update.') && !text.includes('unsaved-round13');
+    });
+    await page.click('.poiesis-customize-view__code-link');
+    await page.waitForSelector('.poiesis-agent-window__code-editor-host .monaco-editor');
+    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-name')
+        ?.textContent?.trim().toLocaleLowerCase() === 'skill.md');
+    const codeContentAfterDiscard = await page.$eval('.poiesis-agent-window__code-editor-host .view-lines', element =>
+        (element.textContent ?? '').replace(/\u00a0/g, ' '));
+    assert(codeContentAfterDiscard.includes('Dirty external Round 13 update.') && !codeContentAfterDiscard.includes('unsaved-round13'),
+        'Code retained discarded inline Monaco content through a surviving model reference.');
+    await page.click('.poiesis-agent-window__code-control');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code'));
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
+    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__skill-row')]
+        .some(row => row.textContent?.includes('Round 13 existing')));
+
     await page.setViewport({ width: 1024, height: 600, deviceScaleFactor: 1 });
-    await clickByText(page, '.poiesis-customize-view__text-button', '新しいSkill');
-    await page.type('[aria-label="新しいSkill ID"]', 'round13-created-smoke');
-    await page.focus('[aria-label="新しいSkillの種類"]');
+    await clickByText(page, '.poiesis-customize-view__primary-action', '新しいSkill');
+    await page.type('[aria-label="新しいSkillの名前"]', 'round13-created-smoke');
+    await page.focus('[aria-label="新しいSkillの役割"]');
     await page.keyboard.press('Enter');
     await page.waitForSelector('.poiesis-select__listbox');
     const customizePopover = await bounds(page, '.poiesis-select__listbox');
     assertUnclipped(customizePopover, 1024, 600, 'Customize dropdown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => document.querySelector('[aria-label="新しいSkillの種類"]')?.dataset.value === 'results');
-    await page.waitForFunction(() => document.querySelector('[aria-label="新しいSkillの種類"]') === document.activeElement);
-    await clickByText(page, '.poiesis-customize-view__new-skill button', '作成して開く');
-    await page.waitForSelector('.poiesis-customize-view__editor-input');
-    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__editor header small')?.textContent?.includes('round13-created-smoke'));
+    await page.waitForFunction(() => document.querySelector('[aria-label="新しいSkillの役割"]')?.dataset.value === 'results');
+    await page.waitForFunction(() => document.querySelector('[aria-label="新しいSkillの役割"]') === document.activeElement);
+    await clickByText(page, '.poiesis-customize-view__new-skill button', '作成して編集');
+    await page.waitForSelector('.poiesis-customize-view__monaco .monaco-editor');
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__detail-heading > strong')?.textContent?.includes('round13-created-smoke'));
     assert(existsSync(createdPath) && readFileSync(createdPath, 'utf8').includes('kind: results'),
-        'New Skill did not scaffold a results skill.md.');
-    await page.$eval('.poiesis-customize-view__editor-input', element => {
-        element.focus();
-        element.setSelectionRange(element.value.length, element.value.length);
-    });
+        'New Skill did not scaffold a results SKILL.md.');
+    await page.click('.poiesis-customize-view__monaco .monaco-editor');
+    await page.keyboard.down('Control');
+    await page.keyboard.press('End');
+    await page.keyboard.up('Control');
     await page.keyboard.type('\nSaved inline by Round 13.\n');
     await page.keyboard.down('Control');
     await page.keyboard.press('s');
     await page.keyboard.up('Control');
-    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__dirty:not(.active)')?.textContent?.includes('保存済み'));
-    assert(readFileSync(createdPath, 'utf8').includes('Saved inline by Round 13.'), 'Ctrl+S did not persist skill.md.');
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__save-status:not(.active)')?.textContent?.includes('保存済み'));
+    assert(readFileSync(createdPath, 'utf8').includes('Saved inline by Round 13.'), 'Ctrl+S did not persist SKILL.md.');
 
     const customizeLayout = await page.evaluate(() => {
         const view = document.querySelector('.poiesis-customize-view')?.getBoundingClientRect();
@@ -110,7 +176,8 @@ try {
 
     await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForFunction(mode => document.querySelector('.poiesis-agent-window__content')?.dataset.mode === mode, {}, previousMode);
-    await page.click('.poiesis-agent-window__rail-toggle');
+    const railCollapsed = await page.$eval('.poiesis-agent-window__rail', element => element.getAttribute('data-collapsed') === 'true');
+    if (!railCollapsed) await page.click('.poiesis-agent-window__rail-toggle');
     await page.waitForSelector('.poiesis-agent-window__rail[data-collapsed="true"]');
     await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
     await page.waitForSelector('.poiesis-customize-view');
@@ -118,20 +185,23 @@ try {
     await page.waitForSelector('.poiesis-settings-modal');
     assert(!(await page.$eval('.poiesis-settings-modal', element => element.textContent ?? '')).includes('Skills'),
         'Settings still includes the Skills section.');
-    const modelTrigger = await page.waitForSelector('.poiesis-settings-modal [role="combobox"]:not(:disabled)');
+    await clickByText(page, '.poiesis-settings-modal__nav button', 'AI');
+    await page.waitForFunction(() => {
+        const trigger = document.querySelector('.poiesis-settings-modal .poiesis-model-picker__trigger');
+        return trigger && !trigger.getAttribute('title')?.includes('確認中');
+    });
+    const modelTrigger = await page.waitForSelector('.poiesis-settings-modal .poiesis-model-picker__trigger:not(:disabled)');
     await modelTrigger.click();
-    await page.waitForSelector('.poiesis-select__listbox');
-    const settingsPopover = await bounds(page, '.poiesis-select__listbox');
+    await page.waitForSelector('.poiesis-model-picker__popover');
+    const settingsPopover = await bounds(page, '.poiesis-model-picker__popover');
     assertUnclipped(settingsPopover, 1024, 600, 'Settings dropdown');
     await page.keyboard.press('Escape');
-    await page.waitForFunction(() => !document.querySelector('.poiesis-select__listbox'));
+    await page.waitForFunction(() => !document.querySelector('.poiesis-model-picker__popover'));
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal'));
     assert(await page.$eval('body', () => document.querySelectorAll('select').length === 0), 'A native select remains in the rendered app.');
 
-    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
-    await page.waitForSelector('.poiesis-customize-view');
-    await clickByText(page, '.poiesis-agent-window__customize-header-actions button', 'Code');
+    await page.click('.poiesis-agent-window__code-control');
     await page.waitForSelector('.poiesis-agent-window__code');
     await page.setViewport({ width: 1500, height: 850, deviceScaleFactor: 1 });
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__content')?.getBoundingClientRect().width === innerWidth);
@@ -139,11 +209,13 @@ try {
 
     console.log(`ROUND13_BROWSER_SMOKE_RESULT=${JSON.stringify({
         inlineView,
+        generationDisclosure,
         customizePopover,
         settingsPopover,
         customizeLayout,
         inlineSave: true,
         inlineDiscard: true,
+        monacoLifecycle: true,
         nativeSelectCount: 0,
         codeMode: true
     })}`);
@@ -156,10 +228,11 @@ try {
 
 async function clickCard(page, text) {
     await page.evaluate(label => {
-        const card = [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
+        const row = [...document.querySelectorAll('.poiesis-customize-view__skill-row, .poiesis-customize-view__proposal-row')]
             .find(candidate => candidate.textContent?.includes(label));
-        if (!(card instanceof HTMLElement)) throw new Error(`Skill card not found: ${label}`);
-        card.click();
+        const target = row?.querySelector('.poiesis-customize-view__row-target');
+        if (!(target instanceof HTMLElement)) throw new Error(`Skill row not found: ${label}`);
+        target.click();
     }, text);
 }
 

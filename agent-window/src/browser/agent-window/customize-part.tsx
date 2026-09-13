@@ -1,81 +1,27 @@
 import * as React from '@theia/core/shared/react';
-import * as ReactDOM from '@theia/core/shared/react-dom';
-import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { FormatType, open, OpenerService, Saveable, SaveableService, SaveReason, StorageService, WidgetManager } from '@theia/core/lib/browser';
-import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
-import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
-import { CommandService, Disposable, DisposableCollection, MessageService } from '@theia/core/lib/common';
+import { Disposable, DisposableCollection } from '@theia/core/lib/common';
 import { FileUri } from '@theia/core/lib/common/file-uri';
 import URI from '@theia/core/lib/common/uri';
-import { Message, MessageLoop } from '@theia/core/shared/@lumino/messaging';
-import { Widget } from '@theia/core/shared/@lumino/widgets';
-import { EditorManager, EditorWidget } from '@theia/editor/lib/browser';
-import { ScmCommand, ScmHistoryProvider, ScmProvider } from '@theia/scm/lib/browser/scm-provider';
-import { ScmService } from '@theia/scm/lib/browser/scm-service';
-import { WorkspaceService } from '@theia/workspace/lib/browser';
-import { FileService } from '@theia/filesystem/lib/browser/file-service';
-import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
-import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
-import { FileNavigatorCommands } from '@theia/navigator/lib/browser/navigator-contribution';
-import { SearchInWorkspaceCommands } from '@theia/search-in-workspace/lib/browser/search-in-workspace-frontend-contribution';
-import { BUILTIN_QUERY, VSXExtensionsSearchModel } from '@theia/vsx-registry/lib/browser/vsx-extensions-search-model';
-import { AgentActivity, AgentActivityKind, AgentEvent, AgentProvider, AgentSession } from '../../common/agent-provider';
-import {
-    AgentRuntimeServer,
-    AiRole,
-    CliDetectionReport,
-    DEFAULT_CLI_ID,
-    FolderBrowserResult,
-    isKnownCliId,
-    KnownCliId
-} from '../../common/agent-runtime-protocol';
-import { formatRequirementExecutionEvidence, ResultsService } from '../results-skill';
-import {
-    ExecutionTask,
-    formatTaskEndedAtJst,
-    summarizeTaskChangeSet,
-    TaskChangeSet,
-    TaskResultDocument,
-    TaskResultsQuestion,
-    TaskService,
-    taskTitleForRequest
-} from '../task-service';
-import { getDesignVariant } from '../design-variant';
-import { FolderExplorerService } from '../folder-explorer-service';
-import { ResultsQuestionService } from '../results-question-service';
-import { GlobalStorageService } from '../global-storage-service';
-import { ResultsGenerationContext } from '../results-generation-context';
+import { MonacoEditor } from '@theia/monaco/lib/browser/monaco-editor';
 import { SkillBundleKind } from '../../common/skill-bundle';
-import {
-    collectWorkspaceRichContentReferences,
-    POIESIS_EXTERNAL_LINK_ATTRIBUTE,
-    POIESIS_FILE_LINK_ATTRIBUTE,
-    POIESIS_INLINE_IMAGE_ATTRIBUTE,
-    renderSafeMarkdown
-} from '../safe-markdown';
+import { diffTextLines } from '../text-diff';
+import { POIESIS_FONT_MONO } from '../typography';
 import {
     PendingSkillProposal,
     WorkspaceSkillDefinition,
     WorkspaceSkillDiscoveryRoot,
     WorkspaceSkillPreview,
-    WorkspaceSkillService,
     WorkspaceSkillSource
 } from '../workspace-skill-service';
-import { diffTextLines } from '../text-diff';
-import { formatTaskElapsedTime, shouldSubmitComposer } from '../composer-behavior';
-import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from '../typography';
-import { formatExecutionEvidence } from '../results-document-normalizer';
-import { Requirement } from '../requirement-model';
-import { RequirementService } from '../requirement-service';
-import { RequirementClassificationService } from '../requirement-classification-service';
-import { PoiesisSelect, PoiesisSelectOption } from '../components/poiesis-select';
-import { PoiesisTextArea, PoiesisTextInput } from '../components/poiesis-inputs';
-import { PoiesisComposer } from '../components/poiesis-composer';
-import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
-import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
+import { PoiesisDisclosureSummary } from '../components/poiesis-disclosure';
+import { PoiesisTextInput } from '../components/poiesis-inputs';
+import { PoiesisSelect } from '../components/poiesis-select';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
 
 type NewSkillScope = 'workspace' | 'user';
+type CustomizeTab = 'skills' | 'plugins';
+type CustomizeScope = 'all' | 'workspace' | 'user';
+type PendingEditorNavigation = 'list' | 'close-customize';
 
 interface WorkspaceSkillEditor {
     uri: string;
@@ -86,121 +32,166 @@ interface WorkspaceSkillEditor {
 
 export class CustomizePart extends AgentWindowPart {
     protected workspaceSkills: WorkspaceSkillDefinition[] = [];
-
     protected pendingSkillProposals: PendingSkillProposal[] = [];
-
     protected workspaceSkillsLoading = false;
-
     protected workspaceSkillsError?: string;
-
     protected workspaceSkillsRefreshGeneration = 0;
-
     protected workspaceSkillPreviews?: Record<SkillBundleKind, WorkspaceSkillPreview>;
-
-    protected readonly visibleSkillPromptPreviews = new Set<SkillBundleKind>();
-
     protected workspaceSkillWatchers?: DisposableCollection;
-
     protected workspaceSkillRefreshTimer?: number;
 
+    protected customizeTab: CustomizeTab = 'skills';
+    protected customizeScope: CustomizeScope = 'all';
+    protected readonly customizeQueries: Record<CustomizeTab, string> = { skills: '', plugins: '' };
+    protected readonly expandedSkillGroups = new Set<string>();
+    protected customizeListScrollTop = 0;
+    protected customizeListScrollRestorePending = false;
+    protected customizeListMount?: HTMLElement;
+
     protected newSkillFormVisible = false;
-
     protected newSkillId = '';
-
     protected newSkillKind: SkillBundleKind = 'agent';
-
     protected newSkillScope: NewSkillScope = 'workspace';
-
     protected newSkillError?: string;
-
     protected newSkillCreating = false;
 
-    protected selectedBuiltinSkill?: 'bundled-results' | 'ai-results';
-
+    protected selectedWorkspaceSkill?: WorkspaceSkillDefinition;
     protected selectedPendingSkillId?: string;
-
     protected pendingSkillActionId?: string;
-
     protected pendingSkillActionError?: string;
-
     protected workspaceSkillEditor?: WorkspaceSkillEditor;
-
     protected workspaceSkillEditorLoading = false;
-
     protected workspaceSkillEditorError?: string;
-
     protected workspaceSkillDiscardConfirmation = false;
-
     protected workspaceSkillSaving = false;
+    protected pendingEditorNavigation?: PendingEditorNavigation;
+    protected workspaceSkillOpenGeneration = 0;
+
+    protected inlineEditorContainer?: HTMLDivElement;
+    protected inlineEditor?: MonacoEditor;
+    protected inlineEditorUri?: string;
+    protected inlineEditorChangeListener?: { dispose(): void };
+    protected inlineEditorCreationUri?: string;
+    protected inlineEditorCreationContainer?: HTMLDivElement;
+    protected inlineEditorGeneration = 0;
 
     protected customizeOpenedFromCode = false;
 
+    protected readonly setInlineEditorContainer = (node: HTMLDivElement | null): void => {
+        if (!node) {
+            this.inlineEditorContainer = undefined;
+            this.disposeInlineEditor();
+            return;
+        }
+        this.inlineEditorContainer = node;
+        void this.ensureInlineEditor();
+    };
+
+    protected readonly setCustomizeListMount = (node: HTMLElement | null): void => {
+        this.customizeListMount = node ?? undefined;
+        if (node) {
+            this.applyCustomizeListScrollRestoration();
+        }
+    };
+
     public renderCustomizeView(): React.ReactNode {
-        const editor = this.workspaceSkillEditor;
+        const proposal = this.pendingSkillProposals.find(candidate => candidate.id === this.selectedPendingSkillId);
+        const detailVisible = Boolean(
+            proposal
+            || this.selectedWorkspaceSkill
+            || this.workspaceSkillEditor
+            || this.workspaceSkillEditorLoading
+            || this.workspaceSkillEditorError
+        );
         return (
-            <section className='poiesis-customize-view' aria-labelledby='poiesis-customize-title'>
-                <div className='poiesis-customize-view__page'>
-                    <header className='poiesis-customize-view__title-bar'>
-                        <div>
-                            <h1 id='poiesis-customize-title'>Skills</h1>
-                            <span>{this.workspaceSkills.length}件</span>
-                        </div>
-                        <button
-                            type='button'
-                            className='poiesis-customize-view__primary-action'
-                            onClick={() => this.showNewSkillForm()}
-                        >
-                            <span className='codicon codicon-add' aria-hidden='true' />
-                            新しいSkill
-                        </button>
-                    </header>
-                    {this.newSkillFormVisible && this.renderNewSkillForm()}
-                    {(this.workspaceSkillEditorLoading || this.workspaceSkillEditorError || editor)
-                        && this.renderWorkspaceSkillEditor(editor)}
-
-                    <section className='poiesis-customize-view__skills' aria-label='Skills一覧'>
-                        {this.workspaceSkillsLoading && (
-                            <div className='poiesis-customize-view__state' role='status'>
-                                <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
-                                Skillsを読み込んでいます…
-                            </div>
-                        )}
-                        {!this.workspaceSkillsLoading && this.workspaceSkillsError && (
-                            <div className='poiesis-customize-view__state error' role='alert'>{this.workspaceSkillsError}</div>
-                        )}
-                        {!this.workspaceSkillsLoading && !this.workspaceSkillsError && this.workspaceSkills.length === 0 && (
-                            <div className='poiesis-customize-view__state'>Skillsはまだありません。</div>
-                        )}
-                        {!this.workspaceSkillsLoading && !this.workspaceSkillsError && this.workspaceSkills.length > 0
-                            && this.renderWorkspaceSkillGroups(editor)}
-                    </section>
-
-                    {this.pendingSkillProposals.length > 0 && (
-                        <section className='poiesis-customize-view__proposals' aria-labelledby='poiesis-customize-proposals'>
-                            <h2 id='poiesis-customize-proposals'>提案されたSkills</h2>
-                            <div className='poiesis-agent-window__customize-list'>
-                                {this.pendingSkillProposals.map(proposal => this.renderPendingSkillRow(proposal))}
-                            </div>
-                            {this.pendingSkillActionError && (
-                                <div className='poiesis-customize-view__proposal-error' role='alert'>{this.pendingSkillActionError}</div>
-                            )}
-                            {this.renderPendingSkillPreview()}
-                        </section>
-                    )}
-
-                    {this.renderGenerationDetails()}
-                    <details className='poiesis-customize-view__secondary-details'>
-                        <summary><span>Plugins</span><small>0</small></summary>
-                        <p><strong>Poiesis plugin bundles</strong> は追加されていません。</p>
-                    </details>
+            <section className={`poiesis-customize-view${detailVisible ? ' is-detail' : ''}`} aria-label='カスタマイズ'>
+                <div className={`poiesis-customize-view__page${detailVisible ? ' is-detail' : ''}`}>
+                    {proposal
+                        ? this.renderPendingSkillPreview(proposal)
+                        : detailVisible
+                            ? this.renderWorkspaceSkillEditor()
+                            : this.renderCustomizeList()}
                 </div>
             </section>
         );
     }
 
+    protected renderCustomizeList(): React.ReactNode {
+        return (
+            <>
+                {this.renderCustomizeToolbar()}
+                {this.customizeTab === 'skills' && this.newSkillFormVisible && this.renderNewSkillForm()}
+                {this.customizeTab === 'skills' ? this.renderSkillsPanel() : this.renderPluginsPanel()}
+            </>
+        );
+    }
+
+    protected renderCustomizeToolbar(): React.ReactNode {
+        const query = this.customizeQueries[this.customizeTab];
+        const workspaceName = this.host.sessions.workspaceRoot()?.resource.path.base || '現在のフォルダー';
+        return (
+            <header ref={this.setCustomizeListMount} className='poiesis-customize-view__toolbar'>
+                <div className='poiesis-customize-view__toolbar-primary'>
+                    <label className='poiesis-customize-view__search'>
+                        <span className='codicon codicon-search' aria-hidden='true' />
+                        <input
+                            type='search'
+                            aria-label={this.customizeTab === 'skills' ? 'Skillsを検索' : 'Pluginsを検索'}
+                            placeholder={this.customizeTab === 'skills' ? 'Skillsを検索…' : 'Pluginsを検索…'}
+                            value={query}
+                            onChange={event => this.setCustomizeQuery(event.currentTarget.value)}
+                        />
+                    </label>
+                    {this.customizeTab === 'skills' && (
+                        <button type='button' className='poiesis-customize-view__primary-action' onClick={() => this.showNewSkillForm()}>
+                            <span className='codicon codicon-add' aria-hidden='true' />
+                            新しいSkill
+                        </button>
+                    )}
+                </div>
+                <div className='poiesis-customize-view__toolbar-secondary'>
+                    <PoiesisSelect
+                        className='poiesis-customize-view__scope-select'
+                        value={this.customizeScope}
+                        ariaLabel='Skillの使用範囲'
+                        leadingIconClass='codicon-folder'
+                        popoverMinWidth={260}
+                        options={[
+                            { value: 'all', label: 'すべて' },
+                            { value: 'workspace', label: `このフォルダー · ${workspaceName}` },
+                            { value: 'user', label: 'すべてのフォルダー' }
+                        ]}
+                        onChange={value => this.setCustomizeScope(value as CustomizeScope)}
+                    />
+                    <span className='poiesis-customize-view__toolbar-divider' aria-hidden='true' />
+                    <div className='poiesis-customize-view__tabs-scroll'>
+                        <div className='poiesis-customize-view__tabs' role='tablist' aria-label='カスタマイズの種類'>
+                            {(['skills', 'plugins'] as const).map(tab => (
+                                <button
+                                    id={`poiesis-customize-${tab}-tab`}
+                                    key={tab}
+                                    type='button'
+                                    role='tab'
+                                    aria-selected={this.customizeTab === tab}
+                                    aria-controls={`poiesis-customize-${tab}-panel`}
+                                    tabIndex={this.customizeTab === tab ? 0 : -1}
+                                    className={this.customizeTab === tab ? 'active' : ''}
+                                    onClick={() => this.setCustomizeTab(tab)}
+                                    onKeyDown={event => this.handleCustomizeTabKeyDown(event, tab)}
+                                >
+                                    {tab === 'skills' ? 'Skills' : 'Plugins'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </header>
+        );
+    }
+
     protected renderNewSkillForm(): React.ReactNode {
         return (
-            <form className='poiesis-customize-view__new-skill' onSubmit={event => {
+            <form className='poiesis-customize-view__new-skill poiesis-agent-window__customize-card' onSubmit={event => {
                 event.preventDefault();
                 void this.createWorkspaceSkill();
             }}>
@@ -221,10 +212,7 @@ export class CustomizePart extends AgentWindowPart {
                         value={this.newSkillKind}
                         ariaLabel='新しいSkillの役割'
                         disabled={this.newSkillCreating}
-                        options={[
-                            { value: 'agent', label: 'Agent' },
-                            { value: 'results', label: 'Results' }
-                        ]}
+                        options={[{ value: 'agent', label: 'Agent' }, { value: 'results', label: 'Results' }]}
                         onChange={value => this.setNewSkillKind(value as SkillBundleKind)}
                     />
                 </label>
@@ -234,15 +222,12 @@ export class CustomizePart extends AgentWindowPart {
                         value={this.newSkillScope}
                         ariaLabel='新しいSkillの使用範囲'
                         disabled={this.newSkillCreating}
-                        options={[
-                            { value: 'workspace', label: 'このフォルダー' },
-                            { value: 'user', label: 'すべてのフォルダー' }
-                        ]}
+                        options={[{ value: 'workspace', label: 'このフォルダー' }, { value: 'user', label: 'すべてのフォルダー' }]}
                         onChange={value => this.setNewSkillScope(value as NewSkillScope)}
                     />
                 </label>
                 {this.newSkillError && <p role='alert'>{this.newSkillError}</p>}
-                <div>
+                <div className='poiesis-customize-view__form-actions'>
                     <button type='button' disabled={this.newSkillCreating} onClick={() => this.hideNewSkillForm()}>キャンセル</button>
                     <button type='submit' className='primary' disabled={this.newSkillCreating || !this.newSkillId.trim()}>
                         {this.newSkillCreating ? '作成中…' : '作成して編集'}
@@ -252,97 +237,344 @@ export class CustomizePart extends AgentWindowPart {
         );
     }
 
-    protected renderWorkspaceSkillEditor(editor: WorkspaceSkillEditor | undefined): React.ReactNode {
-        const editorDirty = Boolean(editor && editor.content !== editor.savedContent);
+    protected renderSkillsPanel(): React.ReactNode {
+        const query = this.customizeQueries.skills.trim().toLocaleLowerCase('ja-JP');
+        const scopedSkills = this.workspaceSkills.filter(skill => this.skillMatchesScope(skill));
+        const skills = scopedSkills.filter(skill => this.skillMatchesQuery(skill, query));
+        const proposals = this.customizeScope === 'user'
+            ? []
+            : this.pendingSkillProposals.filter(proposal => this.proposalMatchesQuery(proposal, query));
+        const hasAnySkills = this.workspaceSkills.length > 0 || this.pendingSkillProposals.length > 0;
+        const hasMatches = skills.length > 0 || proposals.length > 0;
         return (
-            <section className='poiesis-customize-view__editor' aria-label='Skillエディター' aria-busy={this.workspaceSkillSaving}>
-                {this.workspaceSkillEditorLoading ? (
-                    <div className='poiesis-customize-view__state' role='status'>
-                        <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />
-                        Skillを開いています…
+            <section
+                id='poiesis-customize-skills-panel'
+                className='poiesis-customize-view__panel'
+                role='tabpanel'
+                aria-labelledby='poiesis-customize-skills-tab'
+            >
+                {this.workspaceSkillsLoading ? this.renderStateCard('Skillsを読み込んでいます…', 'status', true) : undefined}
+                {!this.workspaceSkillsLoading && this.workspaceSkillsError ? this.renderStateCard(this.workspaceSkillsError, 'alert') : undefined}
+                {!this.workspaceSkillsLoading && !this.workspaceSkillsError && !hasAnySkills ? this.renderEmptySkillsCard() : undefined}
+                {!this.workspaceSkillsLoading && !this.workspaceSkillsError && hasAnySkills && !hasMatches ? this.renderNoMatchesCard() : undefined}
+                {!this.workspaceSkillsLoading && !this.workspaceSkillsError && hasMatches && (
+                    <div className='poiesis-customize-view__groups'>
+                        {proposals.length > 0 && this.renderProposalGroup(proposals)}
+                        {this.renderWorkspaceSkillGroups(skills)}
                     </div>
-                ) : !editor && this.workspaceSkillEditorError ? (
-                    <div className='poiesis-customize-view__state error' role='alert'>{this.workspaceSkillEditorError}</div>
-                ) : editor && (
-                    <>
-                        <header>
-                            <strong>{editor.path.split('/').at(-2) ?? 'SKILL.md'}</strong>
-                            <span className={`poiesis-customize-view__dirty${editorDirty ? ' active' : ''}`} role='status'>
-                                {this.workspaceSkillSaving ? '保存中…' : editorDirty ? '未保存' : '保存済み'}
-                            </span>
-                        </header>
-                        <details className='poiesis-customize-view__editor-location'>
-                            <summary>保存場所</summary>
-                            <code>{editor.path}</code>
-                        </details>
-                        <PoiesisTextArea
-                            key={editor.uri}
-                            className='poiesis-customize-view__editor-input'
-                            aria-label={`${editor.path}を編集`}
-                            spellCheck={false}
-                            disabled={this.workspaceSkillSaving}
-                            value={editor.content}
-                            onValueChange={value => this.setWorkspaceSkillEditorContent(value)}
-                            onKeyDown={event => {
-                                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-                                    event.preventDefault();
-                                    void this.saveWorkspaceSkill();
-                                }
-                            }}
-                        />
-                        {this.workspaceSkillEditorError && <p role='alert'>{this.workspaceSkillEditorError}</p>}
-                        {this.workspaceSkillDiscardConfirmation && (
-                            <div className='poiesis-customize-view__discard-confirm' role='group' aria-label='未保存の変更を破棄する確認'>
-                                <span>未保存の変更を破棄しますか？</span>
-                                <button type='button' onClick={() => this.cancelWorkspaceSkillClose()}>編集を続ける</button>
-                                <button type='button' className='danger' onClick={() => this.discardWorkspaceSkillChanges()}>破棄して閉じる</button>
-                            </div>
-                        )}
-                        <footer>
-                            <button
-                                type='button'
-                                disabled={editorDirty || this.workspaceSkillSaving}
-                                title={editorDirty ? '先に変更を保存してください' : undefined}
-                                onClick={() => void this.openWorkspaceSkillInCode(editor.uri)}
-                            >
-                                Codeで開く
-                            </button>
-                            <span />
-                            <button type='button' disabled={this.workspaceSkillSaving} onClick={() => this.requestCloseWorkspaceSkill()}>閉じる</button>
-                            <button type='button' className='primary' disabled={!editorDirty || this.workspaceSkillSaving} onClick={() => void this.saveWorkspaceSkill()}>
-                                {this.workspaceSkillSaving ? '保存中…' : '保存'}
-                            </button>
-                        </footer>
-                    </>
                 )}
+                {this.pendingSkillActionError && <div className='poiesis-customize-view__proposal-error' role='alert'>{this.pendingSkillActionError}</div>}
+                {!this.workspaceSkillsLoading && !this.workspaceSkillsError && this.renderGenerationDetails()}
             </section>
+        );
+    }
+
+    protected renderPluginsPanel(): React.ReactNode {
+        return (
+            <section
+                id='poiesis-customize-plugins-panel'
+                className='poiesis-customize-view__panel'
+                role='tabpanel'
+                aria-labelledby='poiesis-customize-plugins-tab'
+            >
+                <div className='poiesis-customize-view__empty-state poiesis-agent-window__customize-card'>
+                    <h2>Pluginsは追加されていません</h2>
+                    <p><strong>Poiesis plugin bundles</strong> は Skills と設定をまとめて配布する仕組みです。現在は組み込みの bundle だけが使われ、追加する操作はまだありません。</p>
+                </div>
+            </section>
+        );
+    }
+
+    protected renderStateCard(message: string, role: 'status' | 'alert', loading = false): React.ReactNode {
+        return (
+            <div className={`poiesis-customize-view__state-card${role === 'alert' ? ' error' : ''}`} role={role}>
+                {loading && <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />}
+                <span>{message}</span>
+            </div>
+        );
+    }
+
+    protected renderEmptySkillsCard(): React.ReactNode {
+        return (
+            <div className='poiesis-customize-view__empty-state poiesis-agent-window__customize-card'>
+                <h2>Skillsはまだありません</h2>
+                <p>Skillを有効にすると、次の作業からAgentへの指示やResultsの生成ルールに反映されます。</p>
+                <button type='button' className='poiesis-customize-view__primary-action' onClick={() => this.showNewSkillForm()}>
+                    <span className='codicon codicon-add' aria-hidden='true' />
+                    新しいSkill
+                </button>
+            </div>
+        );
+    }
+
+    protected renderNoMatchesCard(): React.ReactNode {
+        return <div className='poiesis-customize-view__empty-state poiesis-agent-window__customize-card'><h2>一致するSkillはありません</h2></div>;
+    }
+
+    protected renderProposalGroup(proposals: PendingSkillProposal[]): React.ReactNode {
+        const groupId = 'proposals';
+        const visible = this.visibleGroupItems(groupId, proposals);
+        return (
+            <section className='poiesis-customize-view__scope-group' aria-labelledby='poiesis-customize-proposals-title'>
+                <h2 id='poiesis-customize-proposals-title' className='poiesis-customize-view__group-title'>提案 <span>{proposals.length}</span></h2>
+                <div className='poiesis-customize-view__group-card poiesis-agent-window__customize-card'>
+                    {visible.map(proposal => this.renderPendingSkillRow(proposal))}
+                </div>
+                {this.renderGroupMoreButton(groupId, proposals.length)}
+            </section>
+        );
+    }
+
+    protected renderWorkspaceSkillGroups(skills: WorkspaceSkillDefinition[]): React.ReactNode {
+        const groups: Array<{ id: string; label: string; sources: WorkspaceSkillSource[] }> = [
+            { id: 'workspace', label: 'このフォルダー', sources: ['workspace', 'workspace-agents'] },
+            { id: 'global', label: 'すべてのフォルダー', sources: ['user', 'user-agents'] }
+        ];
+        return groups.map(group => {
+            const groupedSkills = skills.filter(skill => group.sources.includes(skill.source));
+            if (!groupedSkills.length) {
+                return undefined;
+            }
+            const visible = this.visibleGroupItems(group.id, groupedSkills);
+            return (
+                <section className='poiesis-customize-view__scope-group' aria-labelledby={`poiesis-customize-${group.id}-title`} key={group.id}>
+                    <h2 id={`poiesis-customize-${group.id}-title`} className='poiesis-customize-view__group-title'>
+                        {group.label} <span>{groupedSkills.length}</span>
+                    </h2>
+                    <div className='poiesis-customize-view__group-card poiesis-agent-window__customize-card'>
+                        {visible.map(skill => this.renderWorkspaceSkillRow(skill))}
+                    </div>
+                    {this.renderGroupMoreButton(group.id, groupedSkills.length)}
+                </section>
+            );
+        });
+    }
+
+    protected visibleGroupItems<T>(groupId: string, items: T[]): T[] {
+        return this.expandedSkillGroups.has(groupId) ? items : items.slice(0, 6);
+    }
+
+    protected renderGroupMoreButton(groupId: string, total: number): React.ReactNode {
+        if (total <= 6) {
+            return undefined;
+        }
+        const expanded = this.expandedSkillGroups.has(groupId);
+        return (
+            <button type='button' className='poiesis-customize-view__group-more' aria-expanded={expanded} onClick={() => this.toggleGroupExpanded(groupId)}>
+                {expanded ? '表示を減らす' : `さらに${total - 6}件を表示`}
+                <span className={`codicon codicon-chevron-${expanded ? 'up' : 'down'}`} aria-hidden='true' />
+            </button>
+        );
+    }
+
+    protected renderWorkspaceSkillRow(skill: WorkspaceSkillDefinition): React.ReactNode {
+        const shadowed = Boolean(skill.shadowedBy);
+        const titleId = `poiesis-skill-${this.domId(`${skill.source}-${skill.id}`)}-title`;
+        const descriptionId = `${titleId}-description`;
+        const description = skill.error
+            || (shadowed ? '同じ名前のフォルダー用Skillが優先されています' : skill.description || '説明はありません');
+        return (
+            <div className={`poiesis-customize-view__skill-row${skill.error ? ' has-error' : ''}${shadowed ? ' is-shadowed' : ''}`} key={`${skill.source}:${skill.id}:${skill.uri}`}>
+                <button type='button' className='poiesis-customize-view__row-target' aria-labelledby={`${titleId} ${descriptionId}`} onClick={() => void this.openWorkspaceSkillInline(skill)} />
+                <div className='poiesis-agent-window__customize-icon'>
+                    <span className={`codicon ${skill.kind === 'agent' ? 'codicon-tools' : 'codicon-book'}`} aria-hidden='true' />
+                </div>
+                <div className='poiesis-customize-view__row-copy'>
+                    <div className='poiesis-agent-window__customize-title'>
+                        <strong id={titleId}>{skill.name}</strong>
+                        <span>{skill.kind === 'agent' ? 'Agent' : 'Results'}</span>
+                    </div>
+                    <p id={descriptionId} className={`poiesis-customize-view__row-description${skill.error ? ' error' : shadowed ? ' warning' : ''}`}>{description}</p>
+                </div>
+                <label className='poiesis-agent-window__switch poiesis-customize-view__row-switch' title={shadowed ? '同名の上位Skillが優先されます' : `${skill.name}を${skill.enabled ? '無効' : '有効'}にする`}>
+                    <input type='checkbox' checked={skill.enabled} disabled={shadowed} aria-label={`${skill.name}を有効にする`} onChange={event => void this.setWorkspaceSkillEnabled(skill, event.currentTarget.checked)} />
+                    <span aria-hidden='true' />
+                </label>
+                <span className='codicon codicon-chevron-right poiesis-customize-view__row-chevron' aria-hidden='true' />
+            </div>
+        );
+    }
+
+    protected renderPendingSkillRow(proposal: PendingSkillProposal): React.ReactNode {
+        const processing = this.pendingSkillActionId === proposal.id;
+        const titleId = `poiesis-proposal-${this.domId(proposal.id)}-title`;
+        const descriptionId = `${titleId}-description`;
+        return (
+            <div className={`poiesis-customize-view__proposal-row${proposal.parsed.error ? ' has-error' : ''}`} key={proposal.id}>
+                <button type='button' className='poiesis-customize-view__row-target' aria-labelledby={`${titleId} ${descriptionId}`} onClick={() => this.selectPendingSkillProposal(proposal.id)} />
+                <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-lightbulb' aria-hidden='true' /></div>
+                <div className='poiesis-customize-view__row-copy'>
+                    <div className='poiesis-agent-window__customize-title'>
+                        <strong id={titleId}>{proposal.parsed.name}</strong>
+                        <span>{proposal.parsed.kind === 'agent' ? 'Agent' : 'Results'}</span>
+                        <span className='poiesis-customize-view__proposal-badge'>{proposal.existing ? '更新提案' : '新規提案'}</span>
+                    </div>
+                    <p id={descriptionId} className={`poiesis-customize-view__row-description${proposal.parsed.error ? ' error' : ''}`}>
+                        {proposal.parsed.error ?? proposal.parsed.description ?? '説明はありません'}
+                    </p>
+                </div>
+                <div className='poiesis-customize-view__proposal-actions' role='group' aria-label={`提案「${proposal.parsed.name}」への対応`}>
+                    <button type='button' aria-label={`提案「${proposal.parsed.name}」を却下`} disabled={Boolean(this.pendingSkillActionId)} onClick={() => void this.rejectPendingSkill(proposal)}>
+                        {processing ? '処理中…' : '却下'}
+                    </button>
+                    {!proposal.parsed.error && (
+                        <button type='button' className='primary' aria-label={`提案「${proposal.parsed.name}」を承認`} disabled={Boolean(this.pendingSkillActionId)} onClick={() => void this.approvePendingSkill(proposal)}>
+                            {processing ? '処理中…' : '承認'}
+                        </button>
+                    )}
+                </div>
+                <span className='codicon codicon-chevron-right poiesis-customize-view__row-chevron' aria-hidden='true' />
+            </div>
+        );
+    }
+
+    protected renderWorkspaceSkillEditor(): React.ReactNode {
+        const editor = this.workspaceSkillEditor;
+        const skill = this.selectedWorkspaceSkill;
+        const dirty = this.workspaceSkillEditorDirty();
+        const title = skill?.name ?? editor?.path.split('/').at(-2) ?? 'Skill';
+        const relativePath = skill ? this.workspaceSkillPath(skill.source, skill.id, new URI(skill.uri).path.base) : editor?.path ?? '';
+        const shadowed = Boolean(skill?.shadowedBy);
+        return (
+            <section className='poiesis-customize-view__detail poiesis-customize-view__editor' aria-label='Skillエディター' aria-busy={this.workspaceSkillSaving}>
+                <header className='poiesis-customize-view__detail-header'>
+                    <button type='button' className='poiesis-customize-view__back' aria-label='Skills一覧に戻る' onClick={() => this.requestReturnToSkillsList()}>
+                        <span className='codicon codicon-chevron-left' aria-hidden='true' /><span>Skills</span>
+                    </button>
+                    <div className='poiesis-customize-view__detail-heading'>
+                        <strong>{title}</strong>
+                        <div className='poiesis-customize-view__detail-meta'>
+                            {skill && <span className='poiesis-customize-view__kind-chip'>{skill.kind === 'agent' ? 'Agent' : 'Results'}</span>}
+                            {skill && <span>{this.workspaceSkillSourceLabel(skill.source)}</span>}
+                            {relativePath && <code>{relativePath}</code>}
+                            {editor && (
+                                <button type='button' className='poiesis-customize-view__code-link' disabled={dirty || this.workspaceSkillSaving} title={dirty ? '先に変更を保存してください' : undefined} onClick={() => void this.openWorkspaceSkillInCode(editor.uri)}>
+                                    Codeで開く
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div className='poiesis-customize-view__detail-actions'>
+                        {skill && (
+                            <label className='poiesis-agent-window__switch' title={shadowed ? '同名の上位Skillが優先されます' : undefined}>
+                                <input type='checkbox' checked={skill.enabled} disabled={shadowed} aria-label={`${skill.name}を有効にする`} onChange={event => void this.setWorkspaceSkillEnabled(skill, event.currentTarget.checked)} />
+                                <span aria-hidden='true' />
+                            </label>
+                        )}
+                        <span className={`poiesis-customize-view__save-status${dirty ? ' active' : ''}`} role='status'>
+                            {this.workspaceSkillSaving ? '保存中…' : dirty ? '未保存' : '保存済み'}
+                        </span>
+                        <button type='button' className='poiesis-customize-view__save primary' disabled={!dirty || this.workspaceSkillSaving} onClick={() => void this.saveWorkspaceSkill()}>保存</button>
+                    </div>
+                </header>
+                {editor && skill && this.renderWorkspaceSkillInfo(skill, editor)}
+                {this.workspaceSkillDiscardConfirmation && this.renderDiscardConfirmation()}
+                {this.workspaceSkillEditorError && editor && <div className='poiesis-customize-view__detail-error' role='alert'>{this.workspaceSkillEditorError}</div>}
+                <div className='poiesis-customize-view__detail-body'>
+                    {this.workspaceSkillEditorLoading ? (
+                        <div className='poiesis-customize-view__detail-state' role='status'><span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />Skillを開いています…</div>
+                    ) : !editor && this.workspaceSkillEditorError ? (
+                        <div className='poiesis-customize-view__detail-state error' role='alert'>{this.workspaceSkillEditorError}</div>
+                    ) : editor ? (
+                        <div key={editor.uri} ref={this.setInlineEditorContainer} className='poiesis-customize-view__monaco' data-uri={editor.uri} aria-label={`${relativePath}を編集`} />
+                    ) : undefined}
+                </div>
+            </section>
+        );
+    }
+
+    protected renderWorkspaceSkillInfo(skill: WorkspaceSkillDefinition, editor: WorkspaceSkillEditor): React.ReactNode {
+        const preview = this.workspaceSkillPreviews?.[skill.kind];
+        const previewItem = preview?.perSkill.find(item => item.id === skill.id && item.source === skill.source);
+        const characters = editor.content.length;
+        const items: string[] = [`文書 ${characters.toLocaleString('ja-JP')}文字`];
+        if (skill.kind === 'results') {
+            items.push(`Results 確認項目 ${previewItem?.assertions ?? skill.assertions.length}件`);
+        }
+        if (skill.shadowedBy) {
+            items.push('同じ名前のフォルダー用Skillが優先されています');
+        } else if (previewItem?.reason === '合計上限により未注入') {
+            items.push('全体の文字数上限を超えるためAIには渡されません');
+        } else if (previewItem?.included) {
+            items.push('AIに渡されます');
+        } else if (previewItem?.reason) {
+            items.push(`${previewItem.reason}のためAIには渡されません`);
+        } else {
+            items.push('AIには渡されません');
+        }
+        if (previewItem?.included && previewItem.chars > (preview?.limits.perSkill ?? 8_000)) {
+            items.push('AIへ渡す内容は8,000文字までです');
+        }
+        items.push(...skill.warnings);
+        return <div className='poiesis-customize-view__info-strip'>{items.map((item, index) => <span key={`${index}:${item}`}>{item}</span>)}</div>;
+    }
+
+    protected renderDiscardConfirmation(): React.ReactNode {
+        return (
+            <div className='poiesis-customize-view__discard-confirm' role='group' aria-label='未保存の変更を破棄する確認'>
+                <span>未保存の変更を破棄しますか？</span>
+                <button type='button' disabled={this.workspaceSkillSaving} onClick={() => this.cancelWorkspaceSkillClose()}>編集を続ける</button>
+                <button type='button' className='danger' disabled={this.workspaceSkillSaving} onClick={() => this.discardWorkspaceSkillChanges()}>破棄して閉じる</button>
+            </div>
+        );
+    }
+
+    protected renderPendingSkillPreview(proposal: PendingSkillProposal): React.ReactNode {
+        const diff = proposal.existing ? diffTextLines(proposal.existing.content, proposal.content) : undefined;
+        const processing = this.pendingSkillActionId === proposal.id;
+        return (
+            <article className='poiesis-customize-view__detail poiesis-customize-view__proposal-preview' aria-label={`${proposal.parsed.name}の提案内容`}>
+                <header className='poiesis-customize-view__detail-header'>
+                    <button type='button' className='poiesis-customize-view__back' aria-label='Skills一覧に戻る' onClick={() => this.closeProposalDetail()}>
+                        <span className='codicon codicon-chevron-left' aria-hidden='true' /><span>Skills</span>
+                    </button>
+                    <div className='poiesis-customize-view__detail-heading'>
+                        <strong>{proposal.parsed.name}</strong>
+                        <div className='poiesis-customize-view__detail-meta'>
+                            <span className='poiesis-customize-view__proposal-badge'>{proposal.existing ? '更新提案' : '新規提案'}</span>
+                            <span>{proposal.existing ? '既存 Skill との差分 · 読み取り専用' : '提案された文書 · 読み取り専用'}</span>
+                        </div>
+                    </div>
+                    <div className='poiesis-customize-view__detail-actions poiesis-customize-view__proposal-detail-actions'>
+                        <button type='button' disabled={Boolean(this.pendingSkillActionId)} onClick={() => void this.rejectPendingSkill(proposal)}>{processing ? '処理中…' : '却下'}</button>
+                        {!proposal.parsed.error && <button type='button' className='primary' disabled={Boolean(this.pendingSkillActionId)} onClick={() => void this.approvePendingSkill(proposal)}>{processing ? '処理中…' : '承認'}</button>}
+                    </div>
+                </header>
+                {proposal.parsed.error && <div className='poiesis-customize-view__detail-error' role='alert'>{proposal.parsed.error}</div>}
+                <div className='poiesis-customize-view__proposal-body'>
+                    {diff ? (
+                        <div className='poiesis-customize-view__proposal-diff' role='region' aria-label='Skill提案の差分'>
+                            {diff.map((line, index) => (
+                                <div className={`poiesis-customize-view__proposal-diff-line ${line.kind}`} key={`${index}:${line.kind}`}>
+                                    <span aria-hidden='true'>{line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : ' '}</span><span>{line.text || ' '}</span>
+                                </div>
+                            ))}
+                        </div>
+                    ) : <pre>{proposal.content}</pre>}
+                </div>
+                {this.pendingSkillActionError && <div className='poiesis-customize-view__detail-error' role='alert'>{this.pendingSkillActionError}</div>}
+            </article>
         );
     }
 
     protected renderGenerationDetails(): React.ReactNode {
         return (
-            <details className='poiesis-customize-view__secondary-details'>
-                <summary><span>生成の詳細</span><small>ResultsとAIへの反映</small></summary>
-                <div className='poiesis-customize-view__generation-list'>
-                    <article>
-                        <strong>AI Results</strong>
-                        <p>ResultsのAIが成果文書を生成します。実行できない場合はBundled Resultsに切り替わります。</p>
-                    </article>
-                    <article>
-                        <strong>Bundled Results</strong>
-                        <p>組み込みの形式で成果文書を生成します。選択するモードではなく、自動的に使われる処理です。</p>
-                    </article>
+            <details className='poiesis-customize-view__generation-details poiesis-agent-window__customize-card'>
+                <PoiesisDisclosureSummary><span>生成の詳細</span><small>ResultsとAIへの反映</small></PoiesisDisclosureSummary>
+                <div className='poiesis-customize-view__generation-content'>
+                    <div className='poiesis-customize-view__generation-list'>
+                        <article><strong>AI Results</strong><p>ResultsのAIが成果文書を生成します。実行できない場合はBundled Resultsに切り替わります。</p></article>
+                        <article><strong>Bundled Results</strong><p>組み込みの形式で成果文書を生成します。選択するモードではなく、自動的に使われる処理です。</p></article>
+                    </div>
+                    {this.renderSkillPromptTransparency()}
                 </div>
-                {this.renderSkillPromptTransparency()}
             </details>
         );
     }
 
     protected workspaceSkillInjectedCharacters(kind: SkillBundleKind): number {
         const preview = this.workspaceSkillPreviews?.[kind];
-        return preview?.perSkill.reduce((total, skill) => skill.included
-            ? total + Math.min(skill.chars, preview.limits.perSkill)
-            : total, 0) ?? 0;
+        return preview?.perSkill.reduce((total, skill) => skill.included ? total + Math.min(skill.chars, preview.limits.perSkill) : total, 0) ?? 0;
     }
 
     protected renderSkillPromptTransparency(): React.ReactNode {
@@ -354,18 +586,19 @@ export class CustomizePart extends AgentWindowPart {
                     const characters = this.workspaceSkillInjectedCharacters(kind);
                     return (
                         <details className='poiesis-customize-view__prompt-preview' key={kind}>
-                            <summary>
+                            <PoiesisDisclosureSummary>
                                 <span>{label}に渡す内容</span>
-                                <small>{characters.toLocaleString('ja-JP')} / 24,000文字</small>
-                            </summary>
+                                <span className='poiesis-customize-view__prompt-meter'>
+                                    <small>{characters.toLocaleString('ja-JP')} / 24,000文字</small>
+                                    <meter min={0} max={24_000} value={characters} aria-label={`${label}に渡す内容の文字数`} />
+                                </span>
+                            </PoiesisDisclosureSummary>
                             <div className='poiesis-customize-view__prompt-preview-content'>
                                 <pre>{preview?.prompt.content || '有効なSkillはありません'}</pre>
                                 {Boolean(preview?.prompt.diagnostics.length) && (
                                     <div className='poiesis-customize-view__prompt-diagnostics'>
                                         <strong>診断</strong>
-                                        <ul>{preview?.prompt.diagnostics.map((diagnostic, index) => (
-                                            <li key={`${kind}-${index}`}>{diagnostic}</li>
-                                        ))}</ul>
+                                        <ul>{preview?.prompt.diagnostics.map((diagnostic, index) => <li key={`${kind}-${index}`}>{diagnostic}</li>)}</ul>
                                     </div>
                                 )}
                             </div>
@@ -376,199 +609,63 @@ export class CustomizePart extends AgentWindowPart {
         );
     }
 
-    protected renderWorkspaceSkillGroups(
-        editor: WorkspaceSkillEditor | undefined
-    ): React.ReactNode {
-        const groups: Array<{ id: string; label: string; sources: WorkspaceSkillSource[] }> = [
-            { id: 'folder', label: 'このフォルダー', sources: ['workspace', 'workspace-agents'] },
-            { id: 'global', label: 'すべてのフォルダー', sources: ['user', 'user-agents'] }
-        ];
-        return (
-            <>
-                {groups.map(group => {
-                    const skills = this.workspaceSkills.filter(skill => group.sources.includes(skill.source));
-                    if (!skills.length) {
-                        return undefined;
-                    }
-                    return (
-                        <section className='poiesis-customize-view__scope-group' aria-label={group.label} key={group.id}>
-                            <div className='poiesis-customize-view__user-heading'>
-                                <h4 className='poiesis-customize-view__group-title'>{group.label}</h4>
-                                <span>{skills.length}件</span>
-                            </div>
-                            <div className='poiesis-agent-window__customize-list'>
-                                {skills.map(skill => this.renderWorkspaceSkillRow(skill, editor))}
-                            </div>
-                        </section>
-                    );
-                })}
-            </>
-        );
-    }
-
-    protected renderWorkspaceSkillRow(
-        skill: WorkspaceSkillDefinition,
-        editor: WorkspaceSkillEditor | undefined
-    ): React.ReactNode {
-        const shadowed = Boolean(skill.shadowedBy);
-        const preview = this.workspaceSkillPreviews?.[skill.kind];
-        const previewItem = preview?.perSkill.find(item => item.id === skill.id && item.source === skill.source);
-        const characters = previewItem?.chars ?? (skill.instructions ?? '').length;
-        const entryName = new URI(skill.uri).path.base;
-        return (
-            <div
-                className={`poiesis-customize-view__skill-row${skill.error ? ' has-error' : ''}${shadowed ? ' is-shadowed' : ''}`}
-                key={`${skill.source}:${skill.id}:${skill.uri}`}
-            >
-                <button
-                    type='button'
-                    className={`poiesis-agent-window__customize-card poiesis-customize-view__skill-card${editor?.uri === skill.uri ? ' selected' : ''}`}
-                    aria-pressed={editor?.uri === skill.uri}
-                    onClick={() => void this.openWorkspaceSkillInline(skill)}
-                >
-                    <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-book' aria-hidden='true' /></div>
-                    <div>
-                        <div className='poiesis-agent-window__customize-title'>
-                            <strong>{skill.name}</strong>
-                            <span>{skill.kind === 'agent' ? 'Agent' : 'Results'}</span>
-                            <span className='poiesis-customize-view__source-badge'>{this.workspaceSkillScopeLabel(skill.source)}</span>
-                        </div>
-                        <p>{skill.description || '説明はありません'}</p>
-                        {skill.error && <div className='poiesis-customize-view__skill-error' role='alert'>{skill.error}</div>}
-                        {shadowed && <div className='poiesis-customize-view__skill-note'>同じ名前のフォルダー用Skillが優先されています。</div>}
-                    </div>
-                    <span className='codicon codicon-chevron-right' aria-hidden='true' />
-                </button>
-                <div className='poiesis-customize-view__skill-enablement'>
-                    <span>{shadowed ? '非表示' : skill.enabled ? '有効' : '無効'}</span>
-                    <label
-                        className='poiesis-agent-window__switch'
-                        title={shadowed ? '同名の上位Skillが優先されます' : `${skill.name}を${skill.enabled ? '無効' : '有効'}にする`}
-                    >
-                        <input
-                            type='checkbox'
-                            checked={skill.enabled}
-                            disabled={shadowed}
-                            aria-label={`${skill.name}を有効にする`}
-                            onChange={event => void this.setWorkspaceSkillEnabled(skill, event.currentTarget.checked)}
-                        />
-                        <span aria-hidden='true' />
-                    </label>
-                </div>
-                <details className='poiesis-customize-view__skill-details'>
-                    <summary>詳細</summary>
-                    <dl>
-                        <div><dt>保存場所</dt><dd>{this.workspaceSkillPath(skill.source, skill.id, entryName)}</dd></div>
-                        <div><dt>文書の長さ</dt><dd>{characters.toLocaleString('ja-JP')}文字</dd></div>
-                        {skill.kind === 'results' && <div><dt>確認項目</dt><dd>{previewItem?.assertions ?? skill.assertions.length}件</dd></div>}
-                    </dl>
-                    {skill.warnings.map((warning, index) => (
-                        <p className='poiesis-customize-view__skill-note' key={`${skill.uri}-warning-${index}`}>{warning}</p>
-                    ))}
-                    {previewItem?.reason === '合計上限により未注入' && <p className='poiesis-customize-view__skill-note'>全体の文字数上限を超えるためAIには渡されません。</p>}
-                    {previewItem?.included && characters > (preview?.limits.perSkill ?? 8_000) && <p className='poiesis-customize-view__skill-note'>AIへ渡す内容は8,000文字までです。</p>}
-                </details>
-            </div>
-        );
-    }
-
-    protected renderPendingSkillRow(proposal: PendingSkillProposal): React.ReactNode {
-        const selected = this.selectedPendingSkillId === proposal.id;
-        const processing = this.pendingSkillActionId === proposal.id;
-        return (
-            <div
-                className={`poiesis-customize-view__proposal-row${proposal.parsed.error ? ' has-error' : ''}`}
-                key={proposal.id}
-            >
-                <button
-                    type='button'
-                    className={`poiesis-agent-window__customize-card poiesis-customize-view__skill-card${selected ? ' selected' : ''}`}
-                    aria-pressed={selected}
-                    onClick={() => this.selectPendingSkillProposal(proposal.id)}
-                >
-                    <div className='poiesis-agent-window__customize-icon'><span className='codicon codicon-lightbulb' aria-hidden='true' /></div>
-                    <div>
-                        <div className='poiesis-agent-window__customize-title'>
-                            <strong>{proposal.parsed.name}</strong>
-                            <span>{proposal.parsed.kind === 'agent' ? 'Agent' : 'Results'}</span>
-                            <span className='poiesis-customize-view__source-badge'>
-                                {proposal.existing ? '更新提案' : '新規提案'}
-                            </span>
-                        </div>
-                        <p>{proposal.parsed.error ?? proposal.parsed.description}</p>
-                    </div>
-                    <span className='codicon codicon-chevron-right' aria-hidden='true' />
-                </button>
-                <div className='poiesis-customize-view__proposal-actions'>
-                    {!proposal.parsed.error && (
-                        <button
-                            type='button'
-                            className='primary'
-                            disabled={Boolean(this.pendingSkillActionId)}
-                            onClick={() => void this.approvePendingSkill(proposal)}
-                        >
-                            {processing ? '処理中…' : '承認'}
-                        </button>
-                    )}
-                    <button
-                        type='button'
-                        disabled={Boolean(this.pendingSkillActionId)}
-                        onClick={() => void this.rejectPendingSkill(proposal)}
-                    >
-                        {processing ? '処理中…' : '却下'}
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    protected renderPendingSkillPreview(): React.ReactNode {
-        const proposal = this.pendingSkillProposals.find(candidate => candidate.id === this.selectedPendingSkillId);
-        if (!proposal) {
-            return undefined;
+    protected skillMatchesScope(skill: WorkspaceSkillDefinition): boolean {
+        if (this.customizeScope === 'all') {
+            return true;
         }
-        const diff = proposal.existing
-            ? diffTextLines(proposal.existing.content, proposal.content)
-            : undefined;
-        return (
-            <article className='poiesis-customize-view__proposal-preview' aria-label={`${proposal.parsed.name}の提案内容`}>
-                <header>
-                    <div>
-                        <strong>{proposal.parsed.name}</strong>
-                        <span>{proposal.existing ? '既存 Skill との差分 · 読み取り専用' : '提案された文書 · 読み取り専用'}</span>
-                    </div>
-                    <button type='button' aria-label='Skill提案の詳細を閉じる' onClick={() => this.selectPendingSkillProposal(undefined)}>
-                        <span className='codicon codicon-close' aria-hidden='true' />
-                    </button>
-                </header>
-                {proposal.parsed.error && <p role='alert'>{proposal.parsed.error}</p>}
-                {diff ? (
-                    <div className='poiesis-customize-view__proposal-diff' role='region' aria-label='Skill提案の差分'>
-                        {diff.map((line, index) => (
-                            <div className={`poiesis-customize-view__proposal-diff-line ${line.kind}`} key={`${index}:${line.kind}`}>
-                                <span aria-hidden='true'>{line.kind === 'added' ? '+' : line.kind === 'removed' ? '-' : ' '}</span>
-                                <span>{line.text || ' '}</span>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <pre>{proposal.content}</pre>
-                )}
-            </article>
-        );
+        const workspaceScoped = skill.source === 'workspace' || skill.source === 'workspace-agents';
+        return this.customizeScope === 'workspace' ? workspaceScoped : !workspaceScoped;
+    }
+
+    protected skillMatchesQuery(skill: WorkspaceSkillDefinition, query: string): boolean {
+        return !query || [skill.name, skill.id, skill.description].some(value => value.toLocaleLowerCase('ja-JP').includes(query));
+    }
+
+    protected proposalMatchesQuery(proposal: PendingSkillProposal, query: string): boolean {
+        return !query || [proposal.parsed.name, proposal.id, proposal.parsed.description ?? ''].some(value => value.toLocaleLowerCase('ja-JP').includes(query));
+    }
+
+    protected setCustomizeQuery(query: string): void {
+        this.customizeQueries[this.customizeTab] = query;
+        this.update();
+    }
+
+    protected setCustomizeScope(scope: CustomizeScope): void {
+        this.customizeScope = scope;
+        this.update();
+    }
+
+    protected setCustomizeTab(tab: CustomizeTab): void {
+        this.customizeTab = tab;
+        this.newSkillFormVisible = false;
+        this.update();
+    }
+
+    protected handleCustomizeTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, tab: CustomizeTab): void {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+            return;
+        }
+        event.preventDefault();
+        const next: CustomizeTab = tab === 'skills' ? 'plugins' : 'skills';
+        this.setCustomizeTab(next);
+        requestAnimationFrame(() => this.node.querySelector<HTMLElement>(`#poiesis-customize-${next}-tab`)?.focus());
+    }
+
+    protected toggleGroupExpanded(groupId: string): void {
+        if (this.expandedSkillGroups.has(groupId)) {
+            this.expandedSkillGroups.delete(groupId);
+        } else {
+            this.expandedSkillGroups.add(groupId);
+        }
+        this.update();
+    }
+
+    protected domId(value: string): string {
+        return value.replace(/[^a-zA-Z0-9_-]/g, '-');
     }
 
     protected workspaceSkillSourceLabel(source: WorkspaceSkillSource): string {
-        switch (source) {
-            case 'workspace': return 'このフォルダー';
-            case 'workspace-agents': return 'このフォルダー';
-            case 'user': return 'すべてのフォルダー';
-            case 'user-agents': return 'すべてのフォルダー';
-        }
-    }
-
-    protected workspaceSkillScopeLabel(source: WorkspaceSkillSource): string {
-        return this.workspaceSkillSourceLabel(source);
+        return source === 'workspace' || source === 'workspace-agents' ? 'このフォルダー' : 'すべてのフォルダー';
     }
 
     protected workspaceSkillPath(source: WorkspaceSkillSource, id: string, entryName: string): string {
@@ -580,14 +677,158 @@ export class CustomizePart extends AgentWindowPart {
         }
     }
 
+    protected captureCustomizeListScroll(): void {
+        const listMount = this.customizeListMount;
+        if (!listMount?.isConnected) {
+            return;
+        }
+        const view = listMount.closest<HTMLElement>('.poiesis-customize-view');
+        if (view) {
+            this.customizeListScrollTop = view.scrollTop;
+            this.customizeListScrollRestorePending = false;
+        }
+    }
+
+    protected restoreCustomizeListScroll(): void {
+        this.customizeListScrollRestorePending = true;
+        this.applyCustomizeListScrollRestoration();
+    }
+
+    protected applyCustomizeListScrollRestoration(): void {
+        if (!this.customizeListScrollRestorePending) {
+            return;
+        }
+        const listMount = this.customizeListMount;
+        if (!listMount?.isConnected) {
+            return;
+        }
+        const view = listMount.closest<HTMLElement>('.poiesis-customize-view');
+        if (!view) {
+            return;
+        }
+        view.scrollTop = this.customizeListScrollTop;
+        this.customizeListScrollRestorePending = false;
+    }
+
+    protected workspaceSkillEditorDirty(): boolean {
+        const editor = this.workspaceSkillEditor;
+        if (!editor) {
+            return false;
+        }
+        const modelContent = this.inlineEditor?.getControl().getModel()?.getValue();
+        if (modelContent !== undefined && modelContent !== editor.content) {
+            editor.content = modelContent;
+        }
+        return editor.content !== editor.savedContent;
+    }
+
+    protected async ensureInlineEditor(): Promise<void> {
+        const state = this.workspaceSkillEditor;
+        const container = this.inlineEditorContainer;
+        if (!state || !container || this.inlineEditorUri === state.uri || this.inlineEditor) {
+            return;
+        }
+        if (this.inlineEditorCreationUri === state.uri && this.inlineEditorCreationContainer === container) {
+            return;
+        }
+        const generation = ++this.inlineEditorGeneration;
+        this.inlineEditorCreationUri = state.uri;
+        this.inlineEditorCreationContainer = container;
+        try {
+            const editor = await this.host.monacoEditorProvider.createInline(new URI(state.uri), container, {
+                ariaLabel: `${state.path}を編集`,
+                automaticLayout: true,
+                folding: false,
+                fontFamily: POIESIS_FONT_MONO,
+                fontSize: 14,
+                lineDecorationsWidth: 8,
+                lineHeight: 24,
+                lineNumbers: 'on',
+                lineNumbersMinChars: 3,
+                minimap: { enabled: false },
+                renderLineHighlight: 'none',
+                scrollBeyondLastLine: false,
+                scrollbar: {
+                    horizontalScrollbarSize: 8,
+                    useShadows: false,
+                    verticalScrollbarSize: 8
+                },
+                wordWrap: 'on'
+            });
+            if (generation !== this.inlineEditorGeneration
+                || this.workspaceSkillEditor?.uri !== state.uri
+                || this.inlineEditorContainer !== container
+                || !container.isConnected) {
+                editor.dispose();
+                return;
+            }
+            this.inlineEditor = editor;
+            this.inlineEditorUri = state.uri;
+            const control = editor.getControl();
+            const modelContent = control.getModel()?.getValue();
+            if (modelContent !== undefined) {
+                state.content = modelContent;
+                if (!editor.document.dirty) {
+                    state.savedContent = modelContent;
+                }
+            }
+            const listeners = new DisposableCollection();
+            listeners.push(control.onDidChangeModelContent(() => {
+                if (this.workspaceSkillEditor !== state || this.inlineEditor !== editor) {
+                    return;
+                }
+                state.content = control.getModel()?.getValue() ?? '';
+                if (!editor.document.dirty) {
+                    state.savedContent = state.content;
+                }
+                this.workspaceSkillEditorError = undefined;
+                this.workspaceSkillDiscardConfirmation = false;
+                this.pendingEditorNavigation = undefined;
+                this.update();
+            }));
+            listeners.push(editor.document.onDirtyChanged(() => {
+                if (this.workspaceSkillEditor !== state || this.inlineEditor !== editor || editor.document.dirty) {
+                    return;
+                }
+                const content = control.getModel()?.getValue() ?? state.content;
+                state.content = content;
+                state.savedContent = content;
+                this.update();
+            }));
+            this.inlineEditorChangeListener = listeners;
+            control.focus();
+            this.update();
+        } catch (error) {
+            if (generation === this.inlineEditorGeneration && this.workspaceSkillEditor?.uri === state.uri) {
+                this.workspaceSkillEditorError = `Skillエディターを作成できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+                this.update();
+            }
+        } finally {
+            if (generation === this.inlineEditorGeneration
+                && this.inlineEditorCreationUri === state.uri
+                && this.inlineEditorCreationContainer === container) {
+                this.inlineEditorCreationUri = undefined;
+                this.inlineEditorCreationContainer = undefined;
+            }
+        }
+    }
+
+    protected disposeInlineEditor(): void {
+        this.inlineEditorGeneration++;
+        this.inlineEditorChangeListener?.dispose();
+        this.inlineEditorChangeListener = undefined;
+        this.inlineEditor?.dispose();
+        this.inlineEditor = undefined;
+        this.inlineEditorUri = undefined;
+        this.inlineEditorCreationUri = undefined;
+        this.inlineEditorCreationContainer = undefined;
+    }
+
     public installWorkspaceSkillSaveShortcut(): void {
         const onKeyDown = (event: KeyboardEvent): void => {
-            const savePressed = (event.ctrlKey || event.metaKey)
-                && !event.altKey
-                && !event.shiftKey
+            const savePressed = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
                 && (event.key.toLocaleLowerCase() === 's' || event.code === 'KeyS');
-            const editorFocused = event.target instanceof Element
-                && event.target.classList.contains('poiesis-customize-view__editor-input');
+            const editorFocused = event.target instanceof Element && Boolean(event.target.closest('.poiesis-customize-view__monaco'));
             if (!savePressed || !this.host.state.customizeViewVisible || !this.workspaceSkillEditor || !editorFocused) {
                 return;
             }
@@ -620,8 +861,20 @@ export class CustomizePart extends AgentWindowPart {
     }
 
     public closeCustomize(update = true): void {
+        if (this.workspaceSkillEditorDirty()) {
+            this.pendingEditorNavigation = 'close-customize';
+            this.workspaceSkillDiscardConfirmation = true;
+            this.update();
+            return;
+        }
+        this.performCloseCustomize(update);
+    }
+
+    protected performCloseCustomize(update: boolean): void {
         const restoreCode = update && this.customizeOpenedFromCode;
         this.customizeOpenedFromCode = false;
+        this.clearWorkspaceSkillDetail();
+        this.selectedPendingSkillId = undefined;
         this.host.state.customizeViewVisible = false;
         this.disposeWorkspaceSkillWatchers();
         if (restoreCode) {
@@ -638,7 +891,8 @@ export class CustomizePart extends AgentWindowPart {
         if (this.workspaceSkillSaving) {
             return false;
         }
-        if (this.workspaceSkillEditor && this.workspaceSkillEditor.content !== this.workspaceSkillEditor.savedContent) {
+        if (this.workspaceSkillEditorDirty()) {
+            this.pendingEditorNavigation = 'close-customize';
             this.workspaceSkillDiscardConfirmation = true;
             this.update();
             return false;
@@ -650,12 +904,9 @@ export class CustomizePart extends AgentWindowPart {
         if (this.workspaceSkillDiscardConfirmation) {
             this.cancelWorkspaceSkillClose();
         } else if (this.selectedPendingSkillId) {
-            this.selectedPendingSkillId = undefined;
-            this.update();
-        } else if (this.workspaceSkillEditor) {
-            this.requestCloseWorkspaceSkill();
-        } else if (this.selectedBuiltinSkill) {
-            this.selectBuiltinSkill(undefined);
+            this.closeProposalDetail();
+        } else if (this.selectedWorkspaceSkill || this.workspaceSkillEditor || this.workspaceSkillEditorLoading) {
+            this.requestReturnToSkillsList();
         } else if (this.newSkillFormVisible) {
             this.hideNewSkillForm();
         } else {
@@ -667,7 +918,7 @@ export class CustomizePart extends AgentWindowPart {
         this.newSkillFormVisible = true;
         this.newSkillId = '';
         this.newSkillKind = 'agent';
-        this.newSkillScope = 'workspace';
+        this.newSkillScope = this.customizeScope === 'user' ? 'user' : 'workspace';
         this.newSkillError = undefined;
         this.update();
     }
@@ -699,42 +950,19 @@ export class CustomizePart extends AgentWindowPart {
         this.update();
     }
 
-    protected toggleSkillPromptPreview(kind: SkillBundleKind): void {
-        if (this.visibleSkillPromptPreviews.has(kind)) {
-            this.visibleSkillPromptPreviews.delete(kind);
-        } else {
-            this.visibleSkillPromptPreviews.add(kind);
-        }
-        this.update();
-    }
-
-    protected selectBuiltinSkill(skill: 'bundled-results' | 'ai-results' | undefined): void {
-        if (this.workspaceSkillEditor && this.workspaceSkillEditor.content !== this.workspaceSkillEditor.savedContent) {
-            this.workspaceSkillDiscardConfirmation = true;
-            this.update();
-            return;
-        }
-        this.workspaceSkillEditor = undefined;
-        this.workspaceSkillEditorError = undefined;
-        this.workspaceSkillDiscardConfirmation = false;
-        this.selectedPendingSkillId = undefined;
-        this.selectedBuiltinSkill = skill;
-        this.update();
-    }
-
-    protected selectPendingSkillProposal(id: string | undefined): void {
-        if (this.workspaceSkillEditor && this.workspaceSkillEditor.content !== this.workspaceSkillEditor.savedContent) {
-            this.workspaceSkillDiscardConfirmation = true;
-            this.update();
-            return;
-        }
-        this.workspaceSkillEditor = undefined;
-        this.workspaceSkillEditorError = undefined;
-        this.workspaceSkillDiscardConfirmation = false;
-        this.selectedBuiltinSkill = undefined;
+    protected selectPendingSkillProposal(id: string): void {
+        this.captureCustomizeListScroll();
+        this.clearWorkspaceSkillDetail();
         this.selectedPendingSkillId = id;
         this.pendingSkillActionError = undefined;
         this.update();
+    }
+
+    protected closeProposalDetail(): void {
+        this.selectedPendingSkillId = undefined;
+        this.pendingSkillActionError = undefined;
+        this.update();
+        this.restoreCustomizeListScroll();
     }
 
     protected async approvePendingSkill(proposal: PendingSkillProposal): Promise<void> {
@@ -750,6 +978,7 @@ export class CustomizePart extends AgentWindowPart {
                 this.selectedPendingSkillId = undefined;
             }
             await this.refreshWorkspaceSkills();
+            this.restoreCustomizeListScroll();
         } catch (error) {
             this.pendingSkillActionError = `Skill提案を承認できませんでした: ${error instanceof Error ? error.message : String(error)}`;
         } finally {
@@ -771,6 +1000,7 @@ export class CustomizePart extends AgentWindowPart {
                 this.selectedPendingSkillId = undefined;
             }
             await this.refreshWorkspaceSkills();
+            this.restoreCustomizeListScroll();
         } catch (error) {
             this.pendingSkillActionError = `Skill提案を却下できませんでした: ${error instanceof Error ? error.message : String(error)}`;
         } finally {
@@ -783,21 +1013,25 @@ export class CustomizePart extends AgentWindowPart {
         if (this.workspaceSkillEditor?.uri === skill.uri) {
             return;
         }
-        if (this.workspaceSkillEditor && this.workspaceSkillEditor.content !== this.workspaceSkillEditor.savedContent) {
+        if (this.workspaceSkillEditorDirty()) {
+            this.pendingEditorNavigation = 'list';
             this.workspaceSkillDiscardConfirmation = true;
             this.update();
             return;
         }
-        this.selectedBuiltinSkill = undefined;
+        this.captureCustomizeListScroll();
         this.selectedPendingSkillId = undefined;
-        this.workspaceSkillEditor = undefined;
-        this.workspaceSkillEditorError = undefined;
-        this.workspaceSkillDiscardConfirmation = false;
+        this.clearWorkspaceSkillDetail();
+        this.selectedWorkspaceSkill = skill;
         this.workspaceSkillEditorLoading = true;
+        const generation = ++this.workspaceSkillOpenGeneration;
         this.update();
         try {
             const uri = new URI(skill.uri);
             const content = await this.fileService.read(uri);
+            if (generation !== this.workspaceSkillOpenGeneration || this.selectedWorkspaceSkill?.uri !== skill.uri) {
+                return;
+            }
             this.workspaceSkillEditor = {
                 uri: skill.uri,
                 path: FileUri.fsPath(uri).replace(/\\/g, '/'),
@@ -805,67 +1039,122 @@ export class CustomizePart extends AgentWindowPart {
                 savedContent: content.value
             };
         } catch (error) {
-            this.workspaceSkillEditorError = `Skillファイルを開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            if (generation === this.workspaceSkillOpenGeneration) {
+                this.workspaceSkillEditorError = `Skillファイルを開けませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            }
         } finally {
-            this.workspaceSkillEditorLoading = false;
-            this.update();
+            if (generation === this.workspaceSkillOpenGeneration) {
+                this.workspaceSkillEditorLoading = false;
+                this.update();
+                requestAnimationFrame(() => void this.ensureInlineEditor());
+            }
         }
-    }
-
-    protected setWorkspaceSkillEditorContent(content: string): void {
-        if (!this.workspaceSkillEditor || this.workspaceSkillSaving) {
-            return;
-        }
-        this.workspaceSkillEditor.content = content;
-        this.workspaceSkillEditorError = undefined;
-        this.workspaceSkillDiscardConfirmation = false;
-        this.update();
     }
 
     protected async saveWorkspaceSkill(): Promise<void> {
-        const editor = this.workspaceSkillEditor;
-        if (!editor || this.workspaceSkillSaving || editor.content === editor.savedContent) {
+        const state = this.workspaceSkillEditor;
+        if (!state || this.workspaceSkillSaving) {
             return;
         }
+        const inlineEditor = this.inlineEditor;
+        const model = inlineEditor?.getControl().getModel();
+        const content = model?.getValue() ?? state.content;
+        if (content === state.savedContent) {
+            return;
+        }
+        state.content = content;
         this.workspaceSkillSaving = true;
         this.workspaceSkillEditorError = undefined;
         this.update();
         try {
-            await this.fileService.write(new URI(editor.uri), editor.content);
-            editor.savedContent = editor.content;
-            this.workspaceSkillDiscardConfirmation = false;
+            await this.fileService.write(new URI(state.uri), content);
+            if (this.workspaceSkillEditor === state) {
+                state.savedContent = content;
+                const sameEditor = this.inlineEditor === inlineEditor
+                    && inlineEditor?.getControl().getModel() === model;
+                if (sameEditor && inlineEditor && model) {
+                    const currentContent = model.getValue();
+                    state.content = currentContent;
+                    if (currentContent === content) {
+                        await inlineEditor.document.revert({ soft: true });
+                    }
+                } else if (!this.inlineEditor) {
+                    state.content = content;
+                }
+                this.workspaceSkillDiscardConfirmation = false;
+                this.pendingEditorNavigation = undefined;
+            }
             await this.refreshWorkspaceSkills();
         } catch (error) {
-            this.workspaceSkillEditorError = `Skillファイルを保存できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            if (this.workspaceSkillEditor === state) {
+                this.workspaceSkillEditorError = `Skillファイルを保存できませんでした: ${error instanceof Error ? error.message : String(error)}`;
+            }
         } finally {
             this.workspaceSkillSaving = false;
             this.update();
         }
     }
 
-    protected requestCloseWorkspaceSkill(): void {
-        if (!this.workspaceSkillEditor) {
+    protected requestReturnToSkillsList(): void {
+        if (this.workspaceSkillEditorDirty()) {
+            this.pendingEditorNavigation = 'list';
+            this.workspaceSkillDiscardConfirmation = true;
+            this.update();
             return;
         }
-        if (this.workspaceSkillEditor.content !== this.workspaceSkillEditor.savedContent) {
-            this.workspaceSkillDiscardConfirmation = true;
-        } else {
-            this.workspaceSkillEditor = undefined;
-            this.workspaceSkillEditorError = undefined;
-        }
+        this.clearWorkspaceSkillDetail();
         this.update();
+        this.restoreCustomizeListScroll();
     }
 
     protected cancelWorkspaceSkillClose(): void {
         this.workspaceSkillDiscardConfirmation = false;
+        this.pendingEditorNavigation = undefined;
         this.update();
+        requestAnimationFrame(() => this.inlineEditor?.getControl().focus());
     }
 
     protected discardWorkspaceSkillChanges(): void {
+        if (this.workspaceSkillSaving) {
+            return;
+        }
+        const navigation = this.pendingEditorNavigation ?? 'list';
+        this.resetInlineEditorToSavedContent();
+        this.clearWorkspaceSkillDetail();
+        if (navigation === 'close-customize') {
+            this.performCloseCustomize(true);
+        } else {
+            this.update();
+            this.restoreCustomizeListScroll();
+        }
+    }
+
+    protected resetInlineEditorToSavedContent(): void {
+        const state = this.workspaceSkillEditor;
+        const editor = this.inlineEditor;
+        if (!state || !editor || this.inlineEditorUri !== state.uri) {
+            return;
+        }
+        const model = editor.getControl().getModel();
+        if (!model) {
+            return;
+        }
+        if (model.getValue() !== state.savedContent) {
+            model.setValue(state.savedContent);
+        }
+        state.content = state.savedContent;
+        void editor.document.revert({ soft: true });
+    }
+
+    protected clearWorkspaceSkillDetail(): void {
+        this.workspaceSkillOpenGeneration++;
+        this.disposeInlineEditor();
+        this.selectedWorkspaceSkill = undefined;
         this.workspaceSkillEditor = undefined;
+        this.workspaceSkillEditorLoading = false;
         this.workspaceSkillEditorError = undefined;
         this.workspaceSkillDiscardConfirmation = false;
-        this.update();
+        this.pendingEditorNavigation = undefined;
     }
 
     public scheduleWorkspaceSkillsRefresh(): void {
@@ -896,10 +1185,7 @@ export class CustomizePart extends AgentWindowPart {
         }
         this.workspaceSkillWatchers?.dispose();
         const watchers = new DisposableCollection();
-        const watchRoots = [
-            ...discoveryRoots.map(discoveryRoot => discoveryRoot.uri),
-            root.resolve('.poiesis/pending/skills')
-        ];
+        const watchRoots = [...discoveryRoots.map(discoveryRoot => discoveryRoot.uri), root.resolve('.poiesis/pending/skills')];
         for (const watchRoot of watchRoots) {
             try {
                 watchers.push(this.fileService.watch(watchRoot, { recursive: true, excludes: [] }));
@@ -919,6 +1205,7 @@ export class CustomizePart extends AgentWindowPart {
         this.workspaceSkillWatchers?.dispose();
         this.workspaceSkillWatchers = undefined;
         this.host.state.workspaceSkillWatchRoots = [];
+        this.disposeInlineEditor();
     }
 
     public async refreshWorkspaceSkills(): Promise<void> {
@@ -947,11 +1234,14 @@ export class CustomizePart extends AgentWindowPart {
             if (generation === this.workspaceSkillsRefreshGeneration) {
                 this.workspaceSkills = definitions;
                 this.pendingSkillProposals = pending;
-                if (this.selectedPendingSkillId
-                    && !pending.some(proposal => proposal.id === this.selectedPendingSkillId)) {
+                if (this.selectedPendingSkillId && !pending.some(proposal => proposal.id === this.selectedPendingSkillId)) {
                     this.selectedPendingSkillId = undefined;
                 }
+                if (this.selectedWorkspaceSkill) {
+                    this.selectedWorkspaceSkill = definitions.find(skill => skill.uri === this.selectedWorkspaceSkill?.uri) ?? this.selectedWorkspaceSkill;
+                }
                 this.workspaceSkillPreviews = { agent: agentPreview, results: resultsPreview };
+                await this.synchronizeWorkspaceSkillEditorFromDisk();
             }
         } catch (error) {
             if (generation === this.workspaceSkillsRefreshGeneration) {
@@ -965,6 +1255,45 @@ export class CustomizePart extends AgentWindowPart {
                 this.workspaceSkillsLoading = false;
                 this.update();
             }
+        }
+    }
+
+    protected async synchronizeWorkspaceSkillEditorFromDisk(): Promise<void> {
+        const state = this.workspaceSkillEditor;
+        if (!state || this.workspaceSkillSaving) {
+            return;
+        }
+        const inlineEditor = this.inlineEditor;
+        const model = inlineEditor?.getControl().getModel();
+        const savedContent = state.savedContent;
+        try {
+            const content = (await this.fileService.read(new URI(state.uri))).value;
+            if (this.workspaceSkillEditor !== state
+                || this.workspaceSkillSaving
+                || this.inlineEditor !== inlineEditor
+                || inlineEditor?.getControl().getModel() !== model
+                || state.savedContent !== savedContent) {
+                return;
+            }
+            const currentContent = model?.getValue() ?? state.content;
+            if (currentContent !== savedContent) {
+                state.content = currentContent;
+                state.savedContent = content;
+                if (inlineEditor && currentContent === content) {
+                    await inlineEditor.document.revert({ soft: true });
+                }
+                return;
+            }
+            if (model && currentContent !== content) {
+                model.setValue(content);
+            }
+            state.content = content;
+            state.savedContent = content;
+            if (inlineEditor) {
+                await inlineEditor.document.revert({ soft: true });
+            }
+        } catch {
+            // The next discovery pass reports missing or unreadable Skill files.
         }
     }
 
@@ -1007,14 +1336,7 @@ export class CustomizePart extends AgentWindowPart {
             await this.refreshWorkspaceSkills();
             this.newSkillFormVisible = false;
             this.newSkillId = '';
-            await this.openWorkspaceSkillInline(this.workspaceSkillService.parse(
-                id,
-                skillUri,
-                content,
-                true,
-                targetRoot.source,
-                targetRoot.rank
-            ));
+            await this.openWorkspaceSkillInline(this.workspaceSkillService.parse(id, skillUri, content, true, targetRoot.source, targetRoot.rank));
         } catch (error) {
             this.newSkillError = `Skillを作成できませんでした: ${error instanceof Error ? error.message : String(error)}`;
         } finally {
@@ -1045,6 +1367,9 @@ export class CustomizePart extends AgentWindowPart {
     }
 
     protected async openWorkspaceSkillInCode(rawUri: string): Promise<void> {
+        if (this.workspaceSkillEditorDirty()) {
+            return;
+        }
         this.closeCustomize(false);
         try {
             await this.host.openCodeFile(rawUri);

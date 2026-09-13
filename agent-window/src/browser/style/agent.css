@@ -12,8 +12,9 @@
     min-width: 0;
 }
 
-.poiesis-agent-window__message-error summary {
-    cursor: pointer;
+.poiesis-agent-window__message-error .poiesis-disclosure__summary {
+    margin-top: 4px;
+    width: fit-content;
 }
 
 .poiesis-agent-window__message-error pre {
@@ -278,8 +279,7 @@
     margin-top: 6px;
 }
 
-.poiesis-agent-window__diagnostics summary {
-    cursor: pointer;
+.poiesis-agent-window__diagnostics > summary {
     width: max-content;
 }
 

@@ -1,4 +1,70 @@
+:is(.poiesis-disclosure__summary, .poiesis-agent-window__diagnostics > summary) {
+    align-items: center;
+    border-radius: 5px;
+    color: var(--poiesis-chrome-muted, #a6a8a0);
+    cursor: pointer;
+    display: flex;
+    gap: 7px;
+    list-style: none;
+    min-height: 32px;
+    min-width: 0;
+    padding: 5px 7px;
+}
 
+:is(.poiesis-disclosure__summary, .poiesis-agent-window__diagnostics > summary)::-webkit-details-marker {
+    display: none;
+}
+
+:is(.poiesis-disclosure__summary, .poiesis-agent-window__diagnostics > summary)::marker {
+    content: '';
+}
+
+:is(.poiesis-disclosure__summary, .poiesis-agent-window__diagnostics > summary):hover {
+    background: var(--poiesis-chrome-hover, #2a2b28);
+    color: var(--poiesis-chrome-text, #eeeee9);
+}
+
+:is(.poiesis-disclosure__summary, .poiesis-agent-window__diagnostics > summary):focus-visible {
+    outline: 2px solid var(--poiesis-focus-ring, #c28b60);
+    outline-offset: 2px;
+}
+
+details[open] > .poiesis-disclosure__summary,
+.poiesis-agent-window__diagnostics[open] > summary {
+    background: var(--poiesis-selection-bg, #2c2d2a);
+    color: var(--poiesis-chrome-text, #eeeee9);
+}
+
+.poiesis-disclosure__chevron {
+    flex: none;
+    font-size: 14px;
+    transition: transform var(--motion-fast, 120ms ease);
+}
+
+.poiesis-agent-window__diagnostics > summary::before {
+    content: '\eab6';
+    flex: none;
+    font: normal normal normal 14px/1 codicon;
+    text-align: center;
+    transition: transform var(--motion-fast, 120ms ease);
+}
+
+details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
+    transform: rotate(90deg);
+}
+
+.poiesis-agent-window__diagnostics[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.poiesis-disclosure__summary-content {
+    align-items: center;
+    display: flex;
+    flex: 1;
+    gap: 10px;
+    justify-content: space-between;
+    min-width: 0;
+}
 
 .poiesis-select__trigger {
     align-items: center;
@@ -555,5 +621,11 @@
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
     width: 100%;
+}
+
+.poiesis-customize-view.is-detail {
+    overflow: hidden;
 }

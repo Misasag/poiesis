@@ -78,8 +78,10 @@ html[data-poiesis-color-mode='light'] :is(
     .poiesis-results__requirement-card,
     .poiesis-results__question-panel .poiesis-results__composer,
     .poiesis-customize-view__new-skill,
-    .poiesis-customize-view__editor,
-    .poiesis-customize-view__proposal-preview,
+    .poiesis-customize-view__group-card,
+    .poiesis-customize-view__empty-state,
+    .poiesis-customize-view__state-card,
+    .poiesis-customize-view__generation-details,
     .poiesis-settings-modal__nav
 ) {
     background: var(--poiesis-chrome-panel);
@@ -106,7 +108,7 @@ html[data-poiesis-color-mode='light'] :is(
     .poiesis-settings-modal__archived-row > button,
     .poiesis-customize-view__primary-action,
     .poiesis-customize-view__new-skill button,
-    .poiesis-customize-view__editor button,
+    .poiesis-customize-view__save,
     .poiesis-customize-view__discard-confirm button,
     .poiesis-customize-view__proposal-actions button,
     .poiesis-agent-window__archived-composer-state > button,
@@ -126,6 +128,30 @@ html[data-poiesis-color-mode='light'] :is(
 ) {
     background: var(--poiesis-chrome-hover);
     border-color: #8f9289;
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-customize-view :is(
+    .poiesis-customize-view__primary-action,
+    .poiesis-customize-view__save,
+    .poiesis-customize-view__new-skill button.primary,
+    .poiesis-customize-view__proposal-actions button.primary,
+    .poiesis-customize-view__proposal-detail-actions button.primary
+) {
+    background: var(--poiesis-results-send);
+    border-color: var(--poiesis-results-send);
+    color: var(--poiesis-results-send-text);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-customize-view :is(
+    .poiesis-customize-view__primary-action,
+    .poiesis-customize-view__save,
+    .poiesis-customize-view__new-skill button.primary,
+    .poiesis-customize-view__proposal-actions button.primary,
+    .poiesis-customize-view__proposal-detail-actions button.primary
+):hover:not(:disabled) {
+    background: var(--poiesis-results-send);
+    border-color: var(--poiesis-results-accent);
+    color: var(--poiesis-results-send-text);
 }
 
 html[data-poiesis-color-mode='light'] :is(
@@ -164,7 +190,7 @@ html[data-poiesis-color-mode='light'] :is(
     .poiesis-model-picker__effort .poiesis-select__trigger,
     .poiesis-customize-view__new-skill input,
     .poiesis-customize-view__new-skill .poiesis-select__trigger,
-    .poiesis-customize-view .poiesis-customize-view__editor-input,
+    .poiesis-customize-view__search,
     .poiesis-folder-explorer__toolbar label,
     .poiesis-agent-window__workspace-picker-search,
     .poiesis-agent-window__repository-search,
@@ -252,8 +278,7 @@ html[data-poiesis-color-mode='light'] :is(
 html[data-poiesis-color-mode='light'] :is(
     .poiesis-agent-window__latest,
     .poiesis-markdown code,
-    .poiesis-settings-modal kbd,
-    .poiesis-customize-view__dirty
+    .poiesis-settings-modal kbd
 ) {
     background: #e8e9e4;
     color: var(--poiesis-chrome-copy);
@@ -263,10 +288,9 @@ html[data-poiesis-color-mode='light'] :is(
     .poiesis-markdown pre,
     .poiesis-agent-window__message-error pre,
     .poiesis-agent-html-preview,
-    .poiesis-customize-view__proposal-preview pre,
+    .poiesis-customize-view__proposal-body pre,
     .poiesis-customize-view__proposal-diff,
     .poiesis-customize-view__prompt-preview-content pre,
-    .poiesis-customize-view__skill-details dl,
     .poiesis-settings-modal__diagnostics dl
 ) {
     background: #f0f1ec;
@@ -285,8 +309,7 @@ html[data-poiesis-color-mode='light'] .poiesis-markdown a {
 html[data-poiesis-color-mode='light'] :is(
     .poiesis-agent-window__message-error,
     .poiesis-agent-window__stop,
-    .poiesis-customize-view__discard-confirm,
-    .poiesis-customize-view__proposal-row.has-error .poiesis-customize-view__skill-card
+    .poiesis-customize-view__discard-confirm
 ) {
     background: #faece9;
     border-color: #c9958e;
@@ -486,47 +509,38 @@ html[data-poiesis-color-mode='light'] :is(
     color: var(--poiesis-chrome-text);
 }
 
-html[data-poiesis-color-mode='light'] :is(
-    .poiesis-customize-view__skill-card:hover,
-    .poiesis-customize-view__skill-card:focus-visible,
-    .poiesis-customize-view__skill-row.is-selected,
-    .poiesis-customize-view__proposal-row.is-selected
-) {
-    background: var(--poiesis-selection-bg);
-}
-
 html[data-poiesis-color-mode='light'] .poiesis-customize-view {
-    --poiesis-chrome-copy: #454740;
-    --poiesis-chrome-muted: #62655d;
+    color: var(--poiesis-chrome-text);
 }
 
 html[data-poiesis-color-mode='light'] :is(
     .poiesis-customize-view__group-title,
     .poiesis-customize-view__new-skill label > span,
-    .poiesis-customize-view__secondary-details > summary > span,
-    .poiesis-customize-view__prompt-preview > summary > span,
-    .poiesis-customize-view__secondary-details .poiesis-disclosure__summary-content > span,
+    .poiesis-customize-view__generation-details .poiesis-disclosure__summary-content > span,
     .poiesis-customize-view__prompt-preview .poiesis-disclosure__summary-content > span
 ) {
     color: var(--poiesis-chrome-copy);
 }
 
-html[data-poiesis-color-mode='light'] .poiesis-customize-view__source-badge {
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-customize-view__kind-chip,
+    .poiesis-customize-view__proposal-badge
+) {
     border-color: var(--poiesis-control-border) !important;
     color: var(--poiesis-chrome-muted) !important;
 }
 
 html[data-poiesis-color-mode='light'] :is(
-    .poiesis-customize-view__skill-error,
-    .poiesis-customize-view__state.error,
-    .poiesis-customize-view__skill-note,
+    .poiesis-customize-view__row-description.error,
+    .poiesis-customize-view__state-card.error,
+    .poiesis-customize-view__detail-error,
     .poiesis-customize-view__new-skill > p,
     .poiesis-customize-view__discard-confirm > span
 ) {
     color: #8c3e32;
 }
 
-html[data-poiesis-color-mode='light'] .poiesis-customize-view__dirty.active {
+html[data-poiesis-color-mode='light'] .poiesis-customize-view__save-status.active {
     background: #f2e7d7;
     color: #77501e;
 }

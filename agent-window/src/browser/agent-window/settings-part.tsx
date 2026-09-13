@@ -75,6 +75,7 @@ import { RequirementClassificationService } from '../requirement-classification-
 import { ModelPicker } from '../components/model-picker';
 import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
+import { PoiesisDisclosureSummary } from '../components/poiesis-disclosure';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart, UiFontScale } from './agent-window-host';
 import { PoiesisThemePreference } from '../theme-preference-service';
@@ -513,7 +514,7 @@ export class SettingsPart extends AgentWindowPart {
         const current = this.host.state.cliDetectionPhase === 'ready';
         return (
             <details className='poiesis-settings-modal__diagnostics'>
-                <summary>診断情報</summary>
+                <PoiesisDisclosureSummary>診断情報</PoiesisDisclosureSummary>
                 <dl>
                     {KNOWN_CLI_IDS.map(providerId => {
                         const detection = detections.find(candidate => candidate.id === providerId);
