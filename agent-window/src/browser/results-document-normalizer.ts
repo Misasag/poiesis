@@ -101,9 +101,15 @@ export function normalizeAiResultsHtml(
         notes.push('Remaining h1 elements were demoted to h2.');
     }
     return {
-        html: html.replace(/\bTASK-\d+(?:-\d+)+\b/gi, '完了したタスク'),
+        html: maskTaskIdsInText(html),
         notes
     };
+}
+
+/** Hides internal task IDs in reader-facing text, never inside tags or file paths (image sources must stay resolvable). */
+function maskTaskIdsInText(html: string): string {
+    return html.replace(/(^|>)([^<]*)/g, (_match, open: string, text: string) =>
+        open + text.replace(/(?<![\w./\\-])TASK-\d+(?:-\d+)+(?![\w/\\-])/gi, '完了したタスク'));
 }
 
 /** Formats Application-observed activities as compact evidence, ordered oldest to newest. */
