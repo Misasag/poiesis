@@ -1,3 +1,4 @@
+import { isOnDemandAgentSkill } from '../../common/skill-catalog';
 import * as React from '@theia/core/shared/react';
 import { Disposable, DisposableCollection } from '@theia/core/lib/common';
 import { FileUri } from '@theia/core/lib/common/file-uri';
@@ -354,6 +355,7 @@ export class CustomizePart extends AgentWindowPart {
                     <div className='poiesis-agent-window__customize-title'>
                         <strong id={titleId}>{skill.name}</strong>
                         <span>{skill.kind === 'agent' ? 'Agent' : 'Results'}</span>
+                        {isOnDemandAgentSkill(skill) && <span className='poiesis-customize-view__on-demand'>必要時に読み込み</span>}
                     </div>
                     <p id={descriptionId} className={`poiesis-customize-view__row-description${skill.error ? ' error' : shadowed ? ' warning' : ''}`}>{description}</p>
                 </div>
@@ -434,13 +436,13 @@ export class CustomizePart extends AgentWindowPart {
         } else if (previewItem?.reason === '合計上限により未注入') {
             items.push('全体の文字数上限を超えるためAIには渡されません');
         } else if (previewItem?.included) {
-            items.push('AIに渡されます');
+            items.push(isOnDemandAgentSkill(skill) ? '名前と説明をAIに渡し、依頼に合うときだけ本文を読み込みます。' : 'AIに渡されます');
         } else if (previewItem?.reason) {
             items.push(`${previewItem.reason}のためAIには渡されません`);
         } else {
             items.push('AIには渡されません');
         }
-        if (previewItem?.included && previewItem.chars > (preview?.limits.perSkill ?? 8_000)) {
+        if (!isOnDemandAgentSkill(skill) && previewItem?.included && previewItem.chars > (preview?.limits.perSkill ?? 8_000)) {
             items.push('AIへ渡す内容は8,000文字までです');
         }
         items.push(...skill.warnings);

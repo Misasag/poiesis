@@ -1,3 +1,4 @@
+import { CatalogSkill, isOnDemandAgentSkill, skillCatalogEntry } from '../common/skill-catalog';
 import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
 import URI from '@theia/core/lib/common/uri';
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
@@ -43,6 +44,7 @@ export interface WorkspaceSkillPrompt {
     content: string;
     diagnostics: string[];
     includedSkillIds: string[];
+    catalogSkills: CatalogSkill[];
     assertions: Array<{ text: string; skillId: string }>;
 }
 
@@ -132,7 +134,7 @@ export class WorkspaceSkillService {
         } as const;
         if (!workspaceUri) {
             return {
-                prompt: { content: '', diagnostics: [], includedSkillIds: [], assertions: [] },
+                prompt: { content: '', diagnostics: [], includedSkillIds: [], catalogSkills: [], assertions: [] },
                 perSkill: [],
                 limits
             };
@@ -146,7 +148,7 @@ export class WorkspaceSkillService {
                 prompt: {
                     content: '',
                     diagnostics: [`Workspace Skillsを読み込めないためスキップしました: ${this.errorMessage(error)}`],
-                    includedSkillIds: [],
+                    includedSkillIds: [], catalogSkills: [],
                     assertions: []
                 },
                 perSkill: [],
@@ -156,13 +158,17 @@ export class WorkspaceSkillService {
 
         const diagnostics: string[] = [];
         const sections: string[] = [];
+        const catalogSections: string[] = [];
+        const catalogSkills: CatalogSkill[] = [];
         const includedSkillIds: string[] = [];
         const assertions: WorkspaceSkillPrompt['assertions'] = [];
         const perSkill: WorkspaceSkillPreview['perSkill'] = skills.map(skill => ({
             id: skill.id,
             name: skill.name,
             source: skill.source,
-            chars: (skill.instructions ?? '').length,
+            chars: isOnDemandAgentSkill(skill)
+                ? skillCatalogEntry(skill, new URI(skill.uri).path.fsPath()).length
+                : (skill.instructions ?? '').length,
             assertions: skill.assertions.length,
             included: false
         }));
@@ -206,7 +212,10 @@ export class WorkspaceSkillService {
                 item.reason = '合計上限により未注入';
                 continue;
             }
-            const instructions = this.truncateInstructions(skill.instructions ?? '', skill.id, diagnostics);
+            const onDemand = isOnDemandAgentSkill(skill);
+            const path = new URI(skill.uri).path.fsPath();
+            const instructions = onDemand ? skillCatalogEntry(skill, path)
+                : this.truncateInstructions(skill.instructions ?? '', skill.id, diagnostics);
             if (instructionCharacters + instructions.length > WORKSPACE_SKILLS_TOTAL_MAX_CHARS) {
                 item.reason = '合計上限により未注入';
                 totalLimitReached = true;
@@ -217,20 +226,28 @@ export class WorkspaceSkillService {
             }
             instructionCharacters += instructions.length;
             item.included = true;
-            if (item.chars > WORKSPACE_SKILL_INSTRUCTION_MAX_CHARS) {
+            if (!onDemand && item.chars > WORKSPACE_SKILL_INSTRUCTION_MAX_CHARS) {
                 item.reason = `${WORKSPACE_SKILL_INSTRUCTION_MAX_CHARS.toLocaleString('ja-JP')} 文字で切り詰め`;
             }
-            sections.push(`### ${skill.name}\n${instructions}`);
-            includedSkillIds.push(skill.id);
+            if (onDemand) {
+                catalogSections.push(instructions);
+                catalogSkills.push({ id: skill.id, name: skill.name, path });
+                item.reason = '必要時に読み込み';
+            } else {
+                sections.push(`### ${skill.name}\n${instructions}`);
+                includedSkillIds.push(skill.id);
+            }
             assertions.push(...skill.assertions.map(text => ({ text, skillId: skill.id })));
         }
         return {
             prompt: {
-                content: sections.length > 0
-                    ? `\n\n## Workspace skills (user-defined instructions)\n${sections.join('\n\n')}`
-                    : '',
+                content: (sections.length > 0
+                    ? `\n\n## Workspace skills (user-defined instructions)\n${sections.join('\n\n')}` : '')
+                    + (catalogSections.length > 0
+                        ? `\n\n## User skills catalog (on demand)\nRead and follow a listed SKILL.md only when the current request matches its description.\n${catalogSections.join('\n\n')}` : ''),
                 diagnostics,
                 includedSkillIds,
+                catalogSkills,
                 assertions
             },
             perSkill,

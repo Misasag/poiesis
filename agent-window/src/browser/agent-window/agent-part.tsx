@@ -285,8 +285,7 @@ export class AgentPart extends AgentWindowPart {
                                             <PoiesisTaskElapsed
                                                 startedAt={runningTask!.startedAt}
                                                 progress={message.runProgress}
-                                                activity={[...runningTask!.activities ?? []].reverse()
-                                                    .find(activity => activity.status === 'running')}
+                                                activity={runningTask!.activities?.at(-1)}
                                                 finalizing={finalizingTask}
                                             />
                                             {!finalizingTask && message.runProgress?.diagnostics && (

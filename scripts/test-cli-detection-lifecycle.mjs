@@ -15,7 +15,7 @@ const foundReport = {
         name: 'Codex',
         status: 'found',
         path: 'C:\\Tools\\codex.exe',
-        executableRoles: ['agent', 'results'],
+        executableRoles: ['agent', 'results', 'judge'],
         models: [],
         defaultModel: '',
         checkedLocations: []
@@ -53,3 +53,8 @@ assert.equal(cliRoleAvailabilityLabel('missing'), '未検出');
 assert.equal(cliRoleAvailabilityLabel('error'), '検出に失敗');
 
 console.log('CLI_DETECTION_LIFECYCLE_TEST=passed');
+
+for (const [phase, report, expected] of [['pending', foundReport, 'pending'], ['error', foundReport, 'error'], ['ready', missingReport, 'missing'], ['ready', foundReport, 'available']]) {
+    assert.equal(cliRoleAvailability(phase, report, 'codex', 'judge'), expected);
+}
+assert.equal(cliRoleAvailability('ready', { ...foundReport, detections: [{ ...foundReport.detections[0], executableRoles: ['agent', 'results'] }] }, 'codex', 'judge'), 'unsupported');

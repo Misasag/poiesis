@@ -145,6 +145,7 @@ export class CliAgentProvider implements AgentProvider {
         try {
             const workspaceSkills = await this.workspaceSkillService.buildPrompt(session.workspaceUri, 'agent');
             this.taskService.setAppliedSkills(task.id, 'agent', workspaceSkills.includedSkillIds);
+            this.taskService.setCatalogSkills(task.id, workspaceSkills.catalogSkills ?? []);
             for (const diagnostic of workspaceSkills.diagnostics) {
                 this.appendDiagnostic(run, diagnostic);
                 console.warn(`[Poiesis] ${diagnostic}`);

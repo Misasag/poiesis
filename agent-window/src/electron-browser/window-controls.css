@@ -42,7 +42,7 @@
 }
 
 .poiesis-agent-window__header.poiesis-agent-window__code-header {
-    min-height: 54px;
+    min-height: 50px;
 }
 
 .poiesis-agent-window__header button,

@@ -75,9 +75,9 @@ export class RequirementClassificationService {
                 .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
             const scope: RequirementClassificationScope = {
                 taskId: task.id,
-                providerId: this.resultsContext.providerId,
-                model: this.resultsContext.model.trim() || undefined,
-                effort: this.resultsContext.effort || undefined,
+                providerId: this.resultsContext.judge.providerId,
+                model: this.resultsContext.judge.model.trim() || undefined,
+                effort: this.resultsContext.judge.effort || undefined,
                 workspaceUri: task.workspaceUri!,
                 currentRequirementTitle: requirement!.title,
                 previousTasks: previousTasks.map(candidate => ({
@@ -197,9 +197,9 @@ export class RequirementClassificationService {
             if (isLocalWorkspace(task.workspaceUri)) {
                 const scope: RequirementTitleSuggestionScope = {
                     taskId: task.id,
-                    providerId: this.resultsContext.providerId,
-                    model: this.resultsContext.model.trim() || undefined,
-                    effort: this.resultsContext.effort || undefined,
+                    providerId: this.resultsContext.judge.providerId,
+                    model: this.resultsContext.judge.model.trim() || undefined,
+                    effort: this.resultsContext.judge.effort || undefined,
                     workspaceUri: task.workspaceUri!,
                     request: task.request,
                     completionSummary: task.completionSummary?.slice(0, 2_000),

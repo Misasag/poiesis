@@ -6,7 +6,7 @@ export const agentRuntimeServerPath = '/services/poiesis/agent-runtime';
 export const KNOWN_CLI_IDS = ['codex', 'claude', 'grok', 'gemini'] as const;
 export type KnownCliId = typeof KNOWN_CLI_IDS[number];
 export const DEFAULT_CLI_ID: KnownCliId = 'codex';
-export type AiRole = 'agent' | 'results';
+export type AiRole = 'agent' | 'results' | 'judge';
 export type CliLocationSource = 'PATH' | 'well-known';
 
 export const CLI_DISPLAY_NAMES: Readonly<Record<KnownCliId, string>> = {

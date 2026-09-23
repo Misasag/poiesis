@@ -18,6 +18,7 @@ export interface OneShotCliArgsInput {
     prompt: string;
     promptFile?: string;
     promptViaStdin?: boolean;
+    readOnlyFileTools?: boolean;
     skipGitRepositoryCheck?: boolean;
 }
 
@@ -98,7 +99,7 @@ function buildOneShotCliArgs(input: OneShotCliArgsInput): string[] {
             ...effort,
             '--output-format', 'json',
             '--permission-mode', 'plan',
-            '--tools=',
+            ...(input.readOnlyFileTools ? ['--tools', 'Read,Grep,Glob', '--allowedTools', 'Read,Grep,Glob'] : ['--tools=']),
             '--no-session-persistence',
             '--safe-mode',
             '--disable-slash-commands',
@@ -120,7 +121,7 @@ function buildOneShotCliArgs(input: OneShotCliArgsInput): string[] {
             '--sandbox', 'read-only',
             '--disable-web-search',
             '--no-subagents',
-            '--max-turns', '1'
+            '--max-turns', input.readOnlyFileTools ? '8' : '1'
         ];
     }
     if (input.providerId === 'codex') {

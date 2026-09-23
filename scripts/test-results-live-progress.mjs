@@ -57,7 +57,8 @@ try {
             };
         }
         const skill = new AiResultsSkill(generation, { async generate() { throw new Error('Unexpected fallback'); } },
-            { providerId: 'codex', model: 'gpt-6-luna', effort: 'medium' },
+            { providerId: 'codex', model: 'gpt-6-luna', effort: 'medium',
+                judge: { providerId: 'codex', model: 'gpt-6-luna', effort: 'medium' } },
             { async buildPrompt() { return { includedSkillIds: ['verification'], content: '', diagnostics: [],
                 assertions: [{ text: '検証の証跡にコマンドと結果の表がある' }] }; } }, tasks, assertion);
         const results = new ResultsService(tasks, skill, requirements,

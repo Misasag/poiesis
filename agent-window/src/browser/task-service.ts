@@ -1,3 +1,4 @@
+import { CatalogSkill, referencedCatalogSkills } from '../common/skill-catalog';
 import { CliCallRecord, CliUsage } from '../common/cli-usage';
 import type { ResultsGenerationProgress } from '../common/results-generation-protocol';
 import { StorageService } from '@theia/core/lib/browser';
@@ -170,6 +171,8 @@ export interface ExecutionTask {
     cliCalls?: CliCallRecord[];
     diagnostics?: TaskFailure[];
     appliedSkills?: { agent: string[]; results: string[] };
+    catalogSkills?: CatalogSkill[];
+    referencedSkills?: string[];
     resultsQuestions?: TaskResultsQuestion[];
     /** New Results documents are persisted with their owning Task. */
     resultsDocument?: TaskResultDocument;
@@ -393,17 +396,25 @@ export class TaskService {
         const activities = [...current.activities ?? []];
         const existing = activities.findIndex(candidate => candidate.id === activity.id);
         if (existing >= 0) {
-            activities[existing] = activity;
-        } else {
-            activities.push(activity);
+            activities.splice(existing, 1);
         }
+        activities.push(activity);
         while (activities.length > TaskService.MAX_ACTIVITIES_PER_TASK) {
             const disposable = activities.findIndex(candidate => candidate.kind === 'reasoning' || candidate.kind === 'message');
             activities.splice(disposable >= 0 ? disposable : 0, 1);
         }
-        const updated = { ...current, activities };
+        const referencedSkills = [...new Set([
+            ...current.referencedSkills ?? [],
+            ...referencedCatalogSkills(current.catalogSkills ?? [], activity).map(skill => skill.name)
+        ])];
+        const updated = { ...current, activities, referencedSkills };
         this.tasks.set(taskId, updated);
         return updated;
+    }
+
+    setCatalogSkills(taskId: string, catalogSkills: readonly CatalogSkill[]): void {
+        const current = this.tasks.get(taskId);
+        if (current) { this.tasks.set(taskId, { ...current, catalogSkills: catalogSkills.map(skill => ({ ...skill })) }); }
     }
 
     setAppliedSkills(taskId: string, role: 'agent' | 'results', ids: readonly string[]): ExecutionTask | undefined {
@@ -462,6 +473,10 @@ export class TaskService {
             const resultsDocument = this.normalizeResultsDocument(candidate.resultsDocument, candidate.id);
             const activities = this.normalizeActivities(candidate.activities);
             const appliedSkills = this.normalizeAppliedSkills(candidate.appliedSkills);
+            const catalogSkills = Array.isArray(candidate.catalogSkills) ? candidate.catalogSkills.filter(skill =>
+                skill && typeof skill.id === 'string' && typeof skill.name === 'string' && typeof skill.path === 'string') : [];
+            const referencedSkills = Array.isArray(candidate.referencedSkills)
+                ? [...new Set(candidate.referencedSkills.filter(name => typeof name === 'string' && name.trim()))] : [];
             const requirementClassification = this.normalizeRequirementClassification(candidate.requirementClassification);
             const requirementChoice = candidate.requirementChoice === 'explicit' ? 'explicit' : 'default';
             const outcomeKind = candidate.outcomeKind === 'result' || candidate.outcomeKind === 'conversation'
@@ -477,6 +492,8 @@ export class TaskService {
                     failure: { summary: 'アプリ終了により中断されました' },
                     activities,
                     appliedSkills,
+                    catalogSkills,
+                    referencedSkills,
                     resultsQuestions,
                     resultsDocument,
                     requirementClassification,
@@ -488,6 +505,8 @@ export class TaskService {
                     requirementChoice,
                     activities,
                     appliedSkills,
+                    catalogSkills,
+                    referencedSkills,
                     resultsQuestions,
                     resultsDocument,
                     requirementClassification,
@@ -724,6 +743,7 @@ export class TaskService {
             id: activity.id,
             kind: activity.kind,
             title: activity.title,
+            readPaths: Array.isArray(activity.readPaths) ? activity.readPaths.filter(path => typeof path === 'string').slice(0, 100) : undefined,
             detail: typeof activity.detail === 'string'
                 ? activity.detail.slice(0, TaskService.MAX_ACTIVITY_DETAIL_CHARS)
                 : undefined,

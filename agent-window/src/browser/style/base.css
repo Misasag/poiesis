@@ -56,7 +56,7 @@
     --poiesis-chrome-copy: #c8c9c3;
     --poiesis-chrome-muted: #858780;
     --poiesis-results-accent: #6577a0;
-    --poiesis-selection-bg: #29302d;
+    --poiesis-selection-bg: #2c2d2a;
     --poiesis-selection-border: #52645b;
     background: var(--poiesis-chrome-bg);
     box-sizing: border-box;

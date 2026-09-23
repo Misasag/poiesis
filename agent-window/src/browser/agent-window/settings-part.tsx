@@ -79,7 +79,7 @@ import { AgentWindowHost, AgentWindowPart, UiFontScale } from './agent-window-ho
 import { PoiesisThemePreference } from '../theme-preference-service';
 
 interface PersistedPoiesisSettings {
-    version: 5;
+    version: 6;
     uiFontScale: UiFontScale;
     agentCli: KnownCliId;
     agentModel: string;
@@ -87,13 +87,20 @@ interface PersistedPoiesisSettings {
     resultsCli: KnownCliId;
     resultsModel: string;
     resultsEffort: string;
+    judgeSameAsResults: boolean;
+    judgeCli: KnownCliId;
+    judgeModel: string;
+    judgeEffort: string;
     effortByModel: Record<AiRole, Record<string, string>>;
     allowExternalResultsResources: boolean;
     automaticRequirementClassification: boolean;
 }
 
 interface LegacyPoiesisSettings {
-    version?: 1 | 2 | 3 | 4;
+    version?: 1 | 2 | 3 | 4 | 5;
+    agentEffort?: string;
+    resultsEffort?: string;
+    effortByModel?: unknown;
     uiFontScale?: UiFontScale;
     preferredCli?: KnownCliId;
     agentCli?: KnownCliId;
@@ -282,6 +289,7 @@ export class SettingsPart extends AgentWindowPart {
                 <div className='poiesis-settings-modal__ai-roles'>
                     {this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)}
                     {this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)}
+                    {this.renderCliRoleSelector('judge', '判定の AI', this.host.state.judgeCli)}
                 </div>
                 {this.renderCliDiagnostics()}
             </section>
@@ -438,7 +446,8 @@ export class SettingsPart extends AgentWindowPart {
         const selectedDetection = detections.find(detection => detection.id === selected);
         const purpose = role === 'agent'
             ? '依頼を理解し、コードやファイルを変更します。'
-            : '完了した成果を読みやすい文書にまとめます。';
+            : role === 'judge' ? '成果文書の条件チェックと、要件の自動分類・タイトル付けに使います。'
+                : '完了した成果を読みやすい文書にまとめます。';
         return (
             <div className='poiesis-settings-modal__cli-role'>
                 <div className='poiesis-settings-modal__role-heading'>
@@ -446,6 +455,11 @@ export class SettingsPart extends AgentWindowPart {
                     <p>{purpose}</p>
                 </div>
                 <div className='poiesis-settings-modal__cli-list' role='radiogroup' aria-label={label}>
+                    {role === 'judge' && <label className='poiesis-settings-modal__cli-row'>
+                        <input type='radio' name='poiesis-judge-cli' checked={this.host.state.judgeSameAsResults}
+                            onChange={() => { this.host.state.judgeSameAsResults = true; this.persistPoiesisSettings(); this.update(); }} />
+                        <span className='poiesis-settings-modal__cli-copy'><strong>Results の AI と同じ</strong></span>
+                    </label>}
                     {KNOWN_CLI_IDS.map(providerId => {
                         const detection = detections.find(candidate => candidate.id === providerId);
                         const availability = cliRoleAvailability(
@@ -475,7 +489,7 @@ export class SettingsPart extends AgentWindowPart {
                                         type='radio'
                                         name={`poiesis-${role}-cli`}
                                         value={providerId}
-                                        checked={selected === providerId}
+                                        checked={selected === providerId && (role !== 'judge' || !this.host.state.judgeSameAsResults)}
                                         disabled={!executable}
                                         onChange={() => this.setRoleCli(role, providerId)}
                                     />
@@ -495,7 +509,7 @@ export class SettingsPart extends AgentWindowPart {
                         );
                     })}
                 </div>
-                {selectedDetection && (
+                {selectedDetection && (role !== 'judge' || !this.host.state.judgeSameAsResults) && (
                     <div className='poiesis-settings-modal__model-field'>
                         <span>モデルと処理の深さ</span>
                         {this.renderAiRolePill(role)}
@@ -545,6 +559,11 @@ export class SettingsPart extends AgentWindowPart {
             this.host.state.agentCli = provider;
             this.host.state.agentModel = normalizedModel;
             this.host.state.agentEffort = effort;
+        } else if (role === 'judge') {
+            this.host.state.judgeSameAsResults = false;
+            this.host.state.judgeCli = provider;
+            this.host.state.judgeModel = normalizedModel;
+            this.host.state.judgeEffort = effort;
         } else {
             this.host.state.resultsCli = provider;
             this.host.state.resultsModel = normalizedModel;
@@ -558,7 +577,7 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     public renderAiRolePill(role: AiRole, compact = false): React.ReactNode {
-        const selectedProvider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
+        const selectedProvider = role === 'agent' ? this.host.state.agentCli : role === 'judge' ? this.host.state.judgeCli : this.host.state.resultsCli;
         return (
             <ModelPicker
                 role={role}
@@ -744,6 +763,11 @@ export class SettingsPart extends AgentWindowPart {
             this.host.state.agentCli = cli;
             this.host.state.agentModel = defaultModel;
             this.host.state.agentEffort = effort;
+        } else if (role === 'judge') {
+            this.host.state.judgeSameAsResults = false;
+            this.host.state.judgeCli = cli;
+            this.host.state.judgeModel = defaultModel;
+            this.host.state.judgeEffort = effort;
         } else {
             this.host.state.resultsCli = cli;
             this.host.state.resultsModel = defaultModel;
@@ -757,11 +781,11 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected roleModel(role: AiRole): string {
-        return role === 'agent' ? this.host.state.agentModel : this.host.state.resultsModel;
+        return role === 'agent' ? this.host.state.agentModel : role === 'judge' ? this.host.state.judgeModel : this.host.state.resultsModel;
     }
 
     protected roleEffort(role: AiRole): string {
-        return role === 'agent' ? this.host.state.agentEffort : this.host.state.resultsEffort;
+        return role === 'agent' ? this.host.state.agentEffort : role === 'judge' ? this.host.state.judgeEffort : this.host.state.resultsEffort;
     }
 
     protected effortKey(provider: KnownCliId, model: string): string {
@@ -774,11 +798,13 @@ export class SettingsPart extends AgentWindowPart {
     }
 
     protected setRoleEffort(role: AiRole, effort: string): void {
-        const provider = role === 'agent' ? this.host.state.agentCli : this.host.state.resultsCli;
+        const provider = role === 'agent' ? this.host.state.agentCli : role === 'judge' ? this.host.state.judgeCli : this.host.state.resultsCli;
         const normalized = CLI_EFFORT_LEVELS[provider].includes(effort) ? effort : '';
         this.host.state.effortByModel[role][this.effortKey(provider, this.roleModel(role))] = normalized;
         if (role === 'agent') {
             this.host.state.agentEffort = normalized;
+        } else if (role === 'judge') {
+            this.host.state.judgeEffort = normalized;
         } else {
             this.host.state.resultsEffort = normalized;
             this.resultsGenerationContext.effort = normalized;
@@ -928,7 +954,7 @@ export class SettingsPart extends AgentWindowPart {
     public async restorePoiesisSettings(): Promise<void> {
         try {
             const state = await this.storageService.getData<Partial<PersistedPoiesisSettings> | LegacyPoiesisSettings>(SETTINGS_STORAGE_KEY);
-            if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4 || state?.version === 5) {
+            if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4 || state?.version === 5 || state?.version === 6) {
                 this.host.state.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
                     ? state.uiFontScale
                     : 'standard';
@@ -941,27 +967,32 @@ export class SettingsPart extends AgentWindowPart {
                 this.host.state.resultsCli = state.version !== 1 && isKnownCliId(state.resultsCli)
                     ? state.resultsCli
                     : legacyCli;
-                this.host.state.agentModel = (state.version === 3 || state.version === 4 || state.version === 5) && typeof state.agentModel === 'string'
+                this.host.state.agentModel = (state.version === 3 || state.version === 4 || state.version === 5 || state.version === 6) && typeof state.agentModel === 'string'
                     ? state.agentModel
                     : '';
-                this.host.state.resultsModel = (state.version === 3 || state.version === 4 || state.version === 5) && typeof state.resultsModel === 'string'
+                this.host.state.resultsModel = (state.version === 3 || state.version === 4 || state.version === 5 || state.version === 6) && typeof state.resultsModel === 'string'
                     ? state.resultsModel
                     : '';
-                this.host.state.effortByModel = state.version === 5
+                this.host.state.effortByModel = (state.version === 5 || state.version === 6)
                     ? this.normalizeEffortByModel(state.effortByModel)
-                    : { agent: {}, results: {} };
-                this.host.state.agentEffort = state.version === 5
+                    : { agent: {}, results: {}, judge: {} };
+                this.host.state.agentEffort = (state.version === 5 || state.version === 6)
                     ? this.normalizeEffort(this.host.state.agentCli, state.agentEffort)
                     : '';
-                this.host.state.resultsEffort = state.version === 5
+                this.host.state.resultsEffort = (state.version === 5 || state.version === 6)
                     ? this.normalizeEffort(this.host.state.resultsCli, state.resultsEffort)
                     : '';
                 this.host.state.effortByModel.agent[this.effortKey(this.host.state.agentCli, this.host.state.agentModel)]
                     = this.host.state.agentEffort;
                 this.host.state.effortByModel.results[this.effortKey(this.host.state.resultsCli, this.host.state.resultsModel)]
                     = this.host.state.resultsEffort;
+                this.host.state.judgeSameAsResults = state.version !== 6 || state.judgeSameAsResults !== false;
+                this.host.state.judgeCli = state.version === 6 && isKnownCliId(state.judgeCli) ? state.judgeCli : DEFAULT_CLI_ID;
+                this.host.state.judgeModel = state.version === 6 && typeof state.judgeModel === 'string' ? state.judgeModel : '';
+                this.host.state.judgeEffort = state.version === 6 ? this.normalizeEffort(this.host.state.judgeCli, state.judgeEffort) : '';
+                this.host.state.effortByModel.judge[this.effortKey(this.host.state.judgeCli, this.host.state.judgeModel)] = this.host.state.judgeEffort;
                 this.host.state.allowExternalResultsResources = state.allowExternalResultsResources === true;
-                this.host.state.automaticRequirementClassification = state.version === 4 || state.version === 5
+                this.host.state.automaticRequirementClassification = state.version === 4 || state.version === 5 || state.version === 6
                     ? state.automaticRequirementClassification !== false
                     : true;
             }
@@ -971,13 +1002,21 @@ export class SettingsPart extends AgentWindowPart {
         this.resultsGenerationContext.providerId = this.host.state.resultsCli;
         this.resultsGenerationContext.model = this.host.state.resultsModel.trim();
         this.resultsGenerationContext.effort = this.host.state.resultsEffort;
+        this.syncJudgeSelection();
         this.requirementClassificationService.enabled = this.host.state.automaticRequirementClassification;
         this.update();
     }
 
+    protected syncJudgeSelection(): void {
+        this.resultsGenerationContext.judgeSelection = this.host.state.judgeSameAsResults ? undefined : {
+            providerId: this.host.state.judgeCli, model: this.host.state.judgeModel, effort: this.host.state.judgeEffort
+        };
+    }
+
     protected persistPoiesisSettings(): void {
+        this.syncJudgeSelection();
         void this.storageService.setData<PersistedPoiesisSettings>(SETTINGS_STORAGE_KEY, {
-            version: 5,
+            version: 6,
             uiFontScale: this.host.state.uiFontScale,
             agentCli: this.host.state.agentCli,
             agentModel: this.host.state.agentModel,
@@ -985,6 +1024,10 @@ export class SettingsPart extends AgentWindowPart {
             resultsCli: this.host.state.resultsCli,
             resultsModel: this.host.state.resultsModel,
             resultsEffort: this.host.state.resultsEffort,
+            judgeSameAsResults: this.host.state.judgeSameAsResults,
+            judgeCli: this.host.state.judgeCli,
+            judgeModel: this.host.state.judgeModel,
+            judgeEffort: this.host.state.judgeEffort,
             effortByModel: this.host.state.effortByModel,
             allowExternalResultsResources: this.host.state.allowExternalResultsResources,
             automaticRequirementClassification: this.host.state.automaticRequirementClassification
@@ -1008,7 +1051,7 @@ export class SettingsPart extends AgentWindowPart {
                         : [];
                 })
         );
-        return { agent: normalizeRole('agent'), results: normalizeRole('results') };
+        return { agent: normalizeRole('agent'), results: normalizeRole('results'), judge: normalizeRole('judge') };
     }
 
     protected async clearSavedSessionData(): Promise<void> {

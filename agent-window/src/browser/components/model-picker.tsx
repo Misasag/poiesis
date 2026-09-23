@@ -72,7 +72,7 @@ export const ModelPicker = ({
     onEffortChange,
     onOpenSettings
 }: ModelPickerProps): React.ReactElement => {
-    const roleLabel = role === 'agent' ? 'Agent' : 'Results';
+    const roleLabel = role === 'agent' ? 'Agent' : role === 'judge' ? '判定' : 'Results';
     const triggerRef = React.useRef<HTMLButtonElement>(null);
     const popoverRef = React.useRef<HTMLDivElement>(null);
     const searchRef = React.useRef<HTMLInputElement>(null);

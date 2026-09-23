@@ -436,7 +436,7 @@ try {
     assert.equal(normalizeSnapshotPath(''), undefined);
     console.log('snapshot-store tests passed');
 } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
 }
 
 async function writeNpmRuntimeArtifacts(workspace, marker) {

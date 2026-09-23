@@ -1,3 +1,4 @@
+import { shellReadPaths } from '../common/skill-catalog';
 import type { AgentActivity, AgentActivityKind, AgentActivityStatus } from '../common/agent-provider';
 import { CliUsage, codexTurnUsage, claudeResultUsage, sumCliUsage } from '../common/cli-usage';
 import type { KnownCliId } from '../common/agent-runtime-protocol';
@@ -114,6 +115,7 @@ class CliActivityParser implements AgentActivityParser {
             kind: base.kind,
             title: base.title,
             detail: truncateDetail(detail),
+            readPaths: itemType === 'command_execution' ? shellReadPaths(stringValue(item.command) ?? '') : undefined,
             status,
             startedAt: previous?.startedAt ?? timestamp,
             endedAt: status === 'running' ? undefined : timestamp
@@ -217,6 +219,8 @@ class CliActivityParser implements AgentActivityParser {
             id,
             ...description,
             detail: truncateDetail(description.detail),
+            readPaths: name === 'Read' ? [stringValue(input.file_path) ?? '']
+                : name === 'Bash' || name === 'PowerShell' ? shellReadPaths(stringValue(input.command) ?? '') : undefined,
             status: 'running',
             startedAt: now.toISOString()
         };

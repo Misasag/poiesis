@@ -1,5 +1,8 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { DURABLE_SESSION_KEY, DURABLE_SESSION_MIGRATION_KEY, readDurableValue, writeDurableValue,
+    waitForDurableValue, waitForDurableWritesToSettle } from './poiesis-smoke-state.mjs';
 import puppeteer from 'puppeteer-core';
 
 const executablePath = [
@@ -42,7 +45,7 @@ try {
             await clickText(page, '.poiesis-agent-window__code-control', 'Code');
             await page.waitForSelector('.poiesis-agent-window__code');
             matrix.push(summarize(await resizeAndAssert(page, size, 'code', railWidth)));
-            await clickText(page, '.poiesis-agent-window__code-control', 'Code');
+            await page.click('.poiesis-agent-window__code-header .poiesis-agent-window__code-control');
             await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__code'));
         }
     }
@@ -58,21 +61,21 @@ try {
 
 async function installResultsFixture(page) {
     const now = Date.now();
-    await page.evaluate(timestamp => {
-        const key = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
-        const current = JSON.parse(localStorage.getItem(key) ?? '{}');
-        const workspaceUri = current.sessions?.find(session => typeof session.workspaceUri === 'string')?.workspaceUri;
-        if (!workspaceUri) throw new Error('The current workspace URI was not available for the resize fixture.');
-        const taskId = 'resize-smoke-task';
-        localStorage.setItem(key, JSON.stringify({
+    const configDir = resolve(process.cwd(), '.run', 'resize-browser', 'theia-config');
+    const workspaceUri = pathToFileURL(resolve(process.cwd())).href;
+    const taskId = 'resize-smoke-task';
+    const workbenchUrl = page.url();
+    await page.goto('about:blank');
+    await waitForDurableWritesToSettle(configDir, 15_000);
+    writeDurableValue(configDir, DURABLE_SESSION_KEY, {
             version: 1,
             selectedSessionId: 'resize-smoke-session',
             railWidth: 276,
             railCollapsed: false,
             sessions: [{
                 id: 'resize-smoke-session',
-                createdAt: timestamp - 60_000,
-                updatedAt: timestamp,
+                createdAt: now - 60_000,
+                updatedAt: now,
                 workspaceUri,
                 branch: 'main',
                 runTarget: 'local',
@@ -103,14 +106,14 @@ async function installResultsFixture(page) {
                 resultsDrafts: [],
                 tasks: [{
                     id: taskId,
-                    sessionId: 'resize-runtime-session',
+                    sessionId: 'resize-smoke-session',
                     title: 'Restored result with a deliberately long title',
                     request: 'Verify that a restored result stays within the current workspace column.',
                     status: 'completed',
-                    startedAt: new Date(timestamp - 30_000).toISOString(),
-                    endedAt: new Date(timestamp - 20_000).toISOString(),
-                    baseline: { kind: 'workspace-snapshot', capturedAt: new Date(timestamp - 30_000).toISOString() },
-                    changeSet: { source: 'empty', diff: '', files: [], capturedAt: new Date(timestamp - 20_000).toISOString() }
+                    startedAt: new Date(now - 30_000).toISOString(),
+                    endedAt: new Date(now - 20_000).toISOString(),
+                    baseline: { kind: 'workspace-snapshot', capturedAt: new Date(now - 30_000).toISOString() },
+                    changeSet: { source: 'task-diff', diff: '+resize', files: ['src/resize.ts'], capturedAt: new Date(now - 20_000).toISOString() }
                 }],
                 resultsDocuments: [{
                     taskId,
@@ -118,22 +121,23 @@ async function installResultsFixture(page) {
                     html: '<!doctype html><html lang="ja"><body><main><h1>Resize smoke</h1><p>Restored Results document.</p></main></body></html>'
                 }]
             }]
-        }));
-        localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.migrated.v1', 'true');
-    }, now);
-    await page.reload({ waitUntil: 'domcontentloaded' });
+        });
+    writeDurableValue(configDir, DURABLE_SESSION_MIGRATION_KEY, true);
+    await page.goto(workbenchUrl, { waitUntil: 'domcontentloaded' });
     await waitForApp(page);
 }
 
 async function restoreRailWidth(page, railWidth) {
-    await page.evaluate(width => {
-        const key = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
-        const state = JSON.parse(localStorage.getItem(key) ?? '{}');
-        state.railWidth = width;
-        state.railCollapsed = false;
-        localStorage.setItem(key, JSON.stringify(state));
-    }, railWidth);
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    const configDir = resolve(process.cwd(), '.run', 'resize-browser', 'theia-config');
+    const workbenchUrl = page.url();
+    await page.goto('about:blank');
+    await waitForDurableWritesToSettle(configDir, 15_000);
+    const state = readDurableValue(configDir, DURABLE_SESSION_KEY);
+    if (!state) throw new Error('Resize fixture session was not persisted.');
+    state.railWidth = railWidth;
+    state.railCollapsed = false;
+    writeDurableValue(configDir, DURABLE_SESSION_KEY, state);
+    await page.goto(workbenchUrl, { waitUntil: 'domcontentloaded' });
     await waitForApp(page);
     await page.waitForFunction(width => {
         const rail = document.querySelector('.poiesis-agent-window__rail');
@@ -143,7 +147,15 @@ async function restoreRailWidth(page, railWidth) {
 
 async function waitForApp(page) {
     await page.waitForSelector('.poiesis-agent-window__content:not(.poiesis-agent-window__content--initializing)');
-    await page.waitForSelector('.poiesis-results__document');
+    try {
+        await page.waitForSelector('.poiesis-results__document', { timeout: 15_000 });
+    } catch (error) {
+        console.error('Resize fixture diagnostic:', await page.evaluate(() => ({
+            mode: document.querySelector('.poiesis-agent-window__content')?.getAttribute('data-mode'),
+            text: document.querySelector('.poiesis-agent-window__workspace')?.textContent?.slice(0, 800)
+        })));
+        throw error;
+    }
 }
 
 async function resizeAndAssert(page, size, mode, expectedRailWidth) {
@@ -258,10 +270,8 @@ async function stressAgentComposer(page) {
     ]);
     const value = await page.$eval(selector, input => input.value);
     assert(value === expected, `Composer value was corrupted while resize renders interleaved with typing: ${JSON.stringify(value)}`);
-    await page.waitForFunction(expectedDraft => {
-        const state = JSON.parse(localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1') ?? '{}');
-        return state.sessions?.find(session => session.id === state.selectedSessionId)?.agentDraft === expectedDraft;
-    }, {}, expected);
+    await waitForDurableValue(resolve(process.cwd(), '.run', 'resize-browser', 'theia-config'), DURABLE_SESSION_KEY,
+        state => state?.sessions?.find(session => session.id === state.selectedSessionId)?.agentDraft === expected, 15_000);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector(selector);
     const restored = await page.$eval(selector, input => input.value);

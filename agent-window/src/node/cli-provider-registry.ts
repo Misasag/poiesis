@@ -23,7 +23,7 @@ export class CliProviderRegistry {
     async resolve(role: AiRole, providerId: KnownCliId, model?: string, effort?: string): Promise<ResolvedCliProvider> {
         const definition = knownCliDefinitions().find(candidate => candidate.id === providerId);
         if (!definition?.executableRoles.includes(role)) {
-            throw new Error(`${CLI_DISPLAY_NAMES[providerId]} は${role === 'agent' ? '作業の実行' : '成果の作成'}に対応していません。`);
+            throw new Error(`${CLI_DISPLAY_NAMES[providerId]} は${role === 'agent' ? '作業の実行' : role === 'judge' ? '条件の判定' : '成果の作成'}に対応していません。`);
         }
         const report = this.cliDetector.recordedReport ?? await this.cliDetector.detect();
         const detection = report.detections.find(item => item.id === providerId);

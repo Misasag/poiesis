@@ -820,3 +820,9 @@
         flex-basis: 100%;
     }
 }
+
+.poiesis-customize-view__on-demand {
+    color: var(--poiesis-chrome-muted);
+    background: transparent;
+    font-weight: 400;
+}

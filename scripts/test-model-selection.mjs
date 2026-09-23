@@ -19,15 +19,15 @@ const report = {
     detections: [
         {
             id: 'codex', name: 'Codex', status: 'found', path: 'C:\\Tools\\codex.exe',
-            executableRoles: ['agent', 'results'], models: [{ id: '', label: '既定' }], defaultModel: '', checkedLocations: []
+            executableRoles: ['agent', 'results', 'judge'], models: [{ id: '', label: '既定' }], defaultModel: '', checkedLocations: []
         },
         {
             id: 'claude', name: 'Claude Code', status: 'found', path: 'C:\\Tools\\claude.exe',
-            executableRoles: ['agent', 'results'], models: [{ id: '', label: '既定' }, { id: 'sonnet', label: 'sonnet' }],
+            executableRoles: ['agent', 'results', 'judge'], models: [{ id: '', label: '既定' }, { id: 'sonnet', label: 'sonnet' }],
             defaultModel: '', checkedLocations: []
         },
         {
-            id: 'grok', name: 'Grok', status: 'missing', executableRoles: ['agent', 'results'],
+            id: 'grok', name: 'Grok', status: 'missing', executableRoles: ['agent', 'results', 'judge'],
             models: [{ id: '', label: '既定' }], defaultModel: '', checkedLocations: []
         },
         {
@@ -136,3 +136,5 @@ for (const [id, maxEffort] of [['gpt-6-sol', 'ultra'], ['gpt-6-luna', 'max']]) {
     assert.equal(model.supportedReasoningEfforts[0], 'low');
     assert.equal(model.supportedReasoningEfforts.at(-1), maxEffort);
 }
+
+assert.deepEqual(modelPickerProviders('ready', report, catalogs, 'judge', 'codex', 'gpt-6-astra').map(provider => provider.id), ['codex', 'claude']);

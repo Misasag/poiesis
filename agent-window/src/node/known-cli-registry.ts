@@ -51,7 +51,7 @@ export function knownCliDefinitions(): readonly KnownCliDefinition[] {
                 userProfile && join(userProfile, '.local', 'bin', 'codex.exe')
             ]),
             versionProbe: ['--version'],
-            executableRoles: ['agent', 'results'],
+            executableRoles: ['agent', 'results', 'judge'],
             models: [
                 cliDefault,
                 {
@@ -113,7 +113,7 @@ export function knownCliDefinitions(): readonly KnownCliDefinition[] {
                 userProfile && join(userProfile, '.local', 'bin', 'claude.exe')
             ]),
             versionProbe: ['--version'],
-            executableRoles: ['agent', 'results'],
+            executableRoles: ['agent', 'results', 'judge'],
             models: [
                 cliDefault,
                 { id: 'fable', label: 'fable' },
@@ -133,7 +133,7 @@ export function knownCliDefinitions(): readonly KnownCliDefinition[] {
                 userProfile && join(userProfile, '.local', 'bin', 'grok.exe')
             ]),
             versionProbe: ['--version'],
-            executableRoles: ['agent', 'results'],
+            executableRoles: ['agent', 'results', 'judge'],
             models: [
                 cliDefault,
                 { id: 'grok-4.6', label: 'Grok 4.6' },

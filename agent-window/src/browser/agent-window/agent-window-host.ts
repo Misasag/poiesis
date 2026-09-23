@@ -51,6 +51,10 @@ export interface AgentWindowState {
     resultsCli: KnownCliId;
     resultsModel: string;
     resultsEffort: string;
+    judgeSameAsResults: boolean;
+    judgeCli: KnownCliId;
+    judgeModel: string;
+    judgeEffort: string;
     effortByModel: Record<AiRole, Record<string, string>>;
     allowExternalResultsResources: boolean;
     automaticRequirementClassification: boolean;

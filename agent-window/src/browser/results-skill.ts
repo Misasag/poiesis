@@ -248,6 +248,7 @@ export class AiResultsSkill implements ResultsSkill {
         const providerId = this.context.providerId;
         const model = this.context.model.trim() || undefined;
         const effort = this.context.effort || undefined;
+        const judgeSelection = this.context.judge;
         const documentId = input.documentId ?? input.task.id;
         const calls: CliCallRecord[] = [];
         const workspaceUri = input.task.workspaceUri;
@@ -319,7 +320,8 @@ export class AiResultsSkill implements ResultsSkill {
                 workspaceSkills.assertions,
                 request,
                 changeSetSummary,
-                calls
+                calls,
+                judgeSelection
             );
             if (!first.assertions.some(assertion => assertion.status === 'fail')) {
                 return { ...first.document, calls, assertions: [...first.assertions], assertionAttempts: 1 };
@@ -348,7 +350,8 @@ export class AiResultsSkill implements ResultsSkill {
                     workspaceSkills.assertions,
                     request,
                     changeSetSummary,
-                    calls
+                    calls,
+                    judgeSelection
                 );
                 const selected = selectBetterResultsAssertionCandidate(first, second);
                 return { ...selected.document, calls, assertions: [...selected.assertions], assertionAttempts: 2 };
@@ -390,13 +393,14 @@ export class AiResultsSkill implements ResultsSkill {
         definitions: readonly ResultsAssertionDefinition[],
         request: ResultsGenerationRequest,
         changeSetSummary: string,
-        calls: CliCallRecord[]
+        calls: CliCallRecord[],
+        judgeSelection = this.context.judge
     ): Promise<{
         document: ResultsSkillDocument;
         assertions: ResultsAssertionResult[];
     }> {
         const observedModel = calls.filter(call => call.purpose === 'results-generation').at(-1)?.model ?? request.model;
-        input.onProgress?.({ phase: 'judge', providerId: request.providerId, model: request.model, effort: request.effort,
+        input.onProgress?.({ phase: 'judge', ...judgeSelection,
             attempt: request.attempt ?? 1, startedAt: new Date().toISOString() });
         const html = this.normalizeAndValidate(output, input.requirement?.title ?? input.task.title);
         const appAssertions = checkAppResultsAssertions(html, input.changeSet.files);
@@ -406,9 +410,7 @@ export class AiResultsSkill implements ResultsSkill {
                 const judged = await this.assertionServer.judge({
                     taskId: request.taskId,
                     attempt: request.attempt,
-                    providerId: request.providerId,
-                    model: request.model,
-                    effort: request.effort,
+                    ...judgeSelection,
                     workspaceUri: request.workspaceUri,
                     documentText: extractResultsAssertionText(html),
                     assertions: definitions.map(definition => definition.text),

@@ -191,10 +191,14 @@ try {
         await new Promise(resolveDelay => setTimeout(resolveDelay, 1_200));
         const updatedElapsed = await page.$eval('.poiesis-agent-window__message-state [role="timer"]', node => node.textContent?.trim());
         assert(initialElapsed?.includes('変更前のファイルを記録しています')
-            || initialElapsed?.includes('Agent を起動しています') || initialElapsed?.includes('応答を待っています'),
+            || initialElapsed?.includes('Agent を起動しています') || initialElapsed?.includes('応答を待っています')
+            || /実行しています|編集しています|読んでいます|考えています|応答を受け取っています/.test(initialElapsed ?? ''),
             `Initial live status is missing: ${initialElapsed}`);
         assert(updatedElapsed && updatedElapsed !== initialElapsed,
             `Elapsed feedback did not update every second: ${JSON.stringify({ initialElapsed, updatedElapsed })}`);
+        await page.waitForFunction(() => /コマンドを実行しています|編集しています|ファイルを読んでいます|考えています/.test(
+            document.querySelector('.poiesis-agent-window__run-status')?.textContent ?? ''));
+        const liveActivityLabel = await page.$eval('.poiesis-agent-window__run-status', node => node.textContent);
         await page.waitForSelector('.poiesis-agent-activity__summary');
         await page.click('.poiesis-agent-activity__summary');
         await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-activity__row').length >= 3);
@@ -233,6 +237,12 @@ try {
         await waitForFinishedElectronResults(page);
         const resultsStandard = await assertElectronResultsHeader(page, '1280x720 standard', true);
         await page.screenshot({ path: round12StandardScreenshotPath });
+        const chromeStandard = await assertStableChrome(page, '1280x720');
+        await page.click('.poiesis-window-controls__button[data-window-action="maximize"]');
+        await page.waitForSelector('.poiesis-window-controls__button[data-window-action="restore"]');
+        const chromeMaximized = await assertStableChrome(page, 'maximized');
+        await page.click('.poiesis-window-controls__button[data-window-action="restore"]');
+        await page.waitForSelector('.poiesis-window-controls__button[data-window-action="maximize"]');
 
         await setElectronUiFontScale(page, 'large');
         await settleElectronWindowSize(page, startProcess.pid, 1024, 720);
@@ -250,10 +260,13 @@ try {
             elapsedVisible: true,
             elapsedUpdated: true,
             runningActivityRows,
+            liveActivityLabel,
             composerEnabledAfterAgent,
             resultsPendingAfterAgent,
             activitySummaryVisible: true,
             resultsStandard,
+            chromeStandard,
+            chromeMaximized,
             resultsLarge,
             resultsMaximized,
             resultsRestored,
@@ -1794,4 +1807,52 @@ async function waitForCdpToStop(url, timeout) {
 
 function delay(milliseconds) {
     return new Promise(resolveDelay => setTimeout(resolveDelay, milliseconds));
+}
+
+async function assertStableChrome(page, size) {
+    const snapshots = {};
+    for (const mode of ['agent', 'results', 'code']) {
+        if (mode === 'code') await page.click('.poiesis-agent-window__header-actions .poiesis-agent-window__code-control');
+        else await page.click('#poiesis-' + mode + '-tab');
+        await page.waitForSelector('.poiesis-agent-window__content[data-mode="' + mode + '"]');
+        await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+        snapshots[mode] = await page.evaluate(() => {
+            const measure = selector => [...document.querySelectorAll(selector)].map(node => {
+                const box = node.getBoundingClientRect();
+                const style = getComputedStyle(node);
+                return { x: box.x, y: box.y, width: box.width, height: box.height,
+                    padding: style.padding, background: style.backgroundColor, lineHeight: style.lineHeight };
+            });
+            return {
+                viewport: { width: innerWidth, height: innerHeight },
+                header: measure('.poiesis-agent-window__header'),
+                text: measure('.poiesis-agent-window__context > strong'),
+                workspaceText: measure('.poiesis-agent-window__context-workspace, .poiesis-agent-window__code-workspace'),
+                actions: measure('.poiesis-agent-window__rail-action'),
+                heading: measure('.poiesis-agent-window__rail-heading'),
+                workspace: measure('.poiesis-agent-window__workspace-name'),
+                rows: measure('.poiesis-agent-window__session-row'),
+                titles: measure('.poiesis-agent-window__session-title'),
+                statuses: measure('.poiesis-agent-window__session-meta'),
+                railVisible: Boolean(document.querySelector('.poiesis-agent-window__rail'))
+            };
+        });
+    }
+    for (const key of ['header', 'text', 'workspaceText', 'actions', 'heading', 'workspace', 'rows', 'titles', 'statuses']) {
+        assert(snapshots.agent[key].length > 0, size + ': missing chrome fixture ' + key);
+        const geometry = items => items.map(({ x, y, height, padding, background, lineHeight, width }) =>
+            ({ x, y, height, padding, background, lineHeight, ...(key === 'text' ? {} : { width }) }));
+        assert(JSON.stringify(geometry(snapshots.agent[key])) === JSON.stringify(geometry(snapshots.results[key])),
+            size + ': chrome shifted in ' + key + ': ' + JSON.stringify(snapshots));
+    }
+    assert(!snapshots.code.railVisible, 'Code must hide the session rail intentionally');
+    for (const mode of ['results', 'code']) {
+        for (const key of ['y', 'height', 'padding']) assert(snapshots.agent.header[0][key] === snapshots[mode].header[0][key],
+            size + ': header changed in ' + mode + ': ' + JSON.stringify(snapshots));
+    }
+    for (const mode of ['agent', 'results', 'code']) assert(snapshots[mode].workspaceText[0].y === snapshots.agent.workspaceText[0].y,
+        size + ': workspace header text moved in ' + mode + ': ' + JSON.stringify(snapshots));
+    await page.click('.poiesis-agent-window__code-header .poiesis-agent-window__code-control');
+    await page.waitForSelector('.poiesis-results__document');
+    return { size, differencePx: 0, snapshots };
 }

@@ -533,7 +533,7 @@ export class RailPart extends AgentWindowPart {
         const menuOpen = session.id === this.host.state.openSessionMenuId;
         const state = this.sessionState(session);
         const showState = state.kind !== 'idle'
-            || (selected && session.activeTab === 'agent' && Boolean(state.label));
+            || (selected && Boolean(state.label));
         const running = state.kind === 'running';
         const switchesWorkspace = Boolean(session.workspaceUri
             && !this.sameWorkspaceUri(session.workspaceUri, this.host.sessions.workspaceRoot()?.resource.toString()));

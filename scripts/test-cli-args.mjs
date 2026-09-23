@@ -103,3 +103,20 @@ for (const providerId of ['codex', 'claude', 'grok']) {
         assert.throws(() => build({ ...agentBase, providerId, model: 'x'.repeat(1_001) }), /起動設定が長すぎます/);
     }
 }
+
+for (const providerId of ['codex', 'claude', 'grok']) {
+    const args = oneShotCliArgs({ ...agentBase, providerId, readOnlyFileTools: true });
+    const value = flag => args[args.indexOf(flag) + 1];
+    if (providerId === 'claude') {
+        assert.equal(value('--permission-mode'), 'plan');
+        assert.equal(value('--tools'), 'Read,Grep,Glob');
+        assert.equal(value('--allowedTools'), 'Read,Grep,Glob');
+        assert(!args.includes('--tools='));
+    } else {
+        assert.equal(value('--sandbox'), 'read-only');
+        if (providerId === 'grok') {
+            assert.equal(value('--permission-mode'), 'plan');
+            assert.equal(value('--max-turns'), '8');
+        }
+    }
+}

@@ -637,6 +637,9 @@ export class ResultsPart extends AgentWindowPart {
         const assertions = document?.status === 'ready' && Array.isArray(document.assertions)
             ? document.assertions
             : [];
+        const referencedSkillNames = [...new Set(tasks.flatMap(task => task.referencedSkills ?? []))];
+        const judgeCall = document?.calls?.filter(call => call.purpose === 'results-judge').at(-1);
+        const separateJudge = judgeCall && (judgeCall.providerId !== document?.providerId || judgeCall.model !== document?.model);
         const passedAssertions = assertions.filter(assertion => assertion.status === 'pass').length;
         const generation = this.resultsGenerationBadge(document);
         const task = selectedTask ?? latestTask;
@@ -680,12 +683,14 @@ export class ResultsPart extends AgentWindowPart {
                     {assertions.length > 0 && (
                         <div>
                             <dt>成果の生成条件</dt>
-                            <dd>{passedAssertions}/{assertions.length} 通過</dd>
+                            <dd>{passedAssertions}/{assertions.length} 通過{separateJudge ? ` · 判定: ${cliModelLabel(judgeCall.model, judgeCall.providerId)}` : ''}</dd>
                         </div>
                     )}
                     <div>
                         <dt>適用 Skills</dt>
-                        <dd>{appliedSkillNames.length > 0 ? appliedSkillNames.join('、') : 'なし'}</dd>
+                        <dd>{appliedSkillNames.length > 0 ? appliedSkillNames.join('、') : 'なし'}
+                            {referencedSkillNames.length > 0 && <><br />参照: {referencedSkillNames.join('、')}</>}
+                        </dd>
                     </div>
                     <div>
                         <dt>タスク履歴</dt>

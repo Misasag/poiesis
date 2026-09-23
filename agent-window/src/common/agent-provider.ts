@@ -41,6 +41,8 @@ export interface AgentActivity {
     kind: AgentActivityKind;
     title: string;
     detail?: string;
+    /** Observed file operands, retained independently of truncated display text. */
+    readPaths?: string[];
     status: AgentActivityStatus;
     startedAt: string;
     endedAt?: string;

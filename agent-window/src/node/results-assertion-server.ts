@@ -56,7 +56,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
         this.pendingTaskIds.add(scope.taskId);
         let pendingPromptDirectory: string | undefined;
         try {
-            const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model, scope.effort);
+            const provider = await this.providerRegistry.resolve('judge', scope.providerId, scope.model, scope.effort);
             const workspace = await this.resolveWorkspace(scope.workspaceUri);
             const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(workspace);
             if (this.cancelledTaskIds.delete(scope.taskId)) {

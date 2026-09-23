@@ -496,7 +496,7 @@ const namingService = new RequirementClassificationService(
         await titleGate.promise;
         return { status: 'suggested', output: '{"title":"未完了を先に並べる"}' };
     } },
-    namingTasks, namingRequirements, { providerId: 'codex', model: '', effort: '' }
+    namingTasks, namingRequirements, { judge: { providerId: 'codex', model: '', effort: '' } }
 );
 const titleSuggestion = namingService.suggestTitle(namedDesign.id);
 assert.equal(namedRequirement.title, 'タスクの並び順', 'The first actual outcome must immediately replace a conversation-derived title.');
@@ -542,7 +542,7 @@ for (const kind of ['separate-goal', 'legacy-word-decision', 'same-goal-refineme
         assert.equal(scope.previousTasks[0].request, earlier.request);
         assert.deepEqual(scope.task.changedFiles, scope.previousTasks[0].changedFiles);
         return { status: 'classified', output: JSON.stringify({ decision, confidence: 0.96, title: 'タスク名の入力検証', reason: 'Completed outcome purpose compared with earlier work.' }) };
-    } }, semanticTasks, semanticRequirements, { providerId: 'codex', model: '', effort: '' });
+    } }, semanticTasks, semanticRequirements, { judge: { providerId: 'codex', model: '', effort: '' } });
     await semanticService.classify(later.id);
     assert.equal(semanticCalls, 1, 'A prior-reference word must reach semantic classification instead of forcing continuation.');
     assert.equal(semanticTasks.get(later.id).requirementClassification.source, 'ai');
@@ -593,7 +593,8 @@ const liveSkill = new AiResultsSkill(
                 : '<html><body><h2>概要</h2><p>説明</p><a data-poiesis-citation="src/a.ts:1">根拠</a></body></html>' };
     } },
     { async generate() { throw new Error('Unexpected fallback'); } },
-    { providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh' },
+    { providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh',
+        judge: { providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh' } },
     { async buildPrompt() { return { includedSkillIds: [], content: '', diagnostics: [], assertions: [{ text: '説明がある', skillId: 'test' }] }; } },
     progressTasks,
     { async judge(scope) {

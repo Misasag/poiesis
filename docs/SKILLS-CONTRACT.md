@@ -111,15 +111,28 @@ Agent skillは作業を「どのように行うか」を定義する。prompt構
 
 Agent skillは成果の正本を自己申告しない。Task、Baseline、Change Setの正本は引き続きApplicationが所有する。
 
-有効でshadowされていないAgent skillはTask開始時に毎回ファイルから読み直し、frontmatterを除いた本文をimplementer promptの末尾へ次の形で加える。順序は`rank`、`skill-id`の昇順とする。
+有効でshadowされていないAgent skillはTask開始時に毎回ファイルから読み直す。順序は`rank`、`skill-id`の昇順とし、scopeによって次の二つのモードに分ける。
+
+- Workspace scope（`<workspace>/.poiesis/skills`、`<workspace>/.agents/skills`）は、従来どおりfrontmatterを除いた本文を毎回implementer promptへ加える。
+- User scope（`<home>/.poiesis/skills`、`<home>/.agents/skills`）は、frontmatterの名前・説明と絶対SKILL.mdパスだけをカタログへ加える。本文は注入しない。現在の依頼が説明に合う場合だけファイルを読み、指示に従うようimplementerへ伝える。
 
 ```text
 ## Workspace skills (user-defined instructions)
 ### <skill name>
 <SKILL.md または skill.md body>
+
+## User skills catalog (on demand)
+Read and follow a listed SKILL.md only when the current request matches its description.
+### <skill name>
+<frontmatter description>
+SKILL.md: <absolute path>
 ```
 
-本文は1 Skillあたり8,000文字、合計24,000文字を上限とする。個別上限では切り詰めを明記し、合計上限を超える後続Skillはdiagnosticsへ理由を残して除外する。これはprompt contentだけの境界であり、Skill本文をcodeとして実行／evalせず、provider、model、sandbox、runtime configを変更する権限を与えない。
+Workspace本文は1 Skillあたり8,000文字、Workspace本文とUserカタログ項目の合計は24,000文字を上限とする。Workspaceの個別上限では切り詰めを明記し、Userの長い本文は予算を消費しない。カタログは名前見出し・説明・パスとその改行を含む項目全体の長さを数え、途中で切り詰めない。共通の節見出しと読み込み指示は従来の本文予算の外に置く。合計上限を超える後続Skillはdiagnosticsへ理由を残して除外する。
+
+Taskには常時適用したSkillと提示したカタログを分けて保存する。活動記録でカタログの絶対パスへの成功した読み取りを観測したときだけ、参照したSkill名をTaskへ保存する。Readと、cat／Get-Content等の明示的なファイル読み取りコマンドを対象にする。検索で見つかっただけ、失敗した読み取り、単なるパスへの言及は参照に数えない。Results 詳細は常時適用したSkillを「適用 Skills」に表示し、実際に参照したUser Agent Skillがあれば次の行に「参照: <names>」と表示する。
+
+CustomizeではUser Agent Skillに「必要時に読み込み」を表示する。この境界はprompt contentだけに適用し、Skill本文をcodeとして実行／evalせず、provider、model、sandbox、runtime configを変更する権限を与えない。
 
 ### Skill の作成と編集
 
@@ -133,7 +146,7 @@ Results skillは終了済みTaskと確定済みChange Setを入力に、一つ�
 
 Skill HTMLへApplication内部のTask ID、Taskタイトル、状態、完了時刻、集計diffstatを表示しない。これらはApplicationがSkill HTML外の固定ヘッダーへ表示する。
 
-有効でshadowされていないResults skillも生成開始時に毎回読み直し、同じ区切り・rank順・文字数上限でAI Resultsのpromptへ成果文書の追加ガイダンスとして加える。静的な`builtin.results` templateはUser Skillを解釈しないため、AI生成からtemplateへfallbackした場合はこの追加ガイダンスを反映しない。
+有効でshadowされていないResults skillも生成開始時に毎回読み直し、scopeにかかわらず本文を同じ区切り・rank順・文字数上限（1 Skill 8,000文字、合計24,000文字）でAI Resultsのpromptへ成果文書の追加ガイダンスとして加える。静的な`builtin.results` templateはUser Skillを解釈しないため、AI生成からtemplateへfallbackした場合はこの追加ガイダンスを反映しない。
 
 Results Skillは、期待する成果文書を検証可能な必須条件としてfrontmatterのtop-level `assertions:`、または`metadata.poiesis.assertions:`へ宣言できる。値は`- `で始まる1行文字列（引用符付きも可）とし、1 Skillあたり最大12件、1件160文字までとする。上限を超える項目はwarningを表示して無視する。Agent Skillに宣言されたassertionsはwarningを表示してすべて無視する。
 
@@ -152,7 +165,7 @@ ApplicationはAI成果文書を正規化した後、Skill assertionsとは別に
 - 本文に`h2`〜`h4`の見出しが1件以上ある。
 - 空の見出しがない。
 
-Skill assertionsは、HTMLの見出しを`## `、表をヘッダー・区切り行・データ行のあるパイプ表、リスト項目を`- `、コードブロックをコードフェンスで示した最大60,000文字のテキスト、assertions一覧、Change Set summaryを、選択中のResults AIへ1回のread-only判定として渡す。表はヘッダーと最大50データ行・12列、セル本文は前後の空白を除いた最大500文字とし、省略がある場合は明記する。各条件はpass／failと短いevidenceで保存する。応答が不正または判定を開始できない場合はunknownとして記録し、その理由だけで成果文書を失敗扱いにしない。
+Skill assertionsは、HTMLの見出しを`## `、表をヘッダー・区切り行・データ行のあるパイプ表、リスト項目を`- `、コードブロックをコードフェンスで示した最大60,000文字のテキスト、assertions一覧、Change Set summaryを、選択中の判定 AIへ1回のtool-less判定として渡す（既定は「Results の AI と同じ」）。表はヘッダーと最大50データ行・12列、セル本文は前後の空白を除いた最大500文字とし、省略がある場合は明記する。各条件はpass／failと短いevidenceで保存する。応答が不正または判定を開始できない場合はunknownとして記録し、その理由だけで成果文書を失敗扱いにしない。
 
 ApplicationまたはSkillの条件にfailが1件でもあれば、不合格条件をResults prompt末尾へ追加してAI生成を1回だけ再試行し、再度検証する。失敗件数が少ない文書を採用し、同数なら2回目を採用する。再試行は最大1回で、キャンセルは生成と判定の両方へ引き続き適用する。template／fallback文書にはassertionsを付けない。
 
@@ -196,7 +209,7 @@ Customizeは組み込みbundleを説明し、WorkspaceのUser Skillを走査・s
 
 ## Boundary rules
 
-- runtime設定が選ぶのは、Agent／Resultsの各roleを支えるAI providerだけである。
+- runtime設定が選ぶのは、Agent／Results／判定の各roleを支えるAI providerだけである。
 - orchestration、delegation、作業手順はAgent skillが所有する。
 - Results本文の見出し構成、語り口、言語、図解、動作確認手順の粒度はResults skillが所有する。
 - Taskタイトル、状態、JST完了時刻、変更ファイル数と追加／削除行数はApplicationがSkill HTML外の固定ヘッダーとして所有する。
