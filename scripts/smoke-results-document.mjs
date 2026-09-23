@@ -777,6 +777,8 @@ async function smokeFallback(page, diagnostics) {
                 generator: 'ai',
                 providerId: 'codex',
                 fallbackReason: undefined,
+                calls: undefined,
+                durationMs: undefined,
                 html: fixture.html,
                 assertions: Array.from({ length: 7 }, (_, index) => ({
                     text: `Dense header assertion ${index + 1}`,

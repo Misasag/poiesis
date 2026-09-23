@@ -17,7 +17,7 @@ export interface HookRun {
 }
 export interface HookEvidence {
     hookId: string; runId: string; notes?: string; incomplete?: boolean;
-    evidence: { label: string; status: 'pass' | 'fail' | 'unknown'; detail: string }[];
+    evidence: { label: string; status: 'pass' | 'fail' | 'unknown'; detail: string; image?: string }[];
 }
 export interface HookInput {
     schemaVersion: 1; event: HookEvent; workspace: string;

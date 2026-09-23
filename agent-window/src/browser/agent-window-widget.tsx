@@ -48,6 +48,7 @@ import { FolderExplorerService } from './folder-explorer-service';
 import { ResultsQuestionService } from './results-question-service';
 import { GlobalStorageService } from './global-storage-service';
 import { ResultsGenerationContext } from './results-generation-context';
+import { ResultsGenerationServer } from '../common/results-generation-protocol';
 import { SkillBundleKind } from '../common/skill-bundle';
 import {
     collectWorkspaceRichContentReferences,
@@ -99,6 +100,7 @@ import { ThemePreferenceService } from './theme-preference-service';
 
 @injectable()
 export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
+    @inject(ResultsGenerationServer) public readonly resultsGenerationServer!: ResultsGenerationServer;
     protected settingsPart!: SettingsPart;
     protected customizePart!: CustomizePart;
     protected codePart!: CodePart;

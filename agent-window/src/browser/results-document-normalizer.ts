@@ -42,7 +42,10 @@ export function normalizeAiResultsHtml(
     if (html.length > AI_RESULTS_HTML_MAX_CHARS) {
         throw new Error(`AI Results HTML exceeded ${AI_RESULTS_HTML_MAX_CHARS} characters.`);
     }
-    if (/<script\b|<link\b|\son\w+\s*=|(?:src|href)\s*=\s*["']\s*(?:https?:)?\/\/|url\(\s*["']?\s*(?:https?:)?\/\//i.test(html)) {
+    // Media has its own DOM sanitizer and resolution assertions; rejected images
+    // become diagnostics rather than discarding an otherwise useful document.
+    const nonMedia = html.replace(/<svg\b[^>]*>[\s\S]*?<\/svg\s*>/gi, '').replace(/<img\b[^>]*>/gi, '');
+    if (/<script\b|<link\b|\son\w+\s*=|(?:src|href)\s*=\s*["']\s*(?:https?:)?\/\/|url\(\s*["']?\s*(?:https?:)?\/\//i.test(nonMedia)) {
         throw new Error('AI Results HTML contained scripts or external resources.');
     }
 

@@ -22,6 +22,7 @@ import { AgentRuntimeServer } from '../common/agent-runtime-protocol';
 import { ResultsGenerationContext } from './results-generation-context';
 import { WorkspaceSkillService } from './workspace-skill-service';
 import { formatExecutionEvidence, normalizeAiResultsHtml } from './results-document-normalizer';
+import { prepareResultsContent } from './results-rich-content';
 import { Requirement } from './requirement-model';
 import { RequirementService } from './requirement-service';
 import { RequirementClassificationService } from './requirement-classification-service';
@@ -409,6 +410,13 @@ export class AiResultsSkill implements ResultsSkill {
             attempt: request.attempt ?? 1, startedAt: new Date().toISOString() });
         const html = this.normalizeAndValidate(output, input.requirement?.title ?? input.task.title);
         const appAssertions = checkAppResultsAssertions(html, input.changeSet.files);
+        if (/<(?:img|svg)[\s>]/i.test(html)) {
+            const media = await prepareResultsContent(html, request.workspaceUri,
+                (workspace, paths) => this.generationServer.resolveImages(workspace, paths));
+            appAssertions.push(...media.assertions);
+            for (const note of media.diagnostics) { console.warn(`[Poiesis][Results diagnostics] ${note}`); }
+            this.throwIfCancelled(request.taskId);
+        }
         let skillAssertions: ResultsAssertionResult[] = [];
         if (definitions.length > 0) {
             try {

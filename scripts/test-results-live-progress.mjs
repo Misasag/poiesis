@@ -72,6 +72,11 @@ try {
         host.sessions = new SessionStore(host);
         host.sessions.persistWindowState = async () => {};
         const view = new ResultsPart(host);
+        // This Node fixture measures lifecycle rendering, not browser DOM parsing.
+        // The real sanitizer and media pipeline run in test:results-rich-content
+        // and smoke:electron with a complete browser DOM.
+        view.ensureRichResults = html => { view.richContent = { html, images: new Map(), diagnostics: [] }; };
+        view.resultsDocumentHtml = html => html;
         let open = opened === 'before-task-end';
         let ui;
         const observed = [];

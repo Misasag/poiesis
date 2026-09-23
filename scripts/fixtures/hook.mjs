@@ -12,6 +12,6 @@ if (mode === 'timeout') {
 else if (mode === 'exit') process.exitCode = 7;
 else if (mode === 'empty') { /* Valid empty output. */ }
 else if (mode === 'block') process.stdout.write(JSON.stringify({ block: { reason: '確認してください。' } }));
-else if (mode === 'evidence') process.stdout.write(JSON.stringify({ notes: 'Fixture verification', evidence: [{ label: 'fixture', status: 'pass', detail: input.taskId }] }));
+else if (mode === 'evidence') process.stdout.write(JSON.stringify({ notes: 'Fixture verification', evidence: [{ label: 'fixture', status: 'pass', detail: input.taskId, image: 'evidence/after.png' }] }));
 else if (mode === 'material') process.stdout.write(JSON.stringify({ material: 'Fixture Results material' }));
 else process.stdout.write(JSON.stringify({ additionalContext: `HOOK_FIXTURE_CONTEXT ${input.event} ${process.argv[3] ?? ''}` }));
