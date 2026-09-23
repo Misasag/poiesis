@@ -16,19 +16,23 @@ assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'claude', model: 'sonn
     '--disable-slash-commands', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'
 ]);
 assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'codex', model: 'gpt-5', skipGitRepositoryCheck: true }), [
-    'exec', '-m', 'gpt-5', '--skip-git-repo-check', '--json', '--color', 'never',
+    'exec', '-m', 'gpt-5', '-c', 'sandbox_workspace_write.network_access=false', '--skip-git-repo-check', '--json', '--color', 'never',
     '--sandbox', 'workspace-write', '-C', 'C:\\work', '-'
 ]);
 assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'codex', model: 'gpt-5', effort: 'xhigh', skipGitRepositoryCheck: true }), [
-    'exec', '-m', 'gpt-5', '-c', 'model_reasoning_effort=xhigh', '--skip-git-repo-check', '--json', '--color', 'never',
+    'exec', '-m', 'gpt-5', '-c', 'model_reasoning_effort=xhigh', '-c', 'sandbox_workspace_write.network_access=false', '--skip-git-repo-check', '--json', '--color', 'never',
     '--sandbox', 'workspace-write', '-C', 'C:\\work', '-'
 ]);
 assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'codex', model: 'gpt-6-astra', effort: 'max' }), [
-    'exec', '-m', 'gpt-6-astra', '-c', 'model_reasoning_effort=max', '--json', '--color', 'never',
+    'exec', '-m', 'gpt-6-astra', '-c', 'model_reasoning_effort=max', '-c', 'sandbox_workspace_write.network_access=false', '--json', '--color', 'never',
     '--sandbox', 'workspace-write', '-C', 'C:\\work', '-'
 ]);
 assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'codex', model: 'gpt-6-astra', effort: 'ultra' }), [
-    'exec', '-m', 'gpt-6-astra', '-c', 'model_reasoning_effort=ultra', '--json', '--color', 'never',
+    'exec', '-m', 'gpt-6-astra', '-c', 'model_reasoning_effort=ultra', '-c', 'sandbox_workspace_write.network_access=false', '--json', '--color', 'never',
+    '--sandbox', 'workspace-write', '-C', 'C:\\work', '-'
+]);
+assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'codex', model: 'gpt-6-luna', allowCodexAgentNetworkAccess: true }), [
+    'exec', '-m', 'gpt-6-luna', '-c', 'sandbox_workspace_write.network_access=true', '--json', '--color', 'never',
     '--sandbox', 'workspace-write', '-C', 'C:\\work', '-'
 ]);
 assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'grok', model: 'grok-4' }), [
@@ -62,6 +66,8 @@ assert.deepEqual(oneShotCliArgs({ ...oneShotBase, providerId: 'claude', model: '
 assert.deepEqual(oneShotCliArgs({ ...oneShotBase, providerId: 'codex', model: 'gpt-5', skipGitRepositoryCheck: true }), [
     'exec', '-m', 'gpt-5', '--skip-git-repo-check', '--json', '--sandbox', 'read-only', '-C', 'C:\\work', '-'
 ]);
+assert(!oneShotCliArgs({ ...oneShotBase, providerId: 'codex', allowCodexAgentNetworkAccess: true })
+    .some(argument => argument.includes('sandbox_workspace_write.network_access')));
 assert.deepEqual(oneShotCliArgs({ ...oneShotBase, providerId: 'codex', model: 'gpt-5', effort: 'minimal', skipGitRepositoryCheck: true }), [
     'exec', '-m', 'gpt-5', '-c', 'model_reasoning_effort=minimal', '--skip-git-repo-check', '--json', '--sandbox', 'read-only', '-C', 'C:\\work', '-'
 ]);

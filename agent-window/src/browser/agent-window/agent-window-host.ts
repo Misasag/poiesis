@@ -57,6 +57,7 @@ export interface AgentWindowState {
     judgeEffort: string;
     effortByModel: Record<AiRole, Record<string, string>>;
     allowExternalResultsResources: boolean;
+    allowCodexAgentNetworkAccess: boolean;
     automaticRequirementClassification: boolean;
     cliDetectionPhase: CliDetectionPhase;
     cliDetectionReport?: CliDetectionReport;

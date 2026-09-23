@@ -1243,6 +1243,7 @@ export class AgentPart extends AgentWindowPart {
                 requirementId,
                 requirementChoice,
                 workspaceUri: session.workspaceUri,
+                allowCodexAgentNetworkAccess: this.host.state.allowCodexAgentNetworkAccess,
                 conversation
             });
         } catch (error) {

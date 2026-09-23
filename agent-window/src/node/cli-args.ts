@@ -8,6 +8,7 @@ export interface AgentCliArgsInput {
     prompt: string;
     promptFile?: string;
     skipGitRepositoryCheck?: boolean;
+    allowCodexAgentNetworkAccess?: boolean;
 }
 
 export interface OneShotCliArgsInput {
@@ -75,6 +76,7 @@ function buildAgentCliArgs(input: AgentCliArgsInput): string[] {
             'exec',
             ...(model ? ['-m', model] : []),
             ...effort,
+            '-c', `sandbox_workspace_write.network_access=${input.allowCodexAgentNetworkAccess === true}`,
             ...(input.skipGitRepositoryCheck ? ['--skip-git-repo-check'] : []),
             '--json',
             '--color', 'never',

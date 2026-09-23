@@ -578,7 +578,12 @@ try {
     const codeSearchQuery = ['Source contract', 'validation passed.'].join(' ');
     await page.type('#search-input-field', codeSearchQuery);
     await page.keyboard.press('Enter');
-    await page.waitForFunction(() => document.querySelector('#search-in-workspace .search-info')?.textContent?.includes('2 results in 2 files'));
+    await page.waitForFunction(() => {
+        const info = document.querySelector('#search-in-workspace .search-info')?.textContent ?? '';
+        const fileCount = Number(info.match(/\d+ results? in (\d+) files?/)?.[1] ?? 0);
+        const results = document.querySelector('#search-in-workspace')?.textContent ?? '';
+        return fileCount >= 2 && results.includes('spikes') && results.includes('scripts');
+    });
     await page.$eval('.poiesis-agent-window__code-sidebar-actions button[aria-label="検索結果をクリア"]', element => element.click());
     await page.waitForFunction(() => document.querySelector('#search-input-field')?.value === ''
         && document.querySelectorAll('#search-in-workspace .theia-TreeNode').length === 0);

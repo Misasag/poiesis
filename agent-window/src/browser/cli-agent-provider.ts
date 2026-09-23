@@ -172,6 +172,7 @@ export class CliAgentProvider implements AgentProvider {
                 model: session.model,
                 effort: session.effort,
                 workspacePath: session.workspacePath,
+                allowCodexAgentNetworkAccess: message.allowCodexAgentNetworkAccess,
                 prompt: buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)
             });
             if (this.runs.get(sessionId) === run && run.state === 'starting') {
