@@ -140,6 +140,14 @@ CustomizeではUser Agent Skillに「必要時に読み込み」を表示する�
 
 ### Results skill
 
+`builtin.ai-results`は冒頭で変更内容と検証済みかどうかを3〜5行で答える。流れ・構造・状態の変更には12ノード以下の箱と矢印のインラインSVGを使う。提供された入力に実在する画像パスだけを参照し、画像を創作しない。変更前後のスクリーンショットが提供されていれば「変更前」「変更後」とラベルを付ける。コマンド・ログ・差分・依頼全文は`<details><summary>`へ畳み、根拠引用を維持する。Workspace Results skillはこの既定の構成・語り口へ追加ガイダンスを与える。
+
+画像は`<img src="rel/path.png">`または`<img data-poiesis-image="rel/path.png">`で参照する。AppはWorkspace内の実ファイル（symlinkの参照先も検査）のみ読み込み、PNG/JPEG/WebP/GIF/SVGの内容・表示可否を検証してdata URLへ埋め込む。上限は1枚2 MiB、文書全体8 MiB、40件（Hook証拠画像を含む）。外部URL、絶対パス、範囲外、形式不一致、破損、上限超過は省略し診断を表示する。SVGファイルはサニタイズして画像としてのみ表示する。文書内と詳細パネルの画像は共通のApp所有ビューアで拡大でき、Escで閉じる。
+
+インラインSVGはスクリプト・foreignObject・外部href・アニメーションを除去する。Mermaid runtimeは使わない。図の色は`--results-bg`、`--results-fg`、`--results-muted`、`--results-border`、`--results-accent`を使用し、明暗テーマへ追従する。`details/summary`はキーボード・フォーカス・印刷に対応する共通スタイルを持つ。
+
+Hooks契約の`taskEnd`出力`evidence[]`に任意の`image?: string`を追加する。例: `{ "label": "変更後の画面", "status": "pass", "detail": "画面を確認", "image": "evidence/after.png" }`。最大1024文字のWorkspace相対パスを保存・Results入力へ伝達し、表示時は本文画像と同じ検証・容量制限を適用する。画像の存在はHookの合格主張そのものを証明しない。
+
 Results skillは終了済みTaskと確定済みChange Setを入力に、一つの完成HTML本文を生成する。本文の見出し構成、語り口、言語、図解、動作確認手順の粒度はResults skillが所有する。`builtin.ai-results`は既定で番号付きの動作確認手順を求め、有効なWorkspace Results skillは従来どおり追加ガイダンスとして後から本文構成を上書きできる。Agent会話の途中では起動せず、不完全なHTML断片をcanvasへstreamしない。Results内の質問応答は文書生成とは別のResults AI境界であり、Skill HTMLを変更しない。
 
 根拠コードを示す引用はWorkspace相対の`file:line`または`file:start-end`とし、`<a href="#" data-poiesis-citation="file:start-end">…</a>`でクリック可能にする。Applicationはsandboxed canvasからの引用操作だけを受け取り、Workspace内に実在するファイルを検証してからCodeモードのEditorで該当行を開く。旧文書や契約に従わないAI出力のため、`cite`／`code`／`a`内のプレーンな`file:line[-range]`も互換入力として扱える。
@@ -164,6 +172,8 @@ ApplicationはAI成果文書を正規化した後、Skill assertionsとは別に
 - Change Setに変更ファイルがある場合、本文に`data-poiesis-citation`が1件以上ある。
 - 本文に`h2`〜`h4`の見出しが1件以上ある。
 - 空の見出しがない。
+- 画像がある場合、すべての参照先が解決し、画像として表示できる。
+- SVGがある場合、安全でない内容が含まれない。除去が必要だった候補は不合格として再生成の対象にする。画像や図のない文書には追加を強制しない。
 
 Skill assertionsは、HTMLの見出しを`## `、表をヘッダー・区切り行・データ行のあるパイプ表、リスト項目を`- `、コードブロックをコードフェンスで示した最大60,000文字のテキスト、assertions一覧、Change Set summaryを、選択中の判定 AIへ1回のtool-less判定として渡す（既定は「Results の AI と同じ」）。表はヘッダーと最大50データ行・12列、セル本文は前後の空白を除いた最大500文字とし、省略がある場合は明記する。各条件はpass／failと短いevidenceで保存する。応答が不正または判定を開始できない場合はunknownとして記録し、その理由だけで成果文書を失敗扱いにしない。
 

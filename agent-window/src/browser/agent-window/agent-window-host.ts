@@ -21,6 +21,7 @@ import type { GlobalStorageService } from '../global-storage-service';
 import type { RequirementClassificationService } from '../requirement-classification-service';
 import type { RequirementService } from '../requirement-service';
 import type { ResultsGenerationContext } from '../results-generation-context';
+import type { ResultsGenerationServer } from '../../common/results-generation-protocol';
 import type { ResultsQuestionService } from '../results-question-service';
 import type { ResultsService } from '../results-skill';
 import type { ExecutionTask, TaskService } from '../task-service';
@@ -122,6 +123,7 @@ export interface AgentWindowHost {
     readonly agentRuntimeServer: AgentRuntimeServer;
     readonly resultsQuestionService: ResultsQuestionService;
     readonly resultsGenerationContext: ResultsGenerationContext;
+    readonly resultsGenerationServer: ResultsGenerationServer;
     readonly workspaceSkillService: WorkspaceSkillService;
     readonly messageService: MessageService;
     readonly taskReviewResourceResolver: TaskReviewResourceResolver;

@@ -1,4 +1,5 @@
 import type { CliCallRecord } from './cli-usage';
+import type { ResultsImageResolution } from './results-images';
 import { KnownCliId } from './agent-runtime-protocol';
 
 export const ResultsGenerationServer = Symbol('ResultsGenerationServer');
@@ -72,6 +73,7 @@ export type ResultsGenerationResult = (
 
 /** One complete-document RPC. taskId is also the cancellation key. */
 export interface ResultsGenerationServer {
+    resolveImages(workspaceUri: string, paths: string[]): Promise<ResultsImageResolution>;
     generate(request: ResultsGenerationRequest): Promise<ResultsGenerationResult>;
     cancel(taskId: string): Promise<void>;
 }

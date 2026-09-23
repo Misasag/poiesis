@@ -1,4 +1,5 @@
 import { CliUsageLine } from '../components/cli-usage';
+import { PreparedResults, prepareResultsContent, RESULTS_RICH_STYLE, sanitizeResultsHtml } from '../results-rich-content';
 import { cliModelLabel, formatCliDuration } from '../cli-usage-display';
 import { sumCliUsage } from '../../common/cli-usage';
 import * as React from '@theia/core/shared/react';
@@ -78,8 +79,9 @@ import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSe
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
 
 interface ResultsFrameMessage {
-    type: 'poiesis:open-citation' | 'poiesis:retry-ai-results';
+    type: 'poiesis:open-citation' | 'poiesis:retry-ai-results' | 'poiesis:open-image';
     citation?: string;
+    path?: string;
 }
 
 interface ResultsMetadataBadge {
@@ -88,6 +90,9 @@ interface ResultsMetadataBadge {
 }
 
 export class ResultsPart extends AgentWindowPart {
+    protected richSignature = '';
+    protected richContent?: PreparedResults;
+    protected imageViewer?: { source: string; label: string; trigger?: HTMLElement };
     protected readonly resultsSkillNames = new Map<string, string>();
 
     protected resultsSkillNamesWorkspaceUri?: string;
@@ -136,6 +141,9 @@ export class ResultsPart extends AgentWindowPart {
         const selectedTitle = selectedTask?.title ?? selectedRequirement?.title;
         const questionCount = questionHistory.length + (questionSending ? 1 : 0);
         const auxiliaryPanel = this.resultsAuxiliaryScopeKey === scopeKey ? this.resultsAuxiliaryPanel : undefined;
+        const evidencePaths = (selectedTask ? [selectedTask] : selectedRequirement?.taskIds.map(id => this.taskService.get(id)) ?? [])
+            .flatMap(task => task?.hookEvidence ?? []).flatMap(item => item.evidence).flatMap(entry => entry.image ? [entry.image] : []);
+        this.ensureRichResults(document?.html ?? '', selectedTask?.workspaceUri ?? latestTask?.workspaceUri ?? '', evidencePaths, scopeKey);
 
         return (
             <section
@@ -219,17 +227,23 @@ export class ResultsPart extends AgentWindowPart {
                                     : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>}
                             </div>
                         )}
-                        {selectedRequirement && document?.html && (document.status === 'ready' || document.status === 'generating') && (
+                        {selectedRequirement && document?.html && !this.richContent && <p role='status'>成果を読み込んでいます…</p>}
+                        {selectedRequirement && document?.html && this.richContent && (document.status === 'ready' || document.status === 'generating') && (
                             <iframe
                                 key={`${scopeKey}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}
                                 className='poiesis-results__document'
                                 title={`${selectedTitle}の成果`}
                                 sandbox='allow-scripts'
-                                srcDoc={this.resultsDocumentHtml(document.html)}
+                                srcDoc={this.resultsDocumentHtml(this.richContent.html)}
                             />
                         )}
                     </div>
                 </div>
+                {this.richContent?.diagnostics.length ? <details className='poiesis-results__media-diagnostics'>
+                    <summary>画像・図の確認: {this.richContent.diagnostics.length}件</summary>
+                    <ul>{this.richContent.diagnostics.map((note, index) => <li key={index}>{note}</li>)}</ul>
+                </details> : null}
+                {this.renderImageViewer()}
                 {auxiliaryPanel === 'navigator' && this.renderResultsNavigator(
                     requirements,
                     selectedRequirement,
@@ -248,6 +262,55 @@ export class ResultsPart extends AgentWindowPart {
                 )}
             </section>
         );
+    }
+
+    protected ensureRichResults(html: string, workspace: string, paths: string[], scope?: string): void {
+        const signature = JSON.stringify([scope, workspace, html, paths]);
+        if (signature === this.richSignature) { return; }
+        this.richSignature = signature;
+        this.richContent = undefined;
+        this.imageViewer = undefined;
+        if (!/<(?:img|svg)[\s>]/i.test(html) && !paths.length) {
+            this.richContent = { html: sanitizeResultsHtml(html), images: new Map(), diagnostics: [], assertions: [] };
+            return;
+        }
+        void prepareResultsContent(html, workspace,
+            (root, images) => this.host.resultsGenerationServer.resolveImages(root, images), paths).then(content => {
+            if (this.richSignature !== signature || this.host.isDisposed) { return; }
+            this.richContent = content;
+            for (const note of content.diagnostics) { console.warn(`[Poiesis][Results diagnostics] ${note}`); }
+            this.update();
+        }).catch(() => {
+            if (this.richSignature !== signature) { return; }
+            this.richContent = { html: '<html><body><p>成果を表示できませんでした。</p></body></html>', images: new Map(),
+                diagnostics: ['画像・図を確認できませんでした。'], assertions: [] };
+            this.update();
+        });
+    }
+
+    protected openImage(path: string, trigger?: HTMLElement): void {
+        const source = this.richContent?.images.get(path);
+        if (!source) { return; }
+        this.imageViewer = { source, label: path, trigger };
+        this.update();
+    }
+
+    protected closeImage(): void {
+        const trigger = this.imageViewer?.trigger;
+        this.imageViewer = undefined;
+        this.update();
+        requestAnimationFrame(() => trigger?.focus());
+    }
+
+    protected renderImageViewer(): React.ReactNode {
+        const image = this.imageViewer;
+        if (!image) { return null; }
+        return <div className='poiesis-results__image-viewer' role='dialog' aria-modal='true' aria-label='画像の拡大表示'
+            onKeyDown={event => this.handleResultsAuxiliaryKeyDown(event, () => this.closeImage())}
+            onClick={event => { if (event.target === event.currentTarget) { this.closeImage(); } }}>
+            <figure><button type='button' aria-label='画像を閉じる' ref={button => button?.focus()} onClick={() => this.closeImage()}>閉じる</button>
+                <img src={image.source} alt={image.label} /><figcaption>{image.label}</figcaption></figure>
+        </div>;
     }
 
     protected renderResultsNavigator(
@@ -707,6 +770,10 @@ export class ResultsPart extends AgentWindowPart {
                         {item.notes && <p>{item.notes}</p>}
                         {item.evidence.map((entry, evidenceIndex) => <p key={evidenceIndex}>
                             {entry.label}: {entry.status === 'pass' ? '合格' : entry.status === 'fail' ? '不合格' : '未確認'} · {entry.detail}
+                            {entry.image && this.richContent?.images.has(entry.image) && <button type='button' className='poiesis-results__evidence-image'
+                                aria-label={`${entry.label}の画像を拡大`} onClick={event => this.openImage(entry.image!, event.currentTarget)}>
+                                <img src={this.richContent.images.get(entry.image)} alt={entry.label} />
+                            </button>}
                         </p>)}
                     </div>)}
                 </div>
@@ -1042,14 +1109,13 @@ export class ResultsPart extends AgentWindowPart {
     }
 
     protected resultsDocumentHtml(html: string): string {
-        const sanitized = html
-            .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
-            .replace(/<script\b[^>]*\/\s*>/gi, '')
-            .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+        const sanitized = sanitizeResultsHtml(html).replace(/<html\b[^>]*>/i,
+            `<html data-theme="${this.host.themePreferenceService.effectiveMode}">`);
         const policy = this.host.state.allowExternalResultsResources
             ? ''
             : `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">`;
         const baseStyle = `<style data-poiesis-base>
+${RESULTS_RICH_STYLE}
 * { box-sizing: border-box; }
 html, body { font-family: ${POIESIS_FONT_SANS}; font-size: 16px; }
 body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }
@@ -1070,9 +1136,20 @@ img, svg, figure { max-width: 100%; }
         const bridge = `<script data-poiesis-results-bridge="v1">
 (function () {
   function send(message) { window.parent.postMessage(message, '*'); }
+  function openImage(target, event) {
+    var image = target && target.closest('img[data-poiesis-image]');
+    if (!image) return false;
+    event.preventDefault();
+    send({ type: 'poiesis:open-image', path: image.getAttribute('data-poiesis-image') });
+    return true;
+  }
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' || event.key === ' ') openImage(event.target, event);
+  });
   document.addEventListener('click', function (event) {
     var target = event.target instanceof Element ? event.target : null;
     if (!target) return;
+    if (openImage(target, event)) return;
     var action = target.closest('[data-poiesis-action="retry-ai-results"]');
     if (action) {
       event.preventDefault();
@@ -1109,6 +1186,10 @@ img, svg, figure { max-width: 100%; }
             return;
         }
         const message = event.data as Partial<ResultsFrameMessage>;
+        if (message.type === 'poiesis:open-image' && typeof message.path === 'string') {
+            this.openImage(message.path, frame);
+            return;
+        }
         if (message.type === 'poiesis:retry-ai-results') {
             const session = this.host.sessions.selectedSession();
             if (session?.selectedResultsTaskId) {

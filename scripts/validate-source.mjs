@@ -1505,7 +1505,7 @@ for (const marker of [
     'data-result-title={title}',
     'formatTaskEndedAtJst(task.endedAt)',
     'summarizeTaskChangeSet(task.changeSet)',
-    "srcDoc={this.resultsDocumentHtml(document.html)}",
+    'srcDoc={this.resultsDocumentHtml(this.richContent.html)}',
     '<PoiesisResultsElapsed key={scopeKey} progress={document?.progress} generationStartedAt={document?.generationStartedAt} />',
     "label: `AI · ${provider}${suffix}`",
     "accessibleLabel: `AI 生成 · ${details.join(' · ')}`",
@@ -2858,4 +2858,16 @@ for (const marker of [
 
 // Hooks context intentionally precedes conversation history; exercised by test:hooks.
 assert.ok(cliProvider.includes("hookContext([submittedHooks, startedHooks,"));
+// Results now resolves workspace images before creating srcdoc. Its safety
+// boundary and the real Electron viewer replace the former raw-HTML pin.
+const richResults = await read('agent-window/src/browser/results-rich-content.ts');
+const resultsImages = await read('agent-window/src/node/results-images.ts');
+for (const marker of ['DOMPurify.sanitize', 'foreignObject', 'RESULTS_IMAGES_MAX_BYTES', 'decodesImage', 'summary:focus-visible', '@media print']) {
+    assert.ok(richResults.includes(marker), `Rich Results boundary is missing ${marker}`);
+}
+for (const marker of ['realpath', 'RESULTS_IMAGE_MAX_BYTES', 'RESULTS_IMAGES_MAX_BYTES', 'file.stat()', 'data:${mime};base64,']) {
+    assert.ok(resultsImages.includes(marker), `Workspace image validation is missing ${marker}`);
+}
+assert.ok(rootPackage.scripts['test:results-rich-content'].includes('scripts/test-results-rich-content.mjs'));
+assert.ok(rootPackage.scripts['smoke:electron'].includes('scripts/smoke-results-rich-electron.mjs'));
 console.log('Source contract validation passed.');

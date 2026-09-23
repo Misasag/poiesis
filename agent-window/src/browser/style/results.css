@@ -1661,3 +1661,14 @@
     from { opacity: 0; transform: translateX(10px); }
     to { opacity: 1; transform: translateX(0); }
 }
+.poiesis-results__image-viewer {
+    position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center;
+    justify-content: center; background: rgba(0, 0, 0, .82); padding: 24px;
+}
+.poiesis-results__image-viewer figure { margin: 0; display: flex; flex-direction: column; gap: 12px; max-width: 100%; color: #fff; }
+.poiesis-results__image-viewer img { max-width: 94vw; max-height: 80vh; object-fit: contain; }
+.poiesis-results__image-viewer button { align-self: flex-end; padding: 8px 16px; cursor: pointer; }
+.poiesis-results__image-viewer figcaption { overflow-wrap: anywhere; }
+.poiesis-results__evidence-image { display: block; padding: 4px; cursor: zoom-in; background: transparent; border: 1px solid var(--theia-panel-border); }
+.poiesis-results__evidence-image img { display: block; max-width: 180px; max-height: 110px; object-fit: contain; }
+.poiesis-results__media-diagnostics { margin: 4px 16px; font-size: 12px; }

@@ -111,6 +111,7 @@ try {
     const saved = JSON.parse(JSON.stringify(tasksForDurableSession(tasks.list())));
     const restored = new TaskService(runtime, { tryGetRoots: () => [] }, storage, storage, server).restore(saved)[0];
     assert.equal(restored.hookEvidence[0].evidence[0].detail, taskId);
+    assert.equal(restored.hookEvidence[0].evidence[0].image, 'evidence/after.png');
     assert.equal(restored.hookRuns.length, 4);
     assert.equal(restored.changeSet.files[0], 'a');
     await config(home, { taskStart: [definition('stop-before-spawn', 'exit', 'required')], taskEnd: [definition('unfinished', 'exit', 'required')] });
