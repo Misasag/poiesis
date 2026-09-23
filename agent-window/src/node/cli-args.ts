@@ -1,4 +1,4 @@
-import { CLI_EFFORT_LEVELS, KnownCliId } from '../common/agent-runtime-protocol';
+import { CLI_DISPLAY_NAMES, CLI_EFFORT_LEVELS, KnownCliId } from '../common/agent-runtime-protocol';
 
 export interface AgentCliArgsInput {
     providerId: KnownCliId;
@@ -6,6 +6,7 @@ export interface AgentCliArgsInput {
     effort?: string;
     workspace: string;
     prompt: string;
+    promptFile?: string;
     skipGitRepositoryCheck?: boolean;
 }
 
@@ -20,17 +21,29 @@ export interface OneShotCliArgsInput {
     skipGitRepositoryCheck?: boolean;
 }
 
+export function assertBoundedCliArgs(args: readonly string[]): void {
+    if (args.some(argument => argument.length > 1_000)) {
+        throw new Error('AIの起動設定が長すぎます。設定を短くしてください。');
+    }
+}
+
 export function agentCliArgs(input: AgentCliArgsInput): string[] {
+    const args = buildAgentCliArgs(input);
+    assertBoundedCliArgs(args);
+    return args;
+}
+
+function buildAgentCliArgs(input: AgentCliArgsInput): string[] {
     const model = input.model?.trim();
     const effort = effortArgs(input.providerId, input.effort);
     if (input.providerId === 'claude') {
         return [
-            '-p', input.prompt,
+            '-p',
             ...(model ? ['--model', model] : []),
             ...effort,
             '--output-format', 'stream-json',
             '--verbose',
-            '--permission-mode', 'acceptEdits',
+            '--permission-mode', 'auto',
             '--no-session-persistence',
             '--safe-mode',
             '--disable-slash-commands',
@@ -39,8 +52,9 @@ export function agentCliArgs(input: AgentCliArgsInput): string[] {
         ];
     }
     if (input.providerId === 'grok') {
+        if (!input.promptFile) { throw new Error('Grok の依頼ファイルを準備できませんでした。'); }
         return [
-            '-p', input.prompt,
+            '--prompt-file', input.promptFile,
             '--cwd', input.workspace,
             ...(model ? ['--model', model] : []),
             ...effort,
@@ -62,22 +76,27 @@ export function agentCliArgs(input: AgentCliArgsInput): string[] {
             '--color', 'never',
             '--sandbox', 'workspace-write',
             '-C', input.workspace,
-            '--', input.prompt
+            '-'
         ];
     }
-    throw new Error('Gemini CLI execution is not supported.');
+    throw new Error('Gemini CLI の実行には対応していません。');
 }
 
 export function oneShotCliArgs(input: OneShotCliArgsInput): string[] {
+    const args = buildOneShotCliArgs(input);
+    assertBoundedCliArgs(args);
+    return args;
+}
+
+function buildOneShotCliArgs(input: OneShotCliArgsInput): string[] {
     const model = input.model?.trim();
     const effort = effortArgs(input.providerId, input.effort);
     if (input.providerId === 'claude') {
         return [
             '-p',
-            ...(!input.promptViaStdin ? [input.prompt] : []),
             ...(model ? ['--model', model] : []),
             ...effort,
-            '--output-format', 'text',
+            '--output-format', 'json',
             '--permission-mode', 'plan',
             '--tools=',
             '--no-session-persistence',
@@ -88,11 +107,11 @@ export function oneShotCliArgs(input: OneShotCliArgsInput): string[] {
         ];
     }
     if (input.providerId === 'grok') {
-        if (input.promptViaStdin && !input.promptFile) {
-            throw new Error('Grok one-shot execution requires a prompt file for stdin transport.');
+        if (!input.promptFile) {
+            throw new Error('Grok の依頼ファイルを準備できませんでした。');
         }
         return [
-            ...(input.promptFile ? ['--prompt-file', input.promptFile] : ['-p', input.prompt]),
+            '--prompt-file', input.promptFile,
             '--cwd', input.workspace,
             ...(model ? ['--model', model] : []),
             ...effort,
@@ -110,18 +129,19 @@ export function oneShotCliArgs(input: OneShotCliArgsInput): string[] {
             ...(model ? ['-m', model] : []),
             ...effort,
             ...(input.skipGitRepositoryCheck ? ['--skip-git-repo-check'] : []),
+            '--json',
             '--sandbox', 'read-only',
             '-C', input.workspace,
-            ...(input.promptViaStdin ? ['-'] : ['--', input.prompt])
+            '-'
         ];
     }
-    throw new Error('Gemini CLI execution is not supported.');
+    throw new Error('Gemini CLI の実行には対応していません。');
 }
 
 export function validateCliEffort(providerId: KnownCliId, rawEffort: string | undefined): string {
     const effort = rawEffort?.trim() ?? '';
     if (effort && !CLI_EFFORT_LEVELS[providerId].includes(effort)) {
-        throw new Error(`Unsupported effort for ${providerId}: ${JSON.stringify(effort)}.`);
+        throw new Error(`${CLI_DISPLAY_NAMES[providerId]} では選択した思考の強度を利用できません。`);
     }
     return effort;
 }
@@ -140,5 +160,5 @@ function effortArgs(providerId: KnownCliId, rawEffort: string | undefined): stri
     if (providerId === 'grok') {
         return ['--reasoning-effort', effort];
     }
-    throw new Error(`Unsupported effort for ${providerId}: ${JSON.stringify(effort)}.`);
+    throw new Error(`${CLI_DISPLAY_NAMES[providerId]} では選択した思考の強度を利用できません。`);
 }

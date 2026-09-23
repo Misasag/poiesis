@@ -31,10 +31,10 @@ const NPM_RUNTIME_ARTIFACT_ROOTS = [
     '.npm-cache/_update-notifier-last-checked'
 ] as const;
 const NPM_RUNTIME_ARTIFACT_EXCLUDES = [
-    ':(exclude).npm-cache/_npx/**',
-    ':(exclude).npm-cache/_cacache/**',
-    ':(exclude).npm-cache/_logs/**',
-    ':(exclude).npm-cache/_update-notifier-last-checked'
+    ':(top,glob,exclude)[.]npm-cache/_npx/**',
+    ':(top,glob,exclude)[.]npm-cache/_cacache/**',
+    ':(top,glob,exclude)[.]npm-cache/_logs/**',
+    ':(top,glob,exclude)[.]npm-cache/_update-notifier-last-checked'
 ] as const;
 
 interface SnapshotRepository {
@@ -560,11 +560,11 @@ export class SnapshotStore {
         const excludes = new Set<string>();
         const snapshotStorePath = await this.relativeContainedPath(workspacePath, this.rootPath);
         if (snapshotStorePath) {
-            excludes.add(`:(top,exclude,literal)${snapshotStorePath}`);
+            excludes.add(`:(top,glob,exclude)${escapeGitGlob(snapshotStorePath)}/**`);
         }
         const temporaryRootPath = await this.relativeContainedPath(workspacePath, temporaryRoot);
         if (temporaryRootPath) {
-            excludes.add(`:(top,exclude,literal)${temporaryRootPath}`);
+            excludes.add(`:(top,glob,exclude)${escapeGitGlob(temporaryRootPath)}/**`);
         }
         const temporaryDirectoryPath = await this.relativeContainedPath(workspacePath, this.temporaryDirectory);
         if (temporaryDirectoryPath) {
@@ -1035,5 +1035,9 @@ function normalizeRelativePath(candidate: string): string | undefined {
 }
 
 function escapeGitGlob(candidate: string): string {
-    return candidate.replace(/\[/g, '[[]').replace(/\*/g, '[*]').replace(/\?/g, '[?]');
+    // A literal leading directory makes Git add reject an ignored exclusion.
+    // An exact character class keeps the match anchored without traversing it explicitly.
+    const [first, ...rest] = candidate;
+    const leading = first === '!' || first === '^' ? `\\${first}` : first;
+    return `[${leading}]${rest.join('').replace(/\[/g, '[[]').replace(/\*/g, '[*]').replace(/\?/g, '[?]')}`;
 }

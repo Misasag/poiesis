@@ -92,6 +92,7 @@ export class RequirementClassificationService {
                 }
             };
             const result = await this.server.classify(scope);
+            if (result.call) { this.taskService.recordCliCall(task.id, result.call); }
             if (result.status === 'failed') {
                 console.warn('[Poiesis][Requirement classification] Classification failed.',
                     `${result.error.code}: ${result.error.message}`);
@@ -205,6 +206,7 @@ export class RequirementClassificationService {
                     changedFiles: [...task.changeSet.files]
                 };
                 const result = await this.server.suggestTitle(scope);
+                if (result.call) { this.taskService.recordCliCall(task.id, result.call); }
                 if (result.status === 'suggested') {
                     suggested = parseSuggestedRequirementTitle(result.output);
                     if (!suggested) {

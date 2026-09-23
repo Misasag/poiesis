@@ -629,3 +629,15 @@ details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
 .poiesis-customize-view.is-detail {
     overflow: hidden;
 }
+
+.poiesis-cli-usage {
+    margin-top: 6px;
+    color: var(--theia-descriptionForeground);
+    font-size: 12px;
+    line-height: 1.5;
+    font-weight: 400;
+}
+
+.poiesis-results__total-elapsed {
+    display: block;
+}

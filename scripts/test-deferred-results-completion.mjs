@@ -225,11 +225,14 @@ const message = content => ({
 
 const firstTaskId = await startTurn('最初の実装を行ってください。');
 emitAnswer(firstTaskId, '実装を完了しました。\n<!-- poiesis-outcome: result -->');
+runtimeClient.emit({ type: 'output', executionId: firstTaskId, stream: 'stdout', delta: JSON.stringify({
+    type: 'turn.completed', usage: { input_tokens: 1200, cached_input_tokens: 1000, output_tokens: 50 }
+}) + '\n' });
 runtimeClient.emit({ type: 'exit', executionId: firstTaskId, code: 0, signal: null });
 await waitFor(() => runtimeServer.operations.includes('evidence:snapshot-1'));
 await assert.rejects(
     provider.sendMessage(session.id, message('証拠取得中には開始できないターンです。')),
-    /already running/,
+    /Codex はこの会話ですでに実行中です。/,
     'The provider must retain the run until final change evidence is captured.'
 );
 assert.equal(runtimeServer.snapshotSequence, 1, 'A rejected overlapping turn must not capture a contaminating baseline.');
@@ -241,6 +244,9 @@ assert.equal(agentEvents.find(event => event.type === 'message-delta' && event.t
 assert(hasAgentEvent('message-completed', firstTaskId), 'The final Agent response must complete while Results is pending.');
 assert.equal(taskService.get(firstTaskId)?.status, 'completed');
 assert.equal(taskService.get(firstTaskId)?.outcomeKind, 'result');
+assert.equal(taskService.get(firstTaskId)?.usage.inputTokens, 1200);
+assert.equal(taskService.get(firstTaskId)?.cliCalls[0].purpose, 'agent');
+assert.equal(taskService.get(firstTaskId)?.cliCalls[0].exitCode, 0);
 assert.deepEqual(taskService.get(firstTaskId)?.changeSet?.files, ['README.md']);
 assert.equal(taskService.isFinalizing(firstTaskId), false, 'Background Results must not keep the composer in a running state.');
 const stableFirstEvidence = JSON.stringify(taskService.get(firstTaskId)?.changeSet);

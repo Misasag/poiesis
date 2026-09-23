@@ -2,10 +2,12 @@ import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync 
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve, sep } from 'node:path';
 import puppeteer from 'puppeteer-core';
+import { DURABLE_SESSION_KEY, DURABLE_REQUIREMENTS_KEY, readDurableValue, writeDurableValue, waitForDurableValue, waitForDurableWritesToSettle } from './poiesis-smoke-state.mjs';
 
 const root = process.cwd();
 const runtimeDir = resolve(root, '.electron-runtime');
 const userDataDir = resolve(runtimeDir, `user-data-${Date.now()}`);
+const theiaConfigDir = resolve(root, '.run', `smoke-electron-${Date.now()}`, 'theia-config');
 const debugPort = Number(process.env.THEIA_ELECTRON_DEBUG_PORT ?? 9334);
 const browserURL = `http://127.0.0.1:${debugPort}`;
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
@@ -58,7 +60,7 @@ const startProcess = spawn(electronExecutable, [
     cwd: resolve(root, 'electron-app'),
     env: {
         ...process.env,
-        THEIA_CONFIG_DIR: resolve(root, '.theia-config-electron'),
+        THEIA_CONFIG_DIR: theiaConfigDir,
         ...(lightweightElectron ? { POIESIS_DISABLE_CLI_DETECTION: '1' } : {})
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -97,6 +99,11 @@ try {
     await page.waitForSelector('#poiesis-window-host .poiesis-agent-window__content', { timeout: uiTimeout });
     await page.waitForSelector('.poiesis-agent-window__agent', { timeout: uiTimeout });
     await page.waitForSelector('.poiesis-agent-window__rail', { timeout: uiTimeout });
+    await page.waitForFunction(() => {
+        const preload = document.querySelector('.theia-preload');
+        return (!preload || Number.parseFloat(getComputedStyle(preload).opacity) <= 0.01)
+            && !document.querySelector('.poiesis-agent-window__content--initializing');
+    });
 
     const userAgent = await page.evaluate(() => navigator.userAgent);
     const windowTitle = await page.title();
@@ -183,13 +190,16 @@ try {
         const initialElapsed = await page.$eval('.poiesis-agent-window__message-state [role="timer"]', node => node.textContent?.trim());
         await new Promise(resolveDelay => setTimeout(resolveDelay, 1_200));
         const updatedElapsed = await page.$eval('.poiesis-agent-window__message-state [role="timer"]', node => node.textContent?.trim());
-        assert(initialElapsed?.includes('Agent を起動しています') || initialElapsed?.includes('応答を待っています'),
+        assert(initialElapsed?.includes('変更前のファイルを記録しています')
+            || initialElapsed?.includes('Agent を起動しています') || initialElapsed?.includes('応答を待っています'),
             `Initial live status is missing: ${initialElapsed}`);
         assert(updatedElapsed && updatedElapsed !== initialElapsed,
             `Elapsed feedback did not update every second: ${JSON.stringify({ initialElapsed, updatedElapsed })}`);
-        await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-activity__row').length >= 3
-            && !document.querySelector('.poiesis-agent-window__composer textarea')?.disabled);
+        await page.waitForSelector('.poiesis-agent-activity__summary');
+        await page.click('.poiesis-agent-activity__summary');
+        await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-activity__row').length >= 3);
         const runningActivityRows = await page.$$eval('.poiesis-agent-activity__row', nodes => nodes.length);
+        await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state [role="timer"]'));
         const composerEnabledAfterAgent = await page.$eval(
             '.poiesis-agent-window__composer textarea', input => !input.disabled
         );
@@ -211,7 +221,7 @@ try {
         await page.click('#poiesis-agent-tab');
         await page.waitForSelector('.poiesis-agent-activity__summary');
         const activitySummary = await page.$eval('.poiesis-agent-activity__summary', node => node.textContent?.trim() ?? '');
-        assert(activitySummary.includes('作業ログ') && activitySummary.includes('コマンド 1'),
+        assert(activitySummary.includes('作業履歴 3件') && activitySummary.includes('コマンド 1'),
             `Collapsed activity summary is incomplete: ${activitySummary}`);
         assert(await page.$('.poiesis-agent-window__diffstat-chip'), 'Changed-file diffstat chip is missing.');
         await installRound12DenseResultsFixture(page);
@@ -256,22 +266,15 @@ try {
         await page.keyboard.press('Enter');
         await page.waitForSelector('.poiesis-agent-window__message-state');
         await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state'));
-        await page.waitForFunction(() => {
-            const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-            const state = raw ? JSON.parse(raw) : undefined;
-            return state?.sessions?.[0]?.tasks?.at(-1)?.status === 'completed';
-        });
-        const noChange = await page.evaluate(() => {
-            const raw = localStorage.getItem('poiesis:global:poiesis.agent-window.sessions.global.v1');
-            const state = raw ? JSON.parse(raw) : undefined;
-            const task = state?.sessions?.[0]?.tasks?.at(-1);
-            return {
-                task,
-                conversation: [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')]
-                    .at(-1)?.querySelector('.poiesis-markdown')?.textContent?.trim() ?? ''
-            };
-        });
-        assert(noChange.task?.changeSet?.files?.length === 0 && !noChange.task?.changeSet?.diff,
+        const state = await waitForDurableValue(theiaConfigDir, DURABLE_SESSION_KEY,
+            value => value?.sessions?.[0]?.tasks?.at(-1)?.status === 'completed', uiTimeout);
+        const noChange = {
+            task: state.sessions[0].tasks.at(-1),
+            conversation: await page.evaluate(() => [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')]
+                .at(-1)?.querySelector('.poiesis-markdown')?.textContent?.trim() ?? '')
+        };
+        assert(!noChange.task?.changeSet?.error
+            && noChange.task?.changeSet?.files?.length === 0 && !noChange.task?.changeSet?.diff,
             `No-change Task captured unexpected changes: ${JSON.stringify(noChange.task?.changeSet)}`);
         assert(!noChange.task?.resultsDocument, 'No-change Task received a Results document.');
         assert(noChange.conversation === process.env.POIESIS_AGENT_TEST_REPLY,
@@ -799,80 +802,81 @@ async function clickScmAction(page, label, action) {
 }
 
 async function installRound12DenseResultsFixture(page) {
-    await page.evaluate(() => {
-        const key = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
-        const raw = localStorage.getItem(key);
-        const state = raw ? JSON.parse(raw) : undefined;
-        const session = state?.sessions?.[0];
-        const task = session?.tasks?.at(-1);
-        if (!session || !task?.resultsDocument?.html) {
-            throw new Error('Task feedback Results were unavailable for the Round 12 fixture.');
-        }
-        const title = '長い日本語の成果タイトルでも状態と生成情報と検証結果を同じヘッダーで確認できることを検証するタスク';
-        const assertions = Array.from({ length: 7 }, (_, index) => ({
-            text: `Dense header assertion ${index + 1}`,
-            source: 'app',
-            status: 'pass'
-        }));
-        task.title = title;
-        task.appliedSkills = {
-            agent: ['implementation-harness', 'verification-recipe', 'results-evidence', 'results-structure'],
-            results: []
+    await waitForDurableValue(theiaConfigDir, DURABLE_SESSION_KEY,
+        value => Boolean(value?.sessions?.[0]?.tasks?.at(-1)?.resultsDocument?.html), uiTimeout);
+    const workbenchUrl = page.url();
+    await page.goto('about:blank');
+    await waitForDurableWritesToSettle(theiaConfigDir, uiTimeout);
+    const state = readDurableValue(theiaConfigDir, DURABLE_SESSION_KEY);
+    const session = state?.sessions?.[0];
+    const task = session?.tasks?.at(-1);
+    if (!session || !task?.resultsDocument?.html) {
+        throw new Error('Task feedback Results were unavailable for the Round 12 fixture.');
+    }
+    const title = '長い日本語の成果タイトルでも状態と生成情報と検証結果を同じヘッダーで確認できることを検証するタスク';
+    const assertions = Array.from({ length: 7 }, (_, index) => ({
+        text: `Dense header assertion ${index + 1}`,
+        source: 'app',
+        status: 'pass'
+    }));
+    task.title = title;
+    task.appliedSkills = {
+        agent: ['implementation-harness', 'verification-recipe', 'results-evidence', 'results-structure'],
+        results: []
+    };
+    task.resultsDocument = {
+        ...task.resultsDocument,
+        status: 'ready',
+        generator: 'ai',
+        providerId: 'codex',
+        model: 'gpt-6-astra',
+        effort: 'xhigh',
+        durationMs: 408000,
+        calls: [
+            { purpose: 'results-generation', providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh', attempt: 1,
+                startedAt: task.startedAt, endedAt: task.endedAt, durationMs: 180000, exitCode: 0,
+                usage: { inputTokens: 10000, cachedInputTokens: 9000, outputTokens: 1000 } },
+            { purpose: 'results-judge', providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh', attempt: 1,
+                startedAt: task.startedAt, endedAt: task.endedAt, durationMs: 48000, exitCode: 0,
+                usage: { inputTokens: 5000, outputTokens: 500 } },
+            { purpose: 'results-generation', providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh', attempt: 2,
+                startedAt: task.startedAt, endedAt: task.endedAt, durationMs: 180000, exitCode: 0,
+                usage: { inputTokens: 15000, outputTokens: 1500, costUsd: 0.42, costSource: 'cli-estimate' } }
+        ],
+        fallbackReason: undefined,
+        assertions,
+        assertionAttempts: 1
+    };
+    const originalStartedAt = new Date(task.startedAt).getTime();
+    const history = Array.from({ length: 9 }, (_, index) => {
+        const sequence = index + 1;
+        const timestamp = new Date(originalStartedAt - (10 - sequence) * 60_000).toISOString();
+        const id = `${task.id}-history-${sequence}`;
+        return {
+            ...task,
+            id,
+            title: `${title} ${sequence}`,
+            startedAt: timestamp,
+            endedAt: timestamp,
+            resultsDocument: { ...task.resultsDocument, taskId: id }
         };
-        task.resultsDocument = {
-            ...task.resultsDocument,
-            status: 'ready',
-            generator: 'ai',
-            providerId: 'codex',
-            fallbackReason: undefined,
-            assertions,
-            assertionAttempts: 1
-        };
-        const originalStartedAt = new Date(task.startedAt).getTime();
-        const history = Array.from({ length: 9 }, (_, index) => {
-            const sequence = index + 1;
-            const timestamp = new Date(originalStartedAt - (10 - sequence) * 60_000).toISOString();
-            const id = `${task.id}-history-${sequence}`;
-            return {
-                ...task,
-                id,
-                title: `${title} ${sequence}`,
-                startedAt: timestamp,
-                endedAt: timestamp,
-                resultsDocument: { ...task.resultsDocument, taskId: id }
-            };
-        });
-        session.tasks = [...history, task];
-        session.activeTab = 'results';
-        session.selectedResultsTaskId = task.id;
-        localStorage.setItem(key, JSON.stringify(state));
-
-        for (const storageKey of Object.keys(localStorage)) {
-            if (!storageKey.includes('poiesis.requirements.sessions.v1')) continue;
-            try {
-                const stored = JSON.parse(localStorage.getItem(storageKey));
-                for (const requirements of Object.values(stored?.sessions ?? {})) {
-                    for (const requirement of Array.isArray(requirements) ? requirements : []) {
-                        if (!requirement.taskIds?.includes(task.id)) continue;
-                        requirement.title = title;
-                        requirement.taskIds = session.tasks.map(candidate => candidate.id);
-                        requirement.resultsDocument = {
-                            ...(requirement.resultsDocument ?? task.resultsDocument),
-                            status: 'ready',
-                            generator: 'ai',
-                            providerId: 'codex',
-                            fallbackReason: undefined,
-                            assertions,
-                            assertionAttempts: 1
-                        };
-                    }
-                }
-                localStorage.setItem(storageKey, JSON.stringify(stored));
-            } catch {
-                // Ignore unrelated storage values that happen to share the suffix.
-            }
-        }
     });
+    session.tasks = [...history, task];
+    session.activeTab = 'results';
+    session.selectedResultsTaskId = task.id;
+    writeDurableValue(theiaConfigDir, DURABLE_SESSION_KEY, state);
+
+    const stored = readDurableValue(theiaConfigDir, DURABLE_REQUIREMENTS_KEY);
+    for (const requirements of Object.values(stored?.sessions ?? {})) {
+        for (const requirement of Array.isArray(requirements) ? requirements : []) {
+            if (!requirement.taskIds?.includes(task.id)) continue;
+            requirement.title = title;
+            requirement.taskIds = session.tasks.map(candidate => candidate.id);
+            requirement.resultsDocument = { ...task.resultsDocument };
+        }
+    }
+    writeDurableValue(theiaConfigDir, DURABLE_REQUIREMENTS_KEY, stored);
+    await page.goto(workbenchUrl, { waitUntil: 'domcontentloaded' });
 }
 
 async function setElectronUiFontScale(page, scale) {
@@ -946,22 +950,18 @@ async function assertElectronResultsHeader(page, label, singleRow) {
         && header.metaItems.every(bounds => bounds.left >= header.header.left - 1 && bounds.right <= header.header.right + 1),
     `${label} clipped fixed-header content: ${JSON.stringify({ layout, header })}`);
     assert(header.titleAttribute?.startsWith('長い日本語の成果タイトル')
-        && header.badges.includes('AI · Codex')
-        && header.badges.includes('条件 7/7')
-        && header.badges.includes('Skills 4')
-        && header.badges.includes('タスク 10')
-        && header.badgeTitles.includes('AI 生成 · Codex')
-        && header.badgeTitles.includes('Skill 条件 7/7 合格')
-        && header.badgeTitles.includes('タスク 10件')
-        && header.timeTitle?.endsWith('JST'),
-    `${label} lost accessible Results metadata: ${JSON.stringify(header)}`);
-    if (singleRow) {
-        assert(header.metaRows === 1 && header.header.height <= 44,
-            `${label} did not keep all Results metadata in one row: ${JSON.stringify(header)}`);
-    } else {
-        assert(header.header.height <= 96 && header.headerRows <= 3,
-            `${label} did not use the bounded responsive Results layout: ${JSON.stringify(header)}`);
-    }
+        && header.badges.length === 0 && header.headerRows === 1 && header.header.height <= Math.ceil(52 * Number(header.fontScale || 1)),
+        label + ' lost the compact Results header: ' + JSON.stringify(header));
+    assert(await page.$$eval('.poiesis-results__toolbar-actions button', nodes => nodes.length) === 3,
+        'Results header must expose its three toolbar actions.');
+    await page.click('.poiesis-results__details-trigger');
+    const details = await page.$$eval('.poiesis-results__details-list > div', nodes => Object.fromEntries(
+        nodes.map(node => [node.querySelector('dt')?.textContent?.trim(), node.querySelector('dd')?.textContent?.trim()])));
+    assert(details['成果の作成']?.includes('AI 生成 · GPT-6-Astra（xhigh） · 2回作成 · 6分48秒')
+        && details['成果の作成']?.includes('入力 30k') && details['成果の作成']?.includes('推定 $0.42')
+        && details['成果の生成条件']?.includes('7/7') && details['タスク履歴']?.includes('10'),
+        label + ' lost Results details: ' + JSON.stringify(details));
+    await page.click('.poiesis-results__details-trigger');
     return { ...header, layoutViewport: layout.viewport };
 }
 
@@ -976,18 +976,31 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class PoiesisNativeWindow {
+    public delegate bool EnumWindowsProc(IntPtr handle, IntPtr parameter);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr handle);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT rect);
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
 }
 '@
-$poiesisProcess = Get-Process -Id ${pid} -ErrorAction Stop
-$poiesisDeadline = (Get-Date).AddSeconds(10)
-while ($poiesisProcess.MainWindowHandle -eq 0 -and (Get-Date) -lt $poiesisDeadline) {
-    Start-Sleep -Milliseconds 100
-    $poiesisProcess.Refresh()
-}
-if ($poiesisProcess.MainWindowHandle -eq 0) { throw 'Poiesis main window handle was not found.' }
-if (-not [PoiesisNativeWindow]::MoveWindow($poiesisProcess.MainWindowHandle, 40, 40, ${width}, ${height}, $true)) {
+$windowHandle = [IntPtr]::Zero
+$windowArea = 0
+[PoiesisNativeWindow]::EnumWindows({
+    param($handle, $parameter)
+    $candidatePid = 0
+    [void][PoiesisNativeWindow]::GetWindowThreadProcessId($handle, [ref]$candidatePid)
+    $candidateRect = New-Object PoiesisNativeWindow+RECT
+    if ($candidatePid -eq ${pid} -and [PoiesisNativeWindow]::IsWindowVisible($handle) -and [PoiesisNativeWindow]::GetWindowRect($handle, [ref]$candidateRect)) {
+        $area = ($candidateRect.Right - $candidateRect.Left) * ($candidateRect.Bottom - $candidateRect.Top)
+        if ($area -gt $script:windowArea) { $script:windowHandle = $handle; $script:windowArea = $area }
+    }
+    return $true
+}, [IntPtr]::Zero) | Out-Null
+if ($windowHandle -eq [IntPtr]::Zero) { throw 'Poiesis main window handle was not found.' }
+if (-not [PoiesisNativeWindow]::MoveWindow($windowHandle, 40, 40, ${width}, ${height}, $true)) {
     throw 'MoveWindow failed.'
 }
 `;
@@ -1023,17 +1036,33 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class PoiesisNativeMinimumWindow {
+    public delegate bool EnumWindowsProc(IntPtr handle, IntPtr parameter);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr handle);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT rect);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
     [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
 }
 '@
-$poiesisProcess = Get-Process -Id ${pid} -ErrorAction Stop
-$poiesisProcess.Refresh()
-$windowHandle = $poiesisProcess.MainWindowHandle
-if ($windowHandle -eq 0) { throw 'Poiesis main window handle was not found.' }
+[void][PoiesisNativeMinimumWindow]::SetThreadDpiAwarenessContext([IntPtr](-4))
+$windowHandle = [IntPtr]::Zero
+$windowArea = 0
+[PoiesisNativeMinimumWindow]::EnumWindows({
+    param($handle, $parameter)
+    $candidatePid = 0
+    [void][PoiesisNativeMinimumWindow]::GetWindowThreadProcessId($handle, [ref]$candidatePid)
+    $candidateRect = New-Object PoiesisNativeMinimumWindow+RECT
+    if ($candidatePid -eq ${pid} -and [PoiesisNativeMinimumWindow]::IsWindowVisible($handle) -and [PoiesisNativeMinimumWindow]::GetWindowRect($handle, [ref]$candidateRect)) {
+        $area = ($candidateRect.Right - $candidateRect.Left) * ($candidateRect.Bottom - $candidateRect.Top)
+        if ($area -gt $script:windowArea) { $script:windowHandle = $handle; $script:windowArea = $area }
+    }
+    return $true
+}, [IntPtr]::Zero) | Out-Null
+if ($windowHandle -eq [IntPtr]::Zero) { throw 'Poiesis main window handle was not found.' }
 $before = New-Object PoiesisNativeMinimumWindow+RECT
 if (-not [PoiesisNativeMinimumWindow]::GetWindowRect($windowHandle, [ref]$before)) { throw 'GetWindowRect failed.' }
 [void][PoiesisNativeMinimumWindow]::SetForegroundWindow($windowHandle)
@@ -1171,11 +1200,14 @@ async function findNativeDragPoint(page, selector) {
         if (!(root instanceof HTMLElement)) throw new Error(`${currentSelector} is not an HTML element`);
         const interactive = 'button, select, input, textarea, [role="tab"], a, [contenteditable="true"], .poiesis-window-controls';
         const bounds = root.getBoundingClientRect();
+        const interactiveBounds = [...root.querySelectorAll(interactive)].map(node => node.getBoundingClientRect());
         const candidates = [];
         for (let y = bounds.top + 6; y < bounds.bottom - 4; y += 8) {
             for (let x = bounds.left + 6; x < bounds.right - 6; x += 12) {
                 const target = document.elementFromPoint(x, y);
                 if (!(target instanceof HTMLElement) || !root.contains(target) || target.closest(interactive)) continue;
+                if (interactiveBounds.some(rect => x >= rect.left - 6 && x <= rect.right + 6
+                    && y >= rect.top - 6 && y <= rect.bottom + 6)) continue;
                 const style = getComputedStyle(target);
                 const appRegion = style.getPropertyValue('app-region') || style.getPropertyValue('-webkit-app-region');
                 if (appRegion !== 'drag') continue;
@@ -1224,6 +1256,7 @@ public static class PoiesisNativeControlInput {
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr handle);
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT rect);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr handle);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
@@ -1236,15 +1269,17 @@ public static class PoiesisNativeControlInput {
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr handle, int command);
 }
 '@
-$targetPid = ${pid}
+[void][PoiesisNativeControlInput]::SetThreadDpiAwarenessContext([IntPtr](-4))
 $windowHandle = [IntPtr]::Zero
+$windowArea = 0
 [PoiesisNativeControlInput]::EnumWindows({
     param($handle, $parameter)
     $candidatePid = 0
     [void][PoiesisNativeControlInput]::GetWindowThreadProcessId($handle, [ref]$candidatePid)
-    if ($candidatePid -eq $targetPid -and [PoiesisNativeControlInput]::IsWindowVisible($handle)) {
-        $script:windowHandle = $handle
-        return $false
+    $candidateRect = New-Object PoiesisNativeControlInput+RECT
+    if ($candidatePid -eq ${pid} -and [PoiesisNativeControlInput]::IsWindowVisible($handle) -and [PoiesisNativeControlInput]::GetWindowRect($handle, [ref]$candidateRect)) {
+        $area = ($candidateRect.Right - $candidateRect.Left) * ($candidateRect.Bottom - $candidateRect.Top)
+        if ($area -gt $script:windowArea) { $script:windowHandle = $handle; $script:windowArea = $area }
     }
     return $true
 }, [IntPtr]::Zero) | Out-Null
@@ -1311,6 +1346,7 @@ public static class PoiesisNativeInput {
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr handle);
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr handle, out RECT rect);
     [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr handle);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
@@ -1322,15 +1358,17 @@ public static class PoiesisNativeInput {
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
 }
 '@
-$targetPid = ${pid}
+[void][PoiesisNativeInput]::SetThreadDpiAwarenessContext([IntPtr](-4))
 $windowHandle = [IntPtr]::Zero
+$windowArea = 0
 [PoiesisNativeInput]::EnumWindows({
     param($handle, $parameter)
     $candidatePid = 0
     [void][PoiesisNativeInput]::GetWindowThreadProcessId($handle, [ref]$candidatePid)
-    if ($candidatePid -eq $targetPid -and [PoiesisNativeInput]::IsWindowVisible($handle)) {
-        $script:windowHandle = $handle
-        return $false
+    $candidateRect = New-Object PoiesisNativeInput+RECT
+    if ($candidatePid -eq ${pid} -and [PoiesisNativeInput]::IsWindowVisible($handle) -and [PoiesisNativeInput]::GetWindowRect($handle, [ref]$candidateRect)) {
+        $area = ($candidateRect.Right - $candidateRect.Left) * ($candidateRect.Bottom - $candidateRect.Top)
+        if ($area -gt $script:windowArea) { $script:windowHandle = $handle; $script:windowArea = $area }
     }
     return $true
 }, [IntPtr]::Zero) | Out-Null

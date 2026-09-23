@@ -1,3 +1,4 @@
+import { CliCallRecord } from '../common/cli-usage';
 import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import {
@@ -11,6 +12,7 @@ import {
 import { hasReadableResultDocument, taskProducesResult } from '../common/task-outcome';
 import { ResultsSkillBundle } from '../common/skill-bundle';
 import {
+    ResultsGenerationProgress,
     ResultsGenerationRequest,
     ResultsGenerationRequirementMetadata,
     ResultsGenerationServer
@@ -40,6 +42,8 @@ export interface ResultsSkillInput {
     task: ExecutionTask;
     changeSet: TaskChangeSet;
     documentId?: string;
+    onProgress?: (progress: ResultsGenerationProgress) => void;
+    onCall?: (call: CliCallRecord) => void;
     requirement?: {
         id: string;
         title: string;
@@ -53,6 +57,7 @@ export interface ResultsSkill extends ResultsSkillBundle {
 }
 
 export interface ResultsSkillDocument {
+    calls?: CliCallRecord[];
     html: string;
     generator: 'ai' | 'template' | 'fallback';
     providerId?: TaskResultDocument['providerId'];
@@ -244,6 +249,7 @@ export class AiResultsSkill implements ResultsSkill {
         const model = this.context.model.trim() || undefined;
         const effort = this.context.effort || undefined;
         const documentId = input.documentId ?? input.task.id;
+        const calls: CliCallRecord[] = [];
         const workspaceUri = input.task.workspaceUri;
         this.cancelledDocumentIds.delete(documentId);
         if (!workspaceUri) {
@@ -265,6 +271,7 @@ export class AiResultsSkill implements ResultsSkill {
             }, undefined, 2);
             const request: ResultsGenerationRequest = {
                 taskId: documentId,
+                attempt: 1,
                 providerId,
                 model,
                 effort,
@@ -286,7 +293,9 @@ export class AiResultsSkill implements ResultsSkill {
                     : formatExecutionEvidence(input.task.activities, 12_000) || undefined,
                 workspaceSkillGuidance: workspaceSkills.content || undefined
             };
+            input.onProgress?.({ phase: 'generation', providerId, model, effort, attempt: 1, startedAt: new Date().toISOString() });
             const result = await this.generationServer.generate(request);
+            if (result.call) { calls.push(result.call); input.onCall?.(result.call); }
             if (result.status === 'cancelled') {
                 throw new ResultsGenerationCancelledError(result.error.message);
             }
@@ -297,6 +306,7 @@ export class AiResultsSkill implements ResultsSkill {
                 const fallback = await this.fallbackSkill.generate(input, { fallback: true });
                 return {
                     ...fallback,
+                    calls,
                     providerId,
                     model,
                     effort,
@@ -308,22 +318,28 @@ export class AiResultsSkill implements ResultsSkill {
                 input,
                 workspaceSkills.assertions,
                 request,
-                changeSetSummary
+                changeSetSummary,
+                calls
             );
             if (!first.assertions.some(assertion => assertion.status === 'fail')) {
-                return { ...first.document, assertions: [...first.assertions], assertionAttempts: 1 };
+                return { ...first.document, calls, assertions: [...first.assertions], assertionAttempts: 1 };
             }
 
             const retryGuidance = buildFailedAssertionPromptSection(first.assertions);
             this.throwIfCancelled(documentId);
+            input.onProgress?.({ phase: 'regeneration', providerId, model, effort, attempt: 2,
+                failedAssertions: first.assertions.filter(assertion => assertion.status === 'fail').length,
+                startedAt: new Date().toISOString() });
+            request.attempt = 2;
             const retryResult = await this.generationServer.generate({ ...request, assertionRetryGuidance: retryGuidance });
+            if (retryResult.call) { calls.push(retryResult.call); input.onCall?.(retryResult.call); }
             if (retryResult.status === 'cancelled') {
                 throw new ResultsGenerationCancelledError(retryResult.error.message);
             }
             if (retryResult.status === 'failed') {
                 console.warn('[Poiesis][Results diagnostics] Assertion regeneration failed; keeping the first document.',
                     `${retryResult.error.code}: ${retryResult.error.message}`);
-                return { ...first.document, assertions: [...first.assertions], assertionAttempts: 2 };
+                return { ...first.document, calls, assertions: [...first.assertions], assertionAttempts: 2 };
             }
             try {
                 const second = await this.assertCandidate(
@@ -331,16 +347,17 @@ export class AiResultsSkill implements ResultsSkill {
                     input,
                     workspaceSkills.assertions,
                     request,
-                    changeSetSummary
+                    changeSetSummary,
+                    calls
                 );
                 const selected = selectBetterResultsAssertionCandidate(first, second);
-                return { ...selected.document, assertions: [...selected.assertions], assertionAttempts: 2 };
+                return { ...selected.document, calls, assertions: [...selected.assertions], assertionAttempts: 2 };
             } catch (error) {
                 if (error instanceof ResultsGenerationCancelledError) {
                     throw error;
                 }
                 console.warn('[Poiesis][Results diagnostics] Assertion regeneration was invalid; keeping the first document.', error);
-                return { ...first.document, assertions: [...first.assertions], assertionAttempts: 2 };
+                return { ...first.document, calls, assertions: [...first.assertions], assertionAttempts: 2 };
             }
         } catch (error) {
             if (error instanceof ResultsGenerationCancelledError) {
@@ -349,7 +366,7 @@ export class AiResultsSkill implements ResultsSkill {
             this.taskService.setAppliedSkills(input.task.id, 'results', []);
             console.warn('[Poiesis][Results diagnostics] AI generation failed; using bundled template.', error);
             const fallback = await this.fallbackSkill.generate(input, { fallback: true });
-            return { ...fallback, providerId, model, effort, fallbackReason: 'generation-failed' };
+            return { ...fallback, calls, providerId, model, effort, fallbackReason: 'generation-failed' };
         }
     }
 
@@ -372,11 +389,15 @@ export class AiResultsSkill implements ResultsSkill {
         input: ResultsSkillInput,
         definitions: readonly ResultsAssertionDefinition[],
         request: ResultsGenerationRequest,
-        changeSetSummary: string
+        changeSetSummary: string,
+        calls: CliCallRecord[]
     ): Promise<{
         document: ResultsSkillDocument;
         assertions: ResultsAssertionResult[];
     }> {
+        const observedModel = calls.filter(call => call.purpose === 'results-generation').at(-1)?.model ?? request.model;
+        input.onProgress?.({ phase: 'judge', providerId: request.providerId, model: request.model, effort: request.effort,
+            attempt: request.attempt ?? 1, startedAt: new Date().toISOString() });
         const html = this.normalizeAndValidate(output, input.requirement?.title ?? input.task.title);
         const appAssertions = checkAppResultsAssertions(html, input.changeSet.files);
         let skillAssertions: ResultsAssertionResult[] = [];
@@ -384,6 +405,7 @@ export class AiResultsSkill implements ResultsSkill {
             try {
                 const judged = await this.assertionServer.judge({
                     taskId: request.taskId,
+                    attempt: request.attempt,
                     providerId: request.providerId,
                     model: request.model,
                     effort: request.effort,
@@ -392,6 +414,7 @@ export class AiResultsSkill implements ResultsSkill {
                     assertions: definitions.map(definition => definition.text),
                     changeSetSummary
                 });
+                if (judged.call) { calls.push(judged.call); input.onCall?.(judged.call); }
                 if (judged.status === 'cancelled') {
                     throw new ResultsGenerationCancelledError(judged.error.message);
                 }
@@ -416,7 +439,7 @@ export class AiResultsSkill implements ResultsSkill {
                 html,
                 generator: 'ai',
                 providerId: request.providerId,
-                model: request.model,
+                model: observedModel,
                 effort: request.effort
             },
             assertions: [...appAssertions, ...skillAssertions]
@@ -551,7 +574,12 @@ export class ResultsService {
     }
 
     getRequirement(requirementId: string): TaskResultDocument | undefined {
-        return this.requirementService.get(requirementId)?.resultsDocument;
+        const requirement = this.requirementService.get(requirementId);
+        if (!requirement) { return undefined; }
+        const tasks = this.finishedRequirementTasks(requirement);
+        // A single outcome uses its Task document throughout generation. The stored
+        // Requirement copy is only refreshed after generation/classification finishes.
+        return tasks.length === 1 ? this.get(tasks[0].id) ?? requirement.resultsDocument : requirement.resultsDocument;
     }
 
     getRequirementChangeSet(requirementId: string): TaskChangeSet | undefined {
@@ -743,12 +771,22 @@ export class ResultsService {
         const generationToken = ++this.generationSequence;
         const generationStartedAt = Date.now();
         const previousDocument = this.get(task.id);
+        const calls: CliCallRecord[] = [];
         this.generationTokens.set(task.id, generationToken);
         if (!hasReadableResultDocument(previousDocument)) {
-            this.set({ taskId: task.id, status: 'generating' }, task);
+            this.set({ taskId: task.id, status: 'generating', generationStartedAt: new Date(generationStartedAt).toISOString() }, task);
         }
         try {
-            const generated = await this.resultsSkill.generate({ task, changeSet });
+            const generated = await this.resultsSkill.generate({ task, changeSet,
+                onCall: call => { calls.push(call); this.taskService.recordCliCall(task.id, call); },
+                onProgress: progress => {
+                    if (this.generationTokens.get(task.id) !== generationToken) { return; }
+                    this.set({ ...previousDocument, taskId: task.id,
+                        status: hasReadableResultDocument(previousDocument) ? 'ready' : 'generating',
+                        generationStartedAt: new Date(generationStartedAt).toISOString(), progress, calls: [...calls]
+                    }, task);
+                }
+            });
             if (this.generationTokens.get(task.id) !== generationToken) {
                 return;
             }
@@ -776,6 +814,7 @@ export class ResultsService {
                 this.set({
                     taskId: task.id,
                     status: 'failed',
+                    calls,
                     error: error instanceof Error ? error.message : String(error),
                     generatedAt: new Date().toISOString(),
                     durationMs: Math.max(0, Date.now() - generationStartedAt)
@@ -876,9 +915,10 @@ export class ResultsService {
         const generationToken = ++this.generationSequence;
         const generationStartedAt = Date.now();
         const previousDocument = requirement.resultsDocument;
+        const calls: CliCallRecord[] = [];
         this.generationTokens.set(documentId, generationToken);
         if (!hasReadableResultDocument(previousDocument)) {
-            this.setRequirementDocument(requirement, { taskId: documentId, status: 'generating' });
+            this.setRequirementDocument(requirement, { taskId: documentId, status: 'generating', generationStartedAt: new Date(generationStartedAt).toISOString() });
         }
         try {
             const changeSet = await this.cumulativeChangeSet(requirement);
@@ -886,7 +926,16 @@ export class ResultsService {
                 task: latestTask,
                 changeSet,
                 documentId,
-                requirement: { id: requirement.id, title: requirement.title, tasks }
+                requirement: { id: requirement.id, title: requirement.title, tasks },
+                onCall: call => { calls.push(call); },
+                onProgress: progress => {
+                    if (this.generationTokens.get(documentId) !== generationToken
+                        || !this.requirementGenerationIsCurrent(requirement, requestedVersion)) { return; }
+                    this.setRequirementDocument(requirement, { ...previousDocument, taskId: documentId,
+                        status: hasReadableResultDocument(previousDocument) ? 'ready' : 'generating',
+                        generationStartedAt: new Date(generationStartedAt).toISOString(), progress, calls: [...calls]
+                    });
+                }
             });
             if (this.generationTokens.get(documentId) !== generationToken
                 || !this.requirementGenerationIsCurrent(requirement, requestedVersion)) {
@@ -919,6 +968,7 @@ export class ResultsService {
                 this.setRequirementDocument(requirement, {
                     taskId: documentId,
                     status: 'failed',
+                    calls,
                     error: error instanceof Error ? error.message : String(error),
                     generatedAt: new Date().toISOString(),
                     durationMs: Math.max(0, Date.now() - generationStartedAt)

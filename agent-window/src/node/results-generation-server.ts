@@ -1,3 +1,5 @@
+import { readChildUtf8 } from './child-utf8';
+import { captureCliCall, CliCallCapture } from './cli-call';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -20,6 +22,7 @@ import { isGitRepository } from './snapshot-store';
 type ResultsProcess = HiddenCliProcess;
 
 interface ResultsGenerationRun {
+    call: CliCallCapture;
     process: ResultsProcess;
     cancelled: boolean;
     providerName: string;
@@ -28,6 +31,7 @@ interface ResultsGenerationRun {
 
 export const GENERATED_RESULTS_HTML_MAX_CHARS = 280_000;
 export const RESULTS_GENERATION_TIMEOUT_MS = 240_000;
+const OUTPUT_MAX_CHARS = 1_120_000;
 const CHANGE_SET_SUMMARY_MAX_CHARS = 20_000;
 const DIFF_MAX_CHARS = 80_000;
 const EXECUTION_EVIDENCE_MAX_CHARS = 16_000;
@@ -50,7 +54,11 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
         if (validationError) {
             return this.failed(validationError);
         }
-        if (this.runs.has(request.taskId)) {
+        return captureCliCall(request, 'results-generation', call => this.generateOnce(request, call));
+    }
+
+    protected async generateOnce(request: ResultsGenerationRequest, call: CliCallCapture): Promise<ResultsGenerationResult> {
+        if (this.runs.has(request.taskId) || this.pendingTaskIds.has(request.taskId)) {
             return this.failed({ code: 'already-running', message: 'このタスクの成果文書はすでに生成中です。' });
         }
         this.pendingTaskIds.add(request.taskId);
@@ -88,6 +96,11 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                 promptFile = join(pendingPromptDirectory, 'prompt.txt');
                 await writeFile(promptFile, prompt, 'utf8');
             }
+            if (this.cancelledTaskIds.delete(request.taskId)) {
+                this.pendingTaskIds.delete(request.taskId);
+                if (pendingPromptDirectory) { await rm(pendingPromptDirectory, { recursive: true, force: true }).catch(() => undefined); }
+                return this.cancelled();
+            }
             const args = oneShotCliArgs({
                 providerId: provider.id,
                 model: provider.model,
@@ -106,6 +119,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                 provider.id === 'grok' ? undefined : prompt
             );
             const run: ResultsGenerationRun = {
+                call,
                 process: child,
                 cancelled: false,
                 providerName: provider.name,
@@ -160,6 +174,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                 this.runs.delete(taskId);
                 this.cancelledTaskIds.delete(taskId);
                 void this.cleanupPrompt(run);
+                run.call.parse(stdout);
                 resolvePromise(result);
             };
             const timeout = setTimeout(() => {
@@ -167,19 +182,18 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                 void this.killProcess(run.process);
             }, RESULTS_GENERATION_TIMEOUT_MS);
 
-            run.process.stdout.on('data', chunk => {
+            readChildUtf8(run.process, text => {
                 if (tooLarge) {
                     return;
                 }
-                stdout += chunk.toString();
-                if (stdout.length > GENERATED_RESULTS_HTML_MAX_CHARS) {
+                stdout += text;
+                if (stdout.length > OUTPUT_MAX_CHARS) {
                     tooLarge = true;
-                    stdout = stdout.slice(0, GENERATED_RESULTS_HTML_MAX_CHARS);
+                    stdout = stdout.slice(0, OUTPUT_MAX_CHARS);
                     void this.killProcess(run.process);
                 }
-            });
-            run.process.stderr.on('data', chunk => {
-                stderr += chunk.toString();
+            }, text => {
+                stderr = `${stderr}${text}`.slice(-STDERR_MAX_CHARS);
             });
             run.process.once('error', error => {
                 finish(this.failed({
@@ -190,6 +204,8 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                 }));
             });
             run.process.once('close', (code, signal) => {
+                run.call.exitCode = code ?? undefined;
+                const output = run.call.parse(stdout);
                 if (run.cancelled) {
                     finish({
                         status: 'cancelled',
@@ -205,7 +221,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                     finish(this.failed({ code: 'too-large', message: 'AIが生成した成果文書がサイズ上限を超えました。' }));
                     return;
                 }
-                if (code !== 0 || signal) {
+                if (code !== 0 || signal || output.failed) {
                     finish(this.failed({
                         code: 'cli-failed',
                         message: signal
@@ -217,7 +233,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                     }));
                     return;
                 }
-                if (!stdout.trim()) {
+                if (!output.text) {
                     finish(this.failed({
                         code: 'cli-failed',
                         message: `${run.providerName}から成果文書を受け取れませんでした。`,
@@ -226,7 +242,11 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                     }));
                     return;
                 }
-                finish({ status: 'generated', html: stdout.trim() });
+                if (output.text.length > GENERATED_RESULTS_HTML_MAX_CHARS) {
+                    finish(this.failed({ code: 'too-large', message: 'AIが生成した成果文書がサイズ上限を超えました。' }));
+                    return;
+                }
+                finish({ status: 'generated', html: output.text });
             });
         });
     }

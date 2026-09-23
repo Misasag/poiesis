@@ -1,3 +1,4 @@
+import { readChildUtf8 } from './child-utf8';
 import { constants } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { delimiter, extname, join } from 'node:path';
@@ -186,8 +187,8 @@ export class CliDetector {
                 child.kill();
                 finish();
             }, 8_000);
-            child.stdout.on('data', chunk => output = `${output}${chunk.toString()}`.slice(-4_000));
-            child.stderr.on('data', chunk => output = `${output}${chunk.toString()}`.slice(-4_000));
+            readChildUtf8(child, text => output = `${output}${text}`.slice(-4_000),
+                text => output = `${output}${text}`.slice(-4_000));
             child.once('error', finish);
             child.once('close', finish);
         });

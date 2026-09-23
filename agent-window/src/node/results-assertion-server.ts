@@ -1,3 +1,5 @@
+import { readChildUtf8 } from './child-utf8';
+import { captureCliCall, CliCallCapture } from './cli-call';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -18,6 +20,7 @@ import { grokExecutionEnvironment } from './known-cli-registry';
 import { isGitRepository } from './snapshot-store';
 
 interface ResultsAssertionRun {
+    call: CliCallCapture;
     process: HiddenCliProcess;
     providerName: string;
     cancelled: boolean;
@@ -27,7 +30,7 @@ interface ResultsAssertionRun {
 export const RESULTS_ASSERTION_TIMEOUT_MS = 90_000;
 const DOCUMENT_TEXT_MAX_CHARS = 60_000;
 const CHANGE_SET_MAX_CHARS = 20_000;
-const OUTPUT_MAX_CHARS = 16_000;
+const OUTPUT_MAX_CHARS = 128_000;
 const STDERR_MAX_CHARS = 8_000;
 
 @injectable()
@@ -42,6 +45,10 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
         if (!this.validScope(scope)) {
             return this.failed({ code: 'invalid-scope', message: '成果条件の判定に必要な情報が揃っていません。' });
         }
+        return captureCliCall(scope, 'results-judge', call => this.judgeOnce(scope, call));
+    }
+
+    protected async judgeOnce(scope: ResultsAssertionScope, call: CliCallCapture): Promise<ResultsAssertionJudgeResult> {
         if (this.runs.has(scope.taskId) || this.pendingTaskIds.has(scope.taskId)) {
             return this.failed({ code: 'already-running', message: 'この成果文書の条件判定はすでに実行中です。' });
         }
@@ -63,6 +70,11 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                 promptFile = join(pendingPromptDirectory, 'prompt.txt');
                 await writeFile(promptFile, prompt, 'utf8');
             }
+            if (this.cancelledTaskIds.delete(scope.taskId)) {
+                this.pendingTaskIds.delete(scope.taskId);
+                if (pendingPromptDirectory) { await rm(pendingPromptDirectory, { recursive: true, force: true }).catch(() => undefined); }
+                return this.cancelled();
+            }
             const args = oneShotCliArgs({
                 providerId: provider.id,
                 model: provider.model,
@@ -81,6 +93,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                 provider.id === 'grok' ? undefined : prompt
             );
             const run: ResultsAssertionRun = {
+                call,
                 process: child,
                 providerName: provider.name,
                 cancelled: false,
@@ -134,6 +147,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                 this.runs.delete(taskId);
                 this.cancelledTaskIds.delete(taskId);
                 void this.cleanupPrompt(run);
+                run.call.parse(stdout);
                 resolvePromise(result);
             };
             const timeout = setTimeout(() => {
@@ -141,19 +155,18 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                 void killHiddenProcessTree(run.process);
             }, RESULTS_ASSERTION_TIMEOUT_MS);
 
-            run.process.stdout.on('data', chunk => {
+            readChildUtf8(run.process, text => {
                 if (tooLarge) {
                     return;
                 }
-                stdout += chunk.toString();
+                stdout += text;
                 if (stdout.length > OUTPUT_MAX_CHARS) {
                     tooLarge = true;
                     stdout = stdout.slice(0, OUTPUT_MAX_CHARS);
                     void killHiddenProcessTree(run.process);
                 }
-            });
-            run.process.stderr.on('data', chunk => {
-                stderr = `${stderr}${chunk.toString()}`.slice(-STDERR_MAX_CHARS);
+            }, text => {
+                stderr = `${stderr}${text}`.slice(-STDERR_MAX_CHARS);
             });
             run.process.once('error', error => {
                 finish(this.failed({
@@ -164,6 +177,8 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                 }));
             });
             run.process.once('close', (code, signal) => {
+                run.call.exitCode = code ?? undefined;
+                const output = run.call.parse(stdout);
                 if (run.cancelled) {
                     finish(this.cancelled(code, signal));
                     return;
@@ -172,7 +187,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                     finish(this.failed({ code: 'timeout', message: '成果条件の判定が時間内に完了しませんでした。' }));
                     return;
                 }
-                if (tooLarge || code !== 0 || signal) {
+                if (tooLarge || code !== 0 || signal || output.failed) {
                     finish(this.failed({
                         code: 'cli-failed',
                         message: tooLarge
@@ -186,7 +201,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                     }));
                     return;
                 }
-                if (!stdout.trim()) {
+                if (!output.text) {
                     finish(this.failed({
                         code: 'cli-failed',
                         message: `${run.providerName}から成果条件の判定結果を受け取れませんでした。`,
@@ -195,7 +210,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                     }));
                     return;
                 }
-                finish({ status: 'judged', output: stdout.trim() });
+                finish({ status: 'judged', output: output.text });
             });
         });
     }
@@ -233,7 +248,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
             '',
             `Change Set summary:\n${scope.changeSetSummary.slice(0, CHANGE_SET_MAX_CHARS)}`,
             '',
-            `成果文書（見出しは ## で表現したテキスト）:\n${scope.documentText}`
+            `成果文書（見出し・表・箇条書き・コードブロックの構造を残したMarkdown形式のテキスト）:\n${scope.documentText}`
         ].join('\n');
     }
 

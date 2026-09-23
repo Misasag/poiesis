@@ -1,6 +1,8 @@
 import * as React from '@theia/core/shared/react';
 import type { AgentActivity, AgentRunProgress } from '../../common/agent-provider';
 import { formatTaskElapsedTime } from '../composer-behavior';
+import type { ResultsGenerationProgress } from '../../common/results-generation-protocol';
+import { cliModelLabel } from '../cli-usage-display';
 
 export const PoiesisTaskElapsed = ({
     startedAt,
@@ -48,16 +50,29 @@ function activityStatus(activity: AgentActivity): string {
     return activity.detail ? `${title}: ${activity.detail}` : title;
 }
 
-export const PoiesisResultsElapsed = (): React.ReactElement => {
-    const [startedAt] = React.useState(Date.now());
-    const [now, setNow] = React.useState(startedAt);
+export const PoiesisResultsElapsed = ({ progress, generationStartedAt }: {
+    progress?: ResultsGenerationProgress; generationStartedAt?: string;
+}): React.ReactElement => {
+    const [now, setNow] = React.useState(Date.now());
     React.useEffect(() => {
         const interval = window.setInterval(() => setNow(Date.now()), 1_000);
         return () => window.clearInterval(interval);
     }, []);
+    const status = progress?.phase === 'regeneration'
+        ? `条件を満たさなかった ${progress.failedAssertions ?? 0} 件を直して作り直しています（${progress.attempt}回目）`
+        : progress?.phase === 'judge' ? '成果文書の条件を確認しています'
+            : progress ? '成果文書を作成しています' : '成果文書の作成を準備しています';
+    const model = progress ? cliModelLabel(progress.model, progress.providerId) : '';
+    const clock = (startedAt: string): string => {
+        const seconds = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1_000));
+        return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    };
     return (
         <span role='timer' aria-live='off' aria-atomic='true'>
-            成果を作成しています… · {Math.max(0, Math.floor((now - startedAt) / 1_000))}s
+            <span>{status}{model ? ` · ${model}` : ''}{progress ? ` · ${clock(progress.startedAt)}` : ''}</span>
+            {generationStartedAt && <span className='poiesis-cli-usage poiesis-results__total-elapsed'>
+                全体 {formatTaskElapsedTime(generationStartedAt, now)}
+            </span>}
         </span>
     );
 };

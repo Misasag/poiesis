@@ -1,3 +1,4 @@
+import type { CliCallRecord } from './cli-usage';
 import { KnownCliId } from './agent-runtime-protocol';
 
 export const ResultsQuestionServer = Symbol('ResultsQuestionServer');
@@ -49,6 +50,8 @@ export type ResultsQuestionErrorCode =
     | 'cli-not-found'
     | 'cli-failed'
     | 'cancelled'
+    | 'timeout'
+    | 'too-large'
     | 'internal';
 
 export interface ResultsQuestionError {
@@ -59,10 +62,10 @@ export interface ResultsQuestionError {
     stderr?: string;
 }
 
-export type ResultsQuestionResult =
+export type ResultsQuestionResult = (
     | { status: 'answered'; answer: string }
     | { status: 'failed'; error: ResultsQuestionError }
-    | { status: 'cancelled'; error: ResultsQuestionError };
+    | { status: 'cancelled'; error: ResultsQuestionError }) & { call?: CliCallRecord };
 
 /** Single-answer RPC; taskId is also the cancellation key for the active ask. */
 export interface ResultsQuestionServer {

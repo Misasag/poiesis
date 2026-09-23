@@ -152,9 +152,13 @@ ApplicationはAI成果文書を正規化した後、Skill assertionsとは別に
 - 本文に`h2`〜`h4`の見出しが1件以上ある。
 - 空の見出しがない。
 
-Skill assertionsは、HTMLからタグを除去し見出しだけを`## `で示した最大60,000文字のテキスト、assertions一覧、Change Set summaryを、選択中のResults AIへ1回のread-only判定として渡す。各条件はpass／failと短いevidenceで保存する。応答が不正または判定を開始できない場合はunknownとして記録し、その理由だけで成果文書を失敗扱いにしない。
+Skill assertionsは、HTMLの見出しを`## `、表をヘッダー・区切り行・データ行のあるパイプ表、リスト項目を`- `、コードブロックをコードフェンスで示した最大60,000文字のテキスト、assertions一覧、Change Set summaryを、選択中のResults AIへ1回のread-only判定として渡す。表はヘッダーと最大50データ行・12列、セル本文は前後の空白を除いた最大500文字とし、省略がある場合は明記する。各条件はpass／failと短いevidenceで保存する。応答が不正または判定を開始できない場合はunknownとして記録し、その理由だけで成果文書を失敗扱いにしない。
 
 ApplicationまたはSkillの条件にfailが1件でもあれば、不合格条件をResults prompt末尾へ追加してAI生成を1回だけ再試行し、再度検証する。失敗件数が少ない文書を採用し、同数なら2回目を採用する。再試行は最大1回で、キャンセルは生成と判定の両方へ引き続き適用する。template／fallback文書にはassertionsを付けない。
+
+生成・条件判定・再生成はそれぞれ呼び出し記録として文書へ保存する。使用量と推定費用はCLI報告値だけを保持し、Skillの自己申告や価格表から補完しない。Applicationは現在の段階、モデル選択、再生成回数、不合格件数と段階ごと／全体の経過時間を文書の外で表示する。完成HTML本文へ使用量や内部の呼び出し識別子を埋め込む必要はない。
+
+Skillを含む依頼本文はCodex／Claudeへ標準入力、Grokへ一時ファイルで渡す。単発呼び出しはCodexのJSONイベント／ClaudeのJSON結果から完成本文を取り出し、Grokは従来のテキスト応答を使う。
 
 assertionsは成果文書の検証条件だけを表し、AI provider、model、sandbox、Application所有の出力契約を変更できない。
 

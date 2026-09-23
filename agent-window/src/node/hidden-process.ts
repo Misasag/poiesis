@@ -1,10 +1,11 @@
+import { assertBoundedCliArgs } from './cli-args';
 import { ChildProcess, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, dirname, extname, basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { Readable } from 'node:stream';
-import { KnownCliId } from '../common/agent-runtime-protocol';
+import { CLI_DISPLAY_NAMES, KnownCliId } from '../common/agent-runtime-protocol';
 
 export type HiddenCliProcess = ChildProcess & { readonly stdout: Readable; readonly stderr: Readable };
 
@@ -31,6 +32,7 @@ export function spawnHiddenCli(
     options: HiddenCliSpawnOptions = {}
 ): HiddenCliProcess {
     const invocation = resolveKnownCliInvocation(providerId, command, args);
+    assertBoundedCliArgs(invocation.args);
     const child = spawn(invocation.executable, invocation.args, {
         cwd: options.cwd,
         env: childCliEnvironment(options.env ?? process.env, options.cwd),
@@ -39,6 +41,9 @@ export function spawnHiddenCli(
         stdio: [options.input === undefined && !options.keepStdinOpen ? 'ignore' : 'pipe', 'pipe', 'pipe']
     }) as HiddenCliProcess;
     if (options.input !== undefined) {
+        child.stdin?.on('error', error => {
+            if ((error as NodeJS.ErrnoException).code !== 'EPIPE') { child.emit('error', error); }
+        });
         child.stdin?.end(options.input, 'utf8');
     }
     return child;
@@ -92,7 +97,7 @@ function defaultRuntimeNpmCache(env: NodeJS.ProcessEnv, workspacePath: string | 
             return resolve(sibling);
         }
     }
-    throw new Error('An npm runtime cache outside the Workspace could not be resolved.');
+    throw new Error('ワークスペース外に実行用キャッシュを準備できませんでした。');
 }
 
 function environmentValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
@@ -125,12 +130,14 @@ export function resolveKnownCliInvocation(
         if (existsSync(executable)) {
             return { executable, args: [...args] };
         }
-        throw new Error(`Claude CLI shim target was not found: ${executable}`);
+        console.warn('[Poiesis][CLI diagnostics] Claude executable not found:', executable);
+        throw new Error('Claude の実行ファイルが見つかりません。インストール状況を確認してください。');
     }
     if (providerId === 'codex') {
         const entryPoint = join(shimDirectory, 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
         if (!existsSync(entryPoint)) {
-            throw new Error(`Codex CLI shim target was not found: ${entryPoint}`);
+            console.warn('[Poiesis][CLI diagnostics] Codex entry point not found:', entryPoint);
+            throw new Error('Codex の起動ファイルが見つかりません。インストール状況を確認してください。');
         }
         return { executable: nodeExecutable(shimDirectory), args: [entryPoint, ...args] };
     }
@@ -138,7 +145,7 @@ export function resolveKnownCliInvocation(
     // Grok is distributed as grok.exe in the registry's supported locations.
     // Gemini has no executable role yet. Refuse an unknown script shim instead
     // of falling back to a command interpreter and risking a visible console.
-    throw new Error(`${providerId} CLI script shims are not supported without a direct executable.`);
+    throw new Error(`${CLI_DISPLAY_NAMES[providerId]} の実行ファイルを直接起動できません。インストール状況を確認してください。`);
 }
 
 /** Kills a process tree without ever creating a visible taskkill console or waiting forever. */
@@ -218,7 +225,7 @@ function nodeExecutable(shimDirectory: string): string {
         .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0)
         .find(candidate => /^node(?:\.exe)?$/i.test(basename(candidate)) && existsSync(candidate));
     if (!executable) {
-        throw new Error('node.exe could not be resolved for the Codex CLI shim.');
+        throw new Error('Codex の起動に必要な Node.js が見つかりません。');
     }
     return executable;
 }

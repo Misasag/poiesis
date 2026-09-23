@@ -1,7 +1,18 @@
+import type { CliCallRecord } from './cli-usage';
 import { KnownCliId } from './agent-runtime-protocol';
 
 export const ResultsGenerationServer = Symbol('ResultsGenerationServer');
 export const resultsGenerationServerPath = '/services/poiesis/results-generation';
+
+export interface ResultsGenerationProgress {
+    phase: 'generation' | 'judge' | 'regeneration';
+    startedAt: string;
+    providerId: KnownCliId;
+    model?: string;
+    effort?: string;
+    attempt: number;
+    failedAssertions?: number;
+}
 
 export interface ResultsGenerationTaskMetadata {
     status: 'completed' | 'failed' | 'cancelled';
@@ -22,6 +33,7 @@ export interface ResultsGenerationRequirementMetadata {
 export interface ResultsGenerationRequest {
     taskId: string;
     providerId: KnownCliId;
+    attempt?: number;
     model?: string;
     effort?: string;
     workspaceUri: string;
@@ -52,10 +64,10 @@ export interface ResultsGenerationError {
     stderr?: string;
 }
 
-export type ResultsGenerationResult =
+export type ResultsGenerationResult = (
     | { status: 'generated'; html: string }
     | { status: 'failed'; error: ResultsGenerationError }
-    | { status: 'cancelled'; error: ResultsGenerationError };
+    | { status: 'cancelled'; error: ResultsGenerationError }) & { call?: CliCallRecord };
 
 /** One complete-document RPC. taskId is also the cancellation key. */
 export interface ResultsGenerationServer {

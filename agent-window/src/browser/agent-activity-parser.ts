@@ -1,7 +1,10 @@
 import type { AgentActivity, AgentActivityKind, AgentActivityStatus } from '../common/agent-provider';
+import { CliUsage, codexTurnUsage, claudeResultUsage, sumCliUsage } from '../common/cli-usage';
 import type { KnownCliId } from '../common/agent-runtime-protocol';
 
 export interface ActivityParseResult {
+    usage?: CliUsage;
+    permissionDenials?: string[];
     activities: AgentActivity[];
     finalMessage?: string;
     diagnostics: string[];
@@ -18,6 +21,7 @@ const MAX_ACTIVITY_DETAIL_CHARS = 2_000;
 
 class CliActivityParser implements AgentActivityParser {
     protected readonly activities = new Map<string, AgentActivity>();
+    protected usage?: CliUsage;
     protected sequence = 0;
     protected grokMessage = '';
 
@@ -52,6 +56,10 @@ class CliActivityParser implements AgentActivityParser {
     protected consumeCodex(event: JsonObject, now: Date, sourceLine: string): ActivityParseResult {
         const result = this.emptyResult();
         const eventType = stringValue(event.type);
+        if (eventType === 'turn.completed') {
+            this.usage = sumCliUsage([this.usage, codexTurnUsage(event)]);
+            result.usage = this.usage;
+        }
         if (eventType === 'thread.started') {
             return { ...result, heartbeat: 'process' };
         }
@@ -182,6 +190,13 @@ class CliActivityParser implements AgentActivityParser {
                 }
             }
         } else if (eventType === 'result') {
+            this.usage = claudeResultUsage(event);
+            result.usage = this.usage;
+            if (Array.isArray(event.permission_denials) && event.permission_denials.length > 0) {
+                result.permissionDenials = event.permission_denials.map(denial =>
+                    isObject(denial) ? stringValue(denial.tool_name) ?? '操作名不明' : '操作名不明');
+                result.diagnostics.push(`Claude が ${result.permissionDenials.length} 件の操作を許可されませんでした。\n${result.permissionDenials.join('、')}`);
+            }
             const finalMessage = stringValue(event.result);
             if (finalMessage?.trim()) {
                 result.finalMessage = finalMessage;

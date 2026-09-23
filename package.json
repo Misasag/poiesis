@@ -76,7 +76,8 @@
     "test:session-restore-background-results": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-session-restore-background-results.mjs",
     "test:skill-document": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-skill-document.mjs",
     "test:customize-editor": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-customize-editor-lifecycle.mjs",
-    "validate:source": "node scripts/validate-source.mjs"
+    "validate:source": "node scripts/validate-source.mjs",
+    "test:cli-usage": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-cli-usage.mjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",

@@ -1,3 +1,4 @@
+import type { CliCallRecord } from './cli-usage';
 import { KnownCliId } from './agent-runtime-protocol';
 
 export const ResultsAssertionServer = Symbol('ResultsAssertionServer');
@@ -6,6 +7,7 @@ export const resultsAssertionServerPath = '/services/poiesis/results-assertion';
 export interface ResultsAssertionScope {
     taskId: string;
     providerId: KnownCliId;
+    attempt?: number;
     model?: string;
     effort?: string;
     workspaceUri: string;
@@ -31,10 +33,10 @@ export interface ResultsAssertionError {
     stderr?: string;
 }
 
-export type ResultsAssertionJudgeResult =
+export type ResultsAssertionJudgeResult = (
     | { status: 'judged'; output: string }
     | { status: 'failed'; error: ResultsAssertionError }
-    | { status: 'cancelled'; error: ResultsAssertionError };
+    | { status: 'cancelled'; error: ResultsAssertionError }) & { call?: CliCallRecord };
 
 export interface ResultsAssertionServer {
     judge(scope: ResultsAssertionScope): Promise<ResultsAssertionJudgeResult>;

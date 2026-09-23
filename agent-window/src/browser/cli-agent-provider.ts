@@ -1,3 +1,4 @@
+import { CliUsage, finishCliCall } from '../common/cli-usage';
 import { Emitter } from '@theia/core/lib/common';
 import URI from '@theia/core/lib/common/uri';
 import { inject, injectable } from '@theia/core/shared/inversify';
@@ -40,6 +41,8 @@ interface CodexRun {
     model?: string;
     effort?: string;
     activityParser: AgentActivityParser;
+    cliStartedAt?: string;
+    usage?: CliUsage;
     stdoutBuffer: string;
     diagnostics: string;
     failureDiagnostics: string;
@@ -106,7 +109,7 @@ export class CliAgentProvider implements AgentProvider {
             return this.mockProvider.sendMessage(sessionId, message);
         }
         if (this.runs.has(sessionId)) {
-            throw new Error('A Codex Task is already running for this session.');
+            throw new Error(`${this.runs.get(sessionId)!.providerName} はこの会話ですでに実行中です。`);
         }
 
         const task = this.taskService.start(
@@ -159,6 +162,7 @@ export class CliAgentProvider implements AgentProvider {
             }
             run.phase = 'starting';
             this.emitProgress(run, true);
+            run.cliStartedAt = new Date().toISOString();
             await this.runtimeServer.runCodex({
                 executionId: run.executionId,
                 providerId: session.providerId,
@@ -193,6 +197,7 @@ export class CliAgentProvider implements AgentProvider {
         } finally {
             if (this.runs.get(sessionId) === run) {
                 this.clearProgressTimer(run);
+                this.recordCall(run);
                 await this.taskService.cancel(run.taskId, preparing);
                 this.runs.delete(sessionId);
                 this.eventEmitter.fire({
@@ -234,6 +239,7 @@ export class CliAgentProvider implements AgentProvider {
         run.phase = 'finalizing';
         this.emitProgress(run, true);
         this.flushStdout(run);
+        this.recordCall(run, event.code);
         const successful = event.code === 0 && !event.signal;
         this.clearProgressTimer(run);
         if (successful) {
@@ -288,6 +294,7 @@ export class CliAgentProvider implements AgentProvider {
             return;
         }
         this.clearProgressTimer(run);
+        this.recordCall(run);
         await this.taskService.fail(run.taskId, { summary, details });
         this.runs.delete(run.sessionId);
         this.eventEmitter.fire({
@@ -302,6 +309,15 @@ export class CliAgentProvider implements AgentProvider {
             summary,
             details
         });
+    }
+
+    protected recordCall(run: CodexRun, exitCode?: number | null): void {
+        if (!run.cliStartedAt) { return; }
+        this.taskService.recordCliCall(run.taskId, finishCliCall({
+            purpose: 'agent', providerId: run.providerId, model: run.model, effort: run.effort,
+            startedAt: run.cliStartedAt
+        }, run.usage, exitCode));
+        run.cliStartedAt = undefined;
     }
 
     protected consumeStdout(run: CodexRun, delta: string): void {
@@ -322,6 +338,13 @@ export class CliAgentProvider implements AgentProvider {
 
     protected consumeJsonLine(run: CodexRun, line: string): void {
         const result = run.activityParser.consumeLine(line);
+        if (result.usage) { run.usage = result.usage; }
+        if (result.permissionDenials?.length) {
+            this.taskService.recordDiagnostic(run.taskId, {
+                summary: `Claude が ${result.permissionDenials.length} 件の操作を許可されませんでした。`,
+                details: result.permissionDenials.join('、')
+            });
+        }
         if (result.heartbeat) {
             run.phase = 'waiting';
         }

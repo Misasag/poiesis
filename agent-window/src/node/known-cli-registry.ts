@@ -63,6 +63,16 @@ export function knownCliDefinitions(): readonly KnownCliDefinition[] {
                     inputModalities: ['text', 'image']
                 },
                 {
+                    id: 'gpt-6-sol', label: 'GPT-6-Sol',
+                    description: 'コーディングや日常の作業を幅広くこなすモデルです。', defaultReasoningEffort: 'medium',
+                    supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-6-sol']], inputModalities: ['text', 'image']
+                },
+                {
+                    id: 'gpt-6-luna', label: 'GPT-6-Luna',
+                    description: '軽い作業に適した高速で手頃なモデルです。', defaultReasoningEffort: 'medium',
+                    supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-6-luna']], inputModalities: ['text', 'image']
+                },
+                {
                     id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol',
                     description: 'Reliable agentic workhorse for everyday tasks.', defaultReasoningEffort: 'low',
                     supportedReasoningEfforts: [...CODEX_FALLBACK_MODEL_EFFORTS['gpt-5.6-sol']], inputModalities: ['text', 'image']

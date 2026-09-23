@@ -13,8 +13,10 @@ try {
     await mkdir(workspace, { recursive: true });
     await writeFile(join(workspace, '.npmrc'), 'cache=.npm-cache\nregistry=https://registry.npmjs.org/\n', 'utf8');
 
+    const inherited = Object.fromEntries(Object.entries(process.env)
+        .filter(([key]) => key.toLocaleLowerCase() !== 'npm_config_cache'));
     const source = {
-        ...process.env,
+        ...inherited,
         LOCALAPPDATA: isolatedLocalAppData,
         NPM_CONFIG_CACHE: '.npm-cache',
         Npm_Config_Cache: 'second-relative-cache',

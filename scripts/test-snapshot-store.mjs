@@ -16,6 +16,20 @@ const root = await mkdtemp(join(tmpdir(), 'poiesis-snapshot-test-'));
 const storeRoot = join(root, 'store');
 
 try {
+    // Ignored exclusion roots must not make Git add fail or hide real changes.
+    const ignoredWorkspace = join(root, 'ignored-exclusions');
+    await mkdir(ignoredWorkspace, { recursive: true });
+    await writeFile(join(ignoredWorkspace, '.gitignore'), '.npm-cache/\n.run/\n', 'utf8');
+    await writeNpmRuntimeArtifacts(ignoredWorkspace, 'ignored');
+    await writeFile(join(ignoredWorkspace, 'source.txt'), 'before\n', 'utf8');
+    const ignoredStore = new SnapshotStore(join(ignoredWorkspace, '.run', 'store'));
+    const ignoredBaseline = await ignoredStore.capture(ignoredWorkspace);
+    assert.equal(ignoredBaseline.source, 'git-snapshot', JSON.stringify(ignoredBaseline));
+    await writeFile(join(ignoredWorkspace, 'source.txt'), 'after\n', 'utf8');
+    const ignoredChanges = await ignoredStore.captureChangeSet(ignoredBaseline.snapshotId);
+    assert.deepEqual(ignoredChanges.files, ['source.txt']);
+    ignoredStore.dispose();
+
     for (const kind of ['git', 'plain']) {
         const workspace = join(root, kind);
         await mkdir(workspace, { recursive: true });

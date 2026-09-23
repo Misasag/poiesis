@@ -10,8 +10,8 @@ Updated: 2026-08-29
 |---|---|---|---|
 | Poiesis-owned window | done | 1280×720の現行UI smokeでAgent／Results／Code切替、状態保持、旧Changes非表示を確認 | 現行E2Eを継続する |
 | Workspace open | partial | Folder dialogとTheia Workspaceを利用 | 実RepositoryでCompletion Trialを行う |
-| Agent chat | partial | Codex実行adapterとmock fallbackがある | 実Repositoryで安全な実行を検証する |
-| Runtime selection | partial | Codex／Claudeを検出する | 実行adapterはCodexのみ。provider registryが必要 |
+| Agent chat | partial | Codex／Claude／Grok実行adapterとmock fallbackがある | 実Repositoryで安全な実行を検証する |
+| Runtime selection | partial | provider registryでCodex／Claude／Grokを検出・実行し、Agent／Resultsごとに選択する | Geminiは検出のみ。実行adapterは未対応 |
 | Task lifecycle | partial | start／complete／failure／cancelとsnapshot差分がある | 実CLIで各終了状態を検証し、再起動後の復元を追加する |
 | Results generation | partial | 完成済みHTML一つをsandboxed iframeへ表示 | 汎用的な成果生成とエラー回復を検証する |
 | Results question | done | composer直上の折りたたみ式ドッキングパネル、Task＋Change Set＋HTML scopeの独立service、送信中／回答／失敗表示、Theia StorageService復元、文書scroll不変、resize／最大化を専用mock smokeで確認 | 現行smokeを継続する |

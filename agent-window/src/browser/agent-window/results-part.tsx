@@ -1,3 +1,6 @@
+import { CliUsageLine } from '../components/cli-usage';
+import { cliModelLabel, formatCliDuration } from '../cli-usage-display';
+import { sumCliUsage } from '../../common/cli-usage';
 import * as React from '@theia/core/shared/react';
 import * as ReactDOM from '@theia/core/shared/react-dom';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
@@ -195,7 +198,7 @@ export class ResultsPart extends AgentWindowPart {
                         {selectedRequirement && (document?.status === 'generating' && !document.html
                                 || latestTask?.status === 'completed' && !document) && (
                             <div className='poiesis-results__empty poiesis-results__generating'>
-                                <PoiesisResultsElapsed key={scopeKey} />
+                                <PoiesisResultsElapsed key={scopeKey} progress={document?.progress} generationStartedAt={document?.generationStartedAt} />
                             </div>
                         )}
                         {selectedRequirement && document?.status === 'failed' && (
@@ -668,7 +671,11 @@ export class ResultsPart extends AgentWindowPart {
                     </div>
                     <div>
                         <dt>成果の作成</dt>
-                        <dd>{generation?.accessibleLabel ?? (document?.status === 'generating' ? '作成中' : document?.status === 'failed' ? '作成失敗' : '未作成')}</dd>
+                        <dd>
+                            {generation?.accessibleLabel ?? (document?.status === 'generating' ? '作成中' : document?.status === 'failed' ? '作成失敗' : '未作成')}
+                            {document?.calls?.length ? <CliUsageLine usage={sumCliUsage(document.calls.map(call => call.usage))}
+                                partial={document.calls.some(call => !call.usage)} /> : null}
+                        </dd>
                     </div>
                     {assertions.length > 0 && (
                         <div>
@@ -804,10 +811,14 @@ export class ResultsPart extends AgentWindowPart {
             const providerId: KnownCliId = isKnownCliId(document.providerId) ? document.providerId : this.host.state.resultsCli;
             const provider = this.host.state.cliDetectionReport?.detections.find((candidate: CliDetectionReport['detections'][number]) => candidate.id === providerId)?.name
                 ?? ({ codex: 'Codex', claude: 'Claude Code', grok: 'Grok', gemini: 'Gemini CLI' } satisfies Record<KnownCliId, string>)[providerId];
-            const suffix = document.effort ? ` · ${document.effort}` : '';
+            const suffix = document.effort ? `（${document.effort}）` : '';
+            const attempts = document.calls?.filter(call => call.purpose === 'results-generation').length;
+            const details = [cliModelLabel(document.model, document.providerId) + suffix,
+                attempts ? `${attempts}回作成` : '',
+                document.durationMs === undefined ? '' : formatCliDuration(document.durationMs)].filter(Boolean);
             return {
                 label: `AI · ${provider}${suffix}`,
-                accessibleLabel: `AI 生成 · ${provider}${suffix}`
+                accessibleLabel: `AI 生成 · ${details.join(' · ')}`
             };
         }
         const fallbackLabel = document.fallbackReason === 'no-workspace'
@@ -1443,6 +1454,7 @@ img, svg, figure { max-width: 100%; }
                 resultsHtml: document.html,
                 history: (requirement?.resultsQuestions ?? task.resultsQuestions ?? []).slice(-6)
             });
+            this.taskService.recordCliCall(task.id, result.call);
             if (result.status === 'answered') {
                 const entry = {
                     question,

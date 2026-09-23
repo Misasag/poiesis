@@ -1,4 +1,6 @@
-import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { readChildUtf8 } from './child-utf8';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import {
@@ -18,7 +20,8 @@ import {
     GitSnapshotFileCapture,
     GitSnapshotFileRequest,
     GitSnapshotRequest,
-    KnownCliId
+    KnownCliId,
+    CLI_DISPLAY_NAMES
 } from '../common/agent-runtime-protocol';
 import { CliDetector } from './cli-detector';
 import { CliModelDiscoveryService } from './cli-model-discovery';
@@ -92,7 +95,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         const folderPath = resolve(path || process.cwd());
         const folderStat = await stat(folderPath);
         if (!folderStat.isDirectory()) {
-            throw new Error('The selected path is not a folder.');
+            throw new Error('選択した場所はフォルダーではありません。');
         }
         const entries = await readdir(folderPath, { withFileTypes: true });
         const parent = dirname(folderPath);
@@ -122,7 +125,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
 
     async captureGitSnapshot({ workspacePath, taskId }: GitSnapshotRequest): Promise<GitSnapshotCapture> {
         if (!workspacePath) {
-            return { source: 'empty', error: 'No workspace root is open.' };
+            return { source: 'empty', error: 'ワークスペースを開いてください。' };
         }
         if (taskId) {
             this.throwIfExecutionCancelled(taskId);
@@ -152,15 +155,15 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
 
     async runCodex({ executionId, providerId, model, effort, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
         if (process.platform !== 'win32') {
-            throw new Error('This implementation slice runs Codex only on Windows.');
+            throw new Error('このアプリのAI実行は Windows に対応しています。');
         }
         validateCliEffort(providerId, effort);
         if (this.codexRuns.has(executionId)) {
-            throw new Error(`Codex execution already exists: ${executionId}`);
+            throw new Error(`${CLI_DISPLAY_NAMES[providerId]} はすでに実行中です。`);
         }
         this.throwIfExecutionCancelled(executionId);
         if (!workspacePath) {
-            throw new Error('No workspace root is open.');
+            throw new Error('ワークスペースを開いてから実行してください。');
         }
         if (process.env.POIESIS_AGENT_FORCE_PRESPAWN_FAILURE === '1') {
             throw new Error('Agent pre-spawn failure requested by test hook.');
@@ -262,34 +265,49 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         const resolvedWorkspace = await this.resolveWorkspace(workspacePath);
         const skipGitRepositoryCheck = provider.id === 'codex' && !await isGitRepository(resolvedWorkspace);
         this.throwIfExecutionCancelled(executionId);
-        const args = agentCliArgs({
-            providerId: provider.id,
-            model: provider.model,
-            effort,
-            workspace: resolvedWorkspace,
-            prompt,
-            skipGitRepositoryCheck
-        });
-        const child = this.spawnCli(provider.id, provider.path, args, resolvedWorkspace);
-        const run: CodexRun = { process: child, cancelled: false };
-        this.codexRuns.set(executionId, run);
-
-        child.stdout.on('data', chunk => this.notifyOutput(executionId, 'stdout', chunk));
-        child.stderr.on('data', chunk => this.notifyOutput(executionId, 'stderr', chunk));
-        child.once('error', error => {
-            this.notifyOutput(executionId, 'stderr', Buffer.from(`${provider.name} process error: ${error.message}\n`));
-        });
-        child.once('close', (code, signal) => {
-            this.codexRuns.delete(executionId);
-            if (!run.cancelled) {
-                this.client?.notifyCodexEvent({
-                    type: 'exit',
-                    executionId,
-                    code,
-                    signal
-                });
+        let promptDirectory: string | undefined;
+        try {
+            let promptFile: string | undefined;
+            if (provider.id === 'grok') {
+                promptDirectory = await mkdtemp(join(tmpdir(), 'poiesis-agent-prompt-'));
+                promptFile = join(promptDirectory, 'prompt.txt');
+                await writeFile(promptFile, prompt, 'utf8');
             }
-        });
+            this.throwIfExecutionCancelled(executionId);
+            const args = agentCliArgs({
+                providerId: provider.id,
+                model: provider.model,
+                effort,
+                workspace: resolvedWorkspace,
+                prompt,
+                promptFile,
+                skipGitRepositoryCheck
+            });
+            const child = this.spawnCli(provider.id, provider.path, args, resolvedWorkspace, provider.id === 'grok' ? undefined : prompt);
+            const run: CodexRun = { process: child, cancelled: false };
+            this.codexRuns.set(executionId, run);
+
+            readChildUtf8(child, text => this.notifyOutput(executionId, 'stdout', text),
+                text => this.notifyOutput(executionId, 'stderr', text));
+            child.once('error', error => {
+                this.notifyOutput(executionId, 'stderr', `${provider.name} を実行できませんでした。\n${error.message}\n`);
+            });
+            child.once('close', (code, signal) => {
+                if (promptDirectory) { void rm(promptDirectory, { recursive: true, force: true }).catch(() => undefined); }
+                this.codexRuns.delete(executionId);
+                if (!run.cancelled) {
+                    this.client?.notifyCodexEvent({
+                        type: 'exit',
+                        executionId,
+                        code,
+                        signal
+                    });
+                }
+            });
+        } catch (error) {
+            if (promptDirectory) { await rm(promptDirectory, { recursive: true, force: true }).catch(() => undefined); }
+            throw error;
+        }
     }
 
     protected nextAgentTestReply(): string | undefined {
@@ -351,7 +369,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
 
     protected throwIfExecutionCancelled(executionId: string): void {
         if (this.cancelledExecutions.has(executionId)) {
-            throw new Error('Task execution was cancelled.');
+            throw new Error('タスクの実行をキャンセルしました。');
         }
     }
 
@@ -364,15 +382,16 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         } catch {
             // Report one stable error below.
         }
-        throw new Error(`The Workspace directory was not found: ${resolvedWorkspace}`);
+        console.warn('[Poiesis][Workspace diagnostics] Directory not found:', resolvedWorkspace);
+        throw new Error('ワークスペースのフォルダーが見つかりません。');
     }
 
-    protected spawnCli(providerId: KnownCliId, command: string, args: string[], cwd: string): CodexProcess {
+    protected spawnCli(providerId: KnownCliId, command: string, args: string[], cwd: string, input?: string): CodexProcess {
         const env = providerId === 'grok' ? grokExecutionEnvironment() : process.env;
-        return spawnHiddenCli(providerId, command, args, { cwd, env });
+        return spawnHiddenCli(providerId, command, args, { cwd, env, input });
     }
 
-    protected notifyOutput(executionId: string, stream: 'stdout' | 'stderr', chunk: Buffer): void {
+    protected notifyOutput(executionId: string, stream: 'stdout' | 'stderr', delta: string): void {
         const run = this.codexRuns.get(executionId);
         if (!run || run.cancelled) {
             return;
@@ -381,7 +400,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
             type: 'output',
             executionId,
             stream,
-            delta: chunk.toString()
+            delta
         });
     }
 

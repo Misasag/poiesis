@@ -178,7 +178,7 @@ async function runPreSpawnCancellationCase() {
         providerId: 'codex',
         workspacePath: root,
         prompt: 'This must not launch.'
-    }), /cancelled/);
+    }), /タスクの実行をキャンセルしました。/);
     assert.equal(providerResolved, false,
         'A cancellation received before process registration must prevent later Agent launch.');
     server.dispose();
@@ -215,7 +215,7 @@ async function runDelayedWorkspaceResolutionCase() {
     await resolutionStarted.promise;
     await server.cancelCodex(taskId);
     resolutionRelease.resolve();
-    await assert.rejects(request, /cancelled/);
+    await assert.rejects(request, /タスクの実行をキャンセルしました。/);
     assert.equal(snapshotCaptures, 0,
         'A cancellation during workspace resolution must prevent later snapshot registration.');
     assert.equal(providerResolved, false,

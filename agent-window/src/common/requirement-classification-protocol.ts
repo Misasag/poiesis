@@ -1,3 +1,4 @@
+import type { CliCallRecord } from './cli-usage';
 import { KnownCliId } from './agent-runtime-protocol';
 
 export const RequirementClassificationServer = Symbol('RequirementClassificationServer');
@@ -47,13 +48,13 @@ export interface RequirementClassificationError {
     stderr?: string;
 }
 
-export type RequirementClassificationResult =
+export type RequirementClassificationResult = (
     | { status: 'classified'; output: string }
-    | { status: 'failed'; error: RequirementClassificationError };
+    | { status: 'failed'; error: RequirementClassificationError }) & { call?: CliCallRecord };
 
-export type RequirementTitleSuggestionResult =
+export type RequirementTitleSuggestionResult = (
     | { status: 'suggested'; output: string }
-    | { status: 'failed'; error: RequirementClassificationError };
+    | { status: 'failed'; error: RequirementClassificationError }) & { call?: CliCallRecord };
 
 export interface RequirementClassificationServer {
     classify(scope: RequirementClassificationScope): Promise<RequirementClassificationResult>;

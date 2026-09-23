@@ -27,6 +27,8 @@ export const CLI_EFFORT_LEVELS: Readonly<Record<KnownCliId, readonly string[]>> 
 /** Capability snapshot shown only when live Codex discovery is unavailable. */
 export const CODEX_FALLBACK_MODEL_EFFORTS: Readonly<Record<string, readonly string[]>> = {
     'gpt-6-astra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    'gpt-6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    'gpt-6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],
     'gpt-5.6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     'gpt-5.6-terra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     'gpt-5.6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],

@@ -53,6 +53,8 @@ type ExecutionTaskStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
 Taskは開始時刻、終了時刻、request、Baseline、Change Setを持つ。CLIのprocessやAgentの自己申告をTaskの正本にしない。
 
+CLIが報告した使用量は任意の`CliUsage`としてTaskへ保存する。入力はキャッシュ読み取り・作成を含み、出力、推論出力、モデル別使用量、CLI報告の推定費用を保持する。未報告の数値は補わない。`CliCallRecord`はAgent、Results生成・判定・質問、要件分類・命名の呼び出し目的、provider、明示されたmodel／effort、開始・終了時刻、所要時間、終了コード、使用量、試行回数を保持する。実際の請求額は扱わない。
+
 ### Baseline
 
 Task開始前のWorkspace snapshot。AgentがWorkspaceを書き換える前に確定しなければならない。
@@ -79,6 +81,10 @@ backend processでCLI起動、cancel、Workspace snapshot、Change Set取得を�
 
 modelはAgent／Resultsのroleごとにユーザーが明示選択できる。CLI既定を選んだ場合はmodel flagを省略してCLI設定を尊重し、明示選択時だけprovider固有のmodel flagへ渡す。reasoning effortはPoiesisから固定しない。非対話実行、Workspace、sandboxなどの実行境界はprovider adapterが指定する。
 
+すべての依頼本文はCodex／Claudeでは標準入力、Grokでは実行ごとの一時ファイルで渡し、終了・失敗時に一時ファイルを削除する。各argv要素は1,000文字以下に制限する。Codexの単発呼び出しはJSONイベント、ClaudeはJSON結果から最終本文と使用量を取り出す。子プロセスの文字列出力はstdout／stderrそれぞれのUTF-8デコーダーで復号し、終了時に残りを処理する。Results質問は180秒と出力サイズの上限を持つ。要件分類と命名は別の実行キーで同時実行できる。
+
+ClaudeのAgent実行は`auto`による分類器付き権限判定を使用する。Results等の単発呼び出しは読み取り専用を維持する。拒否された操作はTaskの診断として件数と操作名を保存する。
+
 ### TaskService
 
 Taskの開始、完了、失敗、キャンセルを管理する。終了状態を確定してからChange Setを発行し、ResultsServiceへ通知する。
@@ -86,6 +92,8 @@ Taskの開始、完了、失敗、キャンセルを管理する。終了状態�
 ### ResultsSkill and ResultsService
 
 ResultsSkillは成果HTMLの生成方法を担う。ResultsServiceはTask終了後の起動、生成状態、完成文書の保持を担う。
+
+Results文書は生成・判定・再生成の呼び出し記録を保持する。既存の文書変更イベントで現在の段階、モデル選択、試行回数、段階開始時刻を通知し、キャンバスに段階ごとと全体の経過時間を表示する。詳細には作成回数・所要時間と報告済みの使用量を表示する。モデル既定値が観測できない場合はCLI設定として示す。
 
 Resultsの質問スレッドはTaskと表示中のResult documentをscopeに持つが、Agent会話や新しいExecution Taskを作らない。
 
@@ -121,6 +129,8 @@ Task終了、Results生成完了、streaming更新は、現在のtabやfocusを�
 ## Persistence
 
 Session一覧、Agent会話、Composer下書き、タイトル、pin／archive状態、サイドバー幅、終了済みTask metadata、Result documentはglobal storage境界から再読み込み後に復元する。Widgetは`window.localStorage`へ直接依存しない。実行中processは復元せず、保存時に中断された失敗Taskへ確定する。保存量はSessionごとのTask件数とResult HTMLサイズで制限する。
+
+使用量・呼び出し記録・診断は任意フィールドで保存し、記録のない既存Sessionも移行なしで復元する。
 
 ## Architectural rules
 

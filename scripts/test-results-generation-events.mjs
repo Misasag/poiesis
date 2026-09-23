@@ -37,6 +37,7 @@ Object.defineProperty(globalThis, 'navigator', {
 require('@theia/core/lib/browser/frontend-application-config-provider').FrontendApplicationConfigProvider.set({});
 
 const { ResultsService } = require('../agent-window/lib/browser/results-skill.js');
+const { AiResultsSkill } = require('../agent-window/lib/browser/results-skill.js');
 const { RequirementClassificationService } = require('../agent-window/lib/browser/requirement-classification-service.js');
 const { RequirementService } = require('../agent-window/lib/browser/requirement-service.js');
 
@@ -50,6 +51,8 @@ class FakeTaskService {
     tasks = new Map();
     listeners = [];
     finalizers = [];
+    setAppliedSkills() {}
+    recordCliCall() {}
     onDidChangeTask = listener => { this.listeners.push(listener); return { dispose() {} }; };
     registerTerminalFinalizer(finalizer) { this.finalizers.push(finalizer); return { dispose() {} }; }
     get(id) { return this.tasks.get(id); }
@@ -568,3 +571,69 @@ async function waitFor(predicate) {
         await new Promise(resolve => setTimeout(resolve, 5));
     }
 }
+
+// Exercise the actual generation/judging/retry path through the existing document event.
+const progressTasks = new FakeTaskService();
+const progressTask = { ...resultTask('live-progress', '50'), workspaceUri: 'file:///C:/work/a', resultsDocument: undefined,
+    changeSet: { source: 'task-diff', diff: 'change', files: ['src/a.ts'], capturedAt: new Date().toISOString() } };
+progressTasks.tasks.set(progressTask.id, progressTask);
+const recordedCalls = [];
+const makeCall = (purpose, attempt) => {
+    const startedAt = new Date(Date.now() - 20).toISOString();
+    const call = { purpose, attempt, providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh',
+        startedAt, endedAt: new Date().toISOString(), durationMs: 20, exitCode: 0, usage: { inputTokens: 100, outputTokens: 10 } };
+    recordedCalls.push(call);
+    return call;
+};
+const liveSkill = new AiResultsSkill(
+    { async generate(request) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+        return { status: 'generated', call: makeCall('results-generation', request.attempt),
+            html: request.attempt === 1 ? '<html><body><h2>概要</h2><p>説明</p></body></html>'
+                : '<html><body><h2>概要</h2><p>説明</p><a data-poiesis-citation="src/a.ts:1">根拠</a></body></html>' };
+    } },
+    { async generate() { throw new Error('Unexpected fallback'); } },
+    { providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh' },
+    { async buildPrompt() { return { includedSkillIds: [], content: '', diagnostics: [], assertions: [{ text: '説明がある', skillId: 'test' }] }; } },
+    progressTasks,
+    { async judge(scope) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+        return { status: 'judged', call: makeCall('results-judge', scope.attempt),
+            output: JSON.stringify({ results: [{ index: 0, pass: scope.attempt === 2, evidence: '説明を確認' }] }) };
+    } }
+);
+liveSkill.normalizeAndValidate = html => html;
+const progressService = new ResultsService(progressTasks, liveSkill, new FakeRequirementService(),
+    { suggestTitle: async () => {}, classify: async () => {} }, {}, {});
+const progressEvents = [];
+progressService.onDidChange(document => { if (document.progress) progressEvents.push(document); });
+await progressService.generateTask(progressTask);
+assert.deepEqual(progressEvents.map(document => document.progress.phase), ['generation', 'judge', 'regeneration', 'judge']);
+assert.deepEqual(progressEvents.map(document => document.progress.attempt), [1, 1, 2, 2]);
+assert.equal(progressEvents[2].progress.failedAssertions, 2);
+assert.equal(new Set(progressEvents.map(document => document.generationStartedAt)).size, 1);
+assert(progressEvents[1].progress.startedAt > progressEvents[0].progress.startedAt, 'Phase clocks must restart.');
+assert(progressEvents.every(document => document.progress.model === 'gpt-6-astra'));
+const progressDocument = progressService.get(progressTask.id);
+assert.equal(progressDocument.status, 'ready');
+assert.equal(progressDocument.progress, undefined);
+assert.deepEqual(progressDocument.calls, recordedCalls);
+assert.equal(progressDocument.assertionAttempts, 2);
+console.log('RESULTS_PHASE_EVENTS_TEST=passed');
+
+const cancelledTasks = new FakeTaskService();
+const cancelledTask = { ...progressTask, id: 'cancelled-generation', resultsDocument: undefined };
+cancelledTasks.tasks.set(cancelledTask.id, cancelledTask);
+const cancelledCall = makeCall('results-generation', 1);
+const cancelledSkill = new AiResultsSkill(
+    { async generate() { return { status: 'cancelled', error: { code: 'cancelled', message: '生成をキャンセルしました。' }, call: cancelledCall }; } },
+    {}, { providerId: 'codex', model: '', effort: '' },
+    { async buildPrompt() { return { includedSkillIds: [], content: '', diagnostics: [], assertions: [] }; } },
+    cancelledTasks, {}
+);
+const cancelledService = new ResultsService(cancelledTasks, cancelledSkill, new FakeRequirementService(), {}, {}, {});
+await cancelledService.generateTask(cancelledTask);
+assert.equal(cancelledService.get(cancelledTask.id).status, 'failed');
+assert.deepEqual(cancelledService.get(cancelledTask.id).calls, [cancelledCall]);
+
+await import('./test-results-live-progress.mjs');

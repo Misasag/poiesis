@@ -1,3 +1,4 @@
+import { CliUsageLine } from '../components/cli-usage';
 import * as React from '@theia/core/shared/react';
 import * as ReactDOM from '@theia/core/shared/react-dom';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
@@ -297,6 +298,12 @@ export class AgentPart extends AgentWindowPart {
                                         </div>
                                     )}
                                     {agentMessage && this.renderAgentActivities(session, message)}
+                                    {agentMessage && messageTask?.diagnostics?.map((diagnostic, index) => (
+                                        <details className='poiesis-agent-window__diagnostics' key={index}>
+                                            <summary>{diagnostic.summary}</summary>
+                                            <pre>{diagnostic.details}</pre>
+                                        </details>
+                                    ))}
                                     {message.error ? (
                                         <div className='poiesis-agent-window__message-error' role='alert'>
                                             <strong>{message.content}</strong>
@@ -533,6 +540,10 @@ export class AgentPart extends AgentWindowPart {
                             変更 {diffstat!.fileCount} ファイル · +{diffstat!.additions} −{diffstat!.deletions}
                         </button>
                     </div>
+                )}
+                {message.complete && task && task.status !== 'running' && (
+                    <CliUsageLine usage={task.usage} durationMs={task.cliCalls?.find(call => call.purpose === 'agent')?.durationMs
+                        ?? (task.endedAt ? Math.max(0, Date.parse(task.endedAt) - Date.parse(task.startedAt)) : undefined)} />
                 )}
                 {task && this.renderAutomaticRequirementClassification(task)}
             </>

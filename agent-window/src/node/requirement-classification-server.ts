@@ -1,3 +1,5 @@
+import { readChildUtf8 } from './child-utf8';
+import { captureCliCall, CliCallCapture } from './cli-call';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -20,6 +22,7 @@ import { grokExecutionEnvironment } from './known-cli-registry';
 import { isGitRepository } from './snapshot-store';
 
 interface RequirementClassificationRun {
+    call: CliCallCapture;
     process: HiddenCliProcess;
     providerName: string;
     promptDirectory?: string;
@@ -27,12 +30,14 @@ interface RequirementClassificationRun {
 
 export const REQUIREMENT_CLASSIFICATION_TIMEOUT_MS = 60_000;
 export const REQUIREMENT_TITLE_SUGGESTION_TIMEOUT_MS = 45_000;
-const OUTPUT_MAX_CHARS = 16_000;
+const OUTPUT_MAX_CHARS = 128_000;
 const STDERR_MAX_CHARS = 8_000;
 
 @injectable()
 export class RequirementClassificationServerImpl implements RequirementClassificationServer {
     protected readonly runs = new Map<string, RequirementClassificationRun>();
+
+    protected readonly pendingRuns = new Set<string>();
 
     constructor(@inject(CliProviderRegistry) protected readonly providerRegistry: CliProviderRegistry) { }
 
@@ -40,10 +45,16 @@ export class RequirementClassificationServerImpl implements RequirementClassific
         if (!this.validScope(scope)) {
             return this.failed({ code: 'invalid-scope', message: '要件分類に必要な情報が揃っていません。' });
         }
-        if (this.runs.has(scope.taskId)) {
+        return captureCliCall(scope, 'requirement-classification', call => this.classifyOnce(scope, call));
+    }
+
+    protected async classifyOnce(scope: RequirementClassificationScope, call: CliCallCapture): Promise<RequirementClassificationResult> {
+        const runKey = 'classification:' + scope.taskId;
+        if (this.runs.has(runKey) || this.pendingRuns.has(runKey)) {
             return this.failed({ code: 'already-running', message: 'このタスクの要件分類はすでに実行中です。' });
         }
 
+        this.pendingRuns.add(runKey);
         let pendingPromptDirectory: string | undefined;
         try {
             const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model, scope.effort);
@@ -74,24 +85,27 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 provider.id === 'grok' ? undefined : prompt
             );
             const run: RequirementClassificationRun = {
+                call,
                 process: child,
                 providerName: provider.name,
                 promptDirectory: pendingPromptDirectory
             };
             pendingPromptDirectory = undefined;
-            this.runs.set(scope.taskId, run);
-            return await this.collectResult(scope.taskId, run);
+            this.runs.set(runKey, run);
+            return await this.collectResult(runKey, run);
         } catch (error) {
             if (pendingPromptDirectory) {
                 await rm(pendingPromptDirectory, { recursive: true, force: true }).catch(() => undefined);
             }
-            this.runs.delete(scope.taskId);
+            this.runs.delete(runKey);
             return this.failed({
                 code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
                 message: unsupportedModelEffortMessage(error) ?? (this.isCommandMissing(error)
                     ? '選択したResults AI CLIが見つかりませんでした。'
                     : '要件の自動分類を開始できませんでした。')
             });
+        } finally {
+            this.pendingRuns.delete(runKey);
         }
     }
 
@@ -99,10 +113,16 @@ export class RequirementClassificationServerImpl implements RequirementClassific
         if (!this.validTitleScope(scope)) {
             return this.failed({ code: 'invalid-scope', message: '要件名の提案に必要な情報が揃っていません。' });
         }
-        if (this.runs.has(scope.taskId)) {
+        return captureCliCall(scope, 'requirement-title', call => this.suggestTitleOnce(scope, call));
+    }
+
+    protected async suggestTitleOnce(scope: RequirementTitleSuggestionScope, call: CliCallCapture): Promise<RequirementTitleSuggestionResult> {
+        const runKey = 'title:' + scope.taskId;
+        if (this.runs.has(runKey) || this.pendingRuns.has(runKey)) {
             return this.failed({ code: 'already-running', message: 'このタスクの要件処理はすでに実行中です。' });
         }
 
+        this.pendingRuns.add(runKey);
         let pendingPromptDirectory: string | undefined;
         try {
             const provider = await this.providerRegistry.resolve('results', scope.providerId, scope.model, scope.effort);
@@ -133,24 +153,27 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 provider.id === 'grok' ? undefined : prompt
             );
             const run: RequirementClassificationRun = {
+                call,
                 process: child,
                 providerName: provider.name,
                 promptDirectory: pendingPromptDirectory
             };
             pendingPromptDirectory = undefined;
-            this.runs.set(scope.taskId, run);
-            return await this.collectTitleResult(scope.taskId, run);
+            this.runs.set(runKey, run);
+            return await this.collectTitleResult(runKey, run);
         } catch (error) {
             if (pendingPromptDirectory) {
                 await rm(pendingPromptDirectory, { recursive: true, force: true }).catch(() => undefined);
             }
-            this.runs.delete(scope.taskId);
+            this.runs.delete(runKey);
             return this.failed({
                 code: this.isCommandMissing(error) ? 'cli-not-found' : 'internal',
                 message: unsupportedModelEffortMessage(error) ?? (this.isCommandMissing(error)
                     ? '選択したResults AI CLIが見つかりませんでした。'
                     : '要件名の提案を開始できませんでした。')
             });
+        } finally {
+            this.pendingRuns.delete(runKey);
         }
     }
 
@@ -172,6 +195,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 clearTimeout(timeout);
                 this.runs.delete(taskId);
                 void this.cleanupPrompt(run);
+                run.call.parse(stdout);
                 resolvePromise(result);
             };
             const timeout = setTimeout(() => {
@@ -180,19 +204,18 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 void killHiddenProcessTree(run.process);
             }, REQUIREMENT_CLASSIFICATION_TIMEOUT_MS);
 
-            run.process.stdout.on('data', chunk => {
+            readChildUtf8(run.process, text => {
                 if (tooLarge) {
                     return;
                 }
-                stdout += chunk.toString();
+                stdout += text;
                 if (stdout.length > OUTPUT_MAX_CHARS) {
                     tooLarge = true;
                     stdout = stdout.slice(0, OUTPUT_MAX_CHARS);
                     void killHiddenProcessTree(run.process);
                 }
-            });
-            run.process.stderr.on('data', chunk => {
-                stderr = `${stderr}${chunk.toString()}`.slice(-STDERR_MAX_CHARS);
+            }, text => {
+                stderr = `${stderr}${text}`.slice(-STDERR_MAX_CHARS);
             });
             run.process.once('error', error => {
                 finish(this.failed({
@@ -203,11 +226,13 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 }));
             });
             run.process.once('close', (code, signal) => {
+                run.call.exitCode = code ?? undefined;
+                const output = run.call.parse(stdout);
                 if (timedOut) {
                     finish(this.failed({ code: 'timeout', message: '要件の自動分類が時間内に完了しませんでした。' }));
                     return;
                 }
-                if (tooLarge || code !== 0 || signal) {
+                if (tooLarge || code !== 0 || signal || output.failed) {
                     finish(this.failed({
                         code: 'cli-failed',
                         message: tooLarge
@@ -221,7 +246,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                     }));
                     return;
                 }
-                if (!stdout.trim()) {
+                if (!output.text) {
                     finish(this.failed({
                         code: 'cli-failed',
                         message: `${run.providerName}から要件分類を受け取れませんでした。`,
@@ -230,7 +255,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                     }));
                     return;
                 }
-                finish({ status: 'classified', output: stdout.trim() });
+                finish({ status: 'classified', output: output.text });
             });
         });
     }
@@ -253,6 +278,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 clearTimeout(timeout);
                 this.runs.delete(taskId);
                 void this.cleanupPrompt(run);
+                run.call.parse(stdout);
                 resolvePromise(result);
             };
             const timeout = setTimeout(() => {
@@ -261,19 +287,18 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 void killHiddenProcessTree(run.process);
             }, REQUIREMENT_TITLE_SUGGESTION_TIMEOUT_MS);
 
-            run.process.stdout.on('data', chunk => {
+            readChildUtf8(run.process, text => {
                 if (tooLarge) {
                     return;
                 }
-                stdout += chunk.toString();
+                stdout += text;
                 if (stdout.length > OUTPUT_MAX_CHARS) {
                     tooLarge = true;
                     stdout = stdout.slice(0, OUTPUT_MAX_CHARS);
                     void killHiddenProcessTree(run.process);
                 }
-            });
-            run.process.stderr.on('data', chunk => {
-                stderr = `${stderr}${chunk.toString()}`.slice(-STDERR_MAX_CHARS);
+            }, text => {
+                stderr = `${stderr}${text}`.slice(-STDERR_MAX_CHARS);
             });
             run.process.once('error', error => {
                 finish({ status: 'failed', error: {
@@ -284,11 +309,13 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 } });
             });
             run.process.once('close', (code, signal) => {
+                run.call.exitCode = code ?? undefined;
+                const output = run.call.parse(stdout);
                 if (timedOut) {
                     finish({ status: 'failed', error: { code: 'timeout', message: '要件名の提案が時間内に完了しませんでした。' } });
                     return;
                 }
-                if (tooLarge || code !== 0 || signal) {
+                if (tooLarge || code !== 0 || signal || output.failed) {
                     finish({ status: 'failed', error: {
                         code: 'cli-failed',
                         message: tooLarge
@@ -302,7 +329,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                     } });
                     return;
                 }
-                if (!stdout.trim()) {
+                if (!output.text) {
                     finish({ status: 'failed', error: {
                         code: 'cli-failed',
                         message: `${run.providerName}から要件名を受け取れませんでした。`,
@@ -311,7 +338,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                     } });
                     return;
                 }
-                finish({ status: 'suggested', output: stdout.trim() });
+                finish({ status: 'suggested', output: output.text });
             });
         });
     }

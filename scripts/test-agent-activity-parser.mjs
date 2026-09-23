@@ -14,6 +14,7 @@ function fixtureLines(name) {
 function consumeFixture(parser, lines) {
     const activities = new Map();
     let finalMessage;
+    let usage;
     const diagnostics = [];
     let runningCommandObserved = false;
     lines.forEach((line, index) => {
@@ -27,9 +28,10 @@ function consumeFixture(parser, lines) {
         if (result.finalMessage !== undefined) {
             finalMessage = result.finalMessage;
         }
+        if (result.usage) { usage = result.usage; }
         diagnostics.push(...result.diagnostics);
     });
-    return { activities: [...activities.values()], finalMessage, diagnostics, runningCommandObserved };
+    return { activities: [...activities.values()], usage, finalMessage, diagnostics, runningCommandObserved };
 }
 
 const codex = consumeFixture(
@@ -94,3 +96,22 @@ assert.equal(multilineCommand.activities[0]?.detail, 'echo one; echo two (終了
     'Multiline commands must retain statement boundaries.');
 
 console.log('AGENT_ACTIVITY_PARSER_TEST=passed');
+
+assert.equal(codex.usage.inputTokens, 46279);
+assert.equal(codex.usage.cachedInputTokens, 37120);
+assert.equal(codex.usage.outputTokens, 195);
+assert.equal(codex.usage.reasoningOutputTokens, 33);
+assert.equal(claude.usage.inputTokens, 54579);
+assert.equal(claude.usage.costUsd, 0.255139);
+assert.equal(claude.usage.modelUsage['claude-fable-5-1'].outputTokens, 124);
+assert.equal(createAgentActivityParser('grok').consumeLine('??').usage, undefined);
+const multiTurn = createAgentActivityParser('codex');
+const turn = JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 20, output_tokens: 3 } });
+multiTurn.consumeLine(turn);
+assert.equal(multiTurn.consumeLine(turn).usage.inputTokens, 40);
+const denied = createAgentActivityParser('claude').consumeLine(JSON.stringify({
+    type: 'result', result: '作業を終了しました。', permission_denials: [{ tool_name: 'Bash' }, { tool_name: 'Write' }]
+}));
+assert.deepEqual(denied.permissionDenials, ['Bash', 'Write']);
+assert.match(denied.diagnostics[0], /Claude が 2 件の操作を許可されませんでした/);
+assert.match(denied.diagnostics[0], /Bash、Write/);

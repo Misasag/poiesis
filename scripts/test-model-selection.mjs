@@ -127,3 +127,12 @@ assert.ok(shortPlacement.maxHeight <= 400 - shortPlacement.top - 8,
     'Short-viewport placement must never claim more height than is actually available.');
 
 console.log('MODEL_SELECTION_TEST=passed');
+
+const { knownCliDefinitions } = require('../agent-window/lib/node/known-cli-registry.js');
+const fallbackModels = knownCliDefinitions().find(provider => provider.id === 'codex').models;
+for (const [id, maxEffort] of [['gpt-6-sol', 'ultra'], ['gpt-6-luna', 'max']]) {
+    const model = fallbackModels.find(candidate => candidate.id === id);
+    assert.equal(model.defaultReasoningEffort, 'medium');
+    assert.equal(model.supportedReasoningEfforts[0], 'low');
+    assert.equal(model.supportedReasoningEfforts.at(-1), maxEffort);
+}

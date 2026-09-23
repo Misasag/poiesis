@@ -852,7 +852,7 @@ async function smokeFallback(page, diagnostics) {
         ])),
         assertionCount: document.querySelectorAll('.poiesis-results__assertion-list li').length
     }));
-    assert(denseDetails.values['成果の作成'] === 'AI 生成 · Codex'
+    assert(denseDetails.values['成果の作成'] === 'AI 生成 · Codex（モデルはCLI設定）'
         && denseDetails.values['成果の生成条件'] === '7/7 通過'
         && denseHeaderSkills.every(skill => denseDetails.values['適用 Skills']?.includes(skill))
         && denseDetails.values['タスク履歴'] === '10件'

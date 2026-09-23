@@ -1,3 +1,5 @@
+import { CliCallRecord, CliUsage } from '../common/cli-usage';
+import type { ResultsGenerationProgress } from '../common/results-generation-protocol';
 import { StorageService } from '@theia/core/lib/browser';
 import { Disposable, Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
@@ -123,6 +125,9 @@ export interface TaskResultDocument {
     /** The task outcome version included in an aggregate document. */
     sourceVersion?: string;
     durationMs?: number;
+    calls?: CliCallRecord[];
+    generationStartedAt?: string;
+    progress?: ResultsGenerationProgress;
 }
 
 export interface TaskRequirementClassification {
@@ -161,6 +166,9 @@ export interface ExecutionTask {
     changeSet?: TaskChangeSet;
     failure?: TaskFailure;
     activities?: AgentActivity[];
+    usage?: CliUsage;
+    cliCalls?: CliCallRecord[];
+    diagnostics?: TaskFailure[];
     appliedSkills?: { agent: string[]; results: string[] };
     resultsQuestions?: TaskResultsQuestion[];
     /** New Results documents are persisted with their owning Task. */
@@ -355,6 +363,25 @@ export class TaskService {
         const updated = { ...current, requirementClassification: normalized };
         this.tasks.set(taskId, updated);
         return updated;
+    }
+
+    recordCliCall(taskId: string, call: CliCallRecord | undefined): void {
+        const current = this.tasks.get(taskId);
+        if (!current || !call) { return; }
+        this.tasks.set(taskId, { ...current,
+            usage: call.purpose === 'agent' ? call.usage : current.usage,
+            cliCalls: [...current.cliCalls ?? [], call]
+        });
+    }
+
+    recordDiagnostic(taskId: string, diagnostic: TaskFailure): void {
+        const current = this.tasks.get(taskId);
+        if (!current) { return; }
+        const diagnostics = [...current.diagnostics ?? []];
+        if (!diagnostics.some(item => item.summary === diagnostic.summary && item.details === diagnostic.details)) {
+            diagnostics.push(diagnostic);
+        }
+        this.tasks.set(taskId, { ...current, diagnostics: diagnostics.slice(-20) });
     }
 
     recordActivity(taskId: string, incoming: AgentActivity): ExecutionTask | undefined {
