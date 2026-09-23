@@ -1,6 +1,6 @@
 {
-  "version": 3,
-  "notes": "v3 (2026-09-23, owner decision 'staged cost reduction'): gpt-6-sol is the default implementer, gpt-6-astra only as escalation for design-heavy tickets, Grok removed (SuperGrok cancelled), Claude quota reserved for orchestration so judges/reviewers prefer other families.",
+  "version": 4,
+  "notes": "v4 (2026-09-23 evening): mimo-v2.6-pro dropped from worker-mech after smoke bench (1/3 pass, 2 timeouts); kimi-k2.7-code 0/3 at ~0.35 USD per task never added. v3 (2026-09-23, owner decision 'staged cost reduction'): gpt-6-sol is the default implementer, gpt-6-astra only as escalation for design-heavy tickets, Grok removed (SuperGrok cancelled), Claude quota reserved for orchestration so judges/reviewers prefer other families.",
   "data_policy": { "allow_may_train": true, "repo_visibility": "public" },
   "lambda_cost": 0.05,
   "quota_first": true,
@@ -12,7 +12,7 @@
   "roles": {
     "orchestrator": { "fixed": true, "incumbent": "Claude Code session", "notes": "Informational only; the current orchestrator is not spawned by hx." },
     "worker-design": { "incumbent": "codex:gpt-6-sol", "effort": "high", "challengers": ["or:glm-5.3", "codex:gpt-6-astra"], "escalation": "codex:gpt-6-astra", "notes": "Escalate to gpt-6-astra (xhigh) only after two failed passes or for explicitly design-heavy tickets." },
-    "worker-mech": { "incumbent": "codex:gpt-6-luna", "effort": "medium", "challengers": ["or:glm-5.3-flash", "or:deepseek-v4.1-flash", "or:mimo-v2.6-pro"] },
+    "worker-mech": { "incumbent": "codex:gpt-6-luna", "effort": "medium", "challengers": ["or:deepseek-v4.1-flash", "or:glm-5.3-flash"] },
     "reviewer": { "incumbent": "codex:gpt-6-sol", "fallback": "or:glm-5.3", "rule": "family must differ from worker" },
     "gate": { "incumbent": "jev", "effort": "default" },
     "judge": { "incumbent": "or:glm-5.3", "fallback": "codex:gpt-6-sol", "challengers": ["or:deepseek-v4.1-flash"], "rule": "best-scoring allowed family; exclude every candidate family" },

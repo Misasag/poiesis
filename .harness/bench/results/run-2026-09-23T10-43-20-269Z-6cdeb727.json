@@ -1,0 +1,36 @@
+{
+  "task": "git-16dd65a8a01c",
+  "model": "codex:gpt-6-luna",
+  "repeat": 1,
+  "run_id": "run-2026-09-23T10-43-20-269Z-6cdeb727",
+  "result": "pass",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 2.573,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-agent-activity-parser.mjs",
+      "exit_code": 0,
+      "wall_s": 0.055,
+      "tail": "AGENT_ACTIVITY_PARSER_TEST=passed\n"
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 1.372,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-results-normalizer.mjs",
+      "exit_code": 0,
+      "wall_s": 0.052,
+      "tail": "RESULTS_NORMALIZER_TEST=passed\n"
+    }
+  ],
+  "error": null
+}
