@@ -126,6 +126,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
         judgeEffort: '',
         effortByModel: { agent: {}, results: {}, judge: {} },
         allowExternalResultsResources: false,
+        allowCodexAgentNetworkAccess: false,
         automaticRequirementClassification: true,
         cliDetectionPhase: 'pending',
         modelCatalogs: {},

@@ -273,6 +273,12 @@
     gap: 24px;
 }
 
+.poiesis-settings-modal__agent-role {
+    display: grid;
+    gap: 12px;
+    grid-column: 1 / -1;
+}
+
 .poiesis-settings-modal__role-heading {
     border-bottom: 1px solid var(--poiesis-chrome-line);
     display: grid;

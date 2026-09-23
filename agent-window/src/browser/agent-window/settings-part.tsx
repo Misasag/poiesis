@@ -79,7 +79,7 @@ import { AgentWindowHost, AgentWindowPart, UiFontScale } from './agent-window-ho
 import { PoiesisThemePreference } from '../theme-preference-service';
 
 interface PersistedPoiesisSettings {
-    version: 6;
+    version: 7;
     uiFontScale: UiFontScale;
     agentCli: KnownCliId;
     agentModel: string;
@@ -93,11 +93,12 @@ interface PersistedPoiesisSettings {
     judgeEffort: string;
     effortByModel: Record<AiRole, Record<string, string>>;
     allowExternalResultsResources: boolean;
+    allowCodexAgentNetworkAccess: boolean;
     automaticRequirementClassification: boolean;
 }
 
 interface LegacyPoiesisSettings {
-    version?: 1 | 2 | 3 | 4 | 5;
+    version?: 1 | 2 | 3 | 4 | 5 | 6;
     agentEffort?: string;
     resultsEffort?: string;
     effortByModel?: unknown;
@@ -107,6 +108,10 @@ interface LegacyPoiesisSettings {
     resultsCli?: KnownCliId;
     agentModel?: string;
     resultsModel?: string;
+    judgeSameAsResults?: boolean;
+    judgeCli?: KnownCliId;
+    judgeModel?: string;
+    judgeEffort?: string;
     allowExternalResultsResources?: boolean;
     automaticRequirementClassification?: boolean;
 }
@@ -291,7 +296,26 @@ export class SettingsPart extends AgentWindowPart {
                 </div>
                 <p className='poiesis-settings-modal__section-copy'>対応するAIは、各CLIのアカウントと設定を使います。</p>
                 <div className='poiesis-settings-modal__ai-roles'>
-                    {this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)}
+                    <div className='poiesis-settings-modal__agent-role'>
+                        {this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)}
+                        {this.host.state.agentCli === 'codex' && (
+                            <div className='poiesis-settings-modal__row'>
+                                <div>
+                                    <strong>Codex の Agent にネットワークアクセスを許可</strong>
+                                    <small>オンにすると、Agent が実行するコマンドからインターネットに接続できます(別の AI への作業の依頼などに必要です)。</small>
+                                </div>
+                                <label className='poiesis-agent-window__switch'>
+                                    <input
+                                        type='checkbox'
+                                        checked={this.host.state.allowCodexAgentNetworkAccess}
+                                        aria-label='Codex の Agent にネットワークアクセスを許可'
+                                        onChange={event => this.setAllowCodexAgentNetworkAccess(event.currentTarget.checked)}
+                                    />
+                                    <span aria-hidden='true' />
+                                </label>
+                            </div>
+                        )}
+                    </div>
                     {this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)}
                     {this.renderCliRoleSelector('judge', '判定の AI', this.host.state.judgeCli)}
                 </div>
@@ -836,6 +860,12 @@ export class SettingsPart extends AgentWindowPart {
         this.update();
     }
 
+    protected setAllowCodexAgentNetworkAccess(allow: boolean): void {
+        this.host.state.allowCodexAgentNetworkAccess = allow;
+        this.persistPoiesisSettings();
+        this.update();
+    }
+
     protected setAutomaticRequirementClassification(enabled: boolean): void {
         this.host.state.automaticRequirementClassification = enabled;
         this.requirementClassificationService.enabled = enabled;
@@ -971,7 +1001,7 @@ export class SettingsPart extends AgentWindowPart {
     public async restorePoiesisSettings(): Promise<void> {
         try {
             const state = await this.storageService.getData<Partial<PersistedPoiesisSettings> | LegacyPoiesisSettings>(SETTINGS_STORAGE_KEY);
-            if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4 || state?.version === 5 || state?.version === 6) {
+            if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4 || state?.version === 5 || state?.version === 6 || state?.version === 7) {
                 this.host.state.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
                     ? state.uiFontScale
                     : 'standard';
@@ -984,32 +1014,33 @@ export class SettingsPart extends AgentWindowPart {
                 this.host.state.resultsCli = state.version !== 1 && isKnownCliId(state.resultsCli)
                     ? state.resultsCli
                     : legacyCli;
-                this.host.state.agentModel = (state.version === 3 || state.version === 4 || state.version === 5 || state.version === 6) && typeof state.agentModel === 'string'
+                this.host.state.agentModel = state.version >= 3 && typeof state.agentModel === 'string'
                     ? state.agentModel
                     : '';
-                this.host.state.resultsModel = (state.version === 3 || state.version === 4 || state.version === 5 || state.version === 6) && typeof state.resultsModel === 'string'
+                this.host.state.resultsModel = state.version >= 3 && typeof state.resultsModel === 'string'
                     ? state.resultsModel
                     : '';
-                this.host.state.effortByModel = (state.version === 5 || state.version === 6)
+                this.host.state.effortByModel = state.version >= 5
                     ? this.normalizeEffortByModel(state.effortByModel)
                     : { agent: {}, results: {}, judge: {} };
-                this.host.state.agentEffort = (state.version === 5 || state.version === 6)
+                this.host.state.agentEffort = state.version >= 5
                     ? this.normalizeEffort(this.host.state.agentCli, state.agentEffort)
                     : '';
-                this.host.state.resultsEffort = (state.version === 5 || state.version === 6)
+                this.host.state.resultsEffort = state.version >= 5
                     ? this.normalizeEffort(this.host.state.resultsCli, state.resultsEffort)
                     : '';
                 this.host.state.effortByModel.agent[this.effortKey(this.host.state.agentCli, this.host.state.agentModel)]
                     = this.host.state.agentEffort;
                 this.host.state.effortByModel.results[this.effortKey(this.host.state.resultsCli, this.host.state.resultsModel)]
                     = this.host.state.resultsEffort;
-                this.host.state.judgeSameAsResults = state.version !== 6 || state.judgeSameAsResults !== false;
-                this.host.state.judgeCli = state.version === 6 && isKnownCliId(state.judgeCli) ? state.judgeCli : DEFAULT_CLI_ID;
-                this.host.state.judgeModel = state.version === 6 && typeof state.judgeModel === 'string' ? state.judgeModel : '';
-                this.host.state.judgeEffort = state.version === 6 ? this.normalizeEffort(this.host.state.judgeCli, state.judgeEffort) : '';
+                this.host.state.judgeSameAsResults = state.version < 6 || state.judgeSameAsResults !== false;
+                this.host.state.judgeCli = state.version >= 6 && isKnownCliId(state.judgeCli) ? state.judgeCli : DEFAULT_CLI_ID;
+                this.host.state.judgeModel = state.version >= 6 && typeof state.judgeModel === 'string' ? state.judgeModel : '';
+                this.host.state.judgeEffort = state.version >= 6 ? this.normalizeEffort(this.host.state.judgeCli, state.judgeEffort) : '';
                 this.host.state.effortByModel.judge[this.effortKey(this.host.state.judgeCli, this.host.state.judgeModel)] = this.host.state.judgeEffort;
                 this.host.state.allowExternalResultsResources = state.allowExternalResultsResources === true;
-                this.host.state.automaticRequirementClassification = state.version === 4 || state.version === 5 || state.version === 6
+                this.host.state.allowCodexAgentNetworkAccess = state.version === 7 && state.allowCodexAgentNetworkAccess === true;
+                this.host.state.automaticRequirementClassification = state.version >= 4
                     ? state.automaticRequirementClassification !== false
                     : true;
             }
@@ -1033,7 +1064,7 @@ export class SettingsPart extends AgentWindowPart {
     protected persistPoiesisSettings(): void {
         this.syncJudgeSelection();
         void this.storageService.setData<PersistedPoiesisSettings>(SETTINGS_STORAGE_KEY, {
-            version: 6,
+            version: 7,
             uiFontScale: this.host.state.uiFontScale,
             agentCli: this.host.state.agentCli,
             agentModel: this.host.state.agentModel,
@@ -1047,6 +1078,7 @@ export class SettingsPart extends AgentWindowPart {
             judgeEffort: this.host.state.judgeEffort,
             effortByModel: this.host.state.effortByModel,
             allowExternalResultsResources: this.host.state.allowExternalResultsResources,
+            allowCodexAgentNetworkAccess: this.host.state.allowCodexAgentNetworkAccess,
             automaticRequirementClassification: this.host.state.automaticRequirementClassification
         });
     }

@@ -149,6 +149,7 @@ export interface CodexExecutionRequest {
     effort?: string;
     workspacePath?: string;
     prompt: string;
+    allowCodexAgentNetworkAccess?: boolean;
 }
 
 export interface FolderBrowserRequest {
