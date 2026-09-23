@@ -364,6 +364,19 @@ details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
     scrollbar-width: thin;
 }
 
+.poiesis-model-picker__filters::-webkit-scrollbar {
+    height: 4px;
+}
+
+.poiesis-model-picker__filters::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+}
+
+.poiesis-model-picker__filters:hover::-webkit-scrollbar-thumb {
+    background: #666961;
+}
+
 .poiesis-model-picker__filters button {
     background: transparent;
     border: 1px solid transparent;
