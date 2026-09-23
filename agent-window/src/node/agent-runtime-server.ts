@@ -153,7 +153,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         return this.snapshotStore.readFileComparison({ ...request, workspacePath });
     }
 
-    async runCodex({ executionId, providerId, model, effort, workspacePath, prompt }: CodexExecutionRequest): Promise<void> {
+    async runCodex({ executionId, providerId, model, effort, workspacePath, prompt, allowCodexAgentNetworkAccess }: CodexExecutionRequest): Promise<void> {
         if (process.platform !== 'win32') {
             throw new Error('このアプリのAI実行は Windows に対応しています。');
         }
@@ -278,6 +278,7 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
                 providerId: provider.id,
                 model: provider.model,
                 effort,
+                allowCodexAgentNetworkAccess,
                 workspace: resolvedWorkspace,
                 prompt,
                 promptFile,

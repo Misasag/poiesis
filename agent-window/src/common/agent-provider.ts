@@ -29,6 +29,8 @@ export interface AgentMessage {
     requirementId: string;
     requirementChoice: 'explicit' | 'default';
     workspaceUri?: string;
+    /** Explicit network permission for this Agent run. */
+    allowCodexAgentNetworkAccess?: boolean;
     /** Bounded, session-local context selected by the application. */
     conversation?: AgentConversationTurn[];
 }
