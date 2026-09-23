@@ -1,0 +1,36 @@
+{
+  "task": "git-16dd65a8a01c",
+  "model": "or:mimo-v2.6-pro",
+  "repeat": 1,
+  "run_id": "run-2026-09-23T10-51-52-793Z-e04e4250",
+  "result": "timeout",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 2.585,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-agent-activity-parser.mjs",
+      "exit_code": 0,
+      "wall_s": 0.048,
+      "tail": "AGENT_ACTIVITY_PARSER_TEST=passed\n"
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 1.385,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-results-normalizer.mjs",
+      "exit_code": 0,
+      "wall_s": 0.053,
+      "tail": "RESULTS_NORMALIZER_TEST=passed\n"
+    }
+  ],
+  "error": null
+}
