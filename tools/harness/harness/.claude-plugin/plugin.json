@@ -1,0 +1,6 @@
+{
+  "name": "harness",
+  "version": "1.0.0",
+  "description": "Development orchestration, independent judging, measurement, and frozen-evaluator improvement",
+  "author": { "name": "Poiesis" }
+}

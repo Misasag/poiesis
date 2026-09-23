@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","session_id":"fixture-claude"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}
+{"type":"result","subtype":"success","result":"done","session_id":"fixture-claude","usage":{"input_tokens":100,"cache_read_input_tokens":40,"cache_creation_input_tokens":20,"output_tokens":20},"total_cost_usd":9.9,"modelUsage":{"synthetic":{"inputTokens":100,"cacheReadInputTokens":40,"cacheCreationInputTokens":20,"outputTokens":20,"costUSD":9.9}}}

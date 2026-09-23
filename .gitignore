@@ -24,3 +24,13 @@ plugins/
 .dist-feed/
 electron-app/dist/
 *.log
+
+# Development harness runtime artifacts
+.harness/runs/
+.harness/worktrees/
+.harness/dogfood/
+.harness/tmp/
+
+# The harness source modules are not generated application lib output.
+!tools/harness/harness/bin/lib/
+!tools/harness/harness/bin/lib/*.mjs

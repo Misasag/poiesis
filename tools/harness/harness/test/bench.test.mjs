@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { git, context, write, writeJson } from '../bin/lib/util.mjs';
+import { validateTask, mine } from '../bin/lib/bench.mjs';
+import { withWorktree, dependencyCheck } from '../bin/lib/worktree.mjs';
+
+test('Tiny git benchmark validates fail-to-pass and cleans worktrees even on error', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-bench-')), ctx = context(root);
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  await git(root, ['init', '--quiet']);
+  writeJson(path.join(root, 'package.json'), { scripts: { 'test:tiny': 'node scripts/test-tiny.mjs' } });
+  write(path.join(root, '.gitignore'), '.harness/\n');
+  write(path.join(root, 'agent-window/src/value.mjs'), 'export const value = 1;\n');
+  write(path.join(root, 'scripts/test-tiny.mjs'), "import { value } from '../agent-window/src/value.mjs'; process.exit(value === 1 ? 0 : 1);\n");
+  const commit = async message => { await git(root, ['add', '.']); await git(root, ['-c', 'user.name=Harness test', '-c', 'user.email=test@localhost', 'commit', '--quiet', '-m', message]); return (await git(root, ['rev-parse', 'HEAD'])).stdout.trim(); };
+  const base = await commit('Base');
+  write(path.join(root, 'agent-window/src/value.mjs'), 'export const value = 2;\n');
+  write(path.join(root, 'scripts/test-tiny.mjs'), "import { value } from '../agent-window/src/value.mjs'; process.exit(value === 2 ? 0 : 1);\n");
+  const fix = await commit('Return two');
+  const task = { base_sha: base, fix_sha: fix, src_files: ['agent-window/src/value.mjs'], test_files: ['scripts/test-tiny.mjs'], test_cmds: ['npm run test:tiny'] };
+  const result = await validateTask(ctx, task); assert.equal(result.valid, true); assert.equal(result.before[0].exit_code, 1); assert.equal(result.after[0].exit_code, 0);
+  const bad = await validateTask(ctx, { ...task, src_files: [] }); assert.equal(bad.valid, false); assert.match(bad.reason, /still fail/);
+  const mined = await mine(ctx, { limit: '1' }); assert.equal(mined.validated.length, 1);
+  await assert.rejects(withWorktree(ctx, base, () => { throw new Error('intentional'); }), /intentional/);
+  const worktrees = (await git(root, ['worktree', 'list', '--porcelain'])).stdout; assert.equal((worktrees.match(/^worktree /gm) ?? []).length, 1);
+  writeJson(path.join(root, 'package-lock.json'), { lockfileVersion: 3 });
+  await assert.rejects(dependencyCheck(ctx, base), /differs/);
+});

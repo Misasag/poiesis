@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "lambda_cost": 0.05,
+  "lambda_time": 0.0001,
+  "explore_share": 0.2,
+  "min_n_for_promotion": 10,
+  "noninferiority_margin": 0.05,
+  "task_classes": ["app-backend", "app-frontend", "app-test", "harness", "docs", "mechanical"],
+  "roles": {
+    "orchestrator": { "fixed": true, "incumbent": "Claude Code session", "notes": "Informational only; the current orchestrator is not spawned by hx." },
+    "worker-design": { "incumbent": "codex:gpt-6-astra", "effort": "xhigh", "challengers": ["codex:gpt-6-sol", "claude:opus"] },
+    "worker-mech": { "incumbent": "codex:gpt-6-luna", "effort": "medium", "challengers": ["grok:default", "codex:gpt-6-sol"] },
+    "reviewer": { "incumbent": "claude:opus", "fallback": "codex:gpt-6-sol", "rule": "family must differ from worker" },
+    "judge": { "incumbent": "codex:gpt-6-sol", "fallback": "grok:default", "rule": "family must differ from every candidate" },
+    "recon": { "incumbent": "grok:default" }
+  }
+}

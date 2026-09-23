@@ -1,0 +1,270 @@
+[
+  {
+    "id": "codex:gpt-6-astra",
+    "family": "openai",
+    "adapter": "codex",
+    "model": "gpt-6-astra",
+    "defaultEffort": "xhigh",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Subscription quota. No USD charge inferred from tokens."
+  },
+  {
+    "id": "codex:gpt-6-sol",
+    "family": "openai",
+    "adapter": "codex",
+    "model": "gpt-6-sol",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Subscription quota. No USD charge inferred from tokens."
+  },
+  {
+    "id": "codex:gpt-6-luna",
+    "family": "openai",
+    "adapter": "codex",
+    "model": "gpt-6-luna",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Subscription quota. No USD charge inferred from tokens."
+  },
+  {
+    "id": "codex:gpt-5.6-luna",
+    "family": "openai",
+    "adapter": "codex",
+    "model": "gpt-5.6-luna",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Subscription quota. No USD charge inferred from tokens."
+  },
+  {
+    "id": "claude:fable",
+    "family": "anthropic",
+    "adapter": "claude",
+    "model": "fable",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Native Anthropic subscription alias; CLI aliases may change upstream."
+  },
+  {
+    "id": "claude:opus",
+    "family": "anthropic",
+    "adapter": "claude",
+    "model": "opus",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Native Anthropic subscription alias; CLI aliases may change upstream."
+  },
+  {
+    "id": "claude:sonnet",
+    "family": "anthropic",
+    "adapter": "claude",
+    "model": "sonnet",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Native Anthropic subscription alias; CLI aliases may change upstream."
+  },
+  {
+    "id": "claude:haiku",
+    "family": "anthropic",
+    "adapter": "claude",
+    "model": "haiku",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Native Anthropic subscription alias; CLI aliases may change upstream."
+  },
+  {
+    "id": "grok:default",
+    "family": "xai",
+    "adapter": "grok",
+    "model": "default",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Use installed Grok default. Usage wire fixture is synthetic until a recorded sample is available."
+  },
+  {
+    "id": "anthropic-compat:glm",
+    "family": "zhipu",
+    "adapter": "anthropic-compat",
+    "model": "TBD",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "costBasis": "metered",
+    "prices": null,
+    "env": {
+      "ANTHROPIC_BASE_URL": "TBD",
+      "ANTHROPIC_MODEL": "TBD",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:ZAI_API_KEY}"
+    },
+    "enabled": false,
+    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+  },
+  {
+    "id": "anthropic-compat:kimi",
+    "family": "moonshot",
+    "adapter": "anthropic-compat",
+    "model": "TBD",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "costBasis": "metered",
+    "prices": null,
+    "env": {
+      "ANTHROPIC_BASE_URL": "TBD",
+      "ANTHROPIC_MODEL": "TBD",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:KIMI_API_KEY}"
+    },
+    "enabled": false,
+    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+  },
+  {
+    "id": "anthropic-compat:deepseek",
+    "family": "deepseek",
+    "adapter": "anthropic-compat",
+    "model": "TBD",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "costBasis": "metered",
+    "prices": null,
+    "env": {
+      "ANTHROPIC_BASE_URL": "TBD",
+      "ANTHROPIC_MODEL": "TBD",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:DEEPSEEK_API_KEY}"
+    },
+    "enabled": false,
+    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+  },
+  {
+    "id": "anthropic-compat:minimax",
+    "family": "minimax",
+    "adapter": "anthropic-compat",
+    "model": "TBD",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "costBasis": "metered",
+    "prices": null,
+    "env": {
+      "ANTHROPIC_BASE_URL": "TBD",
+      "ANTHROPIC_MODEL": "TBD",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:MINIMAX_API_KEY}"
+    },
+    "enabled": false,
+    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+  },
+  {
+    "id": "anthropic-compat:qwen",
+    "family": "alibaba",
+    "adapter": "anthropic-compat",
+    "model": "TBD",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "costBasis": "metered",
+    "prices": null,
+    "env": {
+      "ANTHROPIC_BASE_URL": "TBD",
+      "ANTHROPIC_MODEL": "TBD",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:QWEN_API_KEY}"
+    },
+    "enabled": false,
+    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+  }
+]
