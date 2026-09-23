@@ -13,6 +13,7 @@ import { sessionFacts, SESSION_KEY } from '../bin/lib/dogfood.mjs';
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-core-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  ctx.accountStatus = async () => ({ status: 'unavailable' });
   writeJson(path.join(ctx.data, 'budget/limits.json'), { metered: { monthly_usd: 5, daily_usd: 2, per_run_usd: 1, conservative_default_usd: 1 }, quota: { per_model_runs_per_day: { 'codex:gpt-6-luna': 1 } } });
   fs.mkdirSync(path.join(ctx.data, 'routing'), { recursive: true }); fs.copyFileSync(path.resolve(PLUGIN, '../../../.harness/routing/policy.json'), path.join(ctx.data, 'routing/policy.json'));
   return ctx;
@@ -25,13 +26,13 @@ test('Append-only ledger and latest explicit final outcome', t => {
   assert.throws(() => outcome(ctx, 'missing', 'pass'), /not found/);
   fs.appendFileSync(path.join(ctx.data, 'ledger/runs.jsonl'), 'bad\n', 'utf8'); assert.throws(() => ledger(ctx), /Invalid ledger/);
 });
-test('Budget refuses daily/per-run metered overrun and quota count', t => {
+test('Budget refuses daily/per-run metered overrun and quota count', async t => {
   const ctx = fixture(t), metered = { id: 'm', costBasis: 'metered' }, quota = { id: 'codex:gpt-6-luna', costBasis: 'quota' };
-  assert.equal(budgetCheck(ctx, metered).allowed, true); assert.equal(budgetCheck(ctx, metered, 1.01).allowed, false);
+  assert.equal((await budgetCheck(ctx, metered)).allowed, true); assert.equal((await budgetCheck(ctx, metered, 1.01)).allowed, false);
   append(ctx, entry('m', 'a')); append(ctx, entry('m', 'b'));
-  assert.equal(budgetCheck(ctx, metered).allowed, false); assert.throws(() => requireBudget(ctx, metered), e => e.exitCode === 3);
-  append(ctx, entry(quota.id, 'q', { cost_basis: 'quota', cost_usd_est: null })); assert.equal(budgetCheck(ctx, quota).allowed, false);
-  assert.equal(budgetCheck(ctx, { id: 'other-quota', costBasis: 'quota' }).allowed, true);
+  assert.equal((await budgetCheck(ctx, metered)).allowed, false); await assert.rejects(() => requireBudget(ctx, metered), e => e.exitCode === 3);
+  append(ctx, entry(quota.id, 'q', { cost_basis: 'quota', cost_usd_est: null })); assert.equal((await budgetCheck(ctx, quota)).allowed, false);
+  assert.equal((await budgetCheck(ctx, { id: 'other-quota', costBasis: 'quota' })).allowed, true);
 });
 test('Posterior decay and exact Beta quantile', t => {
   const ctx = fixture(t), now = new Date('2026-09-23T12:00:00Z');

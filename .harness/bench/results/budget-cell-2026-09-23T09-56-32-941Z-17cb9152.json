@@ -1,0 +1,11 @@
+{
+  "task": "git-2ff3185361c3",
+  "model": "or:mimo-v2.6-pro",
+  "repeat": 1,
+  "run_id": null,
+  "result": "skipped_budget",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [],
+  "error": "Estimated cost exceeds budget"
+}

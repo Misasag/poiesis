@@ -1,0 +1,24 @@
+{
+  "task": "git-7b1c953f5725",
+  "model": "or:deepseek-v4.1-flash",
+  "repeat": 1,
+  "run_id": "run-2026-09-23T09-56-34-234Z-138a6c29",
+  "result": "pass",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 2.676,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-results-normalizer.mjs",
+      "exit_code": 0,
+      "wall_s": 0.053,
+      "tail": "RESULTS_NORMALIZER_TEST=passed\n"
+    }
+  ],
+  "error": null
+}

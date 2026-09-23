@@ -163,7 +163,7 @@ export async function dogfood(ctx, o) {
     const main = await resolveAppRoot(ctx, o['app-root']); report.app_root = main;
     const p = provider(ctx, o.model?.includes(':') ? o.model : `codex:${o.model ?? 'gpt-6-luna'}`);
     if (p.adapter !== 'codex' || p.costBasis !== 'quota') fail('Dogfood requires a quota Codex catalog model');
-    requireBudget(ctx, p); report.model = p.id; report.cost_basis = p.costBasis;
+    await requireBudget(ctx, p); report.model = p.id; report.cost_basis = p.costBasis;
     const source = path.resolve(o.workspace ?? path.join(os.homedir(), 'github/pomodoro-web')); report.source_workspace = source;
     const app = path.join(main, 'electron-app'), require = createRequire(path.join(app, 'package.json'));
     const electron = require('electron'), puppeteer = require('puppeteer-core');

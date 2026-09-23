@@ -6,11 +6,10 @@ import { run } from './lib/run.mjs';
 import { verify } from './lib/verify.mjs';
 import { judge, calibration } from './lib/judge.mjs';
 import { route, scoreboard, tune, policy } from './lib/route.mjs';
-import { budgetStatus, budgetCheck } from './lib/budget.mjs';
+import { budgetStatus, meteredBudgetStatus, budgetCheck } from './lib/budget.mjs';
 import { provider } from './lib/prices.mjs';
 import { ledger, outcome } from './lib/ledger.mjs';
 import { mine, benchRun, resuite } from './lib/bench.mjs';
-import { accountStatus } from './lib/openrouter.mjs';
 import { gate } from './lib/gate.mjs';
 import { exhaustedQuota } from './lib/quota.mjs';
 
@@ -37,8 +36,8 @@ try {
     case 'outcome': required(o, 'run', 'result'); result = outcome(ctx, o.run, o.result, o.note); break;
     case 'tune': result = tune(ctx, Boolean(o.apply)); break;
     case 'budget': {
-      if (o._[0] === 'check') { required(o, 'model'); result = budgetCheck(ctx, provider(ctx, o.model), o['estimate-usd']); if (!result.allowed) result.exit_code = 3; }
-      else if (o._[0] === 'status') { const b = budgetStatus(ctx); result = { month_usd: b.month_usd, day_usd: b.day_usd, quota_runs_today: b.quota_today.length, limits: b.limits, openrouter: await accountStatus() }; }
+      if (o._[0] === 'check') { required(o, 'model'); result = await budgetCheck(ctx, provider(ctx, o.model), o['estimate-usd']); if (!result.allowed) result.exit_code = 3; }
+      else if (o._[0] === 'status') { const { runs, quota_today, ...b } = await meteredBudgetStatus(ctx); result = { ...b, quota_runs_today: quota_today.length }; }
       else fail('Usage: hx budget status|check [--model id]');
       break;
     }

@@ -47,7 +47,7 @@ export function scoreboard(ctx, persist = false, now = new Date()) {
   for (const r of lines) if (r.kind === 'outcome') outcomes.set(r.run_id, r.result);
   for (const r of lines) {
     const result = outcomes.get(r.run_id);
-    // Infra failures (quota exhaustion) are not model evidence. A timeout is
+    // Infra failures (quota or routing configuration) are not model evidence. A timeout is
     // a speed failure: it counts as fail for pass rate but is reported
     // separately so wrong answers stay distinguishable.
     if (r.kind || r.infra || !['pass', 'fail', 'timeout'].includes(result)) continue;

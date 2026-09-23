@@ -99,7 +99,7 @@ Chosen 2026-09-23 from `GET /api/v1/models/<slug>/endpoints`: prefer the model d
 | --- | --- | --- | --- | --- |
 | z-ai/glm-5.3 | Z.AI | fp8 | 131072 | deny |
 | z-ai/glm-5.3-flash | Z.AI | fp8 | 131072 | deny |
-| deepseek/deepseek-v4.1-flash | DeepSeek | unknown | 131072 | none (endpoint declares training; policy allows for this public repo) |
+| deepseek/deepseek-v4.1-flash | Fireworks, Together, DeepInfra | fp8/bf16 filter in current template | 131072 | none (may-train catalog class) |
 | deepseek/deepseek-v4-pro | DeepInfra, SiliconFlow | fp8, fp8 | 16384 | none (host terms unverified; catalog classifies may-train) |
 | moonshotai/kimi-k3 | Moonshot AI, DeepInfra | mxfp4, bf16 | 131072 | none (may-train catalog class) |
 | moonshotai/kimi-k2.7-code | Moonshot AI, GMICloud | int4, fp8 | 131072 | none (may-train catalog class) |

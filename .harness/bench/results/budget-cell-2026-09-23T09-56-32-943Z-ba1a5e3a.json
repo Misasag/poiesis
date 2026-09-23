@@ -1,0 +1,11 @@
+{
+  "task": "git-16dd65a8a01c",
+  "model": "or:glm-5.3-flash",
+  "repeat": 1,
+  "run_id": null,
+  "result": "skipped_budget",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [],
+  "error": "Estimated cost exceeds budget"
+}

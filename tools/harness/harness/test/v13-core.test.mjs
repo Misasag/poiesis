@@ -14,6 +14,7 @@ import { scoreboard } from '../bin/lib/route.mjs';
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-v13-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  ctx.accountStatus = async () => ({ status: 'unavailable' });
   writeJson(path.join(ctx.data, 'budget/limits.json'), json(path.join(ROOT, '.harness/budget/limits.json')));
   return ctx;
 }
@@ -51,21 +52,21 @@ test('Cost-cap accumulator prices anthropic-compat tokens live from the catalog'
   assert.equal(last.exceeded, false);
 });
 
-test('Budget check reserves the per-run cap, not only the historical mean', t => {
+test('Budget check reserves the per-run cap, not only the historical mean', async t => {
   const ctx = fixture(t), now = new Date('2026-09-23T12:00:00Z'), model = 'or:glm-5.3-flash';
   writeJson(path.join(ctx.data, 'budget/limits.json'), { metered: { monthly_usd: 30, daily_usd: 1, per_run_usd: 1, conservative_default_usd: 0.05 }, quota: null });
   append(ctx, { run_id: 'cheap', ts: '2026-09-23T01:00:00Z', model, role: 'worker', task_class: 'mechanical', cost_basis: 'metered', cost_usd_actual: 0.05, wall_s: 1 });
   const p = provider(ctx, model);
   // Without a cap the recent mean (0.05) fits the remaining daily budget.
-  const mean = budgetCheck(ctx, p, undefined, now);
+  const mean = (await budgetCheck(ctx, p, undefined, now));
   assert.equal(mean.allowed, true); assert.equal(mean.estimate_usd, 0.05);
   // With the per-run cap the reservation is the cap, so it is refused.
-  const capped = budgetCheck(ctx, p, undefined, now, { capUsd: 1 });
+  const capped = (await budgetCheck(ctx, p, undefined, now, { capUsd: 1 }));
   assert.equal(capped.reservation_usd, 1); assert.equal(capped.allowed, false);
   // In-flight concurrent reservations reduce the remaining budget.
-  assert.equal(budgetCheck(ctx, p, undefined, now, { capUsd: 0.5, reservedUsd: 0.5 }).allowed, false);
-  assert.equal(budgetCheck(ctx, p, undefined, now, { capUsd: 0.3, reservedUsd: 0.5 }).allowed, true);
-  assert.equal(budgetCheck(ctx, p, 0.01, now, { capUsd: 1 }).allowed, false);
+  assert.equal((await budgetCheck(ctx, p, undefined, now, { capUsd: 0.5, reservedUsd: 0.5 })).allowed, false);
+  assert.equal((await budgetCheck(ctx, p, undefined, now, { capUsd: 0.3, reservedUsd: 0.5 })).allowed, true);
+  assert.equal((await budgetCheck(ctx, p, 0.01, now, { capUsd: 1 })).allowed, false);
 });
 
 test('Timeout outcomes count as fail for pass rate and are reported separately', t => {

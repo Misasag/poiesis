@@ -4,6 +4,9 @@ Promise.all([
   import('./adapters.test.mjs'),
   import('./core.test.mjs'),
   import('./v11-core.test.mjs'),
+  import('./v12-core.test.mjs'),
+  import('./v13-core.test.mjs'),
+  import('./v14-core.test.mjs'),
   import('./bench.test.mjs'),
   import('./dogfood.test.mjs'),
   import('./packaging.test.mjs')

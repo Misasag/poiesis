@@ -248,16 +248,29 @@ export async function benchRun(ctx, o, services = { run, verify, outcome, judge 
   // reservations before any worker starts, and release them once the actual
   // cost is recorded in the ledger. Ledger appends stay one JSON line each.
   let reservedUsd = 0, chain = Promise.resolve();
+  const waiters = new Set();
   const critical = task => { const next = chain.then(task); chain = next.then(() => {}, () => {}); return next; };
-  const reserveBudget = model => critical(async () => {
+  const reserveBudget = async model => {
     const p = provider(ctx, model);
-    const capUsd = p.costBasis === 'metered' ? meteredLimits(ctx).per_run_usd : null;
-    const check = budgetCheck(ctx, p, undefined, undefined, { capUsd, reservedUsd });
-    if (!check.allowed) return { allowed: false, reason: check.reason };
-    const reservation = check.reservation_usd ?? check.estimate_usd ?? 0;
-    reservedUsd += reservation;
-    return { allowed: true, reservation };
-  });
+    // --max-usd lowers the per-cell cap (and therefore the reservation) for cheap models.
+    const capUsd = p.costBasis === 'metered' ? (o['max-usd'] === undefined ? meteredLimits(ctx).per_run_usd : positive(o['max-usd'])) : null;
+    for (;;) {
+      const gate = await critical(async () => {
+        const check = await budgetCheck(ctx, p, undefined, undefined, { capUsd, reservedUsd });
+        if (!check.allowed) {
+          // Subscribe while holding the same lock as release, then wait outside
+          // it. No lost wakeups, polling, or lock held by a waiting cell.
+          if (check.blocked_by_reservations) return { wait: new Promise(resolve => waiters.add(resolve)) };
+          return { allowed: false, reason: check.reason };
+        }
+        const reservation = check.reservation_usd ?? check.estimate_usd ?? 0;
+        reservedUsd += reservation;
+        return { allowed: true, reservation };
+      });
+      if (!gate.wait) return gate;
+      await gate.wait;
+    }
+  };
   const runCell = async cell => {
     const gate = await reserveBudget(cell.model);
     if (!gate.allowed) {
@@ -272,32 +285,38 @@ export async function benchRun(ctx, o, services = { run, verify, outcome, judge 
         await git(cwd, ['add', '--', ...cell.task.test_files]);
         await git(cwd, ['-c', 'user.name=Harness', '-c', 'user.email=harness@localhost', 'commit', '--quiet', '--allow-empty', '-m', 'Benchmark acceptance fixtures']);
         const baseline = (await git(cwd, ['rev-parse', 'HEAD'])).stdout.trim();
-        const r = await services.run(ctx, { model: cell.model, cwd, brief: path.join(cell.taskDir, safeId(cell.task.instruction_file)), role: 'worker', ticket: cell.task.id, 'task-class': cell.task.class, 'timeout-min': timeoutMin });
+        const r = await services.run(ctx, { model: cell.model, cwd, brief: path.join(cell.taskDir, safeId(cell.task.instruction_file)), role: 'worker', ticket: cell.task.id, 'task-class': cell.task.class, 'timeout-min': timeoutMin, ...(o['max-usd'] === undefined ? {} : { 'max-usd': o['max-usd'] }) });
         let v, error, deviations = [];
-        try { deviations = await restoreEvaluator(cwd, baseline); v = await services.verify(ctx, { cwd, run: r.run_id, cmd: cell.task.test_cmds }); }
+        try { if (!r.infra) { deviations = await restoreEvaluator(cwd, baseline); v = await services.verify(ctx, { cwd, run: r.run_id, cmd: cell.task.test_cmds }); } }
         catch (e) { error = e.message; }
         if (deviations.length) error = `Source-only scope violated: ${deviations.join(', ')}${error ? `; ${error}` : ''}`;
         // Quota exhaustion is infrastructure, not a model failure: the cell
         // is recorded as skipped and never counts as fail. A wall-clock
         // timeout is a speed failure, recorded distinctly from wrong answers.
-        const result = r.infra === 'quota_exhausted' ? 'skipped_quota' : r.exit_code === 124 ? 'timeout' : !error && r.exit_code === 0 && v?.exit_code === 0 ? 'pass' : 'fail';
-        services.outcome(ctx, r.run_id, result, result === 'skipped_quota' ? `Infrastructure: ${r.quota_source}` : result === 'timeout' ? `timeout: exceeded the ${timeoutMin} min wall cap before completing acceptance` : error ?? `Acceptance tests; repeat ${cell.repeat + 1}`);
-        const j = o.judge === 'none' ? null : await services.judge(ctx, { 'worker-run': r.run_id, judge: o.judge ?? 'auto' });
-        const row = { task: cell.task.id, model: cell.model, repeat: cell.repeat + 1, run_id: r.run_id, result, judge: j?.verdict ?? null, scope_deviations: deviations, verification: v?.results ?? [], error: error ?? null };
+        const result = r.infra === 'routing_config' ? 'skipped_routing' : r.infra === 'quota_exhausted' ? 'skipped_quota' : r.exit_code === 124 ? 'timeout' : !error && r.exit_code === 0 && v?.exit_code === 0 ? 'pass' : 'fail';
+        services.outcome(ctx, r.run_id, result, r.infra ? `Infrastructure: ${r.routing_step ?? r.quota_source}` : result === 'timeout' ? `timeout: exceeded the ${timeoutMin} min wall cap before completing acceptance` : error ?? `Acceptance tests; repeat ${cell.repeat + 1}`);
+        const j = o.judge === 'none' || r.infra ? null : await services.judge(ctx, { 'worker-run': r.run_id, judge: o.judge ?? 'auto' });
+        const row = { task: cell.task.id, model: cell.model, repeat: cell.repeat + 1, run_id: r.run_id, result, ...(r.infra ? { infra: r.infra, routing_step: r.routing_step } : {}), judge: j?.verdict ?? null, scope_deviations: deviations, verification: v?.results ?? [], error: error ?? null };
         writeJson(path.join(ctx.data, 'bench/results', `${safeId(r.run_id)}.json`), redactor()(row));
         return row;
       }, { isolated: true });
     } finally {
-      reservedUsd = Math.max(0, reservedUsd - (gate.reservation ?? 0));
+      await critical(() => {
+        reservedUsd = Math.max(0, reservedUsd - (gate.reservation ?? 0));
+        for (const wake of waiters) wake();
+        waiters.clear();
+      });
     }
   };
   const results = await withBenchmarkEnv(ctx, async () => {
     const rows = new Array(cells.length);
     let cursor = 0;
     const lane = async () => { for (;;) { const i = cursor++; if (i >= cells.length) return; rows[i] = await runCell(cells[i]); } };
-    await Promise.all(Array.from({ length: parallel }, lane));
+    const completed = await Promise.allSettled(Array.from({ length: parallel }, lane));
+    const failure = completed.find(r => r.status === 'rejected');
+    if (failure) throw failure.reason;
     return rows;
   });
   const count = value => results.filter(r => r.result === value).length;
-  return { results, summary: { pass: count('pass'), fail: count('fail'), timeout: count('timeout'), skipped_quota: count('skipped_quota'), skipped_budget: count('skipped_budget') }, exit_code: results.some(r => r.result === 'fail' || r.result === 'timeout') ? 1 : 0 };
+  return { results, summary: { pass: count('pass'), fail: count('fail'), timeout: count('timeout'), skipped_quota: count('skipped_quota'), skipped_routing: count('skipped_routing'), skipped_budget: count('skipped_budget') }, exit_code: results.some(r => r.result === 'fail' || r.result === 'timeout') ? 1 : 0 };
 }

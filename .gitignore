@@ -32,6 +32,7 @@ electron-app/dist/
 .harness/tmp/
 .harness/pi-agent/
 .harness/budget/quota-state.json
+.harness/budget/openrouter-baseline.json*
 
 # The harness source modules are not generated application lib output.
 !tools/harness/harness/bin/lib/

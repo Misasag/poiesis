@@ -6,10 +6,12 @@ import path from 'node:path';
 import { git, context, ROOT, write, writeJson, json, command } from '../bin/lib/util.mjs';
 import { validateTask, mine, testCommands, selectSuites, taskSize, resuite, restoreEvaluator, benchRun } from '../bin/lib/bench.mjs';
 import { withWorktree, dependencyCheck, normalizeLockfile, mainCheckout } from '../bin/lib/worktree.mjs';
+import { append } from '../bin/lib/ledger.mjs';
 
 test('Tiny git benchmark validates fail-to-pass and cleans worktrees even on error', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-bench-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  ctx.accountStatus = async () => ({ status: 'unavailable' });
   await git(root, ['init', '--quiet']);
   writeJson(path.join(root, 'package.json'), { scripts: { 'test:tiny': 'node scripts/test-tiny.mjs' } });
   write(path.join(root, '.gitignore'), '.harness/\n');
@@ -36,6 +38,7 @@ test('Tiny git benchmark validates fail-to-pass and cleans worktrees even on err
 async function fixture(t, scripts = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-bench-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  ctx.accountStatus = async () => ({ status: 'unavailable' });
   await git(root, ['init', '--quiet']);
   writeJson(path.join(ctx.data, 'budget/limits.json'), json(path.join(ROOT, '.harness/budget/limits.json')));
   write(path.join(root, '.gitignore'), '.harness/\nnode_modules/\nagent-window/lib/\n');
@@ -229,7 +232,7 @@ test('Bench records quota-exhausted cells as skipped_quota, never as failures', 
   const result = await benchRun(ctx, {suite: 'smoke', models: 'codex:gpt-6-luna', repeats: '1', judge: 'none'}, services);
   assert.deepEqual(outcomes, [['quota-cell', 'skipped_quota', 'Infrastructure: codex-usage-limit']]);
   assert.equal(result.results[0].result, 'skipped_quota');
-  assert.deepEqual(result.summary, {pass: 0, fail: 0, timeout: 0, skipped_quota: 1, skipped_budget: 0});
+  assert.deepEqual(result.summary, {pass: 0, fail: 0, timeout: 0, skipped_quota: 1, skipped_routing: 0, skipped_budget: 0});
   assert.equal(result.exit_code, 0);
 });
 
@@ -273,25 +276,25 @@ test('Parallel lanes run cells concurrently with atomic budget reservations', as
   writeJson(path.join(ctx.data, 'bench/tasks', taskId, 'task.json'), {id: taskId, base_sha: base, fix_sha: fix, test_files: ['scripts/test-tiny.mjs'], test_cmds: ['node scripts/test-tiny.mjs'], src_files: ['agent-window/src/value.mjs'], instruction_file: 'instruction.md'});
   write(path.join(ctx.data, 'bench/tasks', taskId, 'instruction.md'), 'Return two.');
   write(path.join(ctx.data, 'bench/suites/smoke.txt'), `${taskId}\n`);
-  // Two metered reservations fit the daily cap; a third concurrent cell is refused.
+  // Two metered reservations fit the daily cap; a third cell waits, then runs after a release.
   writeJson(path.join(ctx.data, 'budget/limits.json'), { metered: { monthly_usd: 30, daily_usd: 2.05, per_run_usd: 1, conservative_default_usd: 0.5 }, quota: null });
   let active = 0, peak = 0, calls = 0;
   const services = {
     async run(_ctx, opts) {
-      calls++; active++; peak = Math.max(peak, active);
+      const runNumber = ++calls; active++; peak = Math.max(peak, active);
       await new Promise(resolve => setTimeout(resolve, 400));
       active--; write(path.join(opts.cwd, 'agent-window/src/value.mjs'), 'export const value = 2;\n');
-      return { run_id: `par-${calls}`, exit_code: 0 };
+      return { run_id: `par-${runNumber}`, exit_code: 0 };
     },
     async verify() { return { results: [{ cmd: 'node scripts/test-tiny.mjs', exit_code: 0, wall_s: 0.01 }], exit_code: 0 }; },
     outcome() {}, judge() { assert.fail('judge none must not call a judge'); }
   };
   const result = await benchRun(ctx, {suite: 'smoke', models: 'or:glm-5.3-flash', repeats: '3', judge: 'none', parallel: '3'}, services);
-  assert.equal(peak, 2); assert.equal(calls, 2);
-  assert.deepEqual(result.summary, { pass: 2, fail: 0, timeout: 0, skipped_quota: 0, skipped_budget: 1 });
+  assert.equal(peak, 2); assert.equal(calls, 3);
+  assert.deepEqual(result.summary, { pass: 3, fail: 0, timeout: 0, skipped_quota: 0, skipped_routing: 0, skipped_budget: 0 });
   assert.equal(result.exit_code, 0);
-  assert.deepEqual(result.results.map(r => r.result), ['pass', 'pass', 'skipped_budget']);
-  assert.match(result.results[2].error, /budget/);
+  assert.deepEqual(result.results.map(r => r.result), ['pass', 'pass', 'pass']);
+  assert.equal(result.results[2].error, null);
   await assert.rejects(benchRun(ctx, {suite: 'smoke', models: 'or:glm-5.3-flash', judge: 'none', parallel: '5'}, services), /between 1 and 4/);
   await assert.rejects(benchRun(ctx, {suite: 'smoke', models: 'or:glm-5.3-flash', judge: 'none', parallel: '0'}, services), /between 1 and 4/);
 });
@@ -315,6 +318,56 @@ test('Wall-cap timeouts are labeled distinctly from wrong-answer failures', asyn
   assert.equal(seenTimeout, 7);
   assert.equal(result.results[0].result, 'timeout');
   assert.deepEqual(outcomes, [['timeout-cell', 'timeout', 'timeout: exceeded the 7 min wall cap before completing acceptance']]);
-  assert.deepEqual(result.summary, { pass: 0, fail: 0, timeout: 1, skipped_quota: 0, skipped_budget: 0 });
+  assert.deepEqual(result.summary, { pass: 0, fail: 0, timeout: 1, skipped_quota: 0, skipped_routing: 0, skipped_budget: 0 });
   assert.equal(result.exit_code, 1);
+});
+
+test('Queued reservations re-check actual spend, release after throws, and honor max-usd', { timeout: 30000 }, async t => {
+  const { root, ctx, commit } = await fixture(t); const base = await commit('Base');
+  write(path.join(root, 'scripts/test-tiny.mjs'), "import { value } from '../agent-window/src/value.mjs'; process.exit(value === 1 ? 0 : 1);\n");
+  const fix = await commit('Acceptance fixture');
+  writeJson(path.join(ctx.data, 'bench/tasks/queued/task.json'), { id: 'queued', base_sha: base, fix_sha: fix, test_files: ['scripts/test-tiny.mjs'], test_cmds: ['node scripts/test-tiny.mjs'], src_files: ['agent-window/src/value.mjs'], instruction_file: 'instruction.md' });
+  write(path.join(ctx.data, 'bench/tasks/queued/instruction.md'), 'Return one.');
+  writeJson(path.join(ctx.data, 'budget/limits.json'), { metered: { monthly_usd: 30, daily_usd: .5, per_run_usd: 1, conservative_default_usd: .05 } });
+  const opts = { tasks: 'queued', models: 'or:glm-5.3-flash', repeats: '2', parallel: '2', judge: 'none', 'max-usd': '.4' };
+  let calls = 0, active = 0, peak = 0, mode = 'throw';
+  const services = {
+    async run(_ctx, o) {
+      const number = ++calls; active++; peak = Math.max(peak, active);
+      assert.equal(o['max-usd'], '.4');
+      await new Promise(resolve => setTimeout(resolve, 50)); active--;
+      if (mode === 'throw' && number === 1) throw new Error('fixture worker failed');
+      if (mode === 'spend') append(ctx, { ts: new Date().toISOString(), model: 'or:glm-5.3-flash', cost_basis: 'metered', cost_usd_actual: .4 });
+      return { run_id: `queued-${number}`, exit_code: 0 };
+    },
+    async verify() { return { exit_code: 0, results: [] }; }, outcome() {}, judge() { assert.fail('No judge requested'); }
+  };
+  await assert.rejects(benchRun(ctx, opts, services), /fixture worker failed/);
+  assert.equal(calls, 2, 'waiting cell wakes after a worker exception'); assert.equal(peak, 1);
+  calls = 0; mode = 'spend';
+  const result = await benchRun(ctx, opts, services);
+  assert.equal(calls, 1); assert.equal(result.summary.pass, 1); assert.equal(result.summary.skipped_budget, 1);
+  assert.equal(result.results[1].result, 'skipped_budget'); assert.match(result.results[1].error, /budget/);
+  calls = 0;
+  const exhausted = await benchRun(ctx, opts, services);
+  assert.equal(calls, 0); assert.equal(exhausted.summary.skipped_budget, 2, 'no reservations and no budget skips immediately');
+});
+
+test('Routing infrastructure skips verification and paid judging without a failing bench score', async t => {
+  const { root, ctx, commit } = await fixture(t); const base = await commit('Base');
+  write(path.join(root, 'scripts/test-tiny.mjs'), "import { value } from '../agent-window/src/value.mjs'; process.exit(value === 1 ? 0 : 1);\n");
+  const fix = await commit('Acceptance fixture');
+  writeJson(path.join(ctx.data, 'bench/tasks/routing/task.json'), { id: 'routing', base_sha: base, fix_sha: fix, test_files: ['scripts/test-tiny.mjs'], test_cmds: ['node scripts/test-tiny.mjs'], src_files: ['agent-window/src/value.mjs'], instruction_file: 'instruction.md' });
+  write(path.join(ctx.data, 'bench/tasks/routing/instruction.md'), 'Return one.');
+  const outcomes = [];
+  const result = await benchRun(ctx, { tasks: 'routing', models: 'or:glm-5.3-flash', judge: 'auto' }, {
+    async run() { return { run_id: 'routing-cell', exit_code: 1, infra: 'routing_config', routing_step: 'Filter by Guardrails' }; },
+    verify() { assert.fail('Infrastructure must skip verification'); },
+    judge() { assert.fail('Infrastructure must skip paid judging'); },
+    outcome(_ctx, id, value, note) { outcomes.push([id, value, note]); }
+  });
+  assert.equal(result.exit_code, 0); assert.equal(result.summary.skipped_routing, 1); assert.equal(result.summary.fail, 0);
+  assert.deepEqual(outcomes, [['routing-cell', 'skipped_routing', 'Infrastructure: Filter by Guardrails']]);
+  assert.equal(result.results[0].routing_step, 'Filter by Guardrails');
+  assert.deepEqual(result.results[0].verification, []); assert.equal(result.results[0].judge, null);
 });

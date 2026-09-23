@@ -29,7 +29,7 @@ export async function captureDiff(cwd, base) {
 function guidance(cwd) {
   return ['AGENTS.md', 'CLAUDE.md'].filter(f => fs.existsSync(path.join(cwd, f))).map(f => `Repository guidance (${f}):\n${read(path.join(cwd, f))}`).join('\n\n');
 }
-export async function run(ctx, o) {
+export async function run(ctx, o, dependencies = {}) {
   required(o, 'model', 'cwd', 'brief');
   const p = provider(ctx, o.model), effort = o.effort ?? p.defaultEffort;
   if (p.adapter === 'decisions') fail('Decisions models must use hx gate');
@@ -44,11 +44,11 @@ export async function run(ctx, o) {
   const prevSessionFile = prev?.session_file_rel ? path.resolve(ctx.root, prev.session_file_rel) : null;
   if (prev && p.adapter === 'pi' && !prevSessionFile) fail('pi resume requires the stored session file');
   if (prev) { o = { ...o, role: o.role ?? prev.role, ticket: o.ticket ?? prev.ticket, 'task-class': o['task-class'] ?? prev.task_class }; }
-  const env = resolveEnv(p), redact = redactor(env);
+  const env = dependencies.env ?? resolveEnv(p), redact = redactor(env);
   // Live spend cap: pi sums assistant usage.cost.total, anthropic-compat is
   // priced from the catalog tokens; quota runs have no live USD and ignore it.
   const capUsd = p.costBasis === 'metered' ? (o['max-usd'] === undefined ? meteredLimits(ctx).per_run_usd : positive(o['max-usd'])) : null;
-  const budget = requireBudget(ctx, p, o['estimate-usd'], capUsd);
+  const budget = await requireBudget(ctx, p, o['estimate-usd'], capUsd);
   if (p.adapter === 'pi') env.PI_CODING_AGENT_DIR = piAgentDir(ctx);
   const head = await git(cwd, ['rev-parse', 'HEAD'], { allowFailure: true });
   // An isolated smoke repository need not create a synthetic commit.
@@ -74,13 +74,13 @@ export async function run(ctx, o) {
     if (live.exceeded && !killed && child) { killed = 'cost_cap'; void killTree(child); }
   };
   let call;
-  const runAttempt = async () => exec(call.file, call.args, { cwd, env, input: prompt, timeoutMs: positive(o['timeout-min'], 30) * 60_000,
+  const runAttempt = async () => (dependencies.exec ?? exec)(call.file, call.args, { cwd, env, input: prompt, timeoutMs: positive(o['timeout-min'], 30) * 60_000,
     onSpawn(c) { child = c; },
     onStdout(data) { pending += data; let n; while ((n = pending.indexOf('\n')) >= 0) { event(pending.slice(0, n)); pending = pending.slice(n + 1); } },
     onStderr(data) { stderrPending += data; let n; while ((n = stderrPending.indexOf('\n')) >= 0) { fs.appendFileSync(path.join(dir, 'stderr.log'), redact(stderrPending.slice(0, n + 1)), 'utf8'); stderrPending = stderrPending.slice(n + 1); } }
   });
   try {
-    call = invocation(p, { cwd, effort, sandbox: o.sandbox, session_id: prev?.session_id, sessionFile: prevSessionFile, sessionDir, promptFile: path.join(dir, 'prompt.md'), schema: o.schema, schemaFile: o.schema ? path.join(dir, 'schema.json') : undefined, judge: o.role === 'judge' });
+    call = (dependencies.invocation ?? invocation)(p, { cwd, effort, sandbox: o.sandbox, session_id: prev?.session_id, sessionFile: prevSessionFile, sessionDir, promptFile: path.join(dir, 'prompt.md'), schema: o.schema, schemaFile: o.schema ? path.join(dir, 'schema.json') : undefined, judge: o.role === 'judge' });
     // A new OpenRouter account can hit HTTP 402 from in-flight credit
     // reservation even with balance: retry with backoff before classifying.
     // Only failed attempts qualify; a successful run whose model-authored
@@ -115,11 +115,12 @@ export async function run(ctx, o) {
   const runFailed = Boolean(result.exit_code) || parsed.state.failed || !parsed.state.final;
   // Only CLI/transport error channels: stdout carries the agent's own text and
   // tool output, where words like "429" or "rate_limit" are ordinary content.
-  const quota = runFailed ? detectQuota(p.adapter, [result.stderr, error, p.adapter === 'claude' && parsed.state.failed ? parsed.state.final : ''], new Date()) : null;
+  const quota = runFailed ? detectQuota(p.adapter, [result.stderr, error, ...parsed.state.errors, p.adapter === 'claude' && parsed.state.failed ? parsed.state.final : ''], new Date()) : null;
   const key = quotaKey(p.adapter);
   if (quota && key) recordQuota(ctx, key, quota);
   const record = { run_id: runId, ts: new Date(start).toISOString(), role: o.role ?? 'worker', ticket: o.ticket ?? null, task_class: o['task-class'] ?? 'unclassified', model: p.id, family: p.family, adapter: p.adapter, effort, cwd_rel: path.relative(ctx.root, cwd).replaceAll('\\', '/'), base_sha: base, tokens: parsed.state.tokens, cost_usd_est: price(parsed.state.tokens, p.prices), cost_basis: p.costBasis, wall_s: (Date.now() - start) / 1000, exit_code: result.exit_code || (parsed.state.failed || !parsed.state.final ? 1 : 0), session_id: recordSessionId, session_file_rel: sessionFileRel, diff: captured.diff, harness_ver: VERSION };
   if (quota && key) { record.infra = 'quota_exhausted'; record.quota_source = quota.source; }
+  if (runFailed && parsed.state.routing_error) Object.assign(record, parsed.state.routing_error);
   // A cost-cap kill keeps the diff for review but marks the run as stopped.
   if (killed) record.killed = killed;
   const openRouterServed = ['pi', 'anthropic-compat'].includes(p.adapter) && p.model.includes('/');
@@ -127,7 +128,7 @@ export async function run(ctx, o) {
     // Resume streams may replay assistant messages; do not bill an ID twice.
     const priorIds = new Set(ledger(ctx).filter(r => !r.kind && r.session_id === record.session_id).flatMap(r => r.generation_ids ?? []));
     record.generation_ids = parsed.state.generation_ids.filter(value => !priorIds.has(value));
-    Object.assign(record, await generationCosts(record.generation_ids, { request: openRouterClient({ apiKey: env.ANTHROPIC_AUTH_TOKEN ?? env.OPENROUTER_API_KEY }) }));
+    Object.assign(record, await (dependencies.generationCosts ?? generationCosts)(record.generation_ids, { request: openRouterClient({ apiKey: env.ANTHROPIC_AUTH_TOKEN ?? env.OPENROUTER_API_KEY }) }));
   }
   if (p.costBasis === 'metered' && !parsed.state.usage_available) { record.cost_usd_est = null; record.budget_estimate_usd = budget.estimate_usd; }
   writeJson(path.join(dir, 'meta.json'), redact({ ...record, cumulative_tokens: cumulative, usage_available: parsed.state.usage_available, pi_cost_estimate_usd: p.adapter === 'pi' ? parsed.state.cost_reported_usd : undefined, cost_cap_usd: capUsd ?? undefined, killed: killed ?? undefined, error, resume_run: prev?.run_id ?? null }));
