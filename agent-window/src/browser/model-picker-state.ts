@@ -47,6 +47,41 @@ export interface ModelPickerAnchorRect {
     bottom: number;
 }
 
+/** Sort versioned discovered models newest-first while preserving unversioned CLI order. */
+export function sortDiscoveredModelChoices(choices: readonly ModelPickerChoice[]): ModelPickerChoice[] {
+    const version = (id: string): { family: string; parts: number[] } | undefined => {
+        const modelId = id.split('/').pop() ?? id;
+        const match = modelId.match(/^([a-z][a-z0-9]*?)[-_]k?(\d+(?:\.\d+)*)(?:[-_]|$)/i);
+        return match ? { family: match[1].toLowerCase(), parts: match[2].split('.').map(Number) } : undefined;
+    };
+    const compareVersions = (left: number[], right: number[]): number => {
+        for (let index = 0; index < Math.max(left.length, right.length); index++) {
+            const difference = (right[index] ?? 0) - (left[index] ?? 0);
+            if (difference) { return difference; }
+        }
+        return 0;
+    };
+    const indexed = choices.map((choice, index) => ({ choice, index, version: version(choice.id) }));
+    const families = new Map<string, typeof indexed>();
+    for (const item of indexed) {
+        if (!item.version) { continue; }
+        families.set(item.version.family, [...(families.get(item.version.family) ?? []), item]);
+    }
+    const familyIndexes = new Map<string, number>();
+    for (const [family, items] of families) {
+        families.set(family, items.sort((left, right) => compareVersions(left.version!.parts, right.version!.parts)
+            || left.index - right.index));
+        familyIndexes.set(family, 0);
+    }
+    return indexed.map(item => {
+        if (!item.version) { return item.choice; }
+        const family = item.version.family;
+        const index = familyIndexes.get(family)!;
+        familyIndexes.set(family, index + 1);
+        return families.get(family)![index].choice;
+    });
+}
+
 /** Turn an OpenRouter vendor/model slug into a compact display label. */
 export function openRouterModelLabel(slug: string): string {
     const model = slug.split('/').pop() ?? slug;
@@ -135,7 +170,10 @@ export function modelPickerProviders(
                 groups.set(firstGroup, [defaultChoice, ...(groups.get(firstGroup) ?? [])]);
             }
             return [...groups].map(([name, groupChoices]) => ({
-                id: detection.id, name, source, error: catalog?.error, choices: groupChoices
+                id: detection.id, name, source, error: catalog?.error,
+                choices: groupChoices[0]?.id === ''
+                    ? [groupChoices[0], ...sortDiscoveredModelChoices(groupChoices.slice(1))]
+                    : sortDiscoveredModelChoices(groupChoices)
             }));
         }
         return [{ id: detection.id, name: detection.id === 'claude' ? 'Claude' : detection.name,

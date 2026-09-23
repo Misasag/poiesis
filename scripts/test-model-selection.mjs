@@ -57,11 +57,24 @@ const piReport = { ...report, detections: [...report.detections, {
     models: [{ id: '', label: '既定' }], defaultModel: '', checkedLocations: []
 }] };
 const piGroups = modelPickerProviders('ready', piReport, { pi: { providerId: 'pi', source: 'live', models: [
+    { id: 'openrouter/z-ai/glm-4.5', label: 'z-ai/glm-4.5', piProvider: 'openrouter' },
+    { id: 'openrouter/z-ai/glm-4.6', label: 'z-ai/glm-4.6', piProvider: 'openrouter' },
     { id: 'openrouter/z-ai/glm-5.3-flash', label: 'z-ai/glm-5.3-flash', piProvider: 'openrouter' },
+    { id: 'openrouter/moonshotai/kimi-k2.7', label: 'moonshotai/kimi-k2.7', piProvider: 'openrouter' },
+    { id: 'openrouter/moonshotai/kimi-k3', label: 'moonshotai/kimi-k3', piProvider: 'openrouter' },
+    { id: 'openrouter/vendor/legacy', label: 'vendor/legacy', piProvider: 'openrouter' },
     { id: 'openai-codex/gpt-6-luna', label: 'gpt-6-luna', piProvider: 'openai-codex' }
 ] } }, 'agent', 'pi', 'openrouter/z-ai/glm-5.3-flash').filter(group => group.id === 'pi');
 assert.deepEqual(piGroups.map(group => group.name), ['OpenRouter', 'ChatGPT（pi 経由）']);
-assert.equal(piGroups[0].choices[1].id, 'openrouter/z-ai/glm-5.3-flash');
+assert.deepEqual(piGroups[0].choices.map(choice => choice.id), [
+    '',
+    'openrouter/z-ai/glm-5.3-flash',
+    'openrouter/z-ai/glm-4.6',
+    'openrouter/z-ai/glm-4.5',
+    'openrouter/moonshotai/kimi-k3',
+    'openrouter/moonshotai/kimi-k2.7',
+    'openrouter/vendor/legacy'
+], 'Versioned discovered models sort newest-first, with the default first and unversioned CLI order retained.');
 assert.equal(piGroups[0].choices[1].label, 'GLM-5.3 Flash');
 for (const [slug, label] of [
     ['z-ai/glm-5.3', 'GLM-5.3'],
@@ -88,6 +101,10 @@ assert.deepEqual(['すべて', ...pickerProviders.map(group => group.name)],
 const pickerCss = readFileSync(new URL('../agent-window/src/browser/style/components.css', import.meta.url), 'utf8');
 assert.match(pickerCss, /\.poiesis-model-picker__filters\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s,
     'Filter chips must remain on one horizontally scrollable line.');
+assert.match(pickerCss, /\.poiesis-model-picker__filters::-webkit-scrollbar\s*\{\s*height:\s*4px;/,
+    'The provider chip scrollbar must stay slim.');
+assert.match(pickerCss, /\.poiesis-model-picker__filters::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*transparent;/s,
+    'The provider chip scrollbar thumb must be hidden by default.');
 assert.deepEqual(filterModelPickerProviders(pickerProviders, 'all', 'GLM-5.3')
     .map(group => [group.name, ...group.choices.map(choice => choice.id)]),
     [['OpenRouter', 'openrouter/z-ai/glm-5.3']],
