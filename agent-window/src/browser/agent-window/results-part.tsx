@@ -696,6 +696,7 @@ export class ResultsPart extends AgentWindowPart {
                     </tr>)}</tbody>
                 </table>
             </div>
+            {table.operationSummary && <div className='poiesis-results__operation-summary'>{table.operationSummary}</div>}
         </details>;
     }
 

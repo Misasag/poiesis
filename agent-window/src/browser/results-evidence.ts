@@ -10,6 +10,7 @@ export interface VerificationRow {
 }
 export interface VerificationTable {
     rows: VerificationRow[];
+    operationSummary?: string;
     counts: Record<VerificationStatus, number>;
     total: number;
     humanCount: number;
@@ -19,6 +20,10 @@ export interface VerificationTable {
 /** A single projection for chrome, generation input and deterministic assertions. */
 export function buildVerificationTable(tasks: readonly ExecutionTask[], current: TaskChangeSet | undefined): VerificationTable {
     const rows: VerificationRow[] = [];
+    let evidenceCount = 0;
+    let operationCount = 0;
+    let failedOperations = 0;
+    let unfinishedOperations = 0;
     const versionStatus = (hash: string | undefined, status: VerificationStatus): VerificationStatus => {
         if (hash && current?.changeSetHash && !current.error) {
             return hash === current.changeSetHash ? status : 'outdated';
@@ -26,40 +31,47 @@ export function buildVerificationTable(tasks: readonly ExecutionTask[], current:
         return status === 'pass' ? 'unknown' : status;
     };
     for (const [taskIndex, task] of tasks.entries()) {
+        if (task.status === 'failed' || task.status === 'cancelled') {
+            rows.push({ label: `作業 ${taskIndex + 1} が完了していません`, status: 'fail',
+                detail: task.failure?.summary || (task.status === 'cancelled' ? '作業がキャンセルされました。' : '作業に失敗しました。') });
+        }
         for (const run of task.hookRuns ?? []) {
-            if (run.event === 'taskEnd' && run.status === 'fail'
-                && !task.hookEvidence?.some(report => report.hookId === run.id && report.runId === run.runId)) {
+            if (run.event === 'taskEnd' && run.status === 'fail') {
                 rows.push({ label: '作業後の確認', status: 'unknown', detail: run.error || '確認処理を完了できませんでした。' });
             }
         }
         for (const report of task.hookEvidence ?? []) {
-            if (report.incomplete || !report.evidence.length) {
-                rows.push({ label: '作業後の確認', status: 'unknown', detail: report.notes || '検証記録がありません。' });
+            if (report.incomplete && !task.hookRuns?.some(run => run.event === 'taskEnd' && run.status === 'fail'
+                && report.hookId === run.id && report.runId === run.runId)) {
+                rows.push({ label: '作業後の確認', status: 'unknown', detail: report.notes || '確認処理を完了できませんでした。' });
             }
             for (const entry of report.evidence) {
+                evidenceCount++;
                 const status = versionStatus(entry.changeSetHash, entry.status);
                 rows.push({ ...entry, status, human: entry.status === 'human', runId: entry.runId ?? report.runId,
                     detail: `${entry.detail}${status === 'outdated' ? '（現在の変更に対応していません）'
                         : status === 'unknown' && entry.status === 'pass' ? '（対象の変更版を確認できません）' : ''}` });
             }
         }
-        // Only command/tool completion is execution evidence. Prose and file reads cannot prove a test passed.
+        // Operations describe work, not verification outcomes.
         const operations = (task.activities ?? []).filter(activity => activity.kind === 'command' || activity.kind === 'tool');
-        const passed = operations.filter(activity => activity.status === 'completed').length;
-        const failed = operations.filter(activity => activity.status === 'failed').length;
-        const unknown = operations.length - passed - failed;
-        const status = operations.length ? versionStatus(task.changeSet?.changeSetHash,
-            failed ? 'fail' : unknown ? 'unknown' : 'pass') : 'unknown';
-        rows.push({ label: tasks.length > 1 ? `作業 ${taskIndex + 1} の実行` : '作業の実行', status,
-            detail: `操作 ${operations.length}件中 ${passed}件完了・${failed}件失敗・${unknown}件未完了。操作の完了は動作確認の合格を意味しません。`
-                + (status === 'outdated' ? '現在の変更に対応していません。' : status === 'unknown' && passed ? '対象の変更版を確認できません。' : '') });
+        operationCount += operations.length;
+        failedOperations += operations.filter(activity => activity.status === 'failed').length;
+        unfinishedOperations += operations.filter(activity => activity.status === 'running').length;
     }
-    if (!rows.length) { rows.push({ label: '作業の実行', status: 'unknown', detail: '実行記録がありません。' }); }
+    if (!evidenceCount) {
+        rows.push({ label: '作業後の確認', status: 'unknown', detail: `確認の記録がありません（${tasks.length}件の作業）` });
+    }
+    const operationNotes = [failedOperations ? `失敗 ${failedOperations}件` : '',
+        unfinishedOperations ? `未完了 ${unfinishedOperations}件` : ''].filter(Boolean);
+    const operationSummary = tasks.length
+        ? `作業の記録: ${tasks.length}件の作業で操作 ${operationCount}件${operationNotes.length ? `（うち${operationNotes.join('・')}）` : ''}`
+        : undefined;
     const counts = { pass: 0, fail: 0, unknown: 0, outdated: 0, human: 0 };
     for (const row of rows) { counts[row.status]++; }
     const summary = `確認 ${rows.length}件中 ` + (Object.keys(counts) as VerificationStatus[])
         .filter(status => counts[status] > 0).map(status => `${counts[status]}件${VERIFICATION_LABELS[status]}`).join('・');
-    return { rows, counts, total: rows.length, humanCount: rows.filter(row => row.human).length, summary };
+    return { rows, operationSummary, counts, total: rows.length, humanCount: rows.filter(row => row.human).length, summary };
 }
 
 /** Keep the counts intact even when long evidence details exceed the prompt budget. */
@@ -72,5 +84,6 @@ export function verificationPrompt(table: VerificationTable): string {
         rows.push(row); remaining -= record.length;
     }
     return JSON.stringify({ summary: table.summary, counts: table.counts, total: table.total,
-        humanCount: table.humanCount, rows, omittedRows: table.rows.length - rows.length });
+        humanCount: table.humanCount, rows, omittedRows: table.rows.length - rows.length,
+        operationSummary: table.operationSummary });
 }

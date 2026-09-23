@@ -2878,6 +2878,14 @@ const resultsEvidenceTest = await read('scripts/test-results-evidence.mjs');
 for (const marker of ['buildVerificationTable', "outdated: '以前の結果'", "human: '人間の判断待ち'", 'humanCount', 'omittedRows']) {
     assert.ok(resultsEvidence.includes(marker), `Results evidence contract is missing ${marker}`);
 }
+assert.ok(resultsEvidence.includes('if (!evidenceCount)')
+    && resultsEvidence.includes('operationSummary')
+    && resultsPartSource.includes('poiesis-results__operation-summary')
+    && resultsEvidenceTest.includes("assert.equal(aggregate.summary, '確認 1件中 1件未確認')")
+    && resultsEvidenceTest.includes("assert.equal(failedTask.summary, '確認 2件中 1件失敗・1件未確認')")
+    && resultsEvidenceTest.includes('failedHookWithEvidence.counts.unknown, 1')
+    && (await read('scripts/smoke-results-rich-electron.mjs')).includes('poiesis-results__operation-summary'),
+    'Results verification rows must exclude operations, aggregate missing evidence and retain failed tasks');
 assert.ok(resultsSkill.includes('verificationEvidence: verificationPrompt(buildVerificationTable('));
 assert.ok(resultsSkill.includes('appAssertions.push(...checkResultsTopAnswer('));
 assert.ok(agentWindowSource.includes('アプリの確認記録') && agentWindowSource.includes('判断待ち {humanCount}件'));
