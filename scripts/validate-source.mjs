@@ -2874,11 +2874,23 @@ assert.ok(rootPackage.scripts['test:results-rich-content'].includes('scripts/tes
 assert.ok(rootPackage.scripts['smoke:electron'].includes('scripts/smoke-results-rich-electron.mjs'));
 // Evidence is projected once for app chrome, AI input and top-answer assertions.
 const resultsEvidence = await read('agent-window/src/browser/results-evidence.ts');
+const resultsEvidenceTest = await read('scripts/test-results-evidence.mjs');
 for (const marker of ['buildVerificationTable', "outdated: '以前の結果'", "human: '人間の判断待ち'", 'humanCount', 'omittedRows']) {
     assert.ok(resultsEvidence.includes(marker), `Results evidence contract is missing ${marker}`);
 }
 assert.ok(resultsSkill.includes('verificationEvidence: verificationPrompt(buildVerificationTable('));
 assert.ok(resultsSkill.includes('appAssertions.push(...checkResultsTopAnswer('));
 assert.ok(agentWindowSource.includes('アプリの確認記録') && agentWindowSource.includes('判断待ち {humanCount}件'));
+assert.ok(resultsGenerationServer.includes('evidence.summary + (evidence.humanCount > 0')
+    && resultsGenerationServer.includes('冒頭で件数に触れる場合は「${verificationSentence}」をそのまま使ってください。'),
+    'Results prompt must quote the Application verification summary and pending decisions');
+assert.ok(resultsDocumentNormalizer.includes('denominators.some(count => count !== table.total)')
+    && resultsDocumentNormalizer.includes('count !== table.counts[status]')
+    && resultsPartSource.includes("'冒頭の確認件数がアプリの記録と一致する': '冒頭の確認件数がアプリの記録と一致しません'"),
+    'Results top-answer counts and reader warning must match the Application table');
+assert.ok(resultsEvidenceTest.includes("確認2件中1件成功です。', allPassed")
+    && resultsEvidenceTest.includes('2026年9月24日に3ファイルを変更しました。')
+    && resultsPromptTransportTest.includes('確認 4件中 4件成功。判断待ち 2件'),
+    'Results count fidelity regression coverage is incomplete');
 assert.ok(rootPackage.scripts['test:results-evidence'].includes('scripts/test-results-evidence.mjs'));
 console.log('Source contract validation passed.');

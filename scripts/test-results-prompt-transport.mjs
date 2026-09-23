@@ -80,6 +80,11 @@ const scope = {
     documentText: '文書', assertions: ['説明がある'], currentRequirementTitle: '要件', previousTasks: [],
     task: { request: '確認', changedFiles: [] }, request: '確認', changedFiles: []
 };
+const verificationPrompt = new ResultsGenerationServerImpl(registry).buildPrompt({
+    ...scope,
+    verificationEvidence: JSON.stringify({ summary: '確認 4件中 4件成功', humanCount: 2, total: 4 })
+});
+assert(verificationPrompt.includes('冒頭で件数に触れる場合は「確認 4件中 4件成功。判断待ち 2件」をそのまま使ってください。'));
 
 function instrument(server, providerId, output = wireOutput(providerId), stall = false) {
     server.resolveWorkspace = async () => workspace;
