@@ -6,6 +6,8 @@ import { run } from './run.mjs';
 import { verify } from './verify.mjs';
 import { outcome } from './ledger.mjs';
 import { judge } from './judge.mjs';
+import { provider } from './prices.mjs';
+import { budgetCheck, meteredLimits } from './budget.mjs';
 
 function parts(value) {
   if (typeof value !== 'string' || !value.trim()) fail('Empty benchmark script');
@@ -131,12 +133,24 @@ export async function validateTask(ctx, task) {
 function classify(files) { return files.some(f => f.includes('/browser/')) ? 'app-frontend' : 'app-backend'; }
 const seconds = entries => Number((entries ?? []).reduce((sum, x) => sum + x.wall_s, 0).toFixed(3));
 const area = task => task.test_files.map(f => path.basename(f).replace(/^test-/, '').split('-')[0]).sort()[0];
+// Difficulty proxy: source lines changed (added+removed) across src_files and
+// the number of touched source files. Binary rows count as zero lines.
+export async function taskSize(ctx, task) {
+  const nums = (await git(ctx.root, ['diff', '--numstat', task.base_sha, task.fix_sha, '--', ...task.src_files])).stdout;
+  const lines = nums.trim().split('\n').filter(Boolean).reduce((sum, row) => {
+    const [added, removed] = row.split('\t');
+    return sum + (Number(added) || 0) + (Number(removed) || 0);
+  }, 0);
+  return { files: task.src_files.length, lines };
+}
 export function selectSuites(tasks) {
-  const sorted = [...tasks].sort((a, b) => a.validation.after_wall_s - b.validation.after_wall_s || a.id.localeCompare(b.id));
-  const smoke = [], areas = new Set();
-  for (const task of sorted) if (!areas.has(task.area ?? area(task)) && smoke.length < 3) { smoke.push(task.id); areas.add(task.area ?? area(task)); }
-  for (const task of sorted) if (smoke.length < 3 && !smoke.includes(task.id)) smoke.push(task.id);
-  return { smoke, regression: sorted.map(task => task.id) };
+  const size = t => t.size ?? { files: Infinity, lines: Infinity };
+  const sorted = [...tasks].sort((a, b) => size(a).lines - size(b).lines || size(a).files - size(b).files || a.id.localeCompare(b.id));
+  // Smoke is the three smallest validated tasks by changed lines (ties break
+  // on file count); medium is the middle third of the remaining tasks.
+  const smoke = sorted.slice(0, Math.min(3, sorted.length)).map(t => t.id);
+  const rest = sorted.slice(smoke.length).map(t => t.id), third = Math.floor(rest.length / 3);
+  return { smoke, medium: rest.slice(third, rest.length - third), regression: sorted.map(t => t.id) };
 }
 export async function mine(ctx, o = {}) {
   const started = Date.now(), miningId = id('mine'), logDir = path.join(ctx.data, 'bench/validation', miningId), redact = redactor();
@@ -165,6 +179,7 @@ export async function mine(ctx, o = {}) {
         write(path.join(dir, 'instruction.md'), `# Task\n\n${message}\n\nImplement the behavior described above in the existing source. Relevant areas:\n${src.map(f => `- ${f}`).join('\n')}\n\nOnly edit source files under agent-window/src/. You may read and run tests. Do not edit tests, helpers, manifests, configuration or dependencies. Do not commit or inspect external repositories, benchmark metadata or solution history. Acceptance runs these commands (expected exit 0):\n${cmds.map(c => `- ${c}`).join('\n')}\n\nInstruction source: commit-message. Source paths are derived from the diff; no solution code is included.\n`);
         const summary = entries => entries.map(({ cmd, exit_code, wall_s }) => ({ cmd, exit_code, wall_s }));
         task.area = area(task);
+        task.size = await taskSize(ctx, task);
         task.validation = { ts: new Date().toISOString(), before: summary(result.before), after: summary(result.after), before_wall_s: seconds(result.before), after_wall_s: seconds(result.after), log: path.relative(ctx.root, logFile).replaceAll('\\', '/') };
         writeJson(path.join(dir, 'task.json'), task); validated.push(taskId); acceptedTasks.push(task);
       }
@@ -175,9 +190,25 @@ export async function mine(ctx, o = {}) {
   const suites = selectSuites(acceptedTasks);
   for (const [name, ids] of Object.entries(suites)) write(path.join(ctx.data, 'bench/suites', `${name}.txt`), ids.join('\n') + (ids.length ? '\n' : ''));
   const reportPath = path.join(logDir, 'report.json');
-  const report = { candidates, validated, rejected, suites, timings: acceptedTasks.map(t => ({ id: t.id, area: t.area, before_s: t.validation.before_wall_s, after_s: t.validation.after_wall_s })), wall_s: (Date.now() - started) / 1000, report: path.relative(ctx.root, reportPath).replaceAll('\\', '/') };
+  const report = { candidates, validated, rejected, suites, timings: acceptedTasks.map(t => ({ id: t.id, area: t.area, size: t.size, before_s: t.validation.before_wall_s, after_s: t.validation.after_wall_s })), wall_s: (Date.now() - started) / 1000, report: path.relative(ctx.root, reportPath).replaceAll('\\', '/') };
   writeJson(reportPath, redact(report)); writeJson(path.join(ctx.data, 'bench/latest-mine.json'), redact(report));
   return report;
+}
+
+// Rewrite suites from stored task.json files without re-validating. The only
+// permitted task.json change is adding the computed size when absent.
+export async function resuite(ctx) {
+  const dir = path.join(ctx.data, 'bench/tasks'), tasks = [];
+  if (fs.existsSync(dir)) for (const name of fs.readdirSync(dir).sort()) {
+    const file = path.join(dir, name, 'task.json');
+    if (!fs.existsSync(file)) continue;
+    const task = json(file);
+    if (!task.size) { task.size = await taskSize(ctx, task); writeJson(file, task); }
+    tasks.push(task);
+  }
+  const suites = selectSuites(tasks);
+  for (const [name, ids] of Object.entries(suites)) write(path.join(ctx.data, 'bench/suites', `${name}.txt`), ids.join('\n') + (ids.length ? '\n' : ''));
+  return { tasks: tasks.length, sizes: Object.fromEntries(tasks.map(t => [t.id, t.size])), suites };
 }
 
 // Record violations before restoring tests and other evaluator inputs.
@@ -196,37 +227,77 @@ export async function restoreEvaluator(cwd, baseline) {
   await git(cwd, ['clean', '-ffdx', '-e', '/node_modules/', '-e', '/agent-window/src/']);
   return deviations;
 }
+function parallelLanes(value) {
+  const n = value === undefined ? 1 : Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 4) fail('Parallel must be an integer between 1 and 4');
+  return n;
+}
 export async function benchRun(ctx, o, services = { run, verify, outcome, judge }) {
   if (Boolean(o.suite) === Boolean(o.tasks) || typeof o.models !== 'string') fail('Specify --suite or --tasks, plus --models');
   const ids = unique(o.tasks ? o.tasks.split(',').map(s => s.trim()).filter(Boolean) : read(path.join(ctx.data, 'bench/suites', `${safeId(o.suite)}.txt`)).split(/\r?\n/).map(s => s.split('#')[0].trim()).filter(Boolean));
   const models = unique(o.models.split(',').map(s => s.trim()).filter(Boolean)), repeats = positive(o.repeats, 1); if (!Number.isInteger(repeats)) fail('Repeats must be an integer');
   if (!ids.length || !models.length) fail('Empty bench selection');
-  const results = [];
+  const parallel = parallelLanes(o.parallel), timeoutMin = positive(o['timeout-min'], 20);
+  const cells = [];
   for (const taskId of ids) {
     const taskDir = path.join(ctx.data, 'bench/tasks', safeId(taskId)), task = json(path.join(taskDir, 'task.json'));
     if (!task.test_cmds?.length) fail(`Task has no test commands: ${taskId}`);
-    for (const model of models) for (let repeat = 0; repeat < repeats; repeat++) {
-      const item = await withBenchmarkEnv(ctx, () => withWorktree(ctx, task.base_sha, async cwd => {
-        await applyFiles(ctx, cwd, task.base_sha, task.fix_sha, task.test_files);
-        await git(cwd, ['add', '--', ...task.test_files]);
+    for (const model of models) for (let repeat = 0; repeat < repeats; repeat++) cells.push({ task, taskDir, model, repeat });
+  }
+  // Budget check+reserve is atomic per cell: concurrent lanes add in-flight
+  // reservations before any worker starts, and release them once the actual
+  // cost is recorded in the ledger. Ledger appends stay one JSON line each.
+  let reservedUsd = 0, chain = Promise.resolve();
+  const critical = task => { const next = chain.then(task); chain = next.then(() => {}, () => {}); return next; };
+  const reserveBudget = model => critical(async () => {
+    const p = provider(ctx, model);
+    const capUsd = p.costBasis === 'metered' ? meteredLimits(ctx).per_run_usd : null;
+    const check = budgetCheck(ctx, p, undefined, undefined, { capUsd, reservedUsd });
+    if (!check.allowed) return { allowed: false, reason: check.reason };
+    const reservation = check.reservation_usd ?? check.estimate_usd ?? 0;
+    reservedUsd += reservation;
+    return { allowed: true, reservation };
+  });
+  const runCell = async cell => {
+    const gate = await reserveBudget(cell.model);
+    if (!gate.allowed) {
+      // A budget refusal is infrastructure, not model evidence.
+      const row = { task: cell.task.id, model: cell.model, repeat: cell.repeat + 1, run_id: null, result: 'skipped_budget', judge: null, scope_deviations: [], verification: [], error: gate.reason };
+      writeJson(path.join(ctx.data, 'bench/results', `budget-${id('cell')}.json`), redactor()(row));
+      return row;
+    }
+    try {
+      return await withWorktree(ctx, cell.task.base_sha, async cwd => {
+        await applyFiles(ctx, cwd, cell.task.base_sha, cell.task.fix_sha, cell.task.test_files);
+        await git(cwd, ['add', '--', ...cell.task.test_files]);
         await git(cwd, ['-c', 'user.name=Harness', '-c', 'user.email=harness@localhost', 'commit', '--quiet', '--allow-empty', '-m', 'Benchmark acceptance fixtures']);
         const baseline = (await git(cwd, ['rev-parse', 'HEAD'])).stdout.trim();
-        const r = await services.run(ctx, { model, cwd, brief: path.join(taskDir, safeId(task.instruction_file)), role: 'worker', ticket: task.id, 'task-class': task.class });
+        const r = await services.run(ctx, { model: cell.model, cwd, brief: path.join(cell.taskDir, safeId(cell.task.instruction_file)), role: 'worker', ticket: cell.task.id, 'task-class': cell.task.class, 'timeout-min': timeoutMin });
         let v, error, deviations = [];
-        try { deviations = await restoreEvaluator(cwd, baseline); v = await services.verify(ctx, { cwd, run: r.run_id, cmd: task.test_cmds }); }
+        try { deviations = await restoreEvaluator(cwd, baseline); v = await services.verify(ctx, { cwd, run: r.run_id, cmd: cell.task.test_cmds }); }
         catch (e) { error = e.message; }
         if (deviations.length) error = `Source-only scope violated: ${deviations.join(', ')}${error ? `; ${error}` : ''}`;
         // Quota exhaustion is infrastructure, not a model failure: the cell
-        // is recorded as skipped and never counts as fail.
-        const result = r.infra === 'quota_exhausted' ? 'skipped_quota' : !error && r.exit_code === 0 && v?.exit_code === 0 ? 'pass' : 'fail';
-        services.outcome(ctx, r.run_id, result, result === 'skipped_quota' ? `Infrastructure: ${r.quota_source}` : error ?? `Acceptance tests; repeat ${repeat + 1}`);
+        // is recorded as skipped and never counts as fail. A wall-clock
+        // timeout is a speed failure, recorded distinctly from wrong answers.
+        const result = r.infra === 'quota_exhausted' ? 'skipped_quota' : r.exit_code === 124 ? 'timeout' : !error && r.exit_code === 0 && v?.exit_code === 0 ? 'pass' : 'fail';
+        services.outcome(ctx, r.run_id, result, result === 'skipped_quota' ? `Infrastructure: ${r.quota_source}` : result === 'timeout' ? `timeout: exceeded the ${timeoutMin} min wall cap before completing acceptance` : error ?? `Acceptance tests; repeat ${cell.repeat + 1}`);
         const j = o.judge === 'none' ? null : await services.judge(ctx, { 'worker-run': r.run_id, judge: o.judge ?? 'auto' });
-        const row = { task: task.id, model, repeat: repeat + 1, run_id: r.run_id, result, judge: j?.verdict ?? null, scope_deviations: deviations, verification: v?.results ?? [], error: error ?? null };
+        const row = { task: cell.task.id, model: cell.model, repeat: cell.repeat + 1, run_id: r.run_id, result, judge: j?.verdict ?? null, scope_deviations: deviations, verification: v?.results ?? [], error: error ?? null };
         writeJson(path.join(ctx.data, 'bench/results', `${safeId(r.run_id)}.json`), redactor()(row));
         return row;
-      }, { isolated: true }));
-      results.push(item);
+      }, { isolated: true });
+    } finally {
+      reservedUsd = Math.max(0, reservedUsd - (gate.reservation ?? 0));
     }
-  }
-  return { results, summary: { pass: results.filter(r => r.result === 'pass').length, fail: results.filter(r => r.result === 'fail').length, skipped_quota: results.filter(r => r.result === 'skipped_quota').length }, exit_code: results.some(r => r.result === 'fail') ? 1 : 0 };
+  };
+  const results = await withBenchmarkEnv(ctx, async () => {
+    const rows = new Array(cells.length);
+    let cursor = 0;
+    const lane = async () => { for (;;) { const i = cursor++; if (i >= cells.length) return; rows[i] = await runCell(cells[i]); } };
+    await Promise.all(Array.from({ length: parallel }, lane));
+    return rows;
+  });
+  const count = value => results.filter(r => r.result === value).length;
+  return { results, summary: { pass: count('pass'), fail: count('fail'), timeout: count('timeout'), skipped_quota: count('skipped_quota'), skipped_budget: count('skipped_budget') }, exit_code: results.some(r => r.result === 'fail' || r.result === 'timeout') ? 1 : 0 };
 }

@@ -47,12 +47,16 @@ export function scoreboard(ctx, persist = false, now = new Date()) {
   for (const r of lines) if (r.kind === 'outcome') outcomes.set(r.run_id, r.result);
   for (const r of lines) {
     const result = outcomes.get(r.run_id);
-    // Infra failures (quota exhaustion) are not model evidence.
-    if (r.kind || r.infra || !['pass', 'fail'].includes(result)) continue;
+    // Infra failures (quota exhaustion) are not model evidence. A timeout is
+    // a speed failure: it counts as fail for pass rate but is reported
+    // separately so wrong answers stay distinguishable.
+    if (r.kind || r.infra || !['pass', 'fail', 'timeout'].includes(result)) continue;
     const role = r.role === 'worker' ? (r.task_class === 'mechanical' ? 'worker-mech' : 'worker-design') : r.role;
     const key = `${role}|${r.task_class}|${r.model}`;
-    const row = rows.get(key) ?? { role, task_class: r.task_class, model: r.model, alpha: 1, beta: 1, n: 0, costs: [], times: [], pass: 0, fail: 0 };
-    row[result === 'pass' ? 'alpha' : 'beta'] += decay(r.ts, now); row[result]++; row.n++;
+    const row = rows.get(key) ?? { role, task_class: r.task_class, model: r.model, alpha: 1, beta: 1, n: 0, costs: [], times: [], pass: 0, fail: 0, timeout: 0 };
+    row[result === 'pass' ? 'alpha' : 'beta'] += decay(r.ts, now);
+    if (result === 'pass') row.pass++; else { row.fail++; if (result === 'timeout') row.timeout++; }
+    row.n++;
     const cost = chargedCost(r, null);
     if (Number.isFinite(cost)) row.costs.push(cost);
     if (Number.isFinite(r.wall_s)) row.times.push(r.wall_s);

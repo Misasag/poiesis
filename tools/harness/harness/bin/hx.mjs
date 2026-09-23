@@ -9,7 +9,7 @@ import { route, scoreboard, tune, policy } from './lib/route.mjs';
 import { budgetStatus, budgetCheck } from './lib/budget.mjs';
 import { provider } from './lib/prices.mjs';
 import { ledger, outcome } from './lib/ledger.mjs';
-import { mine, benchRun } from './lib/bench.mjs';
+import { mine, benchRun, resuite } from './lib/bench.mjs';
 import { accountStatus } from './lib/openrouter.mjs';
 import { gate } from './lib/gate.mjs';
 import { exhaustedQuota } from './lib/quota.mjs';
@@ -45,7 +45,8 @@ try {
     case 'bench':
       if (o._[0] === 'mine') result = await mine(ctx, o);
       else if (o._[0] === 'run') result = await benchRun(ctx, o);
-      else fail('Usage: hx bench mine|run');
+      else if (o._[0] === 'resuite') result = await resuite(ctx);
+      else fail('Usage: hx bench mine|run|resuite');
       break;
     case 'dogfood': result = await (await import('./lib/dogfood.mjs')).dogfood(ctx, o); break;
     case 'status': {

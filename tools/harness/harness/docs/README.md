@@ -1,4 +1,4 @@
-# Poiesis development harness v1.1.0
+# Poiesis development harness v1.3.0
 
 Development-only Node 24 ESM. No npm install, Python, uv, or added dependencies.
 Run from this checkout with `node tools/harness/harness/bin/hx.mjs` (`hx` below).
@@ -20,7 +20,7 @@ hx tune
 ```
 
 All commands support `--json`; data commands already emit ASCII-escaped JSON by default. `route` without explain/json prints only the model ID; status has a compact human format.
-Exit 0 means command execution succeeded. Judge fail/uncertain and gate fail/escalate verdicts are data; read them before accepting work. Worker/test failures exit nonzero. Budget refusal exits 3. Timeout exits 124 for a worker, and failed verification makes verify exit 1.
+Exit 0 means command execution succeeded. Judge fail/uncertain and gate fail/escalate verdicts are data; read them before accepting work. Worker/test failures exit nonzero. Budget refusal exits 3. Timeout exits 124 for a worker, and failed verification makes verify exit 1. A run stopped by `hx run --max-usd` records `killed: "cost_cap"` in the ledger line and meta while keeping the diff for review.
 The optional `--run` on verify avoids ambiguity when concurrent runs share a cwd. Otherwise verify attaches to the most recent non-judge run for that cwd.
 Use repeated `--cmd` arguments for multiple acceptance commands. Commands are tokenized, not passed to cmd.exe. npm uses Node + npm-cli.js. Explicit PowerShell commands must include `-NoProfile`; shell metacharacters outside quotes are rejected.
 
@@ -43,9 +43,10 @@ The posterior is Beta(1 + weighted pass, 1 + weighted fail). Ages 0-14 days weig
 Utility = posterior mean - lambda_cost * mean USD - lambda_time * mean seconds. Tied utilities retain policy order. Worker exploration uses SHA-256 of `--ticket` (fallback: role:task-class), and a second deterministic draw selects a challenger. Auto judges always choose the highest utility among allowed families. Repeat `--exclude-family` as needed. Family and data exclusions are applied before selection; no eligible model is an error.
 Tune uses the central 95% Beta interval's 2.5% lower endpoint, at least min_n_for_promotion observations in both same-class groups, and either superiority or lower-bound noninferiority plus 30% lower measured mean cost. Preview writes `.harness/routing/proposals/<date>.md`; apply updates only the promoted task-class override and increments policy.version. Demoted incumbents remain challengers. Unknown USD does not qualify for cost-saving promotion.
 Metered caps are USD 30/month, 5/day, 1/run, with a 0.5 conservative default and unset quota caps. UTC accounting includes workers, LLM judges and Jev gates, preferring complete actual cost to token estimates, then preflight estimates. `hx budget status` also reads OpenRouter `/api/v1/key` usage/limit_remaining and `/api/v1/credits`; absent credentials or network failures produce `unavailable`, exit 0.
+`hx run --max-usd <n>` tree-kills the worker as soon as live spend crosses the cap (pi: summed assistant `message_end` `usage.cost.total`; anthropic-compat: tokens priced live from the catalog; quota runs ignore it). The default cap is `limits.json` `metered.per_run_usd`. `budgetCheck` reserves that cap, not only the historical mean, so a run is only allowed when the full worst case fits the remaining budget.
 Until actual cost is complete, accounting charges the greater of known partial spend and the token/preflight/default estimate. Recent-run estimates use the same floor and configured default. Scoring also respects the known-spend floor without turning wholly unknown usage into zero; complete actual cost, including zero, remains authoritative.
 OpenRouter captures distinct assistant `message.id` values starting `gen-`, queries up to 200 generation records with concurrency 4 and a 30-second total retry bound, and sums `data.total_cost` into `cost_usd_actual`. Missing/capped statistics leave actual null and preserve partial USD, coverage and diagnostics. Token estimates remain in `cost_usd_est`. Prices count uncached input + cached input + output; reasoning is already included in output. Claude `total_cost_usd` is never a price source. Jev actual cost comes from `usage.cost`.
-Preflight checks are estimates, not live provider spending limits. Run paid batches serially: v1.1 does not reserve concurrent spending and cannot halt a provider at an exact mid-turn USD threshold.
+Preflight checks are estimates, not live provider spending limits. Since v1.3, metered runs halt at their `--max-usd` cap and bench cells reserve the cap atomically before starting, so paid batches may run with `--parallel`; each lane still cannot halt a provider at an exact mid-turn USD threshold.
 
 ## Models and data policy
 
@@ -65,12 +66,13 @@ Run `hx judge-calibration` monthly. Calibration compares single verdicts with th
 
 ```text
 hx bench mine --limit 40
-hx bench run --suite smoke --models codex:gpt-6-luna --repeats 1 --judge none
+hx bench resuite
+hx bench run --suite smoke --models codex:gpt-6-luna --repeats 1 --judge none --parallel 2 --timeout-min 20
 hx dogfood --model gpt-6-luna --app-root <primary-checkout> --prompt-file <file>
 ```
 
 Mining scans non-merge source+test commits and expands safe sequential commands from the fix manifest when a script is absent at the parent. It rejects unsupported shell syntax, invalid setup, tests already passing at base, and source fixes that still fail. Lock comparison ignores workspace metadata and links while preserving external dependency differences. Only compatible dependencies are junctioned from the primary checkout. Instructions contain commit-message requirements and changed paths, never solution code. Each candidate retains its command exits, timings and rejection reason under `.harness/bench/validation/`.
-Mining writes three fast tasks from different areas where available to `smoke.txt` and all validated tasks to `regression.txt`. Bench workers receive a fresh local git history without the gold commit, readable acceptance tests, and source-only edit instructions. Evaluation restores frozen inputs, records scope deviations, executes acceptance and records the outcome before cleanup. This history separation is not OS containment: the CLI can access other filesystem paths, so reading parent repositories, benchmark metadata or solution history is forbidden by the brief and must be considered when auditing events.
+Mining writes each task's difficulty proxy to task.json (`size: {files, lines}` = touched source files and added+removed source lines). `smoke.txt` holds the three smallest validated tasks by changed lines (ties break on file count), `medium.txt` the middle third of the remaining tasks, and `regression.txt` all validated tasks. `hx bench resuite` rewrites the suites from existing task.json files without re-validating; its only task.json change is adding a missing `size`. Bench workers receive a fresh local git history without the gold commit, readable acceptance tests, and source-only edit instructions. `hx bench run --parallel <n>` (default 1, max 4) runs cells concurrently in distinct worktrees with the budget check+reserve serialized per cell; ledger appends remain one JSON object per line. `--timeout-min` (default 20) caps each cell's wall clock; a timed-out cell records `result: "timeout"` distinctly from `fail` (scoreboards treat timeout as fail for pass rate but report it separately). Evaluation restores frozen inputs, records scope deviations, executes acceptance and records the outcome before cleanup. This history separation is not OS containment: the CLI can access other filesystem paths, so reading parent repositories, benchmark metadata or solution history is forbidden by the brief and must be considered when auditing events.
 Dogfood resolves `--app-root` to the primary checkout by default and uses its existing Electron build and puppeteer-core. It copies the source workspace into an ignored fixture and allocates fresh user-data, Theia config, snapshots and Codex runtime settings. It measures live task state, actual Results generation RPC attempts, activity and console errors, then captures two screenshots and checks durable document restoration. `--workspace` is a copy source, never an in-place target. Only the launched process tree is stopped; reports survive failures.
 
 ## Validation and self-improvement

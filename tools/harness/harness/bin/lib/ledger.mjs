@@ -22,7 +22,10 @@ export function getRun(ctx, runId) {
 }
 export function outcome(ctx, runId, result, note = '') {
   getRun(ctx, runId);
-  if (!['pass', 'fail', 'human'].includes(result)) fail('Outcome must be pass, fail, or human');
+  // timeout and skipped_quota are bench labels: timeout counts as fail for
+  // pass rate (reported separately by the scoreboard); skipped_quota is
+  // infrastructure and never model evidence.
+  if (!['pass', 'fail', 'human', 'timeout', 'skipped_quota'].includes(result)) fail('Outcome must be pass, fail, human, timeout, or skipped_quota');
   const value = { kind: 'outcome', run_id: runId, ts: new Date().toISOString(), result, note };
   append(ctx, value); return value;
 }

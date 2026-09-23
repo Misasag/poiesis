@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 export const PLUGIN = path.resolve(ROOT, 'tools/harness/harness');
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 export const read = p => fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '');
 export const json = p => JSON.parse(read(p));
 export function write(p, value) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, value, 'utf8'); }
@@ -142,6 +142,7 @@ export function exec(file, args = [], opts = {}) {
   return new Promise(resolve => {
     const start = Date.now(); let stdout = '', stderr = '', timedOut = false, spawnError;
     const child = spawn(file, args, { cwd: opts.cwd ?? ROOT, env: opts.env ?? process.env, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+    opts.onSpawn?.(child);
     const timer = setTimeout(() => { timedOut = true; void killTree(child); }, opts.timeoutMs ?? 600_000);
     const interrupt = () => { timedOut = true; void killTree(child); };
     process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);

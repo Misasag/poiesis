@@ -132,5 +132,9 @@
     "before_wall_s": 7.27,
     "after_wall_s": 7.291,
     "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-3b7dd47e596c.json"
+  },
+  "size": {
+    "files": 19,
+    "lines": 1175
   }
 }

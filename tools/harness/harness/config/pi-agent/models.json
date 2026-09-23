@@ -30,9 +30,10 @@
           "maxTokens": 131072,
           "compat": {
             "openRouterRouting": {
-              "order": ["DeepSeek"],
+              "order": ["Fireworks", "Together", "DeepInfra"],
               "allow_fallbacks": false,
-              "require_parameters": true
+              "require_parameters": true,
+              "quantizations": ["fp8", "bf16"]
             }
           }
         },
