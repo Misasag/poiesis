@@ -1,0 +1,8 @@
+{
+  "id": "git-f46cc64228f9",
+  "base_sha": "db6940fe691e5f964636435f523fa2d1a7fecb59",
+  "fix_sha": "f46cc64228f9a80d07762358b1fae332f2f36bf3",
+  "valid": false,
+  "reason": "No test script at base or fix for scripts/test-conversation-navigation.mjs",
+  "wall_s": 0.087
+}

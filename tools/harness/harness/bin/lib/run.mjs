@@ -5,6 +5,8 @@ import { append, ledger, getRun, runDir } from './ledger.mjs';
 import { provider, price } from './prices.mjs';
 import { requireBudget } from './budget.mjs';
 import { parser, invocation } from './adapters.mjs';
+import { generationCosts, openRouterClient } from './openrouter.mjs';
+import { policy, dataAllowed } from './route.mjs';
 
 export async function captureDiff(cwd, base) {
   let patch = (await git(cwd, ['diff', '--binary', base, '--'])).stdout;
@@ -28,6 +30,8 @@ function guidance(cwd) {
 export async function run(ctx, o) {
   required(o, 'model', 'cwd', 'brief');
   const p = provider(ctx, o.model), effort = o.effort ?? p.defaultEffort;
+  if (p.adapter === 'decisions') fail('Decisions models must use hx gate');
+  if (!dataAllowed(policy(ctx), p)) fail('Model forbidden by data policy');
   if (!p.efforts.includes(effort)) fail(`Unsupported effort for ${p.id}: ${effort}`);
   if (o.sandbox && !['write', 'read-only'].includes(o.sandbox)) fail('Sandbox must be write or read-only');
   const cwd = path.resolve(o.cwd), brief = read(path.resolve(o.brief));
@@ -35,7 +39,9 @@ export async function run(ctx, o) {
   if (prev && (prev.model !== p.id || path.resolve(ctx.root, prev.cwd_rel) !== cwd || !prev.session_id)) fail('Resume requires the same model, cwd, and a stored session_id');
   if (prev) { o = { ...o, role: o.role ?? prev.role, ticket: o.ticket ?? prev.ticket, 'task-class': o['task-class'] ?? prev.task_class }; }
   const env = resolveEnv(p), redact = redactor(env), budget = requireBudget(ctx, p, o['estimate-usd']);
-  const base = (await git(cwd, ['rev-parse', 'HEAD'])).stdout.trim();
+  const head = await git(cwd, ['rev-parse', 'HEAD'], { allowFailure: true });
+  // An isolated smoke repository need not create a synthetic commit.
+  const base = head.exit_code ? (await git(cwd, ['hash-object', '-w', '-t', 'tree', '--stdin'], { input: '' })).stdout.trim() : head.stdout.trim();
   const runId = id(o.role === 'judge' ? 'judge' : 'run'), dir = runDir(ctx, runId), start = Date.now();
   const prompt = o.role === 'judge' ? brief : `${guidance(cwd)}\n\nYou are a terminal worker. Implement or inspect this brief directly; do not delegate to another implementation CLI or agent. Do not commit. Report verification exit codes.\n\n${brief}`;
   write(path.join(dir, 'brief.md'), redact(brief));
@@ -72,6 +78,12 @@ export async function run(ctx, o) {
   write(path.join(dir, 'diff.patch'), redact(captured.patch)); write(path.join(dir, 'diff.stat'), redact(captured.stat));
   write(path.join(dir, 'final.md'), redact(parsed.state.final));
   const record = { run_id: runId, ts: new Date(start).toISOString(), role: o.role ?? 'worker', ticket: o.ticket ?? null, task_class: o['task-class'] ?? 'unclassified', model: p.id, family: p.family, adapter: p.adapter, effort, cwd_rel: path.relative(ctx.root, cwd).replaceAll('\\', '/'), base_sha: base, tokens: parsed.state.tokens, cost_usd_est: price(parsed.state.tokens, p.prices), cost_basis: p.costBasis, wall_s: (Date.now() - start) / 1000, exit_code: result.exit_code || (parsed.state.failed || !parsed.state.final ? 1 : 0), session_id: parsed.state.session_id ?? call?.session_id ?? null, diff: captured.diff, harness_ver: VERSION };
+  if (p.id.startsWith('or:')) {
+    // Resume streams may replay assistant messages; do not bill an ID twice.
+    const priorIds = new Set(ledger(ctx).filter(r => !r.kind && r.session_id === record.session_id).flatMap(r => r.generation_ids ?? []));
+    record.generation_ids = parsed.state.generation_ids.filter(value => !priorIds.has(value));
+    Object.assign(record, await generationCosts(record.generation_ids, { request: openRouterClient({ apiKey: env.ANTHROPIC_AUTH_TOKEN }) }));
+  }
   if (p.costBasis === 'metered' && !parsed.state.usage_available) { record.cost_usd_est = null; record.budget_estimate_usd = budget.estimate_usd; }
   writeJson(path.join(dir, 'meta.json'), redact({ ...record, cumulative_tokens: cumulative, usage_available: parsed.state.usage_available, error, resume_run: prev?.run_id ?? null }));
   append(ctx, record, 'runs', redact);

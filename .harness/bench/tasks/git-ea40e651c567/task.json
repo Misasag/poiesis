@@ -1,0 +1,60 @@
+{
+  "id": "git-ea40e651c567",
+  "base_sha": "7b1c953f57251577a0c5af7468b4062969a18d41",
+  "fix_sha": "ea40e651c567d1ab80e518b8e27ae1f73ae72653",
+  "test_files": [
+    "scripts/test-requirement-classifier.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-requirement-classifier.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window-frontend-module.ts",
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/cli-agent-provider.ts",
+    "agent-window/src/browser/requirement-classification-service.ts",
+    "agent-window/src/browser/requirement-classifier.ts",
+    "agent-window/src/browser/results-skill.ts",
+    "agent-window/src/browser/style/index.css",
+    "agent-window/src/browser/task-service.ts",
+    "agent-window/src/common/agent-provider.ts",
+    "agent-window/src/common/requirement-classification-protocol.ts",
+    "agent-window/src/node/agent-window-backend-module.ts",
+    "agent-window/src/node/requirement-classification-server.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "requirement",
+  "validation": {
+    "ts": "2026-09-23T05:34:13.114Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.719
+      },
+      {
+        "cmd": "node scripts/test-requirement-classifier.mjs",
+        "exit_code": 1,
+        "wall_s": 0.045
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.745
+      },
+      {
+        "cmd": "node scripts/test-requirement-classifier.mjs",
+        "exit_code": 0,
+        "wall_s": 0.044
+      }
+    ],
+    "before_wall_s": 2.764,
+    "after_wall_s": 2.789,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-ea40e651c567.json"
+  }
+}

@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 export const PLUGIN = path.resolve(ROOT, 'tools/harness/harness');
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 export const read = p => fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '');
 export const json = p => JSON.parse(read(p));
 export function write(p, value) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, value, 'utf8'); }
@@ -39,9 +39,62 @@ export function positive(value, fallback) {
   if (!Number.isFinite(n) || n <= 0) fail('Expected a positive number');
   return n;
 }
+// Shared in-memory registry: a redactor created before registry lookup must also
+// redact values resolved later, including top-level catch/result output.
+const resolvedSecrets = new Set();
+export function registerSecret(value) { if (value) resolvedSecrets.add(String(value)); return value; }
+function processValue(env, name, insensitive = process.platform === 'win32') {
+  const key = insensitive ? Object.keys(env).find(key => key.toLowerCase() === name.toLowerCase()) : name;
+  return key === undefined ? undefined : env[key];
+}
+export function windowsEnvironment(name, execute = execFileSync, { env = process.env, lookup } = {}) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) fail('Invalid environment variable name');
+  // An injected registry lookup returns { type, value }; a string is treated
+  // as expandable. REG_SZ remains literal, even when referenced by another key.
+  const registry = lookup ?? (key => {
+    const output = execute('reg', ['query', 'HKCU\\Environment', '/v', key], { encoding: 'utf8', windowsHide: true, shell: false, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] });
+    for (const line of output.split(/\r?\n/)) {
+      const match = /^\s*(\S+)\s+(REG_(?:EXPAND_)?SZ)\s+(.*)$/.exec(line);
+      if (match?.[1].toLowerCase() === key.toLowerCase()) return { type: match[2], value: match[3] };
+    }
+  });
+  let references = 0;
+  const checked = value => {
+    registerSecret(value);
+    if (typeof value !== 'string' || value.length > 32768) fail('Environment expansion unavailable');
+    return value;
+  };
+  function resolve(key, stack, root = false) {
+    const folded = key.toLowerCase();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || stack.has(folded) || stack.size >= 16 || ++references > 128) fail('Environment expansion unavailable');
+    const next = new Set(stack).add(folded), inherited = root ? undefined : processValue(env, key, true);
+    let entry = inherited === undefined ? registry(key) : { type: 'REG_EXPAND_SZ', value: inherited };
+    if (typeof entry === 'string') entry = { type: 'REG_EXPAND_SZ', value: entry };
+    if (!entry || !['REG_SZ', 'REG_EXPAND_SZ'].includes(entry.type)) fail('Environment expansion unavailable');
+    const raw = checked(entry.value);
+    if (entry.type === 'REG_SZ') return raw;
+    // Resolve only references in this value, not percent text inserted from a
+    // literal REG_SZ. Register each intermediate expansion before any failure.
+    let expanded = '', offset = 0;
+    for (const match of raw.matchAll(/%([^%]+)%/g)) {
+      expanded = checked(expanded + raw.slice(offset, match.index) + resolve(match[1], next));
+      offset = match.index + match[0].length;
+    }
+    return checked(expanded + raw.slice(offset));
+  }
+  try {
+    return resolve(name, new Set(), true);
+  } catch { /* Registry and expansion errors can contain values: never propagate them. */ }
+  return undefined;
+}
+export function environmentValue(name, parent = process.env, lookup) {
+  const value = processValue(parent, name) || (lookup ? lookup(name) : process.platform === 'win32' ? windowsEnvironment(name, execFileSync, { env: parent }) : undefined);
+  return value ? registerSecret(value) : undefined;
+}
 export function redactor(env = process.env) {
-  const secrets = Object.entries(env).filter(([k, v]) => /KEY|TOKEN|SECRET/i.test(k) && v).map(([, v]) => String(v)).sort((a, b) => b.length - a.length);
+  for (const [key, value] of Object.entries(env)) if (/KEY|TOKEN|SECRET/i.test(key)) registerSecret(value);
   return value => {
+    const secrets = [...resolvedSecrets].sort((a, b) => b.length - a.length);
     const walk = v => {
       if (typeof v === 'string') { for (const secret of secrets) v = v.split(secret).join('[REDACTED]'); return v; }
       if (Array.isArray(v)) return v.map(walk);
@@ -51,12 +104,13 @@ export function redactor(env = process.env) {
     return walk(value);
   };
 }
-export function resolveEnv(provider, parent = process.env) {
+export function resolveEnv(provider, parent = process.env, lookup) {
   const env = { ...parent };
   for (const [key, value] of Object.entries(provider.env ?? {})) {
     env[key] = String(value).replace(/\$\{ENV:([^}]+)\}/g, (_, name) => {
-      if (!parent[name]) fail(`Missing provider environment variable: ${name}`);
-      return parent[name];
+      const resolved = environmentValue(name, parent, lookup);
+      if (!resolved) fail(`Missing provider environment variable: ${name}`);
+      return resolved;
     });
     if (env[key] === 'TBD') fail('Provider configuration is incomplete');
   }

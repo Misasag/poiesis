@@ -8,7 +8,7 @@ import { append, ledger, outcome } from '../bin/lib/ledger.mjs';
 import { budgetCheck, requireBudget } from '../bin/lib/budget.mjs';
 import { scoreboard, decay, betaQuantile, route, promotion, tune } from '../bin/lib/route.mjs';
 import { grounded, reconcile, validateVerdict, calibration } from '../bin/lib/judge.mjs';
-import { sessionFacts } from '../bin/lib/dogfood.mjs';
+import { sessionFacts, SESSION_KEY } from '../bin/lib/dogfood.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-core-')), ctx = context(root);
@@ -43,8 +43,8 @@ test('Posterior decay and exact Beta quantile', t => {
 test('Routing exploration is deterministic and family exclusion is mandatory', t => {
   const ctx = fixture(t), o = { role: 'worker-mech', 'task-class': 'mechanical', ticket: 'T-200' };
   assert.deepEqual(route(ctx, o), route(ctx, o));
-  assert.equal(route(ctx, { ...o, 'exclude-family': ['openai'] }).model, 'grok:default');
-  assert.throws(() => route(ctx, { ...o, 'exclude-family': ['openai', 'xai'] }), /No eligible/);
+  assert.notEqual(route(ctx, { ...o, 'exclude-family': ['openai'] }).family, 'openai');
+  assert.throws(() => route(ctx, { ...o, 'exclude-family': ['openai', 'xai', 'zhipu', 'deepseek', 'xiaomi'] }), /No eligible/);
   const choices = new Set(Array.from({ length: 100 }, (_, i) => route(ctx, { ...o, ticket: `T-${i}` }).exploring)); assert.equal(choices.size, 2);
 });
 test('Promotion requires evidence and a 95% lower bound for noninferiority', () => {
@@ -62,7 +62,7 @@ test('Tune preview leaves policy unchanged; applying scopes promotions to task c
     append(ctx, entry('grok:default', `c${i}`)); outcome(ctx, `c${i}`, 'pass');
   }
   assert.equal(tune(ctx).proposals.length, 1); assert.equal(fs.readFileSync(file, 'utf8'), original);
-  assert.equal(tune(ctx, true).policy_version, 2); const policy = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(tune(ctx, true).policy_version, JSON.parse(original).version + 1); const policy = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.equal(policy.roles['worker-mech'].incumbent, 'codex:gpt-6-luna'); assert.equal(policy.roles['worker-mech'].by_task_class.mechanical.incumbent, 'grok:default');
 });
 test('Judge obeys verification ground truth, uncertainty and swapped order', () => {
@@ -73,6 +73,9 @@ test('Judge obeys verification ground truth, uncertainty and swapped order', () 
   assert.throws(() => validateVerdict({ ...v, scores: { ...v.scores, tests: 5 } }), /score/);
 });
 test('Session facts select the actual session task, not another saved session', () => {
-  const data = { value: { tasks: [{ id: 'wrong', sessionId: 'other', status: 'completed', startedAt: '2026-01-01' }, { id: 'right', sessionId: 's', status: 'completed', startedAt: '2026-01-02', activities: [{}, {}], resultsDocument: { assertionAttempts: 2, generatedAt: 'now' } }] } };
+  const data = { format: 1, key: SESSION_KEY, present: true, value: { sessions: [
+    { id: 'other', tasks: [{ id: 'wrong', sessionId: 'other', status: 'completed', startedAt: '2026-01-03' }] },
+    { id: 's', tasks: [{ id: 'right', sessionId: 's', status: 'completed', startedAt: '2026-01-02', activities: [{}, {}], resultsDocument: { assertionAttempts: 2, generatedAt: 'now' } }] }
+  ] } };
   const facts = sessionFacts(data, 's'); assert.equal(facts.task_id, 'right'); assert.equal(facts.activity_count, 2); assert.equal(facts.assertionAttempts, 2); assert.equal(facts.generatedAt, 'now');
 });

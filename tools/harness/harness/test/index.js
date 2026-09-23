@@ -3,6 +3,8 @@
 Promise.all([
   import('./adapters.test.mjs'),
   import('./core.test.mjs'),
+  import('./v11-core.test.mjs'),
   import('./bench.test.mjs'),
+  import('./dogfood.test.mjs'),
   import('./packaging.test.mjs')
 ]).catch(error => { console.error(error); process.exitCode = 1; });

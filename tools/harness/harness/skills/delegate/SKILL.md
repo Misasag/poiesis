@@ -30,7 +30,12 @@ For Grok, remove design ambiguity and give exact files, edits, and commands.
 Run `hx run --model <id> --effort <effort> --cwd <worktree> --brief <file> --role <routed-role> --task-class <class> --ticket <id>`.
 Read the returned run ID and `.harness/runs/<id>/final.md`, diff, and events.
 Run `hx verify --cwd <worktree> --run <id> --cmd "<command>"` before judging.
-Call `hx judge --worker-run <id>`; ensure its family differs from the worker.
+Call `hx gate --worker-run <id>`, then `hx judge --worker-run <id> --after-gate --judge auto`; an uncertain gate escalates to a different family.
 On failure, write a correction brief and call the same `hx run` with `--resume <id>`.
 Limit fixes to two, then return evidence for tier escalation. Do not recurse or use `--last`.
 Record the final accepted outcome with `hx outcome`; leave integration/merge to the orchestrator.
+
+For OpenRouter choose an enabled `or:` ID from the catalog and effort `default`.
+Use an isolated workspace; keep the measured `auto` permissions unless a separately authorized adapter change is necessary. The real GLM smoke exercised both writing and command execution with `auto`.
+Call `hx budget status` before spending; USD caps are 30/month, 5/day and 1/run. Credentials resolve from process environment then HKCU\\Environment without being persisted. Never put their values in a brief.
+Inspect `cost_usd_actual`, `cost_usd_est`, and `generation_stats.coverage`; incomplete stats are unknown actual cost, not zero. Never use Claude `total_cost_usd` for OpenRouter. Catalog data notes identify models tagged `may-train`; routing and explicit worker runs obey the repository data policy.

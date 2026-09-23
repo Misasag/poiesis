@@ -163,108 +163,546 @@
     "notes": "Use installed Grok default. Usage wire fixture is synthetic until a recorded sample is available."
   },
   {
-    "id": "anthropic-compat:glm",
+    "id": "or:glm-5.3",
     "family": "zhipu",
     "adapter": "anthropic-compat",
-    "model": "TBD",
-    "defaultEffort": "medium",
+    "model": "z-ai/glm-5.3",
+    "defaultEffort": "default",
     "efforts": [
-      "low",
-      "medium",
-      "high"
+      "default"
     ],
     "costBasis": "metered",
-    "prices": null,
-    "env": {
-      "ANTHROPIC_BASE_URL": "TBD",
-      "ANTHROPIC_MODEL": "TBD",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:ZAI_API_KEY}"
+    "prices": {
+      "inputPerMTok": 0.84,
+      "cachedInputPerMTok": 0.156,
+      "outputPerMTok": 2.64,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
     },
-    "enabled": false,
-    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "z-ai/glm-5.3",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "z-ai/glm-5.3",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "z-ai/glm-5.3",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "z-ai/glm-5.3",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "z-ai/glm-5.3",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Z.ai API states no training without express consent; Singapore. OpenRouter host policy may differ; no host pin or ZDR is implied.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
   },
   {
-    "id": "anthropic-compat:kimi",
-    "family": "moonshot",
+    "id": "or:glm-5.3-flash",
+    "family": "zhipu",
     "adapter": "anthropic-compat",
-    "model": "TBD",
-    "defaultEffort": "medium",
+    "model": "z-ai/glm-5.3-flash",
+    "defaultEffort": "default",
     "efforts": [
-      "low",
-      "medium",
-      "high"
+      "default"
     ],
     "costBasis": "metered",
-    "prices": null,
-    "env": {
-      "ANTHROPIC_BASE_URL": "TBD",
-      "ANTHROPIC_MODEL": "TBD",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:KIMI_API_KEY}"
+    "prices": {
+      "inputPerMTok": 0.15,
+      "cachedInputPerMTok": 0.05,
+      "outputPerMTok": 0.5,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
     },
-    "enabled": false,
-    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "z-ai/glm-5.3-flash",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "z-ai/glm-5.3-flash",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "z-ai/glm-5.3-flash",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "z-ai/glm-5.3-flash",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "z-ai/glm-5.3-flash",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Z.ai API states no training without express consent; Singapore. OpenRouter host policy may differ; no host pin or ZDR is implied.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
   },
   {
-    "id": "anthropic-compat:deepseek",
+    "id": "or:deepseek-v4.1-flash",
     "family": "deepseek",
     "adapter": "anthropic-compat",
-    "model": "TBD",
-    "defaultEffort": "medium",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "defaultEffort": "default",
     "efforts": [
-      "low",
-      "medium",
-      "high"
+      "default"
     ],
     "costBasis": "metered",
-    "prices": null,
-    "env": {
-      "ANTHROPIC_BASE_URL": "TBD",
-      "ANTHROPIC_MODEL": "TBD",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:DEEPSEEK_API_KEY}"
+    "prices": {
+      "inputPerMTok": 0.094,
+      "cachedInputPerMTok": 0.05,
+      "outputPerMTok": 0.6,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
     },
-    "enabled": false,
-    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "deepseek/deepseek-v4.1-flash",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek/deepseek-v4.1-flash",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek/deepseek-v4.1-flash",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek/deepseek-v4.1-flash",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek/deepseek-v4.1-flash",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "First-party policy permits training and processing in China. OpenRouter hosts may offer different retention terms; no ZDR routing is asserted.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
   },
   {
-    "id": "anthropic-compat:minimax",
-    "family": "minimax",
+    "id": "or:deepseek-v4-pro",
+    "family": "deepseek",
     "adapter": "anthropic-compat",
-    "model": "TBD",
-    "defaultEffort": "medium",
+    "model": "deepseek/deepseek-v4-pro",
+    "defaultEffort": "default",
     "efforts": [
-      "low",
-      "medium",
-      "high"
+      "default"
     ],
     "costBasis": "metered",
-    "prices": null,
-    "env": {
-      "ANTHROPIC_BASE_URL": "TBD",
-      "ANTHROPIC_MODEL": "TBD",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:MINIMAX_API_KEY}"
+    "prices": {
+      "inputPerMTok": 0.955,
+      "cachedInputPerMTok": 0.08,
+      "outputPerMTok": 1.911,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
     },
-    "enabled": false,
-    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "deepseek/deepseek-v4-pro",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek/deepseek-v4-pro",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek/deepseek-v4-pro",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek/deepseek-v4-pro",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek/deepseek-v4-pro",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "First-party policy permits training and processing in China. OpenRouter hosts may offer different retention terms; no ZDR routing is asserted.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
   },
   {
-    "id": "anthropic-compat:qwen",
+    "id": "or:kimi-k3",
+    "family": "moonshot",
+    "adapter": "anthropic-compat",
+    "model": "moonshotai/kimi-k3",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 3,
+      "cachedInputPerMTok": 0.3,
+      "outputPerMTok": 15,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "moonshotai/kimi-k3",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "moonshotai/kimi-k3",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "moonshotai/kimi-k3",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "moonshotai/kimi-k3",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "moonshotai/kimi-k3",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "Kimi API may use inputs for training absent a written agreement; Singapore API terms. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:kimi-k2.7-code",
+    "family": "moonshot",
+    "adapter": "anthropic-compat",
+    "model": "moonshotai/kimi-k2.7-code",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.706,
+      "cachedInputPerMTok": 0.18,
+      "outputPerMTok": 3.3,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "moonshotai/kimi-k2.7-code",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "moonshotai/kimi-k2.7-code",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "moonshotai/kimi-k2.7-code",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "moonshotai/kimi-k2.7-code",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "moonshotai/kimi-k2.7-code",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "Kimi API may use inputs for training absent a written agreement; Singapore API terms. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:mimo-v2.6-pro",
+    "family": "xiaomi",
+    "adapter": "anthropic-compat",
+    "model": "xiaomi/mimo-v2.6-pro",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.435,
+      "cachedInputPerMTok": 0.004,
+      "outputPerMTok": 0.87,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "xiaomi/mimo-v2.6-pro",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "xiaomi/mimo-v2.6-pro",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "xiaomi/mimo-v2.6-pro",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "xiaomi/mimo-v2.6-pro",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "xiaomi/mimo-v2.6-pro",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "MiMo API states submitted content is not used for model training; Netherlands/Singapore. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:mimo-v2.6-flash",
+    "family": "xiaomi",
+    "adapter": "anthropic-compat",
+    "model": "xiaomi/mimo-v2.6-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.14,
+      "cachedInputPerMTok": 0.003,
+      "outputPerMTok": 0.28,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "xiaomi/mimo-v2.6-flash",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "xiaomi/mimo-v2.6-flash",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "xiaomi/mimo-v2.6-flash",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "xiaomi/mimo-v2.6-flash",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "xiaomi/mimo-v2.6-flash",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "MiMo API states submitted content is not used for model training; Netherlands/Singapore. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:qwen3.8-max",
     "family": "alibaba",
     "adapter": "anthropic-compat",
-    "model": "TBD",
-    "defaultEffort": "medium",
+    "model": "qwen/qwen3.8-max-0902",
+    "defaultEffort": "default",
     "efforts": [
-      "low",
-      "medium",
-      "high"
+      "default"
     ],
     "costBasis": "metered",
-    "prices": null,
-    "env": {
-      "ANTHROPIC_BASE_URL": "TBD",
-      "ANTHROPIC_MODEL": "TBD",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:QWEN_API_KEY}"
+    "prices": {
+      "inputPerMTok": 2,
+      "cachedInputPerMTok": 0.25,
+      "outputPerMTok": 6,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
     },
-    "enabled": false,
-    "notes": "Disabled pending provider/data-policy approval and researched endpoint, model, and USD prices. Never use Claude total_cost_usd."
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "qwen/qwen3.8-max-0902",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen/qwen3.8-max-0902",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen/qwen3.8-max-0902",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen/qwen3.8-max-0902",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "qwen/qwen3.8-max-0902",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "QwenCloud states no training without consent; Singapore. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:qwen3.8-flash",
+    "family": "alibaba",
+    "adapter": "anthropic-compat",
+    "model": "qwen/qwen3.8-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.15,
+      "cachedInputPerMTok": 0.016,
+      "outputPerMTok": 0.47,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "qwen/qwen3.8-flash",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen/qwen3.8-flash",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen/qwen3.8-flash",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen/qwen3.8-flash",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "qwen/qwen3.8-flash",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "QwenCloud states no training without consent; Singapore. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:minimax-m3",
+    "family": "minimax",
+    "adapter": "anthropic-compat",
+    "model": "minimax/minimax-m3",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.3,
+      "cachedInputPerMTok": 0.06,
+      "outputPerMTok": 1.2,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "minimax/minimax-m3",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "minimax/minimax-m3",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "minimax/minimax-m3",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "minimax/minimax-m3",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "minimax/minimax-m3",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "International MiniMax terms permit service improvement, with no verified training opt-out; US datacenters/Singapore law.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:muse-spark-1.3",
+    "family": "meta",
+    "adapter": "anthropic-compat",
+    "model": "meta/muse-spark-1.3",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 1.25,
+      "cachedInputPerMTok": 0.15,
+      "outputPerMTok": 4.25,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "meta/muse-spark-1.3",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "meta/muse-spark-1.3",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "meta/muse-spark-1.3",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "meta/muse-spark-1.3",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "meta/muse-spark-1.3",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Muse Standard states no training; California law. Contributor variants train on inputs and are never configured.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:gemini-3.8-flash",
+    "family": "google",
+    "adapter": "anthropic-compat",
+    "model": "google/gemini-3.8-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.75,
+      "cachedInputPerMTok": 0.075,
+      "outputPerMTok": 3.75,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "google/gemini-3.8-flash",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "google/gemini-3.8-flash",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "google/gemini-3.8-flash",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "google/gemini-3.8-flash",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "google/gemini-3.8-flash",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Paid Gemini API states no training; free-tier terms permit product improvement. This catalog uses paid OpenRouter transport.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:grok-4.7",
+    "family": "xai",
+    "adapter": "anthropic-compat",
+    "model": "x-ai/grok-4.7",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 1.6,
+      "cachedInputPerMTok": 0.4,
+      "outputPerMTok": 4.8,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "x-ai/grok-4.7",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "x-ai/grok-4.7",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "x-ai/grok-4.7",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "x-ai/grok-4.7",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "x-ai/grok-4.7",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "xAI training/retention terms were not reverified in the supplied research; conservatively excluded when may-train is forbidden.",
+    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "jev",
+    "family": "typesafe",
+    "adapter": "decisions",
+    "model": "typesafe/jev-1.13",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.042,
+      "cachedInputPerMTok": 0.042,
+      "outputPerMTok": 0,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "TypeSafe states no training; enterprise ZDR is a separate agreement, not implied by this OpenRouter route.",
+    "notes": "Typed gate only: /api/alpha/decisions, not a coding worker or LLM judge. Context 32000; gate payload bounded below 24000 tokens."
   }
 ]

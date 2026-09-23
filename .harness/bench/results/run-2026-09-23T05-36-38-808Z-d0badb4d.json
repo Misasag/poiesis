@@ -1,0 +1,24 @@
+{
+  "task": "git-d206665898ec",
+  "model": "codex:gpt-6-luna",
+  "repeat": 1,
+  "run_id": "run-2026-09-23T05-36-38-808Z-d0badb4d",
+  "result": "fail",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 2.736,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-skill-document.mjs",
+      "exit_code": 1,
+      "wall_s": 0.047,
+      "tail": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\r\n+ actual - expected\r\n\r\n+ 'frontmatter縺ｮname縲‥escription縲〔ind・・gent・俊esults・峨ｒ遒ｺ隱阪＠縺ｦ縺上□縺輔＞縲・'\r\n- 'frontmatterのname、description、kind（agent／results）を確認してください。'\r\n\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-36-38-071Z-15facd63/scripts/test-skill-document.mjs:41:8\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: true,\r\n  code: 'ERR_ASSERTION',\r\n  actual: 'frontmatter縺ｮname縲‥escription縲〔ind・・gent・俊esults・峨ｒ遒ｺ隱阪＠縺ｦ縺上□縺輔＞縲・',\r\n  expected: 'frontmatterのname、description、kind（agent／results）を確認してください。',\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n"
+    }
+  ],
+  "error": null
+}

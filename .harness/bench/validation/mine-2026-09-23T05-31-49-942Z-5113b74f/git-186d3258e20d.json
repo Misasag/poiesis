@@ -1,0 +1,290 @@
+{
+  "id": "git-186d3258e20d",
+  "base_sha": "3371483eb30146804d39b1677aca14bd79d03bcc",
+  "fix_sha": "186d3258e20d4dfb436269295d9c5108f5734dc1",
+  "task": {
+    "id": "git-186d3258e20d",
+    "base_sha": "3371483eb30146804d39b1677aca14bd79d03bcc",
+    "fix_sha": "186d3258e20d4dfb436269295d9c5108f5734dc1",
+    "test_files": [
+      "scripts/test-agent-send-detection.mjs",
+      "scripts/test-cli-args.mjs",
+      "scripts/test-cli-detection-lifecycle.mjs",
+      "scripts/test-model-discovery.mjs",
+      "scripts/test-model-selection.mjs"
+    ],
+    "test_cmds": [
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-cli-detection-lifecycle.mjs",
+      "node scripts/test-agent-send-detection.mjs",
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-cli-args.mjs",
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-model-discovery.mjs",
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-model-selection.mjs"
+    ],
+    "src_files": [
+      "agent-window/src/browser/agent-window-widget.tsx",
+      "agent-window/src/browser/agent-window/agent-window-host.ts",
+      "agent-window/src/browser/agent-window/settings-part.tsx",
+      "agent-window/src/browser/components/model-picker.tsx",
+      "agent-window/src/browser/components/poiesis-select.tsx",
+      "agent-window/src/browser/model-picker-state.ts",
+      "agent-window/src/browser/style/agent.css",
+      "agent-window/src/browser/style/components.css",
+      "agent-window/src/browser/style/results.css",
+      "agent-window/src/browser/style/settings.css",
+      "agent-window/src/common/agent-runtime-protocol.ts",
+      "agent-window/src/common/cli-detection-lifecycle.ts",
+      "agent-window/src/electron-browser/window-controls.css",
+      "agent-window/src/node/agent-runtime-server.ts",
+      "agent-window/src/node/agent-window-backend-module.ts",
+      "agent-window/src/node/cli-model-discovery.ts",
+      "agent-window/src/node/cli-provider-registry.ts",
+      "agent-window/src/node/hidden-process.ts",
+      "agent-window/src/node/known-cli-registry.ts",
+      "agent-window/src/node/requirement-classification-server.ts",
+      "agent-window/src/node/results-assertion-server.ts",
+      "agent-window/src/node/results-generation-server.ts",
+      "agent-window/src/node/results-question-server.ts"
+    ],
+    "class": "app-frontend",
+    "instruction_file": "instruction.md",
+    "instruction_source": "commit-message",
+    "area": "agent",
+    "validation": {
+      "ts": "2026-09-23T05:33:17.290Z",
+      "before": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 3.492
+        },
+        {
+          "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+          "exit_code": 1,
+          "wall_s": 0.055
+        },
+        {
+          "cmd": "node scripts/test-agent-send-detection.mjs",
+          "exit_code": 1,
+          "wall_s": 0.199
+        },
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 1.704
+        },
+        {
+          "cmd": "node scripts/test-cli-args.mjs",
+          "exit_code": 1,
+          "wall_s": 0.047
+        },
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 1.792
+        },
+        {
+          "cmd": "node scripts/test-model-discovery.mjs",
+          "exit_code": 1,
+          "wall_s": 0.049
+        },
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 1.81
+        },
+        {
+          "cmd": "node scripts/test-model-selection.mjs",
+          "exit_code": 1,
+          "wall_s": 0.046
+        }
+      ],
+      "after": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 4.13
+        },
+        {
+          "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+          "exit_code": 0,
+          "wall_s": 0.042
+        },
+        {
+          "cmd": "node scripts/test-agent-send-detection.mjs",
+          "exit_code": 0,
+          "wall_s": 0.504
+        },
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 1.743
+        },
+        {
+          "cmd": "node scripts/test-cli-args.mjs",
+          "exit_code": 0,
+          "wall_s": 0.051
+        },
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 1.657
+        },
+        {
+          "cmd": "node scripts/test-model-discovery.mjs",
+          "exit_code": 0,
+          "wall_s": 0.495
+        },
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 1.671
+        },
+        {
+          "cmd": "node scripts/test-model-selection.mjs",
+          "exit_code": 0,
+          "wall_s": 0.047
+        }
+      ],
+      "before_wall_s": 9.194,
+      "after_wall_s": 10.34,
+      "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-186d3258e20d.json"
+    }
+  },
+  "valid": true,
+  "reason": "Validated fail-to-pass",
+  "before": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 3.492
+    },
+    {
+      "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: A detected-or-missing CLI without a runtime adapter must not be presented as installable.\r\n+ actual - expected\r\n\r\n+ 'missing'\r\n- 'unsupported'\r\n\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-32-57-332Z-4290c86c/scripts/test-cli-detection-lifecycle.mjs:43:8\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: 'missing',\r\n  expected: 'unsupported',\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.055
+    },
+    {
+      "cmd": "node scripts/test-agent-send-detection.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: SettingsPart.modelCatalogLoading was not found\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-32-57-332Z-4290c86c/scripts/test-agent-send-detection.mjs:17:16\r\n    at Array.map (<anonymous>)\r\n    at subject (file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-32-57-332Z-4290c86c/scripts/test-agent-send-detection.mjs:15:27)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-32-57-332Z-4290c86c/scripts/test-agent-send-detection.mjs:63:26\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: undefined,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.199
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 1.704
+    },
+    {
+      "cmd": "node scripts/test-cli-args.mjs",
+      "stdout": "",
+      "stderr": "C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-32-57-332Z-4290c86c\\agent-window\\lib\\node\\cli-args.js:106\r\n        throw new Error(`Unsupported effort for ${providerId}: ${JSON.stringify(effort)}.`);\r\n              ^\r\n\r\nError: Unsupported effort for codex: \"max\".\r\n    at validateCliEffort (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-32-57-332Z-4290c86c\\agent-window\\lib\\node\\cli-args.js:106:15)\r\n    at effortArgs (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-32-57-332Z-4290c86c\\agent-window\\lib\\node\\cli-args.js:111:20)\r\n    at agentCliArgs (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-32-57-332Z-4290c86c\\agent-window\\lib\\node\\cli-args.js:9:20)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-32-57-332Z-4290c86c/scripts/test-cli-args.mjs:26:18\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.047
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 1.792
+    },
+    {
+      "cmd": "node scripts/test-model-discovery.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1456\r\n  const err = new Error(message);\r\n              ^\r\n\r\nError: Cannot find module '../agent-window/lib/node/cli-model-discovery.js'\r\nRequire stack:\r\n- C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-32-57-332Z-4290c86c\\scripts\\test-model-discovery.mjs\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.require (node:internal/modules/cjs/loader:1556:12)\r\n    at require (node:internal/modules/helpers:152:16)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-32-57-332Z-4290c86c/scripts/test-model-discovery.mjs:12:5\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26) {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: [\r\n    'C:\\\\Users\\\\owner\\\\github\\\\poiesis-wt-harness\\\\.harness\\\\worktrees\\\\wt-2026-09-23T05-32-57-332Z-4290c86c\\\\scripts\\\\test-model-discovery.mjs'\r\n  ]\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.049
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 1.81
+    },
+    {
+      "cmd": "node scripts/test-model-selection.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1456\r\n  const err = new Error(message);\r\n              ^\r\n\r\nError: Cannot find module '../agent-window/lib/browser/model-picker-state.js'\r\nRequire stack:\r\n- C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-32-57-332Z-4290c86c\\scripts\\test-model-selection.mjs\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.require (node:internal/modules/cjs/loader:1556:12)\r\n    at require (node:internal/modules/helpers:152:16)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-32-57-332Z-4290c86c/scripts/test-model-selection.mjs:13:5\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26) {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: [\r\n    'C:\\\\Users\\\\owner\\\\github\\\\poiesis-wt-harness\\\\.harness\\\\worktrees\\\\wt-2026-09-23T05-32-57-332Z-4290c86c\\\\scripts\\\\test-model-selection.mjs'\r\n  ]\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.046
+    }
+  ],
+  "after": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 4.13
+    },
+    {
+      "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+      "stdout": "CLI_DETECTION_LIFECYCLE_TEST=passed\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.042
+    },
+    {
+      "cmd": "node scripts/test-agent-send-detection.mjs",
+      "stdout": "AGENT_SEND_DETECTION_TEST=passed cases=14\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.504
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 1.743
+    },
+    {
+      "cmd": "node scripts/test-cli-args.mjs",
+      "stdout": "CLI_ARGS_TEST=passed\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.051
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 1.657
+    },
+    {
+      "cmd": "node scripts/test-model-discovery.mjs",
+      "stdout": "MODEL_DISCOVERY_TEST=passed\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.495
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 1.671
+    },
+    {
+      "cmd": "node scripts/test-model-selection.mjs",
+      "stdout": "MODEL_SELECTION_TEST=passed\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.047
+    }
+  ],
+  "wall_s": 20.271
+}

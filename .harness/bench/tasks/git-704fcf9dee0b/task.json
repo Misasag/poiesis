@@ -1,0 +1,102 @@
+{
+  "id": "git-704fcf9dee0b",
+  "base_sha": "0b42f77a2eb9edde4fabaddb1cdaf6deeb04ecab",
+  "fix_sha": "704fcf9dee0bee79e3dcb2dc03d505fa5da4d888",
+  "test_files": [
+    "scripts/test-agent-activity-parser.mjs",
+    "scripts/test-cli-args.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-agent-activity-parser.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-cli-args.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-activity-parser.ts",
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/agent-window/agent-part.tsx",
+    "agent-window/src/browser/agent-window/agent-window-host.ts",
+    "agent-window/src/browser/agent-window/results-part.tsx",
+    "agent-window/src/browser/agent-window/session-store.ts",
+    "agent-window/src/browser/agent-window/settings-part.tsx",
+    "agent-window/src/browser/cli-agent-provider.ts",
+    "agent-window/src/browser/components/elapsed.tsx",
+    "agent-window/src/browser/components/poiesis-select.tsx",
+    "agent-window/src/browser/requirement-classification-service.ts",
+    "agent-window/src/browser/requirement-service.ts",
+    "agent-window/src/browser/results-generation-context.ts",
+    "agent-window/src/browser/results-skill.ts",
+    "agent-window/src/browser/style/agent.css",
+    "agent-window/src/browser/style/components.css",
+    "agent-window/src/browser/style/responsive.css",
+    "agent-window/src/browser/style/results.css",
+    "agent-window/src/browser/task-service.ts",
+    "agent-window/src/common/agent-provider.ts",
+    "agent-window/src/common/agent-runtime-protocol.ts",
+    "agent-window/src/common/requirement-classification-protocol.ts",
+    "agent-window/src/common/results-assertion-protocol.ts",
+    "agent-window/src/common/results-generation-protocol.ts",
+    "agent-window/src/common/results-question-protocol.ts",
+    "agent-window/src/node/agent-runtime-server.ts",
+    "agent-window/src/node/cli-args.ts",
+    "agent-window/src/node/requirement-classification-server.ts",
+    "agent-window/src/node/results-assertion-server.ts",
+    "agent-window/src/node/results-generation-server.ts",
+    "agent-window/src/node/results-question-server.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "agent",
+  "validation": {
+    "ts": "2026-09-23T05:33:41.585Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 3.35
+      },
+      {
+        "cmd": "node scripts/test-agent-activity-parser.mjs",
+        "exit_code": 1,
+        "wall_s": 0.048
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.776
+      },
+      {
+        "cmd": "node scripts/test-cli-args.mjs",
+        "exit_code": 1,
+        "wall_s": 0.045
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 3.266
+      },
+      {
+        "cmd": "node scripts/test-agent-activity-parser.mjs",
+        "exit_code": 0,
+        "wall_s": 0.054
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.629
+      },
+      {
+        "cmd": "node scripts/test-cli-args.mjs",
+        "exit_code": 0,
+        "wall_s": 0.042
+      }
+    ],
+    "before_wall_s": 5.219,
+    "after_wall_s": 4.991,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-704fcf9dee0b.json"
+  }
+}

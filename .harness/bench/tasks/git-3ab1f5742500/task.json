@@ -1,0 +1,129 @@
+{
+  "id": "git-3ab1f5742500",
+  "base_sha": "3b4c6caa850c875f9aa908110ec69b0c4412dd64",
+  "fix_sha": "3ab1f57425003f61ac1566486c7f999b0903cdfe",
+  "test_files": [
+    "scripts/test-deferred-results-completion.mjs",
+    "scripts/test-session-durability.mjs",
+    "scripts/test-snapshot-cancellation.mjs",
+    "scripts/test-snapshot-store.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-deferred-results-completion.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-session-durability.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-snapshot-cancellation.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-snapshot-store.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window/results-part.tsx",
+    "agent-window/src/browser/agent-window/session-store.ts",
+    "agent-window/src/browser/cli-agent-provider.ts",
+    "agent-window/src/browser/components/elapsed.tsx",
+    "agent-window/src/browser/results-skill.ts",
+    "agent-window/src/browser/style/results.css",
+    "agent-window/src/browser/task-service.ts",
+    "agent-window/src/common/agent-provider.ts",
+    "agent-window/src/common/agent-runtime-protocol.ts",
+    "agent-window/src/node/agent-runtime-server.ts",
+    "agent-window/src/node/hidden-process.ts",
+    "agent-window/src/node/snapshot-store.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "deferred",
+  "validation": {
+    "ts": "2026-09-23T05:32:56.845Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 3.789
+      },
+      {
+        "cmd": "node scripts/test-deferred-results-completion.mjs",
+        "exit_code": 1,
+        "wall_s": 0.516
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.716
+      },
+      {
+        "cmd": "node scripts/test-session-durability.mjs",
+        "exit_code": 0,
+        "wall_s": 0.052
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.774
+      },
+      {
+        "cmd": "node scripts/test-snapshot-cancellation.mjs",
+        "exit_code": 1,
+        "wall_s": 0.296
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.729
+      },
+      {
+        "cmd": "node scripts/test-snapshot-store.mjs",
+        "exit_code": 1,
+        "wall_s": 8.571
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 3.887
+      },
+      {
+        "cmd": "node scripts/test-deferred-results-completion.mjs",
+        "exit_code": 0,
+        "wall_s": 1.524
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.77
+      },
+      {
+        "cmd": "node scripts/test-session-durability.mjs",
+        "exit_code": 0,
+        "wall_s": 0.049
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.755
+      },
+      {
+        "cmd": "node scripts/test-snapshot-cancellation.mjs",
+        "exit_code": 0,
+        "wall_s": 4.768
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.703
+      },
+      {
+        "cmd": "node scripts/test-snapshot-store.mjs",
+        "exit_code": 0,
+        "wall_s": 12.846
+      }
+    ],
+    "before_wall_s": 18.443,
+    "after_wall_s": 28.302,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-3ab1f5742500.json"
+  }
+}

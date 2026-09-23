@@ -1,0 +1,8 @@
+{
+  "id": "git-ac0ac6f4958c",
+  "base_sha": "8da5ea9efb7cd4e6608b06ce83a77c65207c83c7",
+  "fix_sha": "ac0ac6f4958c8fee67d70c15e42f622bffd9bf4c",
+  "valid": false,
+  "reason": "No test script at base or fix for scripts/test-theme-preference.mjs",
+  "wall_s": 0.085
+}

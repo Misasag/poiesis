@@ -1,0 +1,136 @@
+{
+  "id": "git-3b7dd47e596c",
+  "base_sha": "ea40e651c567d1ab80e518b8e27ae1f73ae72653",
+  "fix_sha": "3b7dd47e596c1499294d7bfed2e86290ed531115",
+  "test_files": [
+    "scripts/test-requirement-classifier.mjs",
+    "scripts/test-requirement-model.mjs",
+    "scripts/test-results-assertions.mjs",
+    "scripts/test-skill-document.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-requirement-classifier.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-requirement-model.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-results-assertions.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-skill-document.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window-frontend-module.ts",
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/requirement-classification-service.ts",
+    "agent-window/src/browser/requirement-classifier.ts",
+    "agent-window/src/browser/requirement-model.ts",
+    "agent-window/src/browser/requirement-service.ts",
+    "agent-window/src/browser/results-assertions.ts",
+    "agent-window/src/browser/results-skill.ts",
+    "agent-window/src/browser/skill-document.ts",
+    "agent-window/src/browser/style/index.css",
+    "agent-window/src/browser/task-service.ts",
+    "agent-window/src/browser/workspace-skill-service.ts",
+    "agent-window/src/common/requirement-classification-protocol.ts",
+    "agent-window/src/common/results-assertion-protocol.ts",
+    "agent-window/src/common/results-generation-protocol.ts",
+    "agent-window/src/node/agent-window-backend-module.ts",
+    "agent-window/src/node/requirement-classification-server.ts",
+    "agent-window/src/node/results-assertion-server.ts",
+    "agent-window/src/node/results-generation-server.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "requirement",
+  "validation": {
+    "ts": "2026-09-23T05:34:06.839Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.744
+      },
+      {
+        "cmd": "node scripts/test-requirement-classifier.mjs",
+        "exit_code": 1,
+        "wall_s": 0.045
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.444
+      },
+      {
+        "cmd": "node scripts/test-requirement-model.mjs",
+        "exit_code": 1,
+        "wall_s": 0.046
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.44
+      },
+      {
+        "cmd": "node scripts/test-results-assertions.mjs",
+        "exit_code": 1,
+        "wall_s": 0.045
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.462
+      },
+      {
+        "cmd": "node scripts/test-skill-document.mjs",
+        "exit_code": 1,
+        "wall_s": 0.044
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.785
+      },
+      {
+        "cmd": "node scripts/test-requirement-classifier.mjs",
+        "exit_code": 0,
+        "wall_s": 0.051
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.436
+      },
+      {
+        "cmd": "node scripts/test-requirement-model.mjs",
+        "exit_code": 0,
+        "wall_s": 0.05
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.431
+      },
+      {
+        "cmd": "node scripts/test-results-assertions.mjs",
+        "exit_code": 0,
+        "wall_s": 0.052
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.437
+      },
+      {
+        "cmd": "node scripts/test-skill-document.mjs",
+        "exit_code": 0,
+        "wall_s": 0.049
+      }
+    ],
+    "before_wall_s": 7.27,
+    "after_wall_s": 7.291,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-3b7dd47e596c.json"
+  }
+}

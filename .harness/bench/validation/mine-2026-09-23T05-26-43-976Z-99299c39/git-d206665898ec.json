@@ -1,0 +1,92 @@
+{
+  "id": "git-d206665898ec",
+  "base_sha": "8d7891dc5c18cf24736d48d29db2dfb8c6ff63ea",
+  "fix_sha": "d206665898ec13eacf262bde3926208f3b3453e1",
+  "task": {
+    "id": "git-d206665898ec",
+    "base_sha": "8d7891dc5c18cf24736d48d29db2dfb8c6ff63ea",
+    "fix_sha": "d206665898ec13eacf262bde3926208f3b3453e1",
+    "test_files": [
+      "scripts/test-skill-document.mjs"
+    ],
+    "test_cmds": [
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-skill-document.mjs"
+    ],
+    "src_files": [
+      "agent-window/src/browser/agent-window-widget.tsx",
+      "agent-window/src/browser/skill-document.ts",
+      "agent-window/src/browser/style/index.css",
+      "agent-window/src/browser/workspace-skill-service.ts"
+    ],
+    "class": "app-frontend",
+    "instruction_file": "instruction.md",
+    "instruction_source": "commit-message",
+    "area": "skill",
+    "validation": {
+      "ts": "2026-09-23T05:28:49.128Z",
+      "before": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 2.763
+        },
+        {
+          "cmd": "node scripts/test-skill-document.mjs",
+          "exit_code": 1,
+          "wall_s": 0.046
+        }
+      ],
+      "after": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 2.507
+        },
+        {
+          "cmd": "node scripts/test-skill-document.mjs",
+          "exit_code": 0,
+          "wall_s": 0.045
+        }
+      ],
+      "before_wall_s": 2.809,
+      "after_wall_s": 2.552,
+      "log": ".harness/bench/validation/mine-2026-09-23T05-26-43-976Z-99299c39/git-d206665898ec.json"
+    }
+  },
+  "valid": true,
+  "reason": "Validated fail-to-pass",
+  "before": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm notice\nnpm notice New minor version of npm available! 11.11.0 -> 11.20.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0\nnpm notice To update run: npm install -g npm@11.20.0\nnpm notice\n",
+      "exit_code": 0,
+      "wall_s": 2.763
+    },
+    {
+      "cmd": "node scripts/test-skill-document.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1456\r\n  const err = new Error(message);\r\n              ^\r\n\r\nError: Cannot find module 'C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-28-43-430Z-f715d026\\agent-window\\lib\\browser\\skill-document.js'\r\nRequire stack:\r\n- C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-28-43-430Z-f715d026\\scripts\\test-skill-document.mjs\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.require (node:internal/modules/cjs/loader:1556:12)\r\n    at require (node:internal/modules/helpers:152:16)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-28-43-430Z-f715d026/scripts/test-skill-document.mjs:8:51\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26) {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: [\r\n    'C:\\\\Users\\\\owner\\\\github\\\\poiesis-wt-harness\\\\.harness\\\\worktrees\\\\wt-2026-09-23T05-28-43-430Z-f715d026\\\\scripts\\\\test-skill-document.mjs'\r\n  ]\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.046
+    }
+  ],
+  "after": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 2.507
+    },
+    {
+      "cmd": "node scripts/test-skill-document.mjs",
+      "stdout": "skill-document tests passed\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.045
+    }
+  ],
+  "wall_s": 5.996
+}

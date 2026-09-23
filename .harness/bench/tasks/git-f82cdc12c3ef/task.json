@@ -1,0 +1,81 @@
+{
+  "id": "git-f82cdc12c3ef",
+  "base_sha": "3b7dd47e596c1499294d7bfed2e86290ed531115",
+  "fix_sha": "f82cdc12c3ef360673c6e5eb778b000f0ea74349",
+  "test_files": [
+    "scripts/test-requirement-model.mjs",
+    "scripts/test-text-diff.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-requirement-model.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-text-diff.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/cli-agent-provider.ts",
+    "agent-window/src/browser/requirement-model.ts",
+    "agent-window/src/browser/requirement-service.ts",
+    "agent-window/src/browser/requirement-title-migration.ts",
+    "agent-window/src/browser/results-skill.ts",
+    "agent-window/src/browser/style/index.css",
+    "agent-window/src/browser/task-service.ts",
+    "agent-window/src/browser/text-diff.ts",
+    "agent-window/src/browser/workspace-skill-service.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "requirement",
+  "validation": {
+    "ts": "2026-09-23T05:33:51.537Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.816
+      },
+      {
+        "cmd": "node scripts/test-requirement-model.mjs",
+        "exit_code": 1,
+        "wall_s": 0.046
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.421
+      },
+      {
+        "cmd": "node scripts/test-text-diff.mjs",
+        "exit_code": 1,
+        "wall_s": 0.044
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.819
+      },
+      {
+        "cmd": "node scripts/test-requirement-model.mjs",
+        "exit_code": 0,
+        "wall_s": 0.053
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.415
+      },
+      {
+        "cmd": "node scripts/test-text-diff.mjs",
+        "exit_code": 0,
+        "wall_s": 0.045
+      }
+    ],
+    "before_wall_s": 4.327,
+    "after_wall_s": 4.332,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-f82cdc12c3ef.json"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "id": "git-6a77b172d2e7",
+  "base_sha": "f0bd79ae56c2f30a933bf7b849aa591bf37ecba3",
+  "fix_sha": "6a77b172d2e7176b6c7d9fe1dbefeeb9175027bb",
+  "task": {
+    "id": "git-6a77b172d2e7",
+    "base_sha": "f0bd79ae56c2f30a933bf7b849aa591bf37ecba3",
+    "fix_sha": "6a77b172d2e7176b6c7d9fe1dbefeeb9175027bb",
+    "test_files": [
+      "scripts/test-agent-activity-parser.mjs"
+    ],
+    "test_cmds": [
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-agent-activity-parser.mjs"
+    ],
+    "src_files": [
+      "agent-window/src/browser/agent-activity-parser.ts",
+      "agent-window/src/browser/agent-window-widget.tsx",
+      "agent-window/src/browser/cli-agent-provider.ts",
+      "agent-window/src/browser/style/index.css",
+      "agent-window/src/common/agent-provider.ts",
+      "agent-window/src/node/agent-runtime-server.ts"
+    ],
+    "class": "app-frontend",
+    "instruction_file": "instruction.md",
+    "instruction_source": "commit-message"
+  },
+  "valid": false,
+  "reason": "Tests still fail with source changes (node scripts/test-agent-activity-parser.mjs, exit 1)",
+  "before": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 2.488
+    },
+    {
+      "cmd": "node scripts/test-agent-activity-parser.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1456\r\n  const err = new Error(message);\r\n              ^\r\n\r\nError: Cannot find module '../agent-window/lib/browser/agent-activity-parser.js'\r\nRequire stack:\r\n- C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-34-44-650Z-a2831bb1\\scripts\\test-agent-activity-parser.mjs\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.require (node:internal/modules/cjs/loader:1556:12)\r\n    at require (node:internal/modules/helpers:152:16)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-34-44-650Z-a2831bb1/scripts/test-agent-activity-parser.mjs:6:39\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26) {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: [\r\n    'C:\\\\Users\\\\owner\\\\github\\\\poiesis-wt-harness\\\\.harness\\\\worktrees\\\\wt-2026-09-23T05-34-44-650Z-a2831bb1\\\\scripts\\\\test-agent-activity-parser.mjs'\r\n  ]\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.044
+    }
+  ],
+  "after": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 2.551
+    },
+    {
+      "cmd": "node scripts/test-agent-activity-parser.mjs",
+      "stdout": "",
+      "stderr": "node:fs:440\r\n    return binding.readFileUtf8(path, stringToFlags(options.flag));\r\n                   ^\r\n\r\nError: ENOENT: no such file or directory, open 'C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-34-44-650Z-a2831bb1\\scripts\\fixtures\\codex-exec-events.jsonl'\r\n    at readFileSync (node:fs:440:20)\r\n    at fixtureLines (file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-34-44-650Z-a2831bb1/scripts/test-agent-activity-parser.mjs:9:12)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-34-44-650Z-a2831bb1/scripts/test-agent-activity-parser.mjs:37:5\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  errno: -4058,\r\n  code: 'ENOENT',\r\n  syscall: 'open',\r\n  path: 'C:\\\\Users\\\\owner\\\\github\\\\poiesis-wt-harness\\\\.harness\\\\worktrees\\\\wt-2026-09-23T05-34-44-650Z-a2831bb1\\\\scripts\\\\fixtures\\\\codex-exec-events.jsonl'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.046
+    }
+  ],
+  "wall_s": 5.727
+}

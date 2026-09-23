@@ -1,0 +1,52 @@
+{
+  "id": "git-d206665898ec",
+  "base_sha": "8d7891dc5c18cf24736d48d29db2dfb8c6ff63ea",
+  "fix_sha": "d206665898ec13eacf262bde3926208f3b3453e1",
+  "test_files": [
+    "scripts/test-skill-document.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-skill-document.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/skill-document.ts",
+    "agent-window/src/browser/style/index.css",
+    "agent-window/src/browser/workspace-skill-service.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "skill",
+  "validation": {
+    "ts": "2026-09-23T05:34:44.246Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.513
+      },
+      {
+        "cmd": "node scripts/test-skill-document.mjs",
+        "exit_code": 1,
+        "wall_s": 0.042
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.633
+      },
+      {
+        "cmd": "node scripts/test-skill-document.mjs",
+        "exit_code": 0,
+        "wall_s": 0.047
+      }
+    ],
+    "before_wall_s": 2.555,
+    "after_wall_s": 2.68,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-d206665898ec.json"
+  }
+}

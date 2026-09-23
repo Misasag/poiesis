@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { json, writeJson, write, fail } from './util.mjs';
 import { ledger } from './ledger.mjs';
 import { catalog } from './prices.mjs';
+import { chargedCost } from './budget.mjs';
 
 export const policy = ctx => json(path.join(ctx.data, 'routing/policy.json'));
 export function decay(ts, now = new Date()) {
@@ -50,7 +51,8 @@ export function scoreboard(ctx, persist = false, now = new Date()) {
     const key = `${role}|${r.task_class}|${r.model}`;
     const row = rows.get(key) ?? { role, task_class: r.task_class, model: r.model, alpha: 1, beta: 1, n: 0, costs: [], times: [], pass: 0, fail: 0 };
     row[result === 'pass' ? 'alpha' : 'beta'] += decay(r.ts, now); row[result]++; row.n++;
-    if (r.cost_usd_est !== null && Number.isFinite(r.cost_usd_est)) row.costs.push(r.cost_usd_est);
+    const cost = chargedCost(r, null);
+    if (Number.isFinite(cost)) row.costs.push(cost);
     if (Number.isFinite(r.wall_s)) row.times.push(r.wall_s);
     rows.set(key, row);
   }
@@ -69,8 +71,8 @@ export function route(ctx, o) {
   if (role.fixed) return { model: role.incumbent, informational: true, reason: 'Fixed orchestrator session' };
   const rule = { ...role, ...(role.by_task_class?.[o['task-class']] ?? {}) };
   const excluded = o['exclude-family'] ?? [], models = catalog(ctx), scores = scoreboard(ctx).rows;
-  const candidates = [...new Set([rule.incumbent, ...(rule.challengers ?? []), rule.fallback].filter(Boolean))].map(id => models.find(m => m.id === id)).filter(m => m?.enabled && !excluded.includes(m.family));
-  if (!candidates.length) fail('No eligible model after family exclusion');
+  const candidates = [...new Set([rule.incumbent, rule.fallback, ...(rule.challengers ?? [])].filter(Boolean))].map(id => models.find(m => m.id === id)).filter(m => m?.enabled && !excluded.includes(m.family) && dataAllowed(p, m));
+  if (!candidates.length) fail('No eligible model after family/data policy exclusion');
   const ranked = candidates.map(m => {
     const score = scores.find(s => s.role === o.role && s.task_class === (o['task-class'] ?? 'unclassified') && s.model === m.id);
     const meanCost = score?.mean_cost ?? (m.costBasis === 'quota' ? 0 : 1);
@@ -78,10 +80,11 @@ export function route(ctx, o) {
   });
   const seed = o.ticket ?? `${o.role}:${o['task-class'] ?? 'unclassified'}`;
   const challengers = ranked.filter(m => (rule.challengers ?? []).includes(m.model));
-  const exploring = challengers.length > 0 && seeded(seed) < p.explore_share;
+  const exploring = o.role !== 'judge' && o.role !== 'gate' && challengers.length > 0 && seeded(seed) < p.explore_share;
   const chosen = exploring ? challengers[Math.floor(seeded(seed + ':pick') * challengers.length)] : [...ranked].sort((a, b) => b.utility - a.utility)[0];
   return { ...chosen, effort: chosen.model === rule.incumbent ? rule.effort : models.find(m => m.id === chosen.model)?.defaultEffort, exploring, seed, policy_version: p.version, candidates: ranked };
 }
+export const dataAllowed = (policy, model) => policy.data_policy?.allow_may_train !== false || !model.dataPolicy?.includes('may-train');
 export function promotion(inc, challenger, p) {
   if (!inc || !challenger || inc.n < p.min_n_for_promotion || challenger.n < p.min_n_for_promotion) return null;
   if (challenger.lower95 >= inc.p_pass) return '95% lower bound exceeds incumbent mean';

@@ -1,0 +1,76 @@
+{
+  "id": "git-838a3b3913ef",
+  "base_sha": "a42f301d09e1cef9d9b39c8ee07cc0f8e1526076",
+  "fix_sha": "838a3b3913ef84e06a8b3f189bf018ac3de4fa16",
+  "task": {
+    "id": "git-838a3b3913ef",
+    "base_sha": "a42f301d09e1cef9d9b39c8ee07cc0f8e1526076",
+    "fix_sha": "838a3b3913ef84e06a8b3f189bf018ac3de4fa16",
+    "test_files": [
+      "scripts/test-deferred-results-completion.mjs",
+      "scripts/test-results-generation-events.mjs",
+      "scripts/test-session-restore-background-results.mjs"
+    ],
+    "test_cmds": [
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-deferred-results-completion.mjs",
+      "node scripts/test-results-generation-events.mjs",
+      "node scripts/test-session-restore-background-results.mjs"
+    ],
+    "src_files": [
+      "agent-window/src/browser/agent-window-widget.tsx",
+      "agent-window/src/browser/agent-window/agent-part.tsx",
+      "agent-window/src/browser/agent-window/code-part.tsx",
+      "agent-window/src/browser/agent-window/customize-part.tsx",
+      "agent-window/src/browser/agent-window/header-part.tsx",
+      "agent-window/src/browser/agent-window/rail-part.tsx",
+      "agent-window/src/browser/agent-window/results-part.tsx",
+      "agent-window/src/browser/agent-window/session-store.ts",
+      "agent-window/src/browser/agent-window/settings-part.tsx",
+      "agent-window/src/browser/results-skill.ts",
+      "agent-window/src/browser/style/agent.css",
+      "agent-window/src/browser/style/customize.css",
+      "agent-window/src/browser/style/theme.css",
+      "agent-window/src/browser/task-service.ts",
+      "agent-window/src/browser/text-diff.ts",
+      "agent-window/src/browser/workspace-skill-service.ts",
+      "agent-window/src/common/agent-prompt.ts"
+    ],
+    "class": "app-frontend",
+    "instruction_file": "instruction.md",
+    "instruction_source": "commit-message"
+  },
+  "valid": false,
+  "reason": "Tests already pass at base",
+  "before": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm notice\nnpm notice New minor version of npm available! 11.11.0 -> 11.20.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0\nnpm notice To update run: npm install -g npm@11.20.0\nnpm notice\n",
+      "exit_code": 0,
+      "wall_s": 5.365
+    },
+    {
+      "cmd": "node scripts/test-deferred-results-completion.mjs",
+      "stdout": "DEFERRED_RESULTS_COMPLETION_TEST={\"agentCompletedBeforeResults\":true,\"secondTurnBeforeResults\":true,\"stableEvidence\":true,\"terminalPathsReady\":[\"completed\",\"failed\",\"cancelled\"],\"taskWorkspaceRetained\":\"file:///C:/work/a\",\"resultPersisted\":true,\"rejectedBackgroundHandled\":true,\"unavailableReasonPreserved\":true,\"verifiedZeroChangesUnchanged\":true,\"preparationBehavior\":{\"cancellationPreventedAgentLaunch\":true,\"cancellationPreventedPostCapture\":true,\"launchAcknowledgementKeptCancelling\":true,\"startupChangesCaptured\":true,\"failureWaitedForCleanup\":true,\"unconfirmedCleanupBlockedAgentLaunch\":true,\"phases\":[\"preparing\",\"starting\"]}}\n",
+      "stderr": "[Poiesis] Could not record pending Skill proposals. TypeError: this.workspaceSkillService.listPending is not a function\n    at ResultsService.recordPendingSkillProposals (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:661:60)\n    at C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:642:23\n    at async TaskService.runTerminalFinalizers (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\task-service.js:450:17)\n[Poiesis][Results diagnostics] AI generation failed; using bundled template. Error: injected Results rejection\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-26-44-467Z-8144e179/scripts/test-deferred-results-completion.mjs:301:31\n[Poiesis] Could not record pending Skill proposals. TypeError: this.workspaceSkillService.listPending is not a function\n    at ResultsService.recordPendingSkillProposals (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:661:60)\n    at C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:642:23\n    at async TaskService.runTerminalFinalizers (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\task-service.js:450:17)\n",
+      "exit_code": 0,
+      "wall_s": 7.289
+    },
+    {
+      "cmd": "node scripts/test-results-generation-events.mjs",
+      "stdout": "RESULTS_GENERATION_EVENTS_TEST={\"aggregateGenerations\":2,\"staleDiscarded\":true,\"ordinaryQuestionIgnored\":true,\"taskUpdateRetry\":2,\"aggregateUpdateRetry\":2,\"restoredFailureRetry\":1,\"resumedAggregateCases\":[{\"coverage\":\"older-legacy-aggregate\",\"generations\":1,\"generationsAfterReload\":0},{\"coverage\":\"copied-task-document\",\"generations\":1,\"generationsAfterReload\":0},{\"coverage\":\"persisted-old-version\",\"generations\":1,\"generationsAfterReload\":0},{\"coverage\":\"current-legacy-aggregate\",\"generations\":0,\"generationsAfterReload\":0}],\"firstOutcomeTitle\":true,\"userTitlePreserved\":true,\"semanticReferenceCases\":[{\"kind\":\"separate-goal\",\"semanticCalls\":1,\"requirements\":2},{\"kind\":\"legacy-word-decision\",\"semanticCalls\":1,\"requirements\":2},{\"kind\":\"same-goal-refinement\",\"semanticCalls\":1,\"requirements\":1}]}\n",
+      "stderr": "[Poiesis] Could not record pending Skill proposals. TypeError: this.taskService.setSkillProposals is not a function\n    at ResultsService.recordPendingSkillProposals (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:658:30)\n    at C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:642:23\n    at async file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-26-44-467Z-8144e179/scripts/test-results-generation-events.mjs:226:1\n[Poiesis] Could not record pending Skill proposals. TypeError: this.taskService.setSkillProposals is not a function\n    at ResultsService.recordPendingSkillProposals (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:658:30)\n    at C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:642:23\n    at async ResultsService.retry (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:594:13)\n    at async file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-26-44-467Z-8144e179/scripts/test-results-generation-events.mjs:234:1\n",
+      "exit_code": 0,
+      "wall_s": 0.802
+    },
+    {
+      "cmd": "node scripts/test-session-restore-background-results.mjs",
+      "stdout": "SESSION_RESTORE_BACKGROUND_RESULTS_TEST={\"sessionsRestored\":2,\"initializationResolvedWhilePending\":true,\"recoveredCompletion\":true,\"safeDurableWrites\":8,\"originalWorkspaceRetained\":true,\"rejectedGenerationRetryable\":true}\n",
+      "stderr": "[Poiesis] Could not record pending Skill proposals. TypeError: this.workspaceSkillService.listPending is not a function\n    at ResultsService.recordPendingSkillProposals (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:661:60)\n    at C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:642:23\n[Poiesis] Could not record pending Skill proposals. TypeError: this.workspaceSkillService.listPending is not a function\n    at ResultsService.recordPendingSkillProposals (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:661:60)\n    at C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-26-44-467Z-8144e179\\agent-window\\lib\\browser\\results-skill.js:642:23\n",
+      "exit_code": 0,
+      "wall_s": 0.907
+    }
+  ],
+  "wall_s": 14.914
+}

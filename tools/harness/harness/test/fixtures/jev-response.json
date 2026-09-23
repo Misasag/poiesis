@@ -1,0 +1,11 @@
+{
+  "model": "typesafe/jev-1.13-20260917",
+  "answers": {
+    "acceptance": { "type": "choice", "choice": "pass", "probabilities": { "pass": 0.95, "fail": 0.01, "needs_review": 0.04 }, "confidence": 0.9 },
+    "scope_creep": { "type": "noul", "noul": 0.04 },
+    "tests_touched_when_needed": { "type": "noul", "noul": 0.91 }
+  },
+  "usage": { "input_tokens": 475, "output_tokens": 72, "cost": 0.00001995 },
+  "id": "gen-dec-fixture",
+  "provider": "TypeSafe"
+}

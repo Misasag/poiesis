@@ -1,0 +1,53 @@
+{
+  "id": "git-7b1c953f5725",
+  "base_sha": "2c4bb91f4e4b896e290591c392b96acef97c1387",
+  "fix_sha": "7b1c953f57251577a0c5af7468b4062969a18d41",
+  "test_files": [
+    "scripts/test-results-normalizer.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-results-normalizer.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/results-document-normalizer.ts",
+    "agent-window/src/browser/results-skill.ts",
+    "agent-window/src/browser/style/index.css",
+    "agent-window/src/browser/task-service.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "results",
+  "validation": {
+    "ts": "2026-09-23T05:34:19.234Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.665
+      },
+      {
+        "cmd": "node scripts/test-results-normalizer.mjs",
+        "exit_code": 1,
+        "wall_s": 0.048
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.656
+      },
+      {
+        "cmd": "node scripts/test-results-normalizer.mjs",
+        "exit_code": 0,
+        "wall_s": 0.05
+      }
+    ],
+    "before_wall_s": 2.713,
+    "after_wall_s": 2.706,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-7b1c953f5725.json"
+  }
+}

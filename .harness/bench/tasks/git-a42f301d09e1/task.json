@@ -1,0 +1,60 @@
+{
+  "id": "git-a42f301d09e1",
+  "base_sha": "88f37e08865f7e9759cbe164486a308dd555a3c4",
+  "fix_sha": "a42f301d09e1cef9d9b39c8ee07cc0f8e1526076",
+  "test_files": [
+    "scripts/test-customize-editor-lifecycle.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-customize-editor-lifecycle.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/agent-window/agent-part.tsx",
+    "agent-window/src/browser/agent-window/agent-window-host.ts",
+    "agent-window/src/browser/agent-window/customize-part.tsx",
+    "agent-window/src/browser/agent-window/settings-part.tsx",
+    "agent-window/src/browser/components/poiesis-disclosure.tsx",
+    "agent-window/src/browser/style/agent.css",
+    "agent-window/src/browser/style/components.css",
+    "agent-window/src/browser/style/customize.css",
+    "agent-window/src/browser/style/settings.css",
+    "agent-window/src/browser/style/theme.css",
+    "agent-window/src/browser/theme-preference-service.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "customize",
+  "validation": {
+    "ts": "2026-09-23T05:32:08.795Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 3.52
+      },
+      {
+        "cmd": "node scripts/test-customize-editor-lifecycle.mjs",
+        "exit_code": 1,
+        "wall_s": 0.15
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 3.409
+      },
+      {
+        "cmd": "node scripts/test-customize-editor-lifecycle.mjs",
+        "exit_code": 0,
+        "wall_s": 0.148
+      }
+    ],
+    "before_wall_s": 3.67,
+    "after_wall_s": 3.557,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-a42f301d09e1.json"
+  }
+}

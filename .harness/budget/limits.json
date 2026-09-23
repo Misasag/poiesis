@@ -1,5 +1,5 @@
 {
-  "metered": { "monthly_usd": 60, "daily_usd": 5, "per_run_usd": 1, "conservative_default_usd": 1 },
-  "quota": { "runs_per_day": null, "per_model_runs_per_day": {} },
+  "metered": { "monthly_usd": 30, "daily_usd": 5, "per_run_usd": 1, "conservative_default_usd": 0.5 },
+  "quota": { "runs_per_day": null, "per_model_runs_per_day": null },
   "notes": "UTC accounting periods. Starter metered caps require owner approval before increases. Quota run counts are not provider allowance balances."
 }

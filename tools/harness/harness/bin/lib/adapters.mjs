@@ -12,8 +12,9 @@ function usage(u = {}, claude = false) {
 }
 const texts = content => (Array.isArray(content) ? content.filter(x => x.type === 'text').map(x => x.text).join('\n') : typeof content === 'string' ? content : '');
 export function parser(adapter) {
-  const state = { tokens: emptyTokens(), session_id: null, final: '', structured: null, failed: false, usage_available: false };
+  const state = { tokens: emptyTokens(), generation_ids: [], session_id: null, final: '', structured: null, failed: false, usage_available: false };
   const seenMessages = new Set();
+  const compatUsage = new Map();
   function feed(e) {
     state.session_id = e.thread_id ?? e.session_id ?? e.sessionId ?? state.session_id;
     if (adapter === 'codex') {
@@ -22,12 +23,22 @@ export function parser(adapter) {
       if (['turn.failed', 'error'].includes(e.type)) state.failed = true;
     } else {
       if (e.type === 'assistant') {
+        if (typeof e.message?.id === 'string' && e.message.id.startsWith('gen-') && !state.generation_ids.includes(e.message.id)) state.generation_ids.push(e.message.id);
         const t = texts(e.message?.content ?? e.content); if (t) state.final = t;
         // Grok streaming-messages-json follows the Messages wire format. Synthetic
         // fixtures cover this shape; unknown fields never imply invented usage.
         if (adapter === 'grok' && e.message?.usage && !seenMessages.has(e.message.id)) {
           seenMessages.add(e.message.id); const u = usage(e.message.usage, true);
           for (const k of Object.keys(u)) state.tokens[k] += u[k]; state.usage_available = true;
+        }
+        if (adapter === 'anthropic-compat' && e.message?.id && e.message.usage) {
+          // Some streams emit several content blocks with zero usage before a
+          // final message snapshot. Count increments for each ID once; a zero
+          // placeholder must not become a free run if the CLI is interrupted.
+          const u = usage(e.message.usage, true), previous = compatUsage.get(e.message.id) ?? emptyTokens();
+          for (const k of Object.keys(u)) { state.tokens[k] += Math.max(0, u[k] - previous[k]); u[k] = Math.max(u[k], previous[k]); }
+          compatUsage.set(e.message.id, u);
+          state.usage_available ||= Object.values(u).some(value => value > 0);
         }
       }
       if (e.type === 'result' || (adapter === 'grok' && e.result !== undefined)) {
@@ -59,8 +70,8 @@ export function cliPath(adapter) {
   if (adapter === 'grok') return { file: executable('grok', [path.join(os.homedir(), '.grok/bin/grok.exe')]), prefix: [] };
   fail('Unsupported adapter');
 }
-export function invocation(p, o) {
-  const { file, prefix } = cliPath(p.adapter), readOnly = o.sandbox === 'read-only';
+export function invocation(p, o, resolveCli = cliPath) {
+  const { file, prefix } = resolveCli(p.adapter), readOnly = o.sandbox === 'read-only';
   let args, session = o.session_id;
   if (p.adapter === 'codex') {
     args = ['--ask-for-approval', 'never', '--sandbox', readOnly ? 'read-only' : 'danger-full-access', '-C', o.cwd, 'exec'];
@@ -69,7 +80,8 @@ export function invocation(p, o) {
     if (o.schemaFile) args.push('--output-schema', o.schemaFile);
     args.push('-');
   } else if (p.adapter === 'claude' || p.adapter === 'anthropic-compat') {
-    args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', p.model, '--effort', o.effort, '--permission-mode', readOnly ? 'plan' : 'auto', '--safe-mode', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--setting-sources', ''];
+    args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', p.model, '--permission-mode', readOnly ? 'plan' : 'auto', '--safe-mode', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--setting-sources', ''];
+    if (o.effort !== 'default') args.push('--effort', o.effort);
     // Neither safe-mode nor bare auto-loads CLAUDE.md in 2.1.280. The runner
     // explicitly supplies repository guidance on stdin. No owner plugins/hooks.
     if (readOnly) args.push('--tools', o.judge ? '' : 'Read,Grep,Glob');

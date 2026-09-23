@@ -10,6 +10,8 @@ import { budgetStatus, budgetCheck } from './lib/budget.mjs';
 import { provider } from './lib/prices.mjs';
 import { ledger, outcome } from './lib/ledger.mjs';
 import { mine, benchRun } from './lib/bench.mjs';
+import { accountStatus } from './lib/openrouter.mjs';
+import { gate } from './lib/gate.mjs';
 
 const ctx = context(), argv = process.argv.slice(2), command = argv.shift(), o = options(argv);
 try {
@@ -18,6 +20,7 @@ try {
     case 'run': result = await run(ctx, o); break;
     case 'verify': result = await verify(ctx, o); break;
     case 'judge': result = await judge(ctx, o); break;
+    case 'gate': result = await gate(ctx, o); break;
     case 'route': {
       required(o, 'role'); result = route(ctx, o);
       if (!o.json && !o.explain) { out(result.model); process.exit(0); }
@@ -29,7 +32,7 @@ try {
     case 'tune': result = tune(ctx, Boolean(o.apply)); break;
     case 'budget': {
       if (o._[0] === 'check') { required(o, 'model'); result = budgetCheck(ctx, provider(ctx, o.model), o['estimate-usd']); if (!result.allowed) result.exit_code = 3; }
-      else if (o._[0] === 'status') { const b = budgetStatus(ctx); result = { month_usd: b.month_usd, day_usd: b.day_usd, quota_runs_today: b.quota_today.length, limits: b.limits }; }
+      else if (o._[0] === 'status') { const b = budgetStatus(ctx); result = { month_usd: b.month_usd, day_usd: b.day_usd, quota_runs_today: b.quota_today.length, limits: b.limits, openrouter: await accountStatus() }; }
       else fail('Usage: hx budget status|check [--model id]');
       break;
     }
@@ -55,7 +58,7 @@ try {
       break;
     }
     case 'help': case '--help': case undefined:
-      out('hx run|verify|judge|route|scoreboard|outcome|tune|budget|bench|dogfood|status|judge-calibration [--json]'); process.exit(0);
+      out('hx run|verify|gate|judge|route|scoreboard|outcome|tune|budget|bench|dogfood|status|judge-calibration [--json]'); process.exit(0);
     default: fail(`Unknown command: ${command}`);
   }
   out(redactor()(result)); process.exitCode = result?.exit_code ?? 0;

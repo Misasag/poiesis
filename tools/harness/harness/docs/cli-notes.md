@@ -29,6 +29,30 @@ Reference: [Anthropic CLI reference](https://code.claude.com/docs/en/cli-referen
 
 Usage normalization prefers result.modelUsage (including cache creation/read and subagent totals) when present, otherwise result.usage. Input includes cache-read and cache-creation; cached_in is the read portion. Native/compatible CLI result.total_cost_usd is not used as a price source. Resume counters are treated as cumulative and differenced from the preceding run's stored counters; do not interleave out-of-band calls on that session.
 
+## OpenRouter v1.1 measured smoke (2026-09-23)
+
+Token estimates intentionally pin the owner's measured notes (DeepSeek Flash input 0.094 USD/M versus 0.079 in the independent `.harness/tmp/v11-model-api.json` snapshot), while actual costs reflect the selected host/API.
+
+The first run retained v1 `--permission-mode auto` with a two-minute timeout, safe mode, empty setting sources and strict empty MCP. All OpenRouter model environment overrides used `z-ai/glm-5.3-flash`; effort was `default` (no `--effort`). The key came from HKCU\\Environment and was never persisted. `ANTHROPIC_API_KEY` was explicitly empty. No commit was needed: the disposable repository used the empty tree as its diff baseline.
+
+- Run: `run-2026-09-23T05-21-34-573Z-644148d5`, exit 0, worker wall 22.857 s.
+- Workspace: `.harness/tmp/v11-core-smoke/auto`.
+- `Write` created `hello.txt` with exact UTF-8 bytes `hello\n`. A real `Bash` tool invocation ran `node -e` with a Buffer deep-equality assertion, returned `hello exact bytes: PASS` and `EXIT_CODE=0`. Result `permission_denials` was empty. The separate `hx verify` byte check also exited 0. Evidence is `.harness/tmp/v11-core-smoke-evidence.json` and the run's events/verify artifacts.
+- Auto was neither denied nor stalled, so write permissions remain auto. No bypassPermissions fallback was introduced or tested. This is one measured model/CLI combination, not a guarantee for every provider.
+- Three distinct assistant `message.id` values began `gen-`; repeated content blocks shared IDs. `GET /api/v1/generation?id=...` returned actual USD in **`data.total_cost`**. Individual costs were 0.00253085, 0.001065, 0.0011055; sum **0.00470135 USD**, coverage 3/3. The last record returned four 404s before succeeding on attempt 5 (500/1000/2000/4000 ms backoff). The token-price estimate was 0.00516215 USD (47,481 input, 23,040 cached, 688 output).
+- Claude's result reported `total_cost_usd=0.150925`; it was retained only as raw evidence and **never used for accounting**. Actual generation costs and their diagnostics are in meta.json and the run ledger.
+
+Jev uses `POST https://openrouter.ai/api/alpha/decisions`, model `typesafe/jev-1.13`, and actual **`usage.cost`**:
+
+| Gate ID | Evidence | Decision at threshold 0.8 | Actual USD | Input/output |
+| --- | --- | --- | --- | --- |
+| `gate-2026-09-23T05-24-18-752Z-ac2dc63c` | Before independent verify was recorded | escalate; needs_review, confidence 0.84 | 0.000034944 | 832 / 82 |
+| `gate-2026-09-23T05-24-31-702Z-df01c9d7` | After exact-byte verification exit 0 | escalate; acceptance pass, confidence 0.75, scope 0.05 | 0.000037758 | 899 / 81 |
+
+Both gate commands exited 0; exit 0 reports a completed gate, not acceptance. The first verification helper had an incorrect relative import (exit 1); after correction it exited 0. The initial gate is preserved and charged. No paid LLM judge or benchmark was launched by this core worker. Total measured OpenRouter smoke plus both gates: **0.004774052 USD**, below the owner's 0.4 cap. The final low confidence is preserved for parent review; the threshold was not lowered and no further calls were made to obtain pass.
+
+Coverage 3/3 refers to captured assistant IDs. The shared account's usage changed from 0.0318673 to 0.041048702 USD over the measurement interval, a 0.009181402 USD delta. Its 0.00440735 USD excess over the recorded generation/gate sum cannot be attributed from these streams; concurrent or auxiliary traffic is unresolved. Both observed totals are below 0.4 USD. Do not treat account-wide deltas as per-run cost.
+
 ## Grok Build
 
 Verified --prompt-file and -p/--single, --cwd, --output-format plain|json|streaming-json|streaming-messages-json, --json-schema, --permission-mode acceptEdits|plan, --resume, --session-id, --model, --reasoning-effort/--effort, --no-subagents and --tools. Do not use -c/--continue (implicit newest session).

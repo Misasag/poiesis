@@ -1,0 +1,8 @@
+{
+  "id": "git-083f9ba4c9d2",
+  "base_sha": "068e5ff367d44b93131d3f24a39e0f7ae9298b27",
+  "fix_sha": "083f9ba4c9d2d4856579e79f73586480137a0809",
+  "valid": false,
+  "reason": "No test script at base or fix for scripts/test-code-workspace-regressions.mjs",
+  "wall_s": 0.226
+}
