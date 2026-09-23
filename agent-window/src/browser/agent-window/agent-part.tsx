@@ -545,6 +545,7 @@ export class AgentPart extends AgentWindowPart {
                         ?? (task.endedAt ? Math.max(0, Date.parse(task.endedAt) - Date.parse(task.startedAt)) : undefined)} />
                 )}
                 {task && this.renderAutomaticRequirementClassification(task)}
+                {task?.hookEvidence?.some(item => item.incomplete) && <div className='poiesis-agent-window__hook-status' role='status'>検証未完了</div>}
             </>
         );
     }
@@ -1165,6 +1166,8 @@ export class AgentPart extends AgentWindowPart {
         this.pendingSends.add(session.id);
         try {
             await this.sendPreparedAgentMessage(session, content);
+        } catch (error) {
+            void this.host.messageService.error(`送信を準備できませんでした。${error instanceof Error ? error.message : ''}`);
         } finally {
             this.pendingSends.delete(session.id);
         }
@@ -1172,12 +1175,21 @@ export class AgentPart extends AgentWindowPart {
 
     protected async sendPreparedAgentMessage(session: WindowAgentSession, content: string): Promise<void> {
         const { requirementId, requirementChoice } = this.requirementForSend(session, content);
+        const submittedHooks = await this.taskService.runHooks('promptSubmit', {
+            sessionId: session.id, requirementId, workspaceUri: session.workspaceUri,
+            providerId: this.host.state.agentCli, model: this.host.state.agentModel
+        }, { prompt: content });
+        if (submittedHooks.blockReason) {
+            void this.host.messageService.warn(submittedHooks.blockReason);
+            return;
+        }
+        if (!this.host.sessions.sessions.includes(session) || session.archived) { return; }
         const conversation = boundedAgentConversation(session.messages.flatMap(message =>
             message.complete && !message.error && message.content.trim() && !message.id.startsWith('provider-')
                 ? [{ role: message.role === 'user' ? 'user' as const : 'assistant' as const, content: message.content }]
                 : []
         ));
-        session.agentDraft = '';
+        if (session.agentDraft.trim() === content) { session.agentDraft = ''; }
         const sentAt = Date.now();
         session.messages.push({ id: `user-${sentAt}`, role: 'user', content, complete: true });
         session.updatedAt = sentAt;
@@ -1244,8 +1256,13 @@ export class AgentPart extends AgentWindowPart {
                 requirementChoice,
                 workspaceUri: session.workspaceUri,
                 allowCodexAgentNetworkAccess: this.host.state.allowCodexAgentNetworkAccess,
-                conversation
+                conversation,
+                submittedHooks,
+                resumeHooks: Boolean(session.hooksResumePending) || conversation.length < session.messages.filter(message =>
+                    message.complete && !message.error && message.content.trim() && !message.id.startsWith('provider-')).length - 1
+                    || conversation.some(turn => !session.messages.some(message => message.content.trim() === turn.content))
             });
+            session.hooksResumePending = false;
         } catch (error) {
             await this.recordPreSpawnFailure(
                 session,

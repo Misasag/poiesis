@@ -52,6 +52,12 @@ class FakeTaskService {
     listeners = [];
     finalizers = [];
     setAppliedSkills() {}
+    async runHooks(event, task, data) {
+        assert.equal(event, 'resultsGenerate');
+        assert.equal(data.requirementId, task.requirementId);
+        assert.ok(data.taskIds.includes(task.id));
+        return { runs: [], contexts: [], evidence: [], material: 'HOOK_RESULTS_MATERIAL' };
+    }
     recordCliCall() {}
     onDidChangeTask = listener => { this.listeners.push(listener); return { dispose() {} }; };
     registerTerminalFinalizer(finalizer) { this.finalizers.push(finalizer); return { dispose() {} }; }
@@ -575,6 +581,7 @@ async function waitFor(predicate) {
 // Exercise the actual generation/judging/retry path through the existing document event.
 const progressTasks = new FakeTaskService();
 const progressTask = { ...resultTask('live-progress', '50'), workspaceUri: 'file:///C:/work/a', resultsDocument: undefined,
+    hookEvidence: [{ hookId: 'verification', runId: 'recorded-run', notes: 'HOOK_EVIDENCE_NOTE', incomplete: true, evidence: [] }],
     changeSet: { source: 'task-diff', diff: 'change', files: ['src/a.ts'], capturedAt: new Date().toISOString() } };
 progressTasks.tasks.set(progressTask.id, progressTask);
 const recordedCalls = [];
@@ -587,6 +594,9 @@ const makeCall = (purpose, attempt) => {
 };
 const liveSkill = new AiResultsSkill(
     { async generate(request) {
+        assert.equal(request.hookMaterial, 'HOOK_RESULTS_MATERIAL');
+        assert.ok(request.changeSetSummary.includes('hookEvidence'));
+        assert.ok(request.changeSetSummary.includes('HOOK_EVIDENCE_NOTE'));
         await new Promise(resolve => setTimeout(resolve, 5));
         return { status: 'generated', call: makeCall('results-generation', request.attempt),
             html: request.attempt === 1 ? '<html><body><h2>概要</h2><p>説明</p></body></html>'
@@ -598,6 +608,7 @@ const liveSkill = new AiResultsSkill(
     { async buildPrompt() { return { includedSkillIds: [], content: '', diagnostics: [], assertions: [{ text: '説明がある', skillId: 'test' }] }; } },
     progressTasks,
     { async judge(scope) {
+        assert.ok(scope.changeSetSummary.includes('HOOK_EVIDENCE_NOTE'), 'The judge must receive application-owned hook evidence');
         await new Promise(resolve => setTimeout(resolve, 5));
         return { status: 'judged', call: makeCall('results-judge', scope.attempt),
             output: JSON.stringify({ results: [{ index: 0, pass: scope.attempt === 2, evidence: '説明を確認' }] }) };

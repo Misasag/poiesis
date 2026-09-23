@@ -504,7 +504,7 @@ for (const marker of [
     'await this.taskService.end(',
     'await this.runtimeServer.cancelCodex',
     'await this.taskService.cancel(run.taskId, preparing)',
-    'buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)'
+    'buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content,'
 ]) {
     assert.ok(cliProvider.includes(marker), `CLI AgentProvider is missing ${marker}`);
 }
@@ -1929,7 +1929,7 @@ for (const marker of [
     assert.ok(skillDocument.includes(marker), `Pure Skill document parser is missing ${marker}`);
 }
 assert.ok(cliProvider.includes("buildPrompt(session.workspaceUri, 'agent')"));
-assert.ok(cliProvider.includes('buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)'));
+assert.ok(cliProvider.includes('buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content,'));
 for (const marker of [
     '## Application-owned Skill files',
     '.poiesis/skills/<skill-id>/SKILL.md',
@@ -2128,7 +2128,8 @@ for (const marker of [
 }
 assert.ok(rootPackage.scripts['smoke:no-change']?.includes('POIESIS_NO_CHANGE_ONLY=1'),
     'The no-change smoke script is not registered');
-assert.ok(rootPackage.scripts['smoke:task-feedback']?.includes('POIESIS_AGENT_TEST_WRITE_FILE='),
+assert.ok(rootPackage.scripts['smoke:task-feedback'] === 'node scripts/smoke-task-feedback.mjs'
+    && (await read('scripts/smoke-task-feedback.mjs')).includes("POIESIS_AGENT_TEST_WRITE_FILE: 'round11-task-feedback-smoke.txt'"),
     'Task feedback smoke must create a real workspace change');
 for (const marker of [
     'codexRolloutFiles()',
@@ -2855,4 +2856,6 @@ for (const marker of [
     assert.ok(electronSmoke.includes(marker), 'Electron smoke must check current durable state, Results details, and native input: ' + marker);
 }
 
+// Hooks context intentionally precedes conversation history; exercised by test:hooks.
+assert.ok(cliProvider.includes("hookContext([submittedHooks, startedHooks,"));
 console.log('Source contract validation passed.');

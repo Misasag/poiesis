@@ -102,7 +102,9 @@ async function installLocalCacheProbe(targetWorkspace) {
             '@ECHO off\r\nnode "%~dp0\\..\\cache-probe\\probe.cjs"\r\n',
             'utf8'
         );
-    } else {
+    }
+    // npm also supports a POSIX script shell on Windows; provide its normal bin shim too.
+    {
         const executable = join(binDirectory, 'cache-probe');
         await writeFile(executable, '#!/usr/bin/env node\nrequire("../cache-probe/probe.cjs");\n', 'utf8');
         await chmod(executable, 0o755);

@@ -36,8 +36,10 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 const negativeControl = process.argv.includes('--simulate-capture-after-wait');
 
 for (const phase of ['startup', 'rescan']) {
-    for (const action of ['switch', 'edit', 'duplicate', 'delete', 'archive', 'delete-preparation', 'archive-preparation']) {
+    for (const action of ['switch', 'edit', 'edit-hooks', 'duplicate', 'delete', 'archive', 'delete-preparation', 'archive-preparation']) {
         const detection = deferred();
+        const hookPreparation = deferred();
+        if (action !== 'edit-hooks') hookPreparation.resolve({ runs: [], contexts: [], evidence: [], material: '' });
         const preparation = deferred();
         const created = [], sent = [];
         const a = { id: 'A', workspaceUri: 'file:///workspace-a', agentDraft: 'A submitted', messages: [] };
@@ -83,6 +85,7 @@ for (const phase of ['startup', 'rescan']) {
         ]);
         Object.assign(agent, {
             host, agentProvider: provider, update() {},
+            taskService: { async runHooks() { return hookPreparation.promise; } },
             agentLatestAffordances: new Set(),
             rememberAgentScroll() {}, scheduleAgentFollow() {},
             requirementForSend: session => ({ requirementId: `requirement-${session.id}`, requirementChoice: 'default' }),
@@ -100,6 +103,10 @@ for (const phase of ['startup', 'rescan']) {
         assert.equal(sent.length, 0);
         if (action === 'switch') selected = b;
         if (action === 'edit') a.agentDraft = 'A next draft';
+        if (action === 'edit-hooks') {
+            a.agentDraft = 'A next draft';
+            hookPreparation.resolve({ runs: [], contexts: [], evidence: [], material: '' });
+        }
         if (action === 'delete') host.sessions.sessions = [b];
         if (action === 'archive') a.archived = true;
         if (action === 'duplicate') {
@@ -125,9 +132,9 @@ for (const phase of ['startup', 'rescan']) {
             assert.equal(sent[0].content, 'A submitted', 'Send consumed text edited after submission');
             assert.equal(sent[0].workspaceUri, a.workspaceUri);
             assert.equal(b.agentDraft, 'B unsent', 'Another chat lost its unsent draft');
-            if (action === 'edit' || action === 'duplicate') assert.equal(a.agentDraft, 'A next draft');
+            if (action === 'edit' || action === 'edit-hooks' || action === 'duplicate') assert.equal(a.agentDraft, 'A next draft');
         }
         assert.equal(agent.pendingSends.size, 0, 'Send preparation lock must be released');
     }
 }
-console.log('AGENT_SEND_DETECTION_TEST=passed cases=14');
+console.log('AGENT_SEND_DETECTION_TEST=passed cases=16');

@@ -25,8 +25,8 @@
     "serve:updates": "node scripts/serve-updates.mjs",
     "shots:design": "node scripts/capture-design-shots.mjs",
     "smoke:electron": "node scripts/smoke-electron.mjs",
-    "smoke:composer": "set \"POIESIS_COMPOSER_ONLY=1\" && node scripts/smoke-electron.mjs",
-    "smoke:task-feedback": "set \"POIESIS_TASK_FEEDBACK_ONLY=1\" && set \"POIESIS_AGENT_TEST_REPLY=Task completed.\" && set \"POIESIS_AGENT_TEST_DELAY_MS=2500\" && set \"POIESIS_AGENT_TEST_ACTIVITIES=1\" && set \"POIESIS_AGENT_TEST_WRITE_FILE=round11-task-feedback-smoke.txt\" && set \"POIESIS_RESULTS_GENERATION_TEST_DELAY_MS=2000\" && set \"POIESIS_RESULTS_GENERATION_FORCE_FAILURE=1\" && node scripts/smoke-electron.mjs",
+    "smoke:composer": "node scripts/smoke-composer.mjs",
+    "smoke:task-feedback": "node scripts/smoke-task-feedback.mjs",
     "smoke:no-change": "set \"POIESIS_NO_CHANGE_ONLY=1\" && set \"POIESIS_AGENT_TEST_REPLY=No-change answer.\" && set \"POIESIS_AGENT_TEST_DELAY_MS=1500\" && node scripts/smoke-electron.mjs",
     "smoke:installed": "node scripts/smoke-installed.mjs",
     "smoke:agent-rich-content": "npm run build && node scripts/smoke-agent-rich-content.mjs",
@@ -80,7 +80,8 @@
     "test:cli-usage": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-cli-usage.mjs",
     "test:judge-role": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-judge-role.mjs",
     "test:skill-injection": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-skill-injection.mjs",
-    "test:agent-live-status": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-agent-live-status.mjs"
+    "test:agent-live-status": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-agent-live-status.mjs",
+    "test:hooks": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-hooks.mjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",

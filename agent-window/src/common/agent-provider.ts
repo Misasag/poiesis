@@ -1,6 +1,7 @@
 import { Disposable } from '@theia/core/lib/common';
 import { KnownCliId } from './agent-runtime-protocol';
 import { AgentConversationTurn } from './agent-prompt';
+import type { HookResult } from './hooks-protocol';
 
 export const AgentProvider = Symbol('AgentProvider');
 
@@ -21,6 +22,8 @@ export interface AgentSession {
 }
 
 export interface AgentMessage {
+    submittedHooks?: HookResult;
+    resumeHooks?: boolean;
     role: 'user';
     content: string;
     /** Stable app-session owner; provider session ids are intentionally ephemeral. */

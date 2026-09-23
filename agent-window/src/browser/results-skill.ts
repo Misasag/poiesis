@@ -266,9 +266,13 @@ export class AiResultsSkill implements ResultsSkill {
             for (const diagnostic of workspaceSkills.diagnostics) {
                 console.warn(`[Poiesis] ${diagnostic}`);
             }
+            const generatedHooks = await this.taskService.runHooks('resultsGenerate', input.task, {
+                requirementId: input.task.requirementId, taskIds: input.requirement?.tasks.map(task => task.id) ?? [input.task.id]
+            });
             const changeSetSummary = JSON.stringify({
                 files: summarizeTaskChangeSet(input.changeSet).files,
-                captureError: input.changeSet.error
+                captureError: input.changeSet.error,
+                hookEvidence: (input.requirement?.tasks ?? [input.task]).flatMap(task => task.hookEvidence ?? [])
             }, undefined, 2);
             const request: ResultsGenerationRequest = {
                 taskId: documentId,
@@ -289,6 +293,7 @@ export class AiResultsSkill implements ResultsSkill {
                 requirement: input.requirement ? this.requirementMetadata(input.requirement) : undefined,
                 changeSetSummary,
                 diff: input.changeSet.diff,
+                hookMaterial: generatedHooks.material,
                 executionEvidence: input.requirement
                     ? formatRequirementExecutionEvidence(input.requirement.tasks, 16_000) || undefined
                     : formatExecutionEvidence(input.task.activities, 12_000) || undefined,
