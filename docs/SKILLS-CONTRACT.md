@@ -140,13 +140,37 @@ CustomizeではUser Agent Skillに「必要時に読み込み」を表示する�
 
 ### Results skill
 
-`builtin.ai-results`は冒頭で変更内容と検証済みかどうかを3〜5行で答える。流れ・構造・状態の変更には12ノード以下の箱と矢印のインラインSVGを使う。提供された入力に実在する画像パスだけを参照し、画像を創作しない。変更前後のスクリーンショットが提供されていれば「変更前」「変更後」とラベルを付ける。コマンド・ログ・差分・依頼全文は`<details><summary>`へ畳み、根拠引用を維持する。Workspace Results skillはこの既定の構成・語り口へ追加ガイダンスを与える。
+`builtin.ai-results`は冒頭の`<p>`で、利用者にとっての変更、Appの確認表と一致する確認状況、最重要の未確認・失敗、人間の判断事項（あれば）を2〜4文で答える。直前の内容見出しは任意。流れ・構造・状態の変更には12ノード以下の箱と矢印のインラインSVGを使う。提供された入力に実在する画像パスだけを参照し、画像を創作しない。変更前後のスクリーンショットが提供されていれば「変更前」「変更後」とラベルを付ける。コマンド・ログ・差分・依頼全文は`<details><summary>`へ畳み、根拠引用を維持する。summaryは「入力保持を確認した手順」のように内容を名付け、「詳細」だけにはしない。失敗・未確認・以前の結果・人間の判断をdetailsの中だけに隠さない。Workspace Results skillの追加ガイダンスより、このApp所有契約を優先する。
 
 画像は`<img src="rel/path.png">`または`<img data-poiesis-image="rel/path.png">`で参照する。AppはWorkspace内の実ファイル（symlinkの参照先も検査）のみ読み込み、PNG/JPEG/WebP/GIF/SVGの内容・表示可否を検証してdata URLへ埋め込む。上限は1枚2 MiB、文書全体8 MiB、40件（Hook証拠画像を含む）。外部URL、絶対パス、範囲外、形式不一致、破損、上限超過は省略し診断を表示する。SVGファイルはサニタイズして画像としてのみ表示する。文書内と詳細パネルの画像は共通のApp所有ビューアで拡大でき、Escで閉じる。
 
 インラインSVGはスクリプト・foreignObject・外部href・アニメーションを除去する。Mermaid runtimeは使わない。図の色は`--results-bg`、`--results-fg`、`--results-muted`、`--results-border`、`--results-accent`を使用し、明暗テーマへ追従する。`details/summary`はキーボード・フォーカス・印刷に対応する共通スタイルを持つ。
 
 Hooks契約の`taskEnd`出力`evidence[]`に任意の`image?: string`を追加する。例: `{ "label": "変更後の画面", "status": "pass", "detail": "画面を確認", "image": "evidence/after.png" }`。最大1024文字のWorkspace相対パスを保存・Results入力へ伝達し、表示時は本文画像と同じ検証・容量制限を適用する。画像の存在はHookの合格主張そのものを証明しない。
+
+#### Hooks の証拠と確認表
+
+`taskEnd`の`evidence[]`の契約:
+
+```ts
+interface HookEvidenceEntry {
+  label: string;
+  status: 'pass' | 'fail' | 'unknown' | 'human';
+  detail: string;
+  image?: string;
+  changeSetHash?: string;
+  runId?: string;
+  capturedAt?: string;
+}
+```
+
+`human`は人間の判断待ちで、`detail`に空でない質問を入れる。`runId`は取得実行、`capturedAt`は取得日時（ISO 8601）で、省略時はAppが実行IDと受信日時を保存する。各任意フィールドは空でない200文字以内の文字列、日時は解釈可能な日時とする。`changeSetHash`はAppが`taskEnd`入力の`data.changeSetHash`へ渡す対象版。新しく取得した証拠はその値を返す。以前の証拠を再利用する場合は取得当時の値を維持する。省略された版をAppが現在版として補完することはない。
+
+版は`sha256:`に続く、UTF-8の`JSON.stringify([1, ソート済みfiles, diff])`のSHA-256。取得時刻は含めず、差分取得に失敗した場合は版を発行しない。タスク表示はタスクの変更、要件表示は累積変更と比較する。異なる版は保守的に「以前の結果」とし、成功へ数えない。累積差分と個別タスク差分が違えば、個別タスクの成功も要件全体の成功へ流用しない。版がない成功や対象版を確認できない成功は「未確認」とする。この版照合はHookの真偽、成果画像の改変、未取得のWorkspace編集を証明するものではない。
+
+Appは固定ヘッダー直下に開閉可能な確認表を表示する。各Hook証拠（成功・失敗・未確認・以前の結果・人間の判断待ち）と、Appが観測したコマンド／ツール実行の集計を表示し、件数と文字でも状態を伝える。実行集計は1作業につき1行、操作終了の記録でありテスト合格数ではない。記録がない場合は未確認。人間の質問は古くても残し、ヘッダーの「判断待ち N件」へ含める。
+
+確認表と同じ集計を`verificationEvidence`でResultsへ渡す。AI本文は確認表を再生成せず、その内容と矛盾しない要約を書く。長い入力の省略は行全体で行い、件数と省略行数を保持する。Appは正規化後に冒頭段落の存在と2〜4文、成功件数の過大申告、「すべて確認済み」等の全成功主張、失敗・未確認・古い結果や人間の判断への言及を決定的に検査する。不合格は既存の1回再生成へ渡す。復元文書も現在の表と再照合し、本文外に警告する。これは文言・数字の検査であり、変更の意味や全ての言い換えを判定する意味評価ではない。
 
 Results skillは終了済みTaskと確定済みChange Setを入力に、一つの完成HTML本文を生成する。本文の見出し構成、語り口、言語、図解、動作確認手順の粒度はResults skillが所有する。`builtin.ai-results`は既定で番号付きの動作確認手順を求め、有効なWorkspace Results skillは従来どおり追加ガイダンスとして後から本文構成を上書きできる。Agent会話の途中では起動せず、不完全なHTML断片をcanvasへstreamしない。Results内の質問応答は文書生成とは別のResults AI境界であり、Skill HTMLを変更しない。
 

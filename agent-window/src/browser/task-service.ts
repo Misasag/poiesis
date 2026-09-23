@@ -1,4 +1,5 @@
 import { CatalogSkill, referencedCatalogSkills } from '../common/skill-catalog';
+import { hashChangeSet } from '../common/change-set-hash';
 import URI from '@theia/core/lib/common/uri';
 import { HooksServer, HookEvent, HookInput, HookResult, HookRun, HookEvidence, emptyHookResult } from '../common/hooks-protocol';
 import { CliCallRecord, CliUsage } from '../common/cli-usage';
@@ -27,6 +28,7 @@ export interface TaskBaseline {
 }
 
 export interface TaskChangeSet {
+    changeSetHash?: string;
     source: 'task-diff' | 'empty';
     diff: string;
     files: string[];
@@ -633,7 +635,9 @@ export class TaskService {
             failure
         };
         try {
+            task.changeSet!.changeSetHash = await hashChangeSet(task.changeSet!);
             await this.runHooks('taskEnd', task, {
+                changeSetHash: task.changeSet!.changeSetHash,
                 outcome: { status, kind: outcomeKind ?? null },
                 changeSet: summarizeTaskChangeSet(task.changeSet).files.map(file => ({ path: file.path, status: file.status, added: file.additions, removed: file.deletions })),
                 activities: (task.activities ?? []).map(activity => ({ kind: activity.kind, title: activity.title, status: activity.status })),

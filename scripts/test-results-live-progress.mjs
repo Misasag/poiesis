@@ -24,7 +24,7 @@ for (const key of ['POIESIS_RESULTS_GENERATION_TEST_DELAY_MS', 'POIESIS_RESULTS_
 }
 const workspace = mkdtempSync(join(tmpdir(), 'poiesis-live-results-'));
 const children = [];
-const html = '<html><body><h2>検証の証跡</h2><table><tr><th>コマンド</th><th>結果</th></tr><tr><td>npm test</td><td>成功</td></tr></table><a data-poiesis-citation="src/timer.ts:1">根拠</a></body></html>';
+const html = '<html><body><h2>検証の証跡</h2><p>タイマーの通知を追加しました。実際の動作は未確認です。</p><table><tr><th>コマンド</th><th>結果</th></tr><tr><td>npm test</td><td>成功</td></tr></table><a data-poiesis-citation="src/timer.ts:1">根拠</a></body></html>';
 const storage = { async getData() {}, async getWorkspaceData() { return []; }, async setData() {} };
 const phaseLabels = ['成果文書を作成しています', '成果文書の条件を確認しています', '条件を満たさなかった 1 件を直して作り直しています（2回目）', '成果文書の条件を確認しています'];
 

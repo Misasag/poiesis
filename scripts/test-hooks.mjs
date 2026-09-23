@@ -35,6 +35,18 @@ const config = async (where, hooks) => writeFile(join(where, '.poiesis/hooks.jso
 try {
     for (const dir of [home, workspace, other]) await mkdir(join(dir, '.poiesis'), { recursive: true });
     const server = new HooksServerImpl(home);
+    await config(home, { taskEnd: [definition('versions', 'versioned-evidence')] });
+    const versionInput = { ...input('taskEnd'), data: { changeSetHash: 'sha256:current' } };
+    const versioned = await server.run(versionInput);
+    assert.deepEqual(versioned.evidence[0].evidence.map(row => row.status), ['pass', 'fail', 'pass', 'human']);
+    assert.equal(versioned.evidence[0].evidence[0].changeSetHash, 'sha256:current');
+    assert.equal(versioned.evidence[0].evidence[0].capturedAt, '2026-09-24T00:00:00Z');
+    assert.equal(versioned.evidence[0].evidence[1].runId, 'run');
+    assert.ok(versioned.evidence[0].evidence[1].capturedAt);
+    for (const mode of ['bad-evidence-version', 'bad-human']) {
+        await config(home, { taskEnd: [definition('bad', mode, 'required')] });
+        assert.equal((await server.run(versionInput)).evidence[0].incomplete, true);
+    }
     assert.throws(() => parseHooks('{"version":2,"hooks":{}}', 'user'));
     assert.throws(() => parseHooks(JSON.stringify({ version: 1, hooks: { gateDecision: [] } }), 'user'));
     assert.throws(() => parseHooks(JSON.stringify({ version: 1, hooks: { taskStart: [definition('a'), definition('a')] } }), 'user'));

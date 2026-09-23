@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { readFile, mkdir, writeFile, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, extname, isAbsolute, join } from 'node:path';
-import { HOOK_EVENTS, HookConfiguration, HookDefinition, HookEvent, HookInput, HookResult, HookRow, HookScope, HooksServer, emptyHookResult } from '../common/hooks-protocol';
+import { HOOK_EVENTS, HookConfiguration, HookDefinition, HookEvent, HookEvidenceEntry, HookInput, HookResult, HookRow, HookScope, HooksServer, emptyHookResult } from '../common/hooks-protocol';
 import { childCliEnvironment, killHiddenProcessTree } from './hidden-process';
 
 export function parseHooks(text: string, scope: HookScope): HookRow[] {
@@ -141,14 +141,23 @@ export class HooksServerImpl implements HooksServer {
                 }
                 if (input.event === 'taskEnd') {
                     if (value.notes !== undefined && typeof value.notes !== 'string' || value.evidence !== undefined && (!Array.isArray(value.evidence)
-                        || value.evidence.some((item: { label?: unknown; status?: string; detail?: unknown; image?: unknown }) => !item || typeof item.label !== 'string'
-                            || !['pass', 'fail', 'unknown'].includes(item.status ?? '') || typeof item.detail !== 'string'
+                        || value.evidence.some((item: HookEvidenceEntry) => !item || typeof item.label !== 'string'
+                            || !['pass', 'fail', 'unknown', 'human'].includes(item.status ?? '') || typeof item.detail !== 'string'
+                            || item.status === 'human' && !item.detail.trim()
+                            || ['changeSetHash', 'runId', 'capturedAt'].some(key => {
+                                const field = item[key as keyof HookEvidenceEntry];
+                                return field !== undefined && (typeof field !== 'string' || !field.trim() || field.length > 200);
+                            })
+                            || item.capturedAt !== undefined && !Number.isFinite(Date.parse(item.capturedAt))
                             || item.image !== undefined && (typeof item.image !== 'string' || item.image.length > 1024)))) {
                         throw new Error('検証記録の形式が正しくありません。');
                     }
                     result.evidence.push({ hookId: row.id, runId: input.runId, notes: value.notes?.slice(0, 8_000),
-                        evidence: (value.evidence ?? []).slice(0, 100).map((item: { label: string; status: 'pass' | 'fail' | 'unknown'; detail: string; image?: string }) =>
-                            ({ label: item.label.slice(0, 200), status: item.status, detail: item.detail.slice(0, 2_000), ...(item.image !== undefined ? { image: item.image } : {}) })) });
+                        evidence: (value.evidence ?? []).slice(0, 100).map((item: HookEvidenceEntry) =>
+                            ({ label: item.label.slice(0, 200), status: item.status, detail: item.detail.slice(0, 2_000),
+                                changeSetHash: item.changeSetHash, runId: item.runId ?? input.runId,
+                                capturedAt: item.capturedAt ?? new Date().toISOString(),
+                                ...(item.image !== undefined ? { image: item.image } : {}) })) });
                 }
             } catch (error) {
                 run.status = 'fail'; run.error = error instanceof SyntaxError ? '出力が正しい JSON ではありません。' : (error as Error).message;

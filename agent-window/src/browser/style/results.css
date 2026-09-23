@@ -1672,3 +1672,28 @@
 .poiesis-results__evidence-image { display: block; padding: 4px; cursor: zoom-in; background: transparent; border: 1px solid var(--theia-panel-border); }
 .poiesis-results__evidence-image img { display: block; max-width: 180px; max-height: 110px; object-fit: contain; }
 .poiesis-results__media-diagnostics { margin: 4px 16px; font-size: 12px; }
+.poiesis-results__verification {
+    flex: 0 0 auto;
+    margin: 0;
+    color: var(--theia-foreground);
+    background: var(--theia-editor-background);
+    border-bottom: 1px solid var(--theia-panel-border);
+    font-size: 12px;
+}
+.poiesis-results__verification summary { padding: 8px 16px; cursor: pointer; font-weight: 600; }
+.poiesis-results__verification summary:focus-visible,
+.poiesis-results__verification-scroll:focus-visible { outline: 2px solid var(--theia-focusBorder); outline-offset: -2px; }
+.poiesis-results__verification-scroll { max-height: 210px; overflow: auto; }
+.poiesis-results__verification table { width: 100%; border-collapse: collapse; text-align: left; }
+.poiesis-results__verification th, .poiesis-results__verification td { padding: 6px 12px; border-top: 1px solid var(--theia-panel-border); vertical-align: top; overflow-wrap: anywhere; }
+.poiesis-results__verification td:nth-child(2) { min-width: 100px; }
+.poiesis-results__verification td span { display: block; }
+.poiesis-results__verification [data-status='pass'] td:nth-child(2) { color: var(--theia-testing-iconPassed, #75bc89); }
+.poiesis-results__verification [data-status='fail'] td:nth-child(2) { color: var(--theia-errorForeground, #ef9696); }
+.poiesis-results__verification [data-status='unknown'] td:nth-child(2),
+.poiesis-results__verification [data-status='human'] td:nth-child(2),
+.poiesis-results__verification [data-status='outdated'] td:nth-child(2) { color: var(--theia-editorWarning-foreground, #d9b968); }
+.poiesis-results__verification .poiesis-results__evidence-image img { max-height: 48px; max-width: 96px; }
+.poiesis-results__human-badge { white-space: nowrap; font-size: 12px; color: var(--theia-editorWarning-foreground, #d9b968); }
+.poiesis-results__answer-warning { flex: 0 0 auto; padding: 7px 16px; color: var(--theia-foreground); background: var(--theia-editor-background); border-left: 3px solid var(--theia-editorWarning-foreground, #d9b968); font-size: 12px; }
+.poiesis-results__answer-warning span { display: block; }

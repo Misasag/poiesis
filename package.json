@@ -14,6 +14,7 @@
     "electron-app"
   ],
   "scripts": {
+    "test:results-evidence": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-evidence.mjs",
     "build": "npm run compile --workspace=@poiesis/theia-agent-window && npm run build --workspace=@poiesis/theia-browser-app",
     "build:electron": "npm run compile --workspace=@poiesis/theia-agent-window && npm run build --workspace=@poiesis/theia-electron-app",
     "clean": "npm run clean --workspace=@poiesis/theia-agent-window && npm run clean --workspace=@poiesis/theia-browser-app && npm run clean --workspace=@poiesis/theia-electron-app",

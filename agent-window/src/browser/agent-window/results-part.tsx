@@ -67,7 +67,8 @@ import {
 } from '../workspace-skill-service';
 import { formatTaskElapsedTime, shouldSubmitComposer } from '../composer-behavior';
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from '../typography';
-import { formatExecutionEvidence } from '../results-document-normalizer';
+import { formatExecutionEvidence, checkResultsTopAnswer } from '../results-document-normalizer';
+import { buildVerificationTable, VerificationTable, VERIFICATION_LABELS } from '../results-evidence';
 import { Requirement } from '../requirement-model';
 import { RequirementService } from '../requirement-service';
 import { RequirementClassificationService } from '../requirement-classification-service';
@@ -77,6 +78,12 @@ import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
+
+/** Reader-facing wording for failed top-answer checks; the check texts describe the expected state. */
+const TOP_ANSWER_WARNINGS: Readonly<Record<string, string>> = {
+    '冒頭に2〜4文の短い回答がある': '冒頭に短い回答がありません',
+    '冒頭の確認状況がアプリの記録と一致する': '冒頭の確認状況がアプリの記録と一致しません'
+};
 
 interface ResultsFrameMessage {
     type: 'poiesis:open-citation' | 'poiesis:retry-ai-results' | 'poiesis:open-image';
@@ -144,6 +151,10 @@ export class ResultsPart extends AgentWindowPart {
         const evidencePaths = (selectedTask ? [selectedTask] : selectedRequirement?.taskIds.map(id => this.taskService.get(id)) ?? [])
             .flatMap(task => task?.hookEvidence ?? []).flatMap(item => item.evidence).flatMap(entry => entry.image ? [entry.image] : []);
         this.ensureRichResults(document?.html ?? '', selectedTask?.workspaceUri ?? latestTask?.workspaceUri ?? '', evidencePaths, scopeKey);
+        const verification = buildVerificationTable(selectedTask ? [selectedTask]
+            : selectedRequirement ? this.host.sessions.finishedTasksForRequirement(selectedRequirement) : [], visibleChangeSet);
+        const answerWarnings = document?.html && document.generator === 'ai'
+            ? checkResultsTopAnswer(document.html, verification).filter(result => result.status === 'fail') : [];
 
         return (
             <section
@@ -170,7 +181,8 @@ export class ResultsPart extends AgentWindowPart {
                             draft,
                             questionCount,
                             questionSending,
-                            questionPanelExpanded
+                            questionPanelExpanded,
+                            verification.humanCount
                         )}
                         {!selectedTask && selectedRequirement && latestTask
                             && this.renderRequirementResultsHeader(
@@ -181,8 +193,14 @@ export class ResultsPart extends AgentWindowPart {
                                 draft,
                                 questionCount,
                                 questionSending,
-                                questionPanelExpanded
+                                questionPanelExpanded,
+                                verification.humanCount
                             )}
+                        {selectedRequirement && this.renderVerificationTable(verification, scopeKey)}
+                        {answerWarnings.length > 0 && <div className='poiesis-results__answer-warning' role='alert'>
+                            <strong>本文の確認状況を見直してください</strong>
+                            <span>{answerWarnings.map(result => TOP_ANSWER_WARNINGS[result.text] ?? result.text).join('。')}。上の確認記録を参照してください。</span>
+                        </div>}
                         {latestTask?.status === 'failed' && !document && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>タスクに失敗しました</strong>
@@ -546,7 +564,8 @@ export class ResultsPart extends AgentWindowPart {
         draft: string,
         questionCount: number,
         questionSending: boolean,
-        questionPanelExpanded: boolean
+        questionPanelExpanded: boolean,
+        humanCount = 0
     ): React.ReactNode {
         const document = this.resultsService.get(task.id);
         return this.renderResultsToolbar(
@@ -557,7 +576,8 @@ export class ResultsPart extends AgentWindowPart {
             questionCount,
             questionSending,
             questionPanelExpanded,
-            this.resultsActionStatus(document, task)
+            this.resultsActionStatus(document, task),
+            humanCount
         );
     }
 
@@ -569,7 +589,8 @@ export class ResultsPart extends AgentWindowPart {
         draft: string,
         questionCount: number,
         questionSending: boolean,
-        questionPanelExpanded: boolean
+        questionPanelExpanded: boolean,
+        humanCount = 0
     ): React.ReactNode {
         const document = this.resultsService.getRequirement(requirement.id);
         return this.renderResultsToolbar(
@@ -580,7 +601,8 @@ export class ResultsPart extends AgentWindowPart {
             questionCount,
             questionSending,
             questionPanelExpanded,
-            this.resultsActionStatus(document, latestTask)
+            this.resultsActionStatus(document, latestTask),
+            humanCount
         );
     }
 
@@ -592,7 +614,8 @@ export class ResultsPart extends AgentWindowPart {
         questionCount: number,
         questionSending: boolean,
         questionPanelExpanded: boolean,
-        actionStatus: { label: string; kind: string } | undefined
+        actionStatus: { label: string; kind: string } | undefined,
+        humanCount = 0
     ): React.ReactNode {
         const navigatorExpanded = this.resultsAuxiliaryPanel === 'navigator' && this.resultsAuxiliaryScopeKey === scopeKey;
         const detailsExpanded = this.resultsAuxiliaryPanel === 'details' && this.resultsAuxiliaryScopeKey === scopeKey;
@@ -603,6 +626,7 @@ export class ResultsPart extends AgentWindowPart {
             <header className='poiesis-results__fixed-header'>
                 <div className='poiesis-results__fixed-title'>
                     <h1 data-result-title={title} title={title}>{title}</h1>
+                    {humanCount > 0 && <span className='poiesis-results__human-badge' role='status'>判断待ち {humanCount}件</span>}
                     {actionStatus && (
                         <span className={`poiesis-results__action-status ${actionStatus.kind}`} role='status'>
                             {actionStatus.kind === 'running' && <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />}
@@ -652,6 +676,26 @@ export class ResultsPart extends AgentWindowPart {
                 </div>
             </header>
         );
+    }
+
+    protected renderVerificationTable(table: VerificationTable, scopeKey?: string): React.ReactNode {
+        return <details key={scopeKey} className='poiesis-results__verification' open>
+            <summary>{table.summary}</summary>
+            <div className='poiesis-results__verification-scroll' tabIndex={0} aria-label='確認記録をスクロール'>
+                <table aria-label='アプリの確認記録'>
+                    <thead><tr><th scope='col'>確認項目</th><th scope='col'>結果</th><th scope='col'>根拠・判断すること</th></tr></thead>
+                    <tbody>{table.rows.map((row, index) => <tr key={index} data-status={row.status}>
+                        <th scope='row'>{row.label}</th>
+                        <td><span>{VERIFICATION_LABELS[row.status]}</span>{row.human && row.status !== 'human' && <span>人間の判断待ち</span>}</td>
+                        <td>{row.detail}{row.image && (this.richContent?.images.has(row.image)
+                            ? <button type='button' className='poiesis-results__evidence-image' aria-label={`${row.label}の画像を拡大`}
+                                onClick={event => this.openImage(row.image!, event.currentTarget)}>
+                                <img src={this.richContent.images.get(row.image)} alt={row.label} /></button>
+                            : <span>画像を確認できません</span>)}</td>
+                    </tr>)}</tbody>
+                </table>
+            </div>
+        </details>;
     }
 
     protected resultsActionStatus(
@@ -764,19 +808,7 @@ export class ResultsPart extends AgentWindowPart {
                         <dd>{this.host.sessions.finishedTasksForRequirement(requirement).length}件</dd>
                     </div>
                 </dl>
-                <div className='poiesis-results__hook-evidence'>
-                    {tasks.flatMap(task => task.hookEvidence ?? []).map((item, index) => <div key={index}>
-                        <strong>{item.hookId}{item.incomplete ? ' · 検証未完了' : ''}</strong>
-                        {item.notes && <p>{item.notes}</p>}
-                        {item.evidence.map((entry, evidenceIndex) => <p key={evidenceIndex}>
-                            {entry.label}: {entry.status === 'pass' ? '合格' : entry.status === 'fail' ? '不合格' : '未確認'} · {entry.detail}
-                            {entry.image && this.richContent?.images.has(entry.image) && <button type='button' className='poiesis-results__evidence-image'
-                                aria-label={`${entry.label}の画像を拡大`} onClick={event => this.openImage(entry.image!, event.currentTarget)}>
-                                <img src={this.richContent.images.get(entry.image)} alt={entry.label} />
-                            </button>}
-                        </p>)}
-                    </div>)}
-                </div>
+                {this.renderVerificationTable(buildVerificationTable(tasks, changeSet), `details:${task.id}`)}
                 {assertions.length > 0 && (
                     <ul className='poiesis-results__assertion-list' aria-label='成果の生成条件'>
                         {assertions.map((assertion, index) => (

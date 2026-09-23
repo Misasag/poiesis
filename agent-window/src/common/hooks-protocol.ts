@@ -15,9 +15,13 @@ export interface HookRun {
     status: 'pass' | 'fail'; durationMs: number; time: string;
     stdinBytes: number; stdoutBytes: number; error?: string;
 }
+export interface HookEvidenceEntry {
+    label: string; status: 'pass' | 'fail' | 'unknown' | 'human'; detail: string; image?: string;
+    changeSetHash?: string; runId?: string; capturedAt?: string;
+}
 export interface HookEvidence {
     hookId: string; runId: string; notes?: string; incomplete?: boolean;
-    evidence: { label: string; status: 'pass' | 'fail' | 'unknown'; detail: string; image?: string }[];
+    evidence: HookEvidenceEntry[];
 }
 export interface HookInput {
     schemaVersion: 1; event: HookEvent; workspace: string;

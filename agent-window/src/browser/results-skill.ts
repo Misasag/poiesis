@@ -1,4 +1,7 @@
 import { CliCallRecord } from '../common/cli-usage';
+import { hashChangeSet } from '../common/change-set-hash';
+import { buildVerificationTable, verificationPrompt } from './results-evidence';
+import { checkResultsTopAnswer } from './results-document-normalizer';
 import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import {
@@ -295,6 +298,7 @@ export class AiResultsSkill implements ResultsSkill {
                 changeSetSummary,
                 diff: input.changeSet.diff,
                 hookMaterial: generatedHooks.material,
+                verificationEvidence: verificationPrompt(buildVerificationTable(input.requirement?.tasks ?? [input.task], input.changeSet)),
                 executionEvidence: input.requirement
                     ? formatRequirementExecutionEvidence(input.requirement.tasks, 16_000) || undefined
                     : formatExecutionEvidence(input.task.activities, 12_000) || undefined,
@@ -410,6 +414,7 @@ export class AiResultsSkill implements ResultsSkill {
             attempt: request.attempt ?? 1, startedAt: new Date().toISOString() });
         const html = this.normalizeAndValidate(output, input.requirement?.title ?? input.task.title);
         const appAssertions = checkAppResultsAssertions(html, input.changeSet.files);
+        appAssertions.push(...checkResultsTopAnswer(html, buildVerificationTable(input.requirement?.tasks ?? [input.task], input.changeSet)));
         if (/<(?:img|svg)[\s>]/i.test(html)) {
             const media = await prepareResultsContent(html, request.workspaceUri,
                 (workspace, paths) => this.generationServer.resolveImages(workspace, paths));
@@ -598,6 +603,9 @@ export class ResultsService {
     }
 
     getRequirementChangeSet(requirementId: string): TaskChangeSet | undefined {
+        const requirement = this.requirementService.get(requirementId);
+        const tasks = requirement ? this.finishedRequirementTasks(requirement) : [];
+        if (tasks.length === 1) { return tasks[0].changeSet; }
         return this.requirementChangeSets.get(requirementId);
     }
 
@@ -687,7 +695,10 @@ export class ResultsService {
                     );
                 }
             } else if (requirement.resultsDocument) {
-                void this.cumulativeChangeSet(requirement).catch(error =>
+                void this.cumulativeChangeSet(requirement).then(() => {
+                    const restored = this.getRequirement(requirement.id);
+                    if (restored) { this.onDidChangeEmitter.fire(restored); }
+                }).catch(error =>
                     console.warn('[Poiesis] Could not restore cumulative Results evidence.', error)
                 );
             } else if (!pendingRequirementIds.has(requirement.id)) {
@@ -1061,6 +1072,7 @@ export class ResultsService {
                         files: capture.files,
                         capturedAt: new Date().toISOString()
                     };
+                    changeSet.changeSetHash = await hashChangeSet(changeSet);
                     this.requirementChangeSets.set(requirement.id, changeSet);
                     return changeSet;
                 }
@@ -1081,6 +1093,7 @@ export class ResultsService {
             capturedAt: new Date().toISOString(),
             error: unavailableReason
         };
+        changeSet.changeSetHash = await hashChangeSet(changeSet);
         this.requirementChangeSets.set(requirement.id, changeSet);
         return changeSet;
     }
