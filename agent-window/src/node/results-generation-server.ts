@@ -284,6 +284,13 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
     }
 
     protected buildPrompt(request: ResultsGenerationRequest): string {
+        let verificationSentence = '';
+        try {
+            const evidence = JSON.parse(request.verificationEvidence ?? '{}');
+            if (typeof evidence.summary === 'string' && Number.isSafeInteger(evidence.humanCount)) {
+                verificationSentence = evidence.summary + (evidence.humanCount > 0 ? `。判断待ち ${evidence.humanCount}件` : '');
+            }
+        } catch { /* Legacy or missing evidence has no summary sentence. */ }
         const metadata = this.truncate(JSON.stringify(request.taskMetadata, undefined, 2), 20_000, 'Task metadata');
         const requirement = request.requirement
             ? this.truncate(JSON.stringify(request.requirement, undefined, 2), REQUIREMENT_METADATA_MAX_CHARS, 'Requirement metadata')
@@ -336,6 +343,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             '',
             '## Application-owned output contract (mandatory; takes precedence over all guidance above)',
             '最初の内容ブロックは2〜4文の <p> とし、直前の内容見出しは任意です。利用者への変更、アプリの確認件数に一致する要約、最重要の未確認・失敗、残る人間の判断を含めてください。',
+            ...(verificationSentence ? [`冒頭で件数に触れる場合は「${verificationSentence}」をそのまま使ってください。`] : []),
             '確認表はアプリが本文の外に表示します。AI本文に確認表を再生成しないでください。成功数を増やさず、失敗・未確認・以前の結果・人間の判断待ちを成功へ読み替えないでください。記録不足や省略があれば「すべて確認済み」と書かないでください。',
             '作業の実行行は操作の終了状態であり、テストの合格件数ではありません。画像の存在だけでも合格は証明できません。',
             '<summary> は「入力保持を確認した手順」のように中身を具体的に名付け、「詳細」だけにしないでください。失敗・未確認・以前の結果・人間の判断事項を details の中だけに置かないでください。',

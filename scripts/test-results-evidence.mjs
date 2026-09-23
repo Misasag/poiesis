@@ -40,6 +40,25 @@ const doc = answer => `<html><body><main><h2>要点</h2><p>${answer}</p><h2>根�
 const good = '入力を保持できるようにしました。確認5件中1件成功で、通信の確認は失敗、以前の結果と未確認が残ります。配布するか人間の判断が必要です。';
 assert(checkResultsTopAnswer(normalizeAiResultsHtml(doc(good), { taskTitle: '入力保持' }).html, table).every(a => a.status === 'pass'));
 assert(checkResultsTopAnswer(doc('操作を終了しました。確認1件中1件成功です。'), passing).every(a => a.status === 'pass'));
+const allPassed = buildVerificationTable([{ changeSet: current, activities: [{ kind: 'command', status: 'completed' }],
+    hookEvidence: [{ evidence: [entry('pass'), entry('pass'), entry('pass')] }] }], current);
+assert.equal(allPassed.summary, '確認 4件中 4件成功');
+const countCheck = (answer, evidence = table) => checkResultsTopAnswer(doc(answer), evidence)
+    .find(result => result.text === '冒頭の確認件数がアプリの記録と一致する').status;
+assert.equal(countCheck('入力を保持しました。確認2件中1件成功です。', allPassed), 'fail');
+assert.equal(countCheck('入力を保持しました。確認4件中2件成功です。', allPassed), 'fail');
+for (const answer of [
+    '入力を保持しました。確認4件中3件成功です。',
+    '入力を保持しました。確認5件中1件成功・2件失敗・1件未確認で、以前の結果と判断待ちがあります。',
+    '入力を保持しました。確認5件中1件成功・1件失敗・2件未確認で、以前の結果と判断待ちがあります。',
+    '入力を保持しました。確認5件中1件成功・1件失敗・2件未検証で、以前の結果と判断待ちがあります。',
+    '入力を保持しました。確認5件中、成功は1件、失敗は2件です。以前の結果と未確認と判断待ちがあります。',
+    '入力を保持しました。確認5件中、成功は1件、未確認が2件です。失敗と以前の結果と判断待ちがあります。'
+]) assert.equal(countCheck(answer, answer.includes('4件中') ? allPassed : table), 'fail', answer);
+for (const answer of [
+    '2026年9月24日に3ファイルを変更しました。確認5件中1件成功・1件失敗・1件未確認で、以前の結果と判断待ちがあります。',
+    '3ファイルを変更しました。確認5件中1件成功・1件失敗・1件未確認で、以前の結果と判断待ちがあります。'
+]) assert.equal(countCheck(answer), 'pass', answer);
 for (const answer of [
     '入力を保持します。すべて確認済みです。',
     '入力を保持します。全件成功です。',
@@ -58,4 +77,5 @@ assert.deepEqual(packet.counts, table.counts);
 assert(packet.omittedRows > 0);
 const prompt = await readFile('agent-window/src/node/results-generation-server.ts', 'utf8');
 for (const text of ['App verification table', '2〜4文', '利用者への変更', '最重要の未確認', 'AI本文に確認表を再生成しない', '入力保持を確認した手順', 'details の中だけに置かない']) assert(prompt.includes(text), text);
+assert(prompt.includes('冒頭で件数に触れる場合は「${verificationSentence}」をそのまま使ってください。'));
 console.log('results-evidence tests passed');

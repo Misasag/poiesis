@@ -39,6 +39,17 @@ assert(missingClose.html.endsWith('</html>'), 'A missing closing html tag must b
 assert(missingClose.notes.includes('Missing closing html tag was appended.'),
     'Appending a missing closing html tag must be reported in normalization notes.');
 
+const masked = normalizeAiResultsHtml(
+    '<html><head></head><body><p>TASK-12-3 を更新し、task-1790190570418-2 の画面を撮影しました。</p>'
+        + '<img src=".harness/evidence/shots/task-1790190570418-2/page-after.png" alt="変更後">'
+        + '<p><code>.harness/evidence/shots/task-1790190570418-2/page-before.png</code></p></body></html>',
+    { taskTitle: 'Masked ids' }
+);
+assert(masked.html.includes('<p>完了したタスク を更新し、完了したタスク の画面'), 'Task IDs in reader text must be hidden.');
+assert(masked.html.includes('src=".harness/evidence/shots/task-1790190570418-2/page-after.png"'),
+    'Task IDs inside image sources must stay resolvable.');
+assert(masked.html.includes('shots/task-1790190570418-2/page-before.png</code>'), 'Task IDs inside file paths must not be rewritten.');
+
 assert.throws(() => normalizeAiResultsHtml(
     '<html><head></head><body>First</body></html><html><body>Second</body></html>',
     { taskTitle: 'Repeated html' }

@@ -16,6 +16,17 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable): R
     const exists = Boolean(answer) && !hidden && sentences >= 2 && sentences <= 4;
     const counts = [...answer.matchAll(/(?:([0-9]+)\s*件\s*(?:成功|合格|確認済み)|(?:成功|合格|確認済み)\s*([0-9]+)\s*件)/g)]
         .map(match => Number(match[1] ?? match[2]));
+    const denominators = [...answer.matchAll(/([0-9]+)\s*件\s*中/g)].map(match => Number(match[1]));
+    const statedCounts: Array<{ status: 'pass' | 'fail' | 'unknown'; count: number }> = [];
+    for (const [status, labels] of [
+        ['pass', '成功|合格|確認済み'], ['fail', '失敗'], ['unknown', '未確認|未検証']
+    ] as const) {
+        for (const match of answer.matchAll(new RegExp(`(?:([0-9]+)\\s*件\\s*(?:の|が)?\\s*(?:${labels})|(?:${labels})\\s*(?:は|が|：|:)?\\s*([0-9]+)\\s*件)`, 'g'))) {
+            statedCounts.push({ status, count: Number(match[1] ?? match[2]) });
+        }
+    }
+    const countMismatch = denominators.some(count => count !== table.total)
+        || statedCounts.some(({ status, count }) => count !== table.counts[status]);
     const blanket = /(?:すべて|全て|全部|全件|全項目|全確認|全テスト|全検証)[^。！？]{0,16}(?:成功|合格|確認済み|検証済み|通過)|(?:成功率|合格率)\s*100\s*%|\ball\s+(?:checks|tests)\s+passed\b/i.test(answer);
     const inconsistent = counts.some(count => count > table.counts.pass)
         || blanket && (table.counts.pass !== table.total || table.humanCount > 0);
@@ -27,7 +38,9 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable): R
         { source: 'app', text: '冒頭に2〜4文の短い回答がある', status: exists ? 'pass' : 'fail',
             evidence: exists ? '冒頭の回答を確認しました。' : '最初の見出しの直後（または本文先頭）に2〜4文の段落を置いてください。' },
         { source: 'app', text: '冒頭の確認状況がアプリの記録と一致する', status: exists && !inconsistent && summary && caveat && decision ? 'pass' : 'fail',
-            evidence: `${table.summary}。${table.humanCount ? `判断待ち ${table.humanCount}件。` : ''}成功の過大申告を避け、未確認・失敗・判断事項を冒頭に残してください。` }
+            evidence: `${table.summary}。${table.humanCount ? `判断待ち ${table.humanCount}件。` : ''}成功の過大申告を避け、未確認・失敗・判断事項を冒頭に残してください。` },
+        { source: 'app', text: '冒頭の確認件数がアプリの記録と一致する', status: exists && !countMismatch ? 'pass' : 'fail',
+            evidence: `${table.summary}。冒頭で件数を書く場合は、この集計と一致させてください。` }
     ];
 }
 
@@ -88,9 +101,15 @@ export function normalizeAiResultsHtml(
         notes.push('Remaining h1 elements were demoted to h2.');
     }
     return {
-        html: html.replace(/\bTASK-\d+(?:-\d+)+\b/gi, '完了したタスク'),
+        html: maskTaskIdsInText(html),
         notes
     };
+}
+
+/** Hides internal task IDs in reader-facing text, never inside tags or file paths (image sources must stay resolvable). */
+function maskTaskIdsInText(html: string): string {
+    return html.replace(/(^|>)([^<]*)/g, (_match, open: string, text: string) =>
+        open + text.replace(/(?<![\w./\\-])TASK-\d+(?:-\d+)+(?![\w/\\-])/gi, '完了したタスク'));
 }
 
 /** Formats Application-observed activities as compact evidence, ordered oldest to newest. */

@@ -82,7 +82,8 @@ import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
 /** Reader-facing wording for failed top-answer checks; the check texts describe the expected state. */
 const TOP_ANSWER_WARNINGS: Readonly<Record<string, string>> = {
     '冒頭に2〜4文の短い回答がある': '冒頭に短い回答がありません',
-    '冒頭の確認状況がアプリの記録と一致する': '冒頭の確認状況がアプリの記録と一致しません'
+    '冒頭の確認状況がアプリの記録と一致する': '冒頭の確認状況がアプリの記録と一致しません',
+    '冒頭の確認件数がアプリの記録と一致する': '冒頭の確認件数がアプリの記録と一致しません'
 };
 
 interface ResultsFrameMessage {
