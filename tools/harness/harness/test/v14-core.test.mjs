@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { context, ROOT, read, json, write, writeJson, git } from '../bin/lib/util.mjs';
+import { context, read, json, write, writeJson, git } from '../bin/lib/util.mjs';
 import { budgetCheck, meteredBudgetStatus } from '../bin/lib/budget.mjs';
 import { accountStatus } from '../bin/lib/openrouter.mjs';
 import { parser } from '../bin/lib/adapters.mjs';
@@ -11,13 +11,14 @@ import { routingConfigError, ROUTING_HINT } from '../bin/lib/infra.mjs';
 import { run } from '../bin/lib/run.mjs';
 import { append, ledger, outcome, runDir } from '../bin/lib/ledger.mjs';
 import { scoreboard, tune } from '../bin/lib/route.mjs';
+import { seedLocalData } from './fixtures/local-data.mjs';
 
 const now = new Date('2026-09-23T12:00:00Z'), metered = { id: 'metered', costBasis: 'metered' };
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-v14-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  seedLocalData(ctx);
   writeJson(path.join(ctx.data, 'budget/limits.json'), { metered: { monthly_usd: 30, daily_usd: 5, per_run_usd: 1, conservative_default_usd: .5 } });
-  writeJson(path.join(ctx.data, 'routing/policy.json'), json(path.join(ROOT, '.harness/routing/policy.json')));
   ctx.accountStatus = async () => ({ status: 'unavailable' });
   return ctx;
 }

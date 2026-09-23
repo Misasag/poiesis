@@ -9,11 +9,12 @@ import { parser, invocation, piAgentDir, PI_THINKING_LEVELS } from '../bin/lib/a
 import { scoreboard, route, policy } from '../bin/lib/route.mjs';
 import { append, ledger } from '../bin/lib/ledger.mjs';
 import { detectQuota, nextLocalTime, openRouterReservation, recordQuota, quotaState, exhaustedQuota, quotaKey } from '../bin/lib/quota.mjs';
+import { seedLocalData, policy as fixturePolicy } from './fixtures/local-data.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-v12-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  for (const f of ['budget/limits.json', 'routing/policy.json']) writeJson(path.join(ctx.data, f), json(path.join(ROOT, '.harness', f)));
+  seedLocalData(ctx);
   return ctx;
 }
 const piLines = () => read(new URL('fixtures/pi.jsonl', import.meta.url)).trim().split('\n').map(JSON.parse);
@@ -175,7 +176,7 @@ test('Scoreboard and tune exclude quota-infra runs from pass/fail statistics', t
   append(ctx, { kind: 'outcome', run_id: 'good-run', result: 'pass' });
   const rows = scoreboard(ctx).rows.filter(r => r.model === 'or:glm-5.3-flash');
   assert.equal(rows.length, 1); assert.equal(rows[0].n, 1); assert.equal(rows[0].pass, 1); assert.equal(rows[0].fail, 0);
-  assert.equal(policy(ctx).version, json(path.join(ROOT, '.harness/routing/policy.json')).version);
+  assert.equal(policy(ctx).version, fixturePolicy.version);
 });
 
 test('run ledger rows carry adapter pi with pinned-runtime cost reconciliation fields', () => {

@@ -3,19 +3,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { context, writeJson, PLUGIN, write, inside } from '../bin/lib/util.mjs';
+import { context, writeJson, write, inside } from '../bin/lib/util.mjs';
 import { append, ledger, outcome } from '../bin/lib/ledger.mjs';
 import { budgetCheck, requireBudget } from '../bin/lib/budget.mjs';
 import { scoreboard, decay, betaQuantile, route, promotion, tune } from '../bin/lib/route.mjs';
 import { grounded, reconcile, validateVerdict, calibration } from '../bin/lib/judge.mjs';
 import { sessionFacts, SESSION_KEY } from '../bin/lib/dogfood.mjs';
+import { seedLocalData } from './fixtures/local-data.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-core-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   ctx.accountStatus = async () => ({ status: 'unavailable' });
+  seedLocalData(ctx);
   writeJson(path.join(ctx.data, 'budget/limits.json'), { metered: { monthly_usd: 5, daily_usd: 2, per_run_usd: 1, conservative_default_usd: 1 }, quota: { per_model_runs_per_day: { 'codex:gpt-6-luna': 1 } } });
-  fs.mkdirSync(path.join(ctx.data, 'routing'), { recursive: true }); fs.copyFileSync(path.resolve(PLUGIN, '../../../.harness/routing/policy.json'), path.join(ctx.data, 'routing/policy.json'));
   return ctx;
 }
 function entry(model, runId, extra = {}) { return { run_id: runId, ts: new Date().toISOString(), role: 'worker', task_class: 'mechanical', model, cost_basis: 'metered', cost_usd_est: 0.8, wall_s: 10, ...extra }; }

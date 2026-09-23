@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { git, context, ROOT, write, writeJson, json, command } from '../bin/lib/util.mjs';
+import { git, context, write, writeJson, json, command } from '../bin/lib/util.mjs';
 import { validateTask, mine, testCommands, selectSuites, taskSize, resuite, restoreEvaluator, benchRun } from '../bin/lib/bench.mjs';
 import { withWorktree, dependencyCheck, normalizeLockfile, mainCheckout } from '../bin/lib/worktree.mjs';
 import { append } from '../bin/lib/ledger.mjs';
+import { seedLocalData } from './fixtures/local-data.mjs';
 
 test('Tiny git benchmark validates fail-to-pass and cleans worktrees even on error', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-bench-')), ctx = context(root);
@@ -40,7 +41,7 @@ async function fixture(t, scripts = {}) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   ctx.accountStatus = async () => ({ status: 'unavailable' });
   await git(root, ['init', '--quiet']);
-  writeJson(path.join(ctx.data, 'budget/limits.json'), json(path.join(ROOT, '.harness/budget/limits.json')));
+  seedLocalData(ctx);
   write(path.join(root, '.gitignore'), '.harness/\nnode_modules/\nagent-window/lib/\n');
   writeJson(path.join(root, 'package.json'), { scripts, workspaces: ['agent-window'] });
   writeJson(path.join(root, 'agent-window/package.json'), { name: '@poiesis/test', scripts: { compile: 'tsc -p .' } });

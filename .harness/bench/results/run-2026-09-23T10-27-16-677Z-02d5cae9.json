@@ -1,0 +1,42 @@
+{
+  "task": "git-2ff3185361c3",
+  "model": "or:mimo-v2.6-pro",
+  "repeat": 1,
+  "run_id": "run-2026-09-23T10-27-16-677Z-02d5cae9",
+  "result": "timeout",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 3.097,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+      "exit_code": 1,
+      "wall_s": 0.046,
+      "tail": "node:internal/modules/cjs/loader:1456\r\n  const err = new Error(message);\r\n              ^\r\n\r\nError: Cannot find module '../agent-window/lib/common/cli-detection-lifecycle'\r\nRequire stack:\r\n- C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-27-15-845Z-6b6cf3e2\\scripts\\test-cli-detection-lifecycle.mjs\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.require (node:internal/modules/cjs/loader:1556:12)\r\n    at require (node:internal/modules/helpers:152:16)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T10-27-15-845Z-6b6cf3e2/scripts/test-cli-detection-lifecycle.mjs:8:5\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26) {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: [\r\n    'C:\\\\Users\\\\owner\\\\github\\\\poiesis-wt-harness\\\\.harness\\\\worktrees\\\\wt-2026-09-23T10-27-15-845Z-6b6cf3e2\\\\scripts\\\\test-cli-detection-lifecycle.mjs'\r\n  ]\r\n}\r\n\r\nNode.js v24.14.1\r\n"
+    },
+    {
+      "cmd": "node scripts/test-agent-send-detection.mjs",
+      "exit_code": 1,
+      "wall_s": 0.172,
+      "tail": "node:internal/modules/cjs/loader:1456\r\n  const err = new Error(message);\r\n              ^\r\n\r\nError: Cannot find module '../agent-window/lib/common/cli-detection-lifecycle'\r\nRequire stack:\r\n- C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-27-15-845Z-6b6cf3e2\\scripts\\test-agent-send-detection.mjs\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.require (node:internal/modules/cjs/loader:1556:12)\r\n    at require (node:internal/modules/helpers:152:16)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T10-27-15-845Z-6b6cf3e2/scripts/test-agent-send-detection.mjs:8:33\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26) {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: [\r\n    'C:\\\\Users\\\\owner\\\\github\\\\poiesis-wt-harness\\\\.harness\\\\worktrees\\\\wt-2026-09-23T10-27-15-845Z-6b6cf3e2\\\\scripts\\\\test-agent-send-detection.mjs'\r\n  ]\r\n}\r\n\r\nNode.js v24.14.1\r\n"
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 1.487,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-cli-args.mjs",
+      "exit_code": 1,
+      "wall_s": 0.046,
+      "tail": "C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-27-15-845Z-6b6cf3e2\\agent-window\\lib\\node\\cli-args.js:106\r\n        throw new Error(`Unsupported effort for ${providerId}: ${JSON.stringify(effort)}.`);\r\n              ^\r\n\r\nError: Unsupported effort for grok: \"medium\".\r\n    at validateCliEffort (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-27-15-845Z-6b6cf3e2\\agent-window\\lib\\node\\cli-args.js:106:15)\r\n    at effortArgs (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-27-15-845Z-6b6cf3e2\\agent-window\\lib\\node\\cli-args.js:111:20)\r\n    at agentCliArgs (C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-27-15-845Z-6b6cf3e2\\agent-window\\lib\\node\\cli-args.js:9:20)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T10-27-15-845Z-6b6cf3e2/scripts/test-cli-args.mjs:34:18\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\r\n\r\nNode.js v24.14.1\r\n"
+    }
+  ],
+  "error": null
+}

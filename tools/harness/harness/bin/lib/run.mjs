@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { read, json, write, writeJson, id, git, exec, killTree, redactor, resolveEnv, required, positive, fail, VERSION } from './util.mjs';
 import { append, ledger, getRun, runDir } from './ledger.mjs';
-import { provider, price } from './prices.mjs';
+import { provider, price, listPrice } from './prices.mjs';
 import { requireBudget, meteredLimits } from './budget.mjs';
 import { parser, invocation, piAgentDir } from './adapters.mjs';
 import { costCapMonitor } from './costcap.mjs';
@@ -119,7 +119,8 @@ export async function run(ctx, o, dependencies = {}) {
   const key = quotaKey(p.adapter);
   if (quota && key) recordQuota(ctx, key, quota);
   const record = { run_id: runId, ts: new Date(start).toISOString(), role: o.role ?? 'worker', ticket: o.ticket ?? null, task_class: o['task-class'] ?? 'unclassified', model: p.id, family: p.family, adapter: p.adapter, effort, cwd_rel: path.relative(ctx.root, cwd).replaceAll('\\', '/'), base_sha: base, tokens: parsed.state.tokens, cost_usd_est: price(parsed.state.tokens, p.prices), cost_basis: p.costBasis, wall_s: (Date.now() - start) / 1000, exit_code: result.exit_code || (parsed.state.failed || !parsed.state.final ? 1 : 0), session_id: recordSessionId, session_file_rel: sessionFileRel, diff: captured.diff, harness_ver: VERSION };
-  if (quota && key) { record.infra = 'quota_exhausted'; record.quota_source = quota.source; }
+  if (p.costBasis === 'quota') record.api_equivalent_usd = listPrice(parsed.state.usage_available ? parsed.state.tokens : null, p);
+  if (quota && key) { record.infra = 'quota_exhausted'; record.quota_source = quota.source; record.quota_exhausted_until = quota.exhausted_until; }
   if (runFailed && parsed.state.routing_error) Object.assign(record, parsed.state.routing_error);
   // A cost-cap kill keeps the diff for review but marks the run as stopped.
   if (killed) record.killed = killed;

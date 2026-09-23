@@ -91,8 +91,10 @@ export function route(ctx, o) {
   if (!candidates.length) fail(blocked.length ? `Quota exhausted for ${[...new Set(blocked.map(b => b.quota))].join(', ')}; no eligible model` : 'No eligible model after family/data policy exclusion');
   const ranked = candidates.map(m => {
     const score = scores.find(s => s.role === o.role && s.task_class === (o['task-class'] ?? 'unclassified') && s.model === m.id);
-    const meanCost = score?.mean_cost ?? (m.costBasis === 'quota' ? 0 : 1);
-    return { model: m.id, family: m.family, p_pass: score?.p_pass ?? 0.5, utility: (score?.p_pass ?? 0.5) - p.lambda_cost * meanCost - p.lambda_time * (score?.mean_wall_s ?? 0), n: score?.n ?? 0 };
+    const quotaFirst = p.quota_first !== false && m.costBasis === 'quota';
+    const meanCost = quotaFirst ? 0 : score?.mean_cost ?? (m.costBasis === 'quota' ? 0 : 1);
+    return { model: m.id, family: m.family, p_pass: score?.p_pass ?? 0.5, utility: (score?.p_pass ?? 0.5) - p.lambda_cost * meanCost - p.lambda_time * (score?.mean_wall_s ?? 0), n: score?.n ?? 0,
+      pricing_rule: quotaFirst ? 'quota_first: zero marginal cost' : 'metered: measured cost' };
   });
   const seed = o.ticket ?? `${o.role}:${o['task-class'] ?? 'unclassified'}`;
   const challengers = ranked.filter(m => (rule.challengers ?? []).includes(m.model));

@@ -1,4 +1,4 @@
-# Poiesis development harness v1.4.0
+# Poiesis development harness v1.6.0
 
 Development-only Node 24 ESM. No npm install, Python, uv, or added dependencies.
 Run from this checkout with `node tools/harness/harness/bin/hx.mjs` (`hx` below).
@@ -39,6 +39,10 @@ Codex runs use `--ignore-user-config` (authentication is preserved) so owner MCP
 Write defaults: Codex danger-full-access/never approval; Claude auto; Grok acceptEdits. Read-only defaults: Codex read-only; Claude/Grok plan. Claude read-only uses only Read/Grep/Glob; judge sessions have no tools and use an isolated empty repository. Codex judges receive only sanitized evidence in that repository. CLI sandbox modes are provider controls, not an OS-level containment guarantee against malicious code.
 
 ## Scores, routing and budgets
+
+`hx cost [--month YYYY-MM] [--json]` reports UTC-month subscription usage, API-equivalent value at OpenRouter list prices, metered spending, account usage, and measured cost per passing run by role, task class and model. `hx cost --local [--days 30]` also streams Codex and Claude Code session JSONL files from the current home directory and reports their API-equivalent value and value/fee ratio for the rolling period. This local total is shown separately from measured harness runs because those runs can also appear in the CLI logs. The ChatGPT section lists weekly reset windows and how often one-quarter capacity would have been exceeded; it is an observed utilization comparison, not a guarantee about another plan's limits. Unknown models retain token counts and appear as unpriced. Local prices use the catalog for configured models and pinned historical list prices for older CLI models; the fee is prorated to the selected day count using a 30-day month. Edit `.harness/budget/subscriptions.json` to add monthly fees. An unknown fee shows the observed break-even value; unknown token usage is counted separately, so that value may be incomplete. `hx prices refresh` updates catalog prices from OpenRouter's model list; network failure retains existing prices and exits successfully. `grok:default` has no pinned model ID, so its list value uses the public Grok Build price as a proxy. Price cards omit provider charges such as web search and may have context-dependent tiers.
+
+Routing policy `quota_first: true` makes a non-exhausted quota candidate's marginal USD cost zero in utility. Exhausted quota candidates are excluded before ranking, while metered candidates use observed USD costs. `route --explain` prints the applied pricing rule.
 
 Only runs with a latest explicit pass/fail outcome enter scores. `human` clears automatic scoring until replaced by a definitive outcome. Generic worker runs map mechanical to worker-mech and other classes to worker-design; specifying the routed role directly is preferable.
 The posterior is Beta(1 + weighted pass, 1 + weighted fail). Ages 0-14 days weigh 1, 15-45 days 0.5, older 0.25. Costs and times are arithmetic means; median wall time is also recorded. USD stays null for quota models and contributes no metered penalty.

@@ -7,6 +7,8 @@ Promise.all([
   import('./v12-core.test.mjs'),
   import('./v13-core.test.mjs'),
   import('./v14-core.test.mjs'),
+  import('./v15-cost.test.mjs'),
+  import('./v16-local-usage.test.mjs'),
   import('./bench.test.mjs'),
   import('./dogfood.test.mjs'),
   import('./packaging.test.mjs')

@@ -1,0 +1,42 @@
+{
+  "task": "git-2ff3185361c3",
+  "model": "or:kimi-k2.7-code",
+  "repeat": 1,
+  "run_id": "run-2026-09-23T10-38-35-314Z-eede0323",
+  "result": "fail",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 2,
+      "wall_s": 3.063,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nsrc/browser/agent-window-widget.tsx(200,83): error TS2339: Property 'waitForCurrentCliDetection' does not exist on type 'SettingsPart'.\r\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm error Lifecycle script `compile` failed with error:\nnpm error code 2\nnpm error path C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-38-34-581Z-506bbc76\\agent-window\nnpm error workspace @poiesis/theia-agent-window@0.0.0\nnpm error location C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-38-34-581Z-506bbc76\\agent-window\nnpm error command failed\nnpm error command C:\\WINDOWS\\system32\\cmd.exe /d /s /c tsc -p .\n"
+    },
+    {
+      "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+      "exit_code": 0,
+      "wall_s": 0.045,
+      "tail": "CLI_DETECTION_LIFECYCLE_TEST=passed\n"
+    },
+    {
+      "cmd": "node scripts/test-agent-send-detection.mjs",
+      "exit_code": 1,
+      "wall_s": 0.202,
+      "tail": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: SettingsPart.waitForCurrentCliDetection was not found\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T10-38-34-581Z-506bbc76/scripts/test-agent-send-detection.mjs:17:16\r\n    at Array.map (<anonymous>)\r\n    at subject (file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T10-38-34-581Z-506bbc76/scripts/test-agent-send-detection.mjs:15:27)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T10-38-34-581Z-506bbc76/scripts/test-agent-send-detection.mjs:58:26\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: undefined,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n"
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 2,
+      "wall_s": 1.545,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nsrc/browser/agent-window-widget.tsx(200,83): error TS2339: Property 'waitForCurrentCliDetection' does not exist on type 'SettingsPart'.\r\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm error Lifecycle script `compile` failed with error:\nnpm error code 2\nnpm error path C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-38-34-581Z-506bbc76\\agent-window\nnpm error workspace @poiesis/theia-agent-window@0.0.0\nnpm error location C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T10-38-34-581Z-506bbc76\\agent-window\nnpm error command failed\nnpm error command C:\\WINDOWS\\system32\\cmd.exe /d /s /c tsc -p .\n"
+    },
+    {
+      "cmd": "node scripts/test-cli-args.mjs",
+      "exit_code": 0,
+      "wall_s": 0.044,
+      "tail": "CLI_ARGS_TEST=passed\n"
+    }
+  ],
+  "error": null
+}

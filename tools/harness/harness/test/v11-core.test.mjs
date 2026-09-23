@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { context, PLUGIN, ROOT, read, json, write, writeJson, redactor, resolveEnv, environmentValue, windowsEnvironment, registerSecret } from '../bin/lib/util.mjs';
+import { context, read, json, write, writeJson, redactor, resolveEnv, environmentValue, windowsEnvironment, registerSecret } from '../bin/lib/util.mjs';
 import { catalog, provider } from '../bin/lib/prices.mjs';
 import { parser, invocation } from '../bin/lib/adapters.mjs';
 import { accountStatus, openRouterClient, generationCosts } from '../bin/lib/openrouter.mjs';
@@ -13,13 +13,14 @@ import { budgetStatus, budgetCheck, chargedCost } from '../bin/lib/budget.mjs';
 import { route, policy, scoreboard } from '../bin/lib/route.mjs';
 import { judge, calibration } from '../bin/lib/judge.mjs';
 import { run } from '../bin/lib/run.mjs';
+import { seedLocalData } from './fixtures/local-data.mjs';
 
 const jevResponse = () => json(new URL('fixtures/jev-response.json', import.meta.url));
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-v11-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   ctx.accountStatus = async () => ({ status: 'unavailable' });
-  for (const f of ['budget/limits.json', 'routing/policy.json']) writeJson(path.join(ctx.data, f), json(path.join(ROOT, '.harness', f)));
+  seedLocalData(ctx);
   return ctx;
 }
 function worker(ctx, runId = 'fixture-worker', exit = 0) {

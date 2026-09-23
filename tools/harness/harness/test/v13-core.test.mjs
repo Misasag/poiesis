@@ -3,19 +3,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { context, ROOT, read, json, writeJson } from '../bin/lib/util.mjs';
+import { context, read, writeJson } from '../bin/lib/util.mjs';
 import { parser } from '../bin/lib/adapters.mjs';
 import { provider } from '../bin/lib/prices.mjs';
 import { costCapMonitor } from '../bin/lib/costcap.mjs';
 import { budgetCheck } from '../bin/lib/budget.mjs';
 import { append, outcome } from '../bin/lib/ledger.mjs';
 import { scoreboard } from '../bin/lib/route.mjs';
+import { seedLocalData } from './fixtures/local-data.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-v13-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   ctx.accountStatus = async () => ({ status: 'unavailable' });
-  writeJson(path.join(ctx.data, 'budget/limits.json'), json(path.join(ROOT, '.harness/budget/limits.json')));
+  seedLocalData(ctx);
   return ctx;
 }
 const lines = name => read(new URL(`fixtures/${name}`, import.meta.url)).trim().split('\n').map(JSON.parse);
