@@ -1,0 +1,42 @@
+{
+  "task": "git-2ff3185361c3",
+  "model": "or:glm-5.3-flash",
+  "repeat": 1,
+  "run_id": "run-2026-09-23T10-24-46-271Z-ff9bdc2a",
+  "result": "pass",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 3.204,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+      "exit_code": 0,
+      "wall_s": 0.051,
+      "tail": "CLI_DETECTION_LIFECYCLE_TEST=passed\n"
+    },
+    {
+      "cmd": "node scripts/test-agent-send-detection.mjs",
+      "exit_code": 0,
+      "wall_s": 0.524,
+      "tail": "AGENT_SEND_DETECTION_TEST=passed cases=14\n"
+    },
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "exit_code": 0,
+      "wall_s": 1.535,
+      "tail": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\nnpm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+    },
+    {
+      "cmd": "node scripts/test-cli-args.mjs",
+      "exit_code": 0,
+      "wall_s": 0.048,
+      "tail": "CLI_ARGS_TEST=passed\n"
+    }
+  ],
+  "error": null
+}

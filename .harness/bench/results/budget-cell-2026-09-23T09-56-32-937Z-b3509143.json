@@ -1,0 +1,11 @@
+{
+  "task": "git-7b1c953f5725",
+  "model": "or:kimi-k2.7-code",
+  "repeat": 1,
+  "run_id": null,
+  "result": "skipped_budget",
+  "judge": null,
+  "scope_deviations": [],
+  "verification": [],
+  "error": "Estimated cost exceeds budget"
+}

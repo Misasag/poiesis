@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { executable, fail } from './util.mjs';
+import { routingConfigError } from './infra.mjs';
 
 // pi --thinking levels; the harness passes efforts through unchanged and the
 // CLI clamps to the model's capabilities. "default" omits the flag.
@@ -24,13 +25,19 @@ function usage(u = {}, claude = false) {
 }
 const texts = content => (Array.isArray(content) ? content.filter(x => x.type === 'text').map(x => x.text).join('\n') : typeof content === 'string' ? content : '');
 export function parser(adapter) {
-  const state = { tokens: emptyTokens(), generation_ids: [], session_id: null, final: '', structured: null, failed: false, usage_available: false, stop_reason: null, cost_reported_usd: 0 };
+  const state = { tokens: emptyTokens(), generation_ids: [], session_id: null, final: '', structured: null, failed: false, usage_available: false, stop_reason: null, cost_reported_usd: 0, errors: [], routing_error: null };
   const seenMessages = new Set();
   const compatUsage = new Map();
   function feed(e) {
     state.session_id = e.thread_id ?? e.session_id ?? e.sessionId ?? state.session_id;
     if (adapter === 'pi') {
       if (e.type === 'session') state.session_id = e.id ?? state.session_id;
+      if (e.type === 'error') {
+        const error = e.error ?? e.errorMessage;
+        state.errors.push(typeof error === 'string' ? error : JSON.stringify(error));
+        state.routing_error = routingConfigError(error);
+        state.failed = true;
+      }
       if (e.type === 'message_end') {
         const m = e.message;
         if (m?.role === 'assistant') {
@@ -43,6 +50,8 @@ export function parser(adapter) {
           // Success requires the last assistant stopReason to be "stop";
           // the CLI exit code alone is not trustworthy in --mode json.
           if (m.stopReason) { state.stop_reason = m.stopReason; state.failed = m.stopReason !== 'stop'; }
+          state.routing_error = m.stopReason === 'error' ? routingConfigError(m.errorMessage) : null;
+          if (m.stopReason === 'error' && m.errorMessage) state.errors.push(m.errorMessage);
         }
       }
       if (e.type === 'compaction_end') piUsage(state, e.result?.usage);

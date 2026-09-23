@@ -1,7 +1,9 @@
 {
-  "version": 2,
+  "version": 3,
+  "notes": "v3 (2026-09-23, owner decision 'staged cost reduction'): gpt-6-sol is the default implementer, gpt-6-astra only as escalation for design-heavy tickets, Grok removed (SuperGrok cancelled), Claude quota reserved for orchestration so judges/reviewers prefer other families.",
   "data_policy": { "allow_may_train": true, "repo_visibility": "public" },
   "lambda_cost": 0.05,
+  "quota_first": true,
   "lambda_time": 0.0001,
   "explore_share": 0.2,
   "min_n_for_promotion": 10,
@@ -9,11 +11,11 @@
   "task_classes": ["app-backend", "app-frontend", "app-test", "harness", "docs", "mechanical"],
   "roles": {
     "orchestrator": { "fixed": true, "incumbent": "Claude Code session", "notes": "Informational only; the current orchestrator is not spawned by hx." },
-    "worker-design": { "incumbent": "codex:gpt-6-astra", "effort": "xhigh", "challengers": ["codex:gpt-6-sol", "claude:opus", "or:glm-5.3", "or:kimi-k3"] },
-    "worker-mech": { "incumbent": "codex:gpt-6-luna", "effort": "medium", "challengers": ["codex:gpt-6-sol", "or:glm-5.3-flash", "or:deepseek-v4.1-flash", "or:mimo-v2.6-pro", "grok:default"] },
-    "reviewer": { "incumbent": "claude:opus", "fallback": "codex:gpt-6-sol", "rule": "family must differ from worker" },
+    "worker-design": { "incumbent": "codex:gpt-6-sol", "effort": "high", "challengers": ["or:glm-5.3", "codex:gpt-6-astra"], "escalation": "codex:gpt-6-astra", "notes": "Escalate to gpt-6-astra (xhigh) only after two failed passes or for explicitly design-heavy tickets." },
+    "worker-mech": { "incumbent": "codex:gpt-6-luna", "effort": "medium", "challengers": ["or:glm-5.3-flash", "or:deepseek-v4.1-flash", "or:mimo-v2.6-pro"] },
+    "reviewer": { "incumbent": "codex:gpt-6-sol", "fallback": "or:glm-5.3", "rule": "family must differ from worker" },
     "gate": { "incumbent": "jev", "effort": "default" },
-    "judge": { "incumbent": "claude:opus", "fallback": "codex:gpt-6-sol", "challengers": ["or:glm-5.3", "or:deepseek-v4.1-flash"], "rule": "best-scoring allowed family; exclude every candidate family" },
-    "recon": { "incumbent": "grok:default" }
+    "judge": { "incumbent": "or:glm-5.3", "fallback": "codex:gpt-6-sol", "challengers": ["or:deepseek-v4.1-flash"], "rule": "best-scoring allowed family; exclude every candidate family" },
+    "recon": { "incumbent": "codex:gpt-6-luna", "fallback": "or:glm-5.3-flash" }
   }
 }

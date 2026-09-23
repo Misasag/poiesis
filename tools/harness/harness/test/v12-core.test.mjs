@@ -9,11 +9,12 @@ import { parser, invocation, piAgentDir, PI_THINKING_LEVELS } from '../bin/lib/a
 import { scoreboard, route, policy } from '../bin/lib/route.mjs';
 import { append, ledger } from '../bin/lib/ledger.mjs';
 import { detectQuota, nextLocalTime, openRouterReservation, recordQuota, quotaState, exhaustedQuota, quotaKey } from '../bin/lib/quota.mjs';
+import { seedLocalData, policy as fixturePolicy } from './fixtures/local-data.mjs';
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-v12-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  for (const f of ['budget/limits.json', 'routing/policy.json']) writeJson(path.join(ctx.data, f), json(path.join(ROOT, '.harness', f)));
+  seedLocalData(ctx);
   return ctx;
 }
 const piLines = () => read(new URL('fixtures/pi.jsonl', import.meta.url)).trim().split('\n').map(JSON.parse);
@@ -58,7 +59,7 @@ test('Thinking efforts map to pi --thinking levels and default omits the flag', 
   assert.deepEqual(fresh.args.slice(-5), ['--tools', 'read,bash,edit,write', '--session-id', fresh.session_id, '@/fixture/prompt.md']);
   assert.equal(fresh.args.at(-3), '--session-id'); assert.match(fresh.session_id, /^[0-9a-f]{8}-/);
   const highArgs = call({ effort: 'high' }).args;
-  assert.deepEqual(highArgs.slice(highArgs.indexOf('--thinking'), highArgs.indexOf('--tools')), ['--thinking', 'high']);
+  assert.deepEqual(highArgs.slice(highArgs.indexOf('--thinking'), highArgs.indexOf('--thinking') + 2), ['--thinking', 'high']);
   for (const level of PI_THINKING_LEVELS) {
     const args = call({ effort: level }).args;
     assert.deepEqual(args.slice(args.indexOf('--thinking'), args.indexOf('--thinking') + 2), ['--thinking', level]);
@@ -80,7 +81,7 @@ test('Committed pi-agent template pins every OpenRouter worker with recorded hos
   const settings = json(new URL('../config/pi-agent/settings.json', import.meta.url));
   assert.equal(settings.cacheWarming, 'off');
   const nativeLower = { 'moonshotai/kimi-k3': 'mxfp4', 'moonshotai/kimi-k2.7-code': 'int4' };
-  const noQuantizationFilter = ['deepseek/deepseek-v4.1-flash', 'qwen/qwen3.8-max-0902', 'qwen/qwen3.8-flash', 'meta/muse-spark-1.3', 'google/gemini-3.8-flash', 'x-ai/grok-4.7'];
+  const noQuantizationFilter = ['qwen/qwen3.8-max-0902', 'qwen/qwen3.8-flash', 'meta/muse-spark-1.3', 'google/gemini-3.8-flash', 'x-ai/grok-4.7'];
   for (const m of models.filter(m => m.id.startsWith('or:'))) {
     const entry = overrides[m.model];
     assert.ok(entry, `missing override for ${m.model}`);
@@ -135,7 +136,7 @@ test('Quota parsers classify fixture stderr per adapter and never leak unknown t
   assert.equal(detectQuota('pi', ['OpenRouter HTTP 402']).source, 'openrouter-402');
   assert.equal(detectQuota('pi', ['"errorMessage":"402: {\\"message\\":\\"insufficient credits\\"}"}']).source, 'openrouter-402');
   assert.equal(openRouterReservation(['{"code":402}']), true);
-  assert.equal(detectQuota('pi', ['HTTP 404']).exhausted_until, null);
+  assert.equal(detectQuota('pi', ['HTTP 404']), null);
   assert.equal(detectQuota('anthropic-compat', ['HTTP 429']).source, 'openrouter-429');
   assert.equal(detectQuota('pi', ['ok']), null);
   assert.equal(detectQuota('grok', ['usage limit']), null);
@@ -163,7 +164,7 @@ test('Quota state file persists infrastructure events and route falls back to th
   // Exhausting every candidate family fails with the reason instead of a silent pick.
   recordQuota(ctx, 'anthropic', { source: 'claude-usage-limit' });
   recordQuota(ctx, 'openrouter', { source: 'openrouter-402' });
-  assert.throws(() => route(ctx, { role: 'judge', 'exclude-family': ['anthropic', 'openai', 'zhipu', 'deepseek'], 'task-class': 'mechanical' }), /Quota exhausted/);
+  assert.throws(() => route(ctx, { role: 'judge', 'exclude-family': ['openai'], 'task-class': 'mechanical' }), /Quota exhausted/);
 });
 
 test('Scoreboard and tune exclude quota-infra runs from pass/fail statistics', t => {
@@ -175,7 +176,7 @@ test('Scoreboard and tune exclude quota-infra runs from pass/fail statistics', t
   append(ctx, { kind: 'outcome', run_id: 'good-run', result: 'pass' });
   const rows = scoreboard(ctx).rows.filter(r => r.model === 'or:glm-5.3-flash');
   assert.equal(rows.length, 1); assert.equal(rows[0].n, 1); assert.equal(rows[0].pass, 1); assert.equal(rows[0].fail, 0);
-  assert.equal(policy(ctx).version, json(path.join(ROOT, '.harness/routing/policy.json')).version);
+  assert.equal(policy(ctx).version, fixturePolicy.version);
 });
 
 test('run ledger rows carry adapter pi with pinned-runtime cost reconciliation fields', () => {
@@ -186,5 +187,5 @@ test('run ledger rows carry adapter pi with pinned-runtime cost reconciliation f
   assert.ok(source.includes('env.ANTHROPIC_AUTH_TOKEN ?? env.OPENROUTER_API_KEY'));
   assert.ok(source.includes("env.PI_CODING_AGENT_DIR = piAgentDir(ctx)"));
   assert.ok(source.includes("record.infra = 'quota_exhausted'"));
-  assert.ok(source.includes("'skipped_quota'"));
+  assert.ok(read(new URL('../bin/lib/bench.mjs', import.meta.url)).includes("'skipped_quota'"));
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { context, PLUGIN, ROOT, read, json, write, writeJson, redactor, resolveEnv, environmentValue, windowsEnvironment, registerSecret } from '../bin/lib/util.mjs';
+import { context, read, json, write, writeJson, redactor, resolveEnv, environmentValue, windowsEnvironment, registerSecret } from '../bin/lib/util.mjs';
 import { catalog, provider } from '../bin/lib/prices.mjs';
 import { parser, invocation } from '../bin/lib/adapters.mjs';
 import { accountStatus, openRouterClient, generationCosts } from '../bin/lib/openrouter.mjs';
@@ -13,12 +13,14 @@ import { budgetStatus, budgetCheck, chargedCost } from '../bin/lib/budget.mjs';
 import { route, policy, scoreboard } from '../bin/lib/route.mjs';
 import { judge, calibration } from '../bin/lib/judge.mjs';
 import { run } from '../bin/lib/run.mjs';
+import { seedLocalData } from './fixtures/local-data.mjs';
 
 const jevResponse = () => json(new URL('fixtures/jev-response.json', import.meta.url));
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-v11-')), ctx = context(root);
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  for (const f of ['budget/limits.json', 'routing/policy.json']) writeJson(path.join(ctx.data, f), json(path.join(ROOT, '.harness', f)));
+  ctx.accountStatus = async () => ({ status: 'unavailable' });
+  seedLocalData(ctx);
   return ctx;
 }
 function worker(ctx, runId = 'fixture-worker', exit = 0) {
@@ -204,7 +206,7 @@ test('Generation collection caps distinct IDs at 200 and concurrency at four', a
   assert.equal(calls, 200); assert.equal(peak, 4); assert.equal(result.cost_usd_actual, null); assert.equal(result.generation_stats.capped, true); assert.equal(result.generation_stats.expected, 205);
 });
 
-test('Budget counts gate usage, prefers actual, falls back on estimate, and keeps UTC boundaries', t => {
+test('Budget counts gate usage, prefers actual, falls back on estimate, and keeps UTC boundaries', async t => {
   const ctx = fixture(t), now = new Date('2026-09-23T12:00:00Z');
   for (const r of [
     { run_id: 'actual', ts: '2026-09-23', cost_usd_actual: .1, cost_usd_est: .9 },
@@ -216,18 +218,18 @@ test('Budget counts gate usage, prefers actual, falls back on estimate, and keep
   append(ctx, { kind: 'gate', model: 'jev', ts: '2026-09-23', cost_basis: 'metered', cost_usd_actual: .001, cost_usd_est: .01, usage: { cost: .001 } }, 'gate');
   const b = budgetStatus(ctx, now); assert.ok(Math.abs(b.day_usd - .901) < 1e-10); assert.ok(Math.abs(b.month_usd - 1.101) < 1e-10);
   assert.equal(b.limits.metered.monthly_usd, 30); assert.equal(b.limits.metered.conservative_default_usd, .5);
-  assert.equal(budgetCheck(ctx, provider(ctx, 'or:glm-5.3-flash'), 1.01, now).allowed, false);
+  assert.equal((await budgetCheck(ctx, provider(ctx, 'or:glm-5.3-flash'), 1.01, now)).allowed, false);
 });
 
-test('Known partial spend controls budget boundaries, recent estimates and routing utility', t => {
+test('Known partial spend controls budget boundaries, recent estimates and routing utility', async t => {
   const ctx = fixture(t), now = new Date('2026-09-23T12:00:00Z'), model = 'or:glm-5.3-flash';
   writeJson(path.join(ctx.data, 'budget/limits.json'), { metered: { monthly_usd: 1, daily_usd: 1, per_run_usd: 1, conservative_default_usd: .4 }, quota: null });
   const partial = { run_id: 'partial-boundary', ts: '2026-09-23T01:00:00Z', model, role: 'worker-mech', task_class: 'mechanical', cost_basis: 'metered', cost_usd_actual: null, cost_usd_actual_partial: .75, cost_usd_est: .125, wall_s: 4 };
   append(ctx, partial); append(ctx, { kind: 'outcome', run_id: partial.run_id, result: 'pass' });
   const status = budgetStatus(ctx, now); assert.equal(status.day_usd, .75); assert.equal(status.month_usd, .75);
-  assert.equal(budgetCheck(ctx, provider(ctx, model), .25, now).allowed, true);
-  assert.equal(budgetCheck(ctx, provider(ctx, model), .250001, now).allowed, false);
-  const recent = budgetCheck(ctx, provider(ctx, model), undefined, now);
+  assert.equal((await budgetCheck(ctx, provider(ctx, model), .25, now)).allowed, true);
+  assert.equal((await budgetCheck(ctx, provider(ctx, model), .250001, now)).allowed, false);
+  const recent = (await budgetCheck(ctx, provider(ctx, model), undefined, now));
   assert.equal(recent.estimate_usd, .75); assert.equal(recent.allowed, false);
   assert.equal(scoreboard(ctx, false, now).rows[0].mean_cost, .75);
   const candidate = route(ctx, { role: 'worker-mech', 'task-class': 'mechanical' }).candidates.find(c => c.model === model), p = policy(ctx);
@@ -237,7 +239,7 @@ test('Known partial spend controls budget boundaries, recent estimates and routi
   assert.equal(chargedCost({ ...partial, cost_usd_actual: 0 }), 0);
 });
 
-test('Partial costs respect larger estimates and configured defaults without inventing free unknown usage', t => {
+test('Partial costs respect larger estimates and configured defaults without inventing free unknown usage', async t => {
   assert.equal(chargedCost({ cost_usd_actual_partial: .1, cost_usd_est: .3 }), .3);
   assert.equal(chargedCost({ cost_usd_actual_partial: .6, budget_estimate_usd: .4 }), .6);
   assert.equal(chargedCost({ cost_usd_actual_partial: .1, budget_estimate_usd: .4 }), .4);
@@ -248,7 +250,7 @@ test('Partial costs respect larger estimates and configured defaults without inv
   writeJson(path.join(ctx.data, 'budget/limits.json'), { metered: { monthly_usd: 2, daily_usd: 2, per_run_usd: 1, conservative_default_usd: .4 }, quota: null });
   append(ctx, { run_id: 'partial-default', ts: '2026-09-23T01:00:00Z', model, cost_basis: 'metered', cost_usd_actual: null, cost_usd_actual_partial: .1, cost_usd_est: null });
   assert.equal(budgetStatus(ctx, now).day_usd, .4);
-  assert.equal(budgetCheck(ctx, provider(ctx, model), undefined, now).estimate_usd, .4);
+  assert.equal((await budgetCheck(ctx, provider(ctx, model), undefined, now)).estimate_usd, .4);
 });
 
 test('Gate request extracts acceptance, orders source before large test diffs, and bounds Unicode bytes', () => {

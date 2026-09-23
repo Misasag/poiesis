@@ -47,12 +47,16 @@ export function scoreboard(ctx, persist = false, now = new Date()) {
   for (const r of lines) if (r.kind === 'outcome') outcomes.set(r.run_id, r.result);
   for (const r of lines) {
     const result = outcomes.get(r.run_id);
-    // Infra failures (quota exhaustion) are not model evidence.
-    if (r.kind || r.infra || !['pass', 'fail'].includes(result)) continue;
+    // Infra failures (quota or routing configuration) are not model evidence. A timeout is
+    // a speed failure: it counts as fail for pass rate but is reported
+    // separately so wrong answers stay distinguishable.
+    if (r.kind || r.infra || !['pass', 'fail', 'timeout'].includes(result)) continue;
     const role = r.role === 'worker' ? (r.task_class === 'mechanical' ? 'worker-mech' : 'worker-design') : r.role;
     const key = `${role}|${r.task_class}|${r.model}`;
-    const row = rows.get(key) ?? { role, task_class: r.task_class, model: r.model, alpha: 1, beta: 1, n: 0, costs: [], times: [], pass: 0, fail: 0 };
-    row[result === 'pass' ? 'alpha' : 'beta'] += decay(r.ts, now); row[result]++; row.n++;
+    const row = rows.get(key) ?? { role, task_class: r.task_class, model: r.model, alpha: 1, beta: 1, n: 0, costs: [], times: [], pass: 0, fail: 0, timeout: 0 };
+    row[result === 'pass' ? 'alpha' : 'beta'] += decay(r.ts, now);
+    if (result === 'pass') row.pass++; else { row.fail++; if (result === 'timeout') row.timeout++; }
+    row.n++;
     const cost = chargedCost(r, null);
     if (Number.isFinite(cost)) row.costs.push(cost);
     if (Number.isFinite(r.wall_s)) row.times.push(r.wall_s);
@@ -87,8 +91,10 @@ export function route(ctx, o) {
   if (!candidates.length) fail(blocked.length ? `Quota exhausted for ${[...new Set(blocked.map(b => b.quota))].join(', ')}; no eligible model` : 'No eligible model after family/data policy exclusion');
   const ranked = candidates.map(m => {
     const score = scores.find(s => s.role === o.role && s.task_class === (o['task-class'] ?? 'unclassified') && s.model === m.id);
-    const meanCost = score?.mean_cost ?? (m.costBasis === 'quota' ? 0 : 1);
-    return { model: m.id, family: m.family, p_pass: score?.p_pass ?? 0.5, utility: (score?.p_pass ?? 0.5) - p.lambda_cost * meanCost - p.lambda_time * (score?.mean_wall_s ?? 0), n: score?.n ?? 0 };
+    const quotaFirst = p.quota_first !== false && m.costBasis === 'quota';
+    const meanCost = quotaFirst ? 0 : score?.mean_cost ?? (m.costBasis === 'quota' ? 0 : 1);
+    return { model: m.id, family: m.family, p_pass: score?.p_pass ?? 0.5, utility: (score?.p_pass ?? 0.5) - p.lambda_cost * meanCost - p.lambda_time * (score?.mean_wall_s ?? 0), n: score?.n ?? 0,
+      pricing_rule: quotaFirst ? 'quota_first: zero marginal cost' : 'metered: measured cost' };
   });
   const seed = o.ticket ?? `${o.role}:${o['task-class'] ?? 'unclassified'}`;
   const challengers = ranked.filter(m => (rule.challengers ?? []).includes(m.model));

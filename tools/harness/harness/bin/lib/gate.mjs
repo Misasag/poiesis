@@ -77,7 +77,7 @@ export async function gate(ctx, o, dependencies = {}) {
     const payload = decisionRequest({ brief: read(path.join(dir, 'brief.md')), stat: optional('diff.stat'), patch: optional('diff.patch'), checks }, p.model);
     // Even the byte upper bound costs less than one tenth of a cent.
     const estimate = Buffer.byteLength(JSON.stringify(payload)) * p.prices.inputPerMTok / 1e6;
-    requireBudget(ctx, p, estimate);
+    await requireBudget(ctx, p, estimate);
     writeJson(path.join(runDir(ctx, record.gate_id), 'request.json'), clean(payload));
     Object.assign(record, { mode: 'jev', verdict: 'escalate', cost_usd_actual: null, cost_usd_est: null, budget_estimate_usd: estimate, usage: null });
     try {

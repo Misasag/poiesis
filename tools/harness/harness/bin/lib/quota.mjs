@@ -50,7 +50,7 @@ export function detectQuota(adapter, texts, now = new Date()) {
     return null;
   }
   if (adapter === 'claude') {
-    if (/usage limit reached|you'?ve hit your (?:usage|rate) limit|out of extra usage/i.test(text)) return { source: 'claude-usage-limit', exhausted_until: nextLocalTime(text, now) };
+    if (/usage limit (?:has been )?reached|you'?ve hit your (?:usage|rate) limit|out of extra usage|\brate_limit\b/i.test(text)) return { source: 'claude-usage-limit', exhausted_until: nextLocalTime(text, now) };
     return null;
   }
   if (adapter === 'pi' || adapter === 'anthropic-compat') {

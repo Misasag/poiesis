@@ -6,11 +6,11 @@ import { run } from './lib/run.mjs';
 import { verify } from './lib/verify.mjs';
 import { judge, calibration } from './lib/judge.mjs';
 import { route, scoreboard, tune, policy } from './lib/route.mjs';
-import { budgetStatus, budgetCheck } from './lib/budget.mjs';
-import { provider } from './lib/prices.mjs';
+import { budgetStatus, meteredBudgetStatus, budgetCheck } from './lib/budget.mjs';
+import { provider, refreshPrices } from './lib/prices.mjs';
+import { costReport, formatCost } from './lib/cost.mjs';
 import { ledger, outcome } from './lib/ledger.mjs';
-import { mine, benchRun } from './lib/bench.mjs';
-import { accountStatus } from './lib/openrouter.mjs';
+import { mine, benchRun, resuite } from './lib/bench.mjs';
 import { gate } from './lib/gate.mjs';
 import { exhaustedQuota } from './lib/quota.mjs';
 
@@ -26,7 +26,7 @@ try {
       required(o, 'role'); result = route(ctx, o);
       if (!o.json && !o.explain) { out(result.model); process.exit(0); }
       if (o.explain && !o.json) {
-        out(`model=${result.model} effort=${result.effort ?? 'default'} exploring=${result.exploring} utility=${result.utility?.toFixed(4)}`);
+        out(`model=${result.model} effort=${result.effort ?? 'default'} exploring=${result.exploring} utility=${result.utility?.toFixed(4)} rule=${result.pricing_rule}`);
         for (const b of result.skipped.quota_exhausted) out(`skipped ${b.model}: quota ${b.quota} exhausted, resets ${b.reset}`);
         process.exit(0);
       }
@@ -36,16 +36,23 @@ try {
     case 'judge-calibration': result = calibration(ctx); break;
     case 'outcome': required(o, 'run', 'result'); result = outcome(ctx, o.run, o.result, o.note); break;
     case 'tune': result = tune(ctx, Boolean(o.apply)); break;
+    case 'prices':
+      if (o._[0] !== 'refresh') fail('Usage: hx prices refresh');
+      result = await refreshPrices(ctx); break;
+    case 'cost':
+      result = await costReport(ctx, o);
+      break;
     case 'budget': {
-      if (o._[0] === 'check') { required(o, 'model'); result = budgetCheck(ctx, provider(ctx, o.model), o['estimate-usd']); if (!result.allowed) result.exit_code = 3; }
-      else if (o._[0] === 'status') { const b = budgetStatus(ctx); result = { month_usd: b.month_usd, day_usd: b.day_usd, quota_runs_today: b.quota_today.length, limits: b.limits, openrouter: await accountStatus() }; }
+      if (o._[0] === 'check') { required(o, 'model'); result = await budgetCheck(ctx, provider(ctx, o.model), o['estimate-usd']); if (!result.allowed) result.exit_code = 3; }
+      else if (o._[0] === 'status') { const { runs, quota_today, ...b } = await meteredBudgetStatus(ctx); result = { ...b, quota_runs_today: quota_today.length }; }
       else fail('Usage: hx budget status|check [--model id]');
       break;
     }
     case 'bench':
       if (o._[0] === 'mine') result = await mine(ctx, o);
       else if (o._[0] === 'run') result = await benchRun(ctx, o);
-      else fail('Usage: hx bench mine|run');
+      else if (o._[0] === 'resuite') result = await resuite(ctx);
+      else fail('Usage: hx bench mine|run|resuite');
       break;
     case 'dogfood': result = await (await import('./lib/dogfood.mjs')).dogfood(ctx, o); break;
     case 'status': {
@@ -65,10 +72,10 @@ try {
       break;
     }
     case 'help': case '--help': case undefined:
-      out('hx run|verify|gate|judge|route|scoreboard|outcome|tune|budget|bench|dogfood|status|judge-calibration [--json]'); process.exit(0);
+      out('hx run|verify|gate|judge|route|scoreboard|outcome|tune|budget|prices|cost|bench|dogfood|status|judge-calibration [--json]'); process.exit(0);
     default: fail(`Unknown command: ${command}`);
   }
-  out(redactor()(result)); process.exitCode = result?.exit_code ?? 0;
+  out(command === 'cost' && !o.json ? formatCost(result) : redactor()(result)); process.exitCode = result?.exit_code ?? 0;
 } catch (error) {
   out({ error: redactor()(error.message), exit_code: error.exitCode ?? 1 }); process.exitCode = error.exitCode ?? 1;
 }
