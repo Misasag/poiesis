@@ -12,9 +12,6 @@
 - `agent-window/src/node/`: CLI processes, storage, snapshots, backend services.
 - `browser-app/` and `electron-app/`: Theia application composition and desktop packaging.
 - `scripts/test-*.mjs`: deterministic regression checks; `scripts/smoke-*.mjs`: UI checks.
-- `tools/harness/harness/`: development-only CLI and Claude Code plugin.
-- `.harness/`: measured runs, routing, budgets, benchmark tasks, and optional tickets.
-- Harness files must never enter `plugins/`, `scripts/`, `lib/`, or `electron-app/`.
 
 ## Commands (from the root package.json)
 - `npm run validate:source`: source contract pins and integration invariants.
@@ -47,14 +44,12 @@
 - `npm run smoke:composer`, `npm run smoke:task-feedback`, `npm run smoke:no-change`: focused desktop scenarios.
 - `npm run smoke:ui`, `npm run smoke:results-document`, `npm run smoke:results-continuity`: UI/Results checks.
 - `npm run smoke:installed`: installed-app check; use only when that target is authorized.
-- `node --test tools/harness/harness/test`: offline harness tests, no model calls.
 - Read package.json for other smoke commands; some smokes build or touch runtime fixtures.
 
 ## Source validation pins
 - `scripts/validate-source.mjs` intentionally pins source fragments, labels, and selectors.
 - When an authorized behavior change replaces a pinned contract, update the matching pin and behavioral test together.
 - Do not weaken or delete a pin solely to obtain a green check. Explain the intentional contract change.
-- A harness-only lane must not edit the application or its validation scripts.
 
 ## Owner UI rules
 - Use Japanese user-facing UI text. Do not use emoji.
@@ -64,21 +59,16 @@
 - Express status with text and numbers as well as color. Preserve existing keyboard and focus behavior.
 
 ## Windows and subprocesses
-- Windows 11, Smart App Control ON: never disable it. This harness uses Node ESM without Python or npm dependencies.
+- Windows 11, Smart App Control ON: never disable it.
 - Use `spawn` with `shell:false` and `windowsHide:true`. Resolve `.cmd` shims to the real executable/JS entry point.
 - Codex: Node + `%APPDATA%/npm/node_modules/@openai/codex/bin/codex.js`.
-- Harness Codex runs use `--ignore-user-config` to isolate owner MCP startup; a child npm cache override alone does not isolate caches configured inside MCP definitions.
 - Claude: the native `claude.exe`; Grok: `%USERPROFILE%/.grok/bin/grok.exe`.
 - Use Node + npm-cli.js for npm acceptance commands; never use `cmd.exe /d /s /c`.
 - Keep npm caches outside worker workspaces. Use explicit UTF-8 file I/O and BOM-aware reads.
-- Harness stdout/stderr must be ASCII; escape non-ASCII text. Japanese may appear in UTF-8 files.
 - Resolve environment secrets only at spawn time. Redact secret values and secret-named fields from artifacts and logs.
 - Resume only an explicitly recorded session ID; never use implicit latest/continue flags.
 - Stop only PIDs started by this run. Never kill installed apps by image name.
 
 ## Evidence and evaluation
 - Verify first. A failing acceptance command overrides a favorable model judgment.
-- Reviewers/judges must differ in family from the worker (and every pairwise candidate).
 - Report what was executed, exit codes, unresolved limitations, and measured evidence; do not infer a pass from prose.
-- Frozen evaluator: rubric, judge/budget code, budget limits, benchmark tasks/tests.
-- Self-improvement may change only approved skills, brief templates, policy lambdas/challengers, and this guidance; evaluate before adopting.

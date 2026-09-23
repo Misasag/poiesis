@@ -25,15 +25,7 @@ plugins/
 electron-app/dist/
 *.log
 
-# Development harness runtime artifacts
-.harness/runs/
-.harness/worktrees/
-.harness/dogfood/
-.harness/tmp/
-.harness/pi-agent/
-.harness/budget/quota-state.json
-.harness/budget/openrouter-baseline.json*
-
-# The harness source modules are not generated application lib output.
-!tools/harness/harness/bin/lib/
-!tools/harness/harness/bin/lib/*.mjs
+# The development harness lives in the private Misasag/poiesis-harness repository.
+/tools/harness/
+/.harness/
+.claude/settings.local.json
