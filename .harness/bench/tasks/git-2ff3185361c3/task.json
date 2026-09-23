@@ -1,0 +1,94 @@
+{
+  "id": "git-2ff3185361c3",
+  "base_sha": "704fcf9dee0bee79e3dcb2dc03d505fa5da4d888",
+  "fix_sha": "2ff3185361c3eceff174c6da693627474e2adde0",
+  "test_files": [
+    "scripts/test-agent-send-detection.mjs",
+    "scripts/test-cli-args.mjs",
+    "scripts/test-cli-detection-lifecycle.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-cli-detection-lifecycle.mjs",
+    "node scripts/test-agent-send-detection.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-cli-args.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/agent-window/agent-part.tsx",
+    "agent-window/src/browser/agent-window/agent-window-host.ts",
+    "agent-window/src/browser/agent-window/results-part.tsx",
+    "agent-window/src/browser/agent-window/settings-part.tsx",
+    "agent-window/src/browser/style/responsive.css",
+    "agent-window/src/browser/style/results.css",
+    "agent-window/src/browser/style/settings.css",
+    "agent-window/src/common/agent-runtime-protocol.ts",
+    "agent-window/src/common/cli-detection-lifecycle.ts",
+    "agent-window/src/node/cli-detector.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "agent",
+  "validation": {
+    "ts": "2026-09-23T05:33:30.608Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 3.259
+      },
+      {
+        "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+        "exit_code": 1,
+        "wall_s": 0.048
+      },
+      {
+        "cmd": "node scripts/test-agent-send-detection.mjs",
+        "exit_code": 1,
+        "wall_s": 0.171
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.7
+      },
+      {
+        "cmd": "node scripts/test-cli-args.mjs",
+        "exit_code": 1,
+        "wall_s": 0.046
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 4.002
+      },
+      {
+        "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+        "exit_code": 0,
+        "wall_s": 0.049
+      },
+      {
+        "cmd": "node scripts/test-agent-send-detection.mjs",
+        "exit_code": 0,
+        "wall_s": 0.491
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.816
+      },
+      {
+        "cmd": "node scripts/test-cli-args.mjs",
+        "exit_code": 0,
+        "wall_s": 0.044
+      }
+    ],
+    "before_wall_s": 5.224,
+    "after_wall_s": 6.402,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-2ff3185361c3.json"
+  }
+}

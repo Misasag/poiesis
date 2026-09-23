@@ -1,0 +1,100 @@
+{
+  "id": "git-ea40e651c567",
+  "base_sha": "7b1c953f57251577a0c5af7468b4062969a18d41",
+  "fix_sha": "ea40e651c567d1ab80e518b8e27ae1f73ae72653",
+  "task": {
+    "id": "git-ea40e651c567",
+    "base_sha": "7b1c953f57251577a0c5af7468b4062969a18d41",
+    "fix_sha": "ea40e651c567d1ab80e518b8e27ae1f73ae72653",
+    "test_files": [
+      "scripts/test-requirement-classifier.mjs"
+    ],
+    "test_cmds": [
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-requirement-classifier.mjs"
+    ],
+    "src_files": [
+      "agent-window/src/browser/agent-window-frontend-module.ts",
+      "agent-window/src/browser/agent-window-widget.tsx",
+      "agent-window/src/browser/cli-agent-provider.ts",
+      "agent-window/src/browser/requirement-classification-service.ts",
+      "agent-window/src/browser/requirement-classifier.ts",
+      "agent-window/src/browser/results-skill.ts",
+      "agent-window/src/browser/style/index.css",
+      "agent-window/src/browser/task-service.ts",
+      "agent-window/src/common/agent-provider.ts",
+      "agent-window/src/common/requirement-classification-protocol.ts",
+      "agent-window/src/node/agent-window-backend-module.ts",
+      "agent-window/src/node/requirement-classification-server.ts"
+    ],
+    "class": "app-frontend",
+    "instruction_file": "instruction.md",
+    "instruction_source": "commit-message",
+    "area": "requirement",
+    "validation": {
+      "ts": "2026-09-23T05:28:23.483Z",
+      "before": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 3.177
+        },
+        {
+          "cmd": "node scripts/test-requirement-classifier.mjs",
+          "exit_code": 1,
+          "wall_s": 0.048
+        }
+      ],
+      "after": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 2.701
+        },
+        {
+          "cmd": "node scripts/test-requirement-classifier.mjs",
+          "exit_code": 0,
+          "wall_s": 0.045
+        }
+      ],
+      "before_wall_s": 3.225,
+      "after_wall_s": 2.746,
+      "log": ".harness/bench/validation/mine-2026-09-23T05-26-43-976Z-99299c39/git-ea40e651c567.json"
+    }
+  },
+  "valid": true,
+  "reason": "Validated fail-to-pass",
+  "before": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm notice\nnpm notice New minor version of npm available! 11.11.0 -> 11.20.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0\nnpm notice To update run: npm install -g npm@11.20.0\nnpm notice\n",
+      "exit_code": 0,
+      "wall_s": 3.177
+    },
+    {
+      "cmd": "node scripts/test-requirement-classifier.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/esm/resolve:275\r\n    throw new ERR_MODULE_NOT_FOUND(\r\n          ^\r\n\r\nError [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-28-17-178Z-6733fa75\\agent-window\\lib\\browser\\requirement-classifier.js' imported from C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-28-17-178Z-6733fa75\\scripts\\test-requirement-classifier.mjs\r\n    at finalizeResolution (node:internal/modules/esm/resolve:275:11)\r\n    at moduleResolve (node:internal/modules/esm/resolve:865:10)\r\n    at defaultResolve (node:internal/modules/esm/resolve:991:11)\r\n    at #cachedDefaultResolve (node:internal/modules/esm/loader:719:20)\r\n    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:736:38)\r\n    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:765:52)\r\n    at #resolve (node:internal/modules/esm/loader:701:17)\r\n    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:621:35)\r\n    at ModuleJob.syncLink (node:internal/modules/esm/module_job:160:33)\r\n    at ModuleJob.link (node:internal/modules/esm/module_job:245:17) {\r\n  code: 'ERR_MODULE_NOT_FOUND',\r\n  url: 'file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-28-17-178Z-6733fa75/agent-window/lib/browser/requirement-classifier.js'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.048
+    }
+  ],
+  "after": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 2.701
+    },
+    {
+      "cmd": "node scripts/test-requirement-classifier.mjs",
+      "stdout": "requirement-classifier tests passed\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.045
+    }
+  ],
+  "wall_s": 6.618
+}

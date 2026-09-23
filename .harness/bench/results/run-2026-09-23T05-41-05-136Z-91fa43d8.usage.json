@@ -1,0 +1,528 @@
+{
+  "run_id": "run-2026-09-23T05-41-05-136Z-91fa43d8",
+  "ts": "2026-09-23T06:13:07.924Z",
+  "source": "OpenRouter generation native_tokens_prompt/completion for captured assistant IDs only",
+  "complete_for_captured_ids": true,
+  "expected": 64,
+  "received": 64,
+  "tokens": {
+    "in": 4049568,
+    "out": 72196,
+    "cached_in": 3795392,
+    "reasoning": 65265
+  },
+  "items": [
+    {
+      "id": "gen-1790142067-FLgnQ86Hn8xXda52aHTt",
+      "native_tokens_prompt": 15589,
+      "native_tokens_completion": 104,
+      "native_tokens_cached": 0,
+      "native_tokens_reasoning": 17,
+      "total_cost": 0.0015953
+    },
+    {
+      "id": "gen-1790142073-VWMJ8PaXysCc5F5OXjql",
+      "native_tokens_prompt": 16732,
+      "native_tokens_completion": 138,
+      "native_tokens_cached": 768,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00166006
+    },
+    {
+      "id": "gen-1790142081-zGCO7l1dZczlb0eMEfc1",
+      "native_tokens_prompt": 19328,
+      "native_tokens_completion": 99,
+      "native_tokens_cached": 19200,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00043145
+    },
+    {
+      "id": "gen-1790142079-AygYD3xobysywIcS4gb2",
+      "native_tokens_prompt": 19196,
+      "native_tokens_completion": 71,
+      "native_tokens_cached": 15552,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00070029
+    },
+    {
+      "id": "gen-1790142085-TlOzQrmFlUrcTN9IBpIy",
+      "native_tokens_prompt": 23072,
+      "native_tokens_completion": 153,
+      "native_tokens_cached": 19328,
+      "native_tokens_reasoning": 30,
+      "total_cost": 0.00081451
+    },
+    {
+      "id": "gen-1790142109-1Jck1unNHSOQGAR8muqM",
+      "native_tokens_prompt": 27031,
+      "native_tokens_completion": 73,
+      "native_tokens_cached": 24384,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00077793
+    },
+    {
+      "id": "gen-1790142090-GS9afOYLc2lMwuvHDKzm",
+      "native_tokens_prompt": 23649,
+      "native_tokens_completion": 67,
+      "native_tokens_cached": 23040,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00054515
+    },
+    {
+      "id": "gen-1790142116-4kysl3W2wcTKipHOSN9u",
+      "native_tokens_prompt": 28291,
+      "native_tokens_completion": 2070,
+      "native_tokens_cached": 28160,
+      "native_tokens_reasoning": 1907,
+      "total_cost": 0.0013008
+    },
+    {
+      "id": "gen-1790142093-Bd2nB5tEInpeZRvMSgb5",
+      "native_tokens_prompt": 24440,
+      "native_tokens_completion": 612,
+      "native_tokens_cached": 23616,
+      "native_tokens_reasoning": 546,
+      "total_cost": 0.00076892
+    },
+    {
+      "id": "gen-1790142111-yT9EIz821uRX6Tm14aig",
+      "native_tokens_prompt": 27634,
+      "native_tokens_completion": 96,
+      "native_tokens_cached": 27008,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00063636
+    },
+    {
+      "id": "gen-1790142113-t4EJkHLaQ0Z3Hno7xezm",
+      "native_tokens_prompt": 28073,
+      "native_tokens_completion": 97,
+      "native_tokens_cached": 27648,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00062941
+    },
+    {
+      "id": "gen-1790142159-G72Y1YRAWfKGUD0jXFG2",
+      "native_tokens_prompt": 30505,
+      "native_tokens_completion": 91,
+      "native_tokens_cached": 28288,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00081931
+    },
+    {
+      "id": "gen-1790142161-qrA0CyjIqtGGbk2TvRx4",
+      "native_tokens_prompt": 31159,
+      "native_tokens_completion": 77,
+      "native_tokens_cached": 30464,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00070573
+    },
+    {
+      "id": "gen-1790142163-8pavHxfAAvosjqjo50B5",
+      "native_tokens_prompt": 33201,
+      "native_tokens_completion": 78,
+      "native_tokens_cached": 31232,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00084884
+    },
+    {
+      "id": "gen-1790142170-D2nwQc6ZFWPHkcldmZjw",
+      "native_tokens_prompt": 36155,
+      "native_tokens_completion": 77,
+      "native_tokens_cached": 33152,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00099029
+    },
+    {
+      "id": "gen-1790142179-xqNLra7URTCyGcCOrSvS",
+      "native_tokens_prompt": 44498,
+      "native_tokens_completion": 102,
+      "native_tokens_cached": 41536,
+      "native_tokens_reasoning": 25,
+      "total_cost": 0.00116262
+    },
+    {
+      "id": "gen-1790142182-b851Ml8TTlp6aHMRcB8L",
+      "native_tokens_prompt": 50970,
+      "native_tokens_completion": 78,
+      "native_tokens_cached": 44480,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.0015659
+    },
+    {
+      "id": "gen-1790142174-5qPSJwYJIzKfFcO7S9F7",
+      "native_tokens_prompt": 41543,
+      "native_tokens_completion": 79,
+      "native_tokens_cached": 36096,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00129427
+    },
+    {
+      "id": "gen-1790142183-JAMrrGPggAZs1HjH0PnZ",
+      "native_tokens_prompt": 53147,
+      "native_tokens_completion": 2322,
+      "native_tokens_cached": 50944,
+      "native_tokens_reasoning": 2155,
+      "total_cost": 0.00205188
+    },
+    {
+      "id": "gen-1790142221-FlwKAYdOiiB9ksQrCzO4",
+      "native_tokens_prompt": 59096,
+      "native_tokens_completion": 95,
+      "native_tokens_cached": 57408,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00135021
+    },
+    {
+      "id": "gen-1790142218-PxMtLW1p1cP0xvb0vLXW",
+      "native_tokens_prompt": 57438,
+      "native_tokens_completion": 84,
+      "native_tokens_cached": 53120,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.0015236
+    },
+    {
+      "id": "gen-1790142231-eeIhoSz3GPrEiAWtEMM3",
+      "native_tokens_prompt": 68208,
+      "native_tokens_completion": 162,
+      "native_tokens_cached": 67584,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00147078
+    },
+    {
+      "id": "gen-1790142223-XSIqgfKFyH7VheJeakRA",
+      "native_tokens_prompt": 62461,
+      "native_tokens_completion": 96,
+      "native_tokens_cached": 59136,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00154882
+    },
+    {
+      "id": "gen-1790142226-hydejlmtxyj0IVSav5aY",
+      "native_tokens_prompt": 66333,
+      "native_tokens_completion": 116,
+      "native_tokens_cached": 62464,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00167678
+    },
+    {
+      "id": "gen-1790142228-5CiHT628M4kjv2iNS7b4",
+      "native_tokens_prompt": 67596,
+      "native_tokens_completion": 138,
+      "native_tokens_cached": 66304,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00150358
+    },
+    {
+      "id": "gen-1790142281-5wNWbtQgoClAl2fxtxW6",
+      "native_tokens_prompt": 73771,
+      "native_tokens_completion": 112,
+      "native_tokens_cached": 71680,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.0016819
+    },
+    {
+      "id": "gen-1790142235-G2ZkrxQtLteBhNMpS9PL",
+      "native_tokens_prompt": 75364,
+      "native_tokens_completion": 174,
+      "native_tokens_cached": 3584,
+      "native_tokens_reasoning": 56,
+      "total_cost": 0.0065806
+    },
+    {
+      "id": "gen-1790142277-AEo1tm5p4WpZQX4moM38",
+      "native_tokens_prompt": 71692,
+      "native_tokens_completion": 91,
+      "native_tokens_cached": 68352,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00173289
+    },
+    {
+      "id": "gen-1790143160-hm6cjAJXoVpbQOefc0cP",
+      "native_tokens_prompt": 75944,
+      "native_tokens_completion": 102,
+      "native_tokens_cached": 75584,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00158338
+    },
+    {
+      "id": "gen-1790142284-nDVSQ36Wu01kQR601xQw",
+      "native_tokens_prompt": 75024,
+      "native_tokens_completion": 90,
+      "native_tokens_cached": 73728,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00163566
+    },
+    {
+      "id": "gen-1790142288-LaGyZCVL9OdeSqsGiCf3",
+      "native_tokens_prompt": 75554,
+      "native_tokens_completion": 32000,
+      "native_tokens_cached": 75008,
+      "native_tokens_reasoning": 32000,
+      "total_cost": 0.01275476
+    },
+    {
+      "id": "gen-1790142823-zNKACnFaJeNwmyRl5TOj",
+      "native_tokens_prompt": 75594,
+      "native_tokens_completion": 20511,
+      "native_tokens_cached": 75520,
+      "native_tokens_reasoning": 20350,
+      "total_cost": 0.00869665
+    },
+    {
+      "id": "gen-1790143166-ROYT2lfWoGK7dHrpCuvt",
+      "native_tokens_prompt": 76072,
+      "native_tokens_completion": 121,
+      "native_tokens_cached": 76032,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00156699
+    },
+    {
+      "id": "gen-1790143171-yyyrvtYDv3SBb1Nvbi4N",
+      "native_tokens_prompt": 76331,
+      "native_tokens_completion": 113,
+      "native_tokens_cached": 76032,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00159009
+    },
+    {
+      "id": "gen-1790143176-npn2ABmiPYV2KjmIm8YD",
+      "native_tokens_prompt": 76470,
+      "native_tokens_completion": 113,
+      "native_tokens_cached": 76288,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00158351
+    },
+    {
+      "id": "gen-1790143179-6IsDTCgr6JeOnvijSrNM",
+      "native_tokens_prompt": 76672,
+      "native_tokens_completion": 123,
+      "native_tokens_cached": 76544,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00158673
+    },
+    {
+      "id": "gen-1790143196-ILfYm4mbslASzSgqcO6H",
+      "native_tokens_prompt": 76821,
+      "native_tokens_completion": 111,
+      "native_tokens_cached": 76672,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00158719
+    },
+    {
+      "id": "gen-1790143201-Mwad7sxyjV9fg467zHbd",
+      "native_tokens_prompt": 77011,
+      "native_tokens_completion": 149,
+      "native_tokens_cached": 76800,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00160925
+    },
+    {
+      "id": "gen-1790143210-et7Dg38DaT39RU0utWz4",
+      "native_tokens_prompt": 78158,
+      "native_tokens_completion": 128,
+      "native_tokens_cached": 77056,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00169612
+    },
+    {
+      "id": "gen-1790143215-21LxwGzDTUGe69WE6QXS",
+      "native_tokens_prompt": 78312,
+      "native_tokens_completion": 135,
+      "native_tokens_cached": 78144,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00162693
+    },
+    {
+      "id": "gen-1790143220-mVyIOgJjSwkOJvuyGP8y",
+      "native_tokens_prompt": 78473,
+      "native_tokens_completion": 97,
+      "native_tokens_cached": 78336,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00161437
+    },
+    {
+      "id": "gen-1790143225-8yTKB1pylFAGXxB1XSXW",
+      "native_tokens_prompt": 78634,
+      "native_tokens_completion": 121,
+      "native_tokens_cached": 78464,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00162863
+    },
+    {
+      "id": "gen-1790143242-pwW7XC6zAsXcTpGMTVZk",
+      "native_tokens_prompt": 79613,
+      "native_tokens_completion": 104,
+      "native_tokens_cached": 79424,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00164378
+    },
+    {
+      "id": "gen-1790143229-oOTkKSbZfNr7i2wlglGA",
+      "native_tokens_prompt": 79134,
+      "native_tokens_completion": 145,
+      "native_tokens_cached": 78592,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00167679
+    },
+    {
+      "id": "gen-1790143233-rfi2Vb5A6WWKJfq1VW2R",
+      "native_tokens_prompt": 79305,
+      "native_tokens_completion": 136,
+      "native_tokens_cached": 79104,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00164978
+    },
+    {
+      "id": "gen-1790143238-YPCzXemempu0RPsb7Okp",
+      "native_tokens_prompt": 79467,
+      "native_tokens_completion": 120,
+      "native_tokens_cached": 79360,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.0016399
+    },
+    {
+      "id": "gen-1790143250-Bh1qdZhan20qWXh9Bioi",
+      "native_tokens_prompt": 79743,
+      "native_tokens_completion": 138,
+      "native_tokens_cached": 79616,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00165332
+    },
+    {
+      "id": "gen-1790143255-ybBnrr1vERyQXhJeIL7w",
+      "native_tokens_prompt": 79983,
+      "native_tokens_completion": 128,
+      "native_tokens_cached": 79872,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00165334
+    },
+    {
+      "id": "gen-1790143271-i49RvtVRn3jEJvHWSdlf",
+      "native_tokens_prompt": 80283,
+      "native_tokens_completion": 116,
+      "native_tokens_cached": 80128,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00165866
+    },
+    {
+      "id": "gen-1790143262-7awFvtyUJbmggd1AWfYT",
+      "native_tokens_prompt": 80137,
+      "native_tokens_completion": 109,
+      "native_tokens_cached": 79936,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00165697
+    },
+    {
+      "id": "gen-1790143275-tB2zgQHzueXhB92pTzXd",
+      "native_tokens_prompt": 80425,
+      "native_tokens_completion": 105,
+      "native_tokens_cached": 80384,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00164853
+    },
+    {
+      "id": "gen-1790143297-RFde277TALHhrnn7k3mq",
+      "native_tokens_prompt": 80636,
+      "native_tokens_completion": 90,
+      "native_tokens_cached": 80384,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00166438
+    },
+    {
+      "id": "gen-1790143300-KML89M8dLQyVMmNyCnjD",
+      "native_tokens_prompt": 80904,
+      "native_tokens_completion": 8246,
+      "native_tokens_cached": 80640,
+      "native_tokens_reasoning": 8125,
+      "total_cost": 0.0045253
+    },
+    {
+      "id": "gen-1790143678-iDjtUupGuiLXQrbrPcHQ",
+      "native_tokens_prompt": 83226,
+      "native_tokens_completion": 104,
+      "native_tokens_cached": 82944,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00172348
+    },
+    {
+      "id": "gen-1790143643-T73D5wdjWWwYRCJwQT7i",
+      "native_tokens_prompt": 81958,
+      "native_tokens_completion": 118,
+      "native_tokens_cached": 80896,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00176542
+    },
+    {
+      "id": "gen-1790143655-v4WrEWmBUyrTNH9XbOqN",
+      "native_tokens_prompt": 82563,
+      "native_tokens_completion": 107,
+      "native_tokens_cached": 0,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00829375
+    },
+    {
+      "id": "gen-1790143669-NpXnjpBPugSfGcVJkEOq",
+      "native_tokens_prompt": 82962,
+      "native_tokens_completion": 117,
+      "native_tokens_cached": 82560,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00173235
+    },
+    {
+      "id": "gen-1790143696-gCnnRPMquJgvAIclrusa",
+      "native_tokens_prompt": 83865,
+      "native_tokens_completion": 114,
+      "native_tokens_cached": 83520,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.0017448
+    },
+    {
+      "id": "gen-1790143682-sAcvYiRTwNwPitM4Pecl",
+      "native_tokens_prompt": 83356,
+      "native_tokens_completion": 130,
+      "native_tokens_cached": 83200,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.0017251
+    },
+    {
+      "id": "gen-1790143689-CobGQ0TXNJBlOBNz1ACd",
+      "native_tokens_prompt": 83577,
+      "native_tokens_completion": 120,
+      "native_tokens_cached": 83456,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00172322
+    },
+    {
+      "id": "gen-1790143704-OzgQCwKQD8hHpMsuuMDo",
+      "native_tokens_prompt": 84005,
+      "native_tokens_completion": 119,
+      "native_tokens_cached": 83968,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00172471
+    },
+    {
+      "id": "gen-1790143724-pVXWM4N4U81LuM8pwTKB",
+      "native_tokens_prompt": 84376,
+      "native_tokens_completion": 105,
+      "native_tokens_cached": 84224,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00173643
+    },
+    {
+      "id": "gen-1790143728-CDWezNlVmDkMmZPB5ZER",
+      "native_tokens_prompt": 84618,
+      "native_tokens_completion": 99,
+      "native_tokens_cached": 84480,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00173805
+    },
+    {
+      "id": "gen-1790143711-AvHxTGLlaAsigXScnhYF",
+      "native_tokens_prompt": 84190,
+      "native_tokens_completion": 160,
+      "native_tokens_cached": 83968,
+      "native_tokens_reasoning": 1,
+      "total_cost": 0.00175756
+    }
+  ]
+}

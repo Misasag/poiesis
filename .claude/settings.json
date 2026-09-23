@@ -1,0 +1,6 @@
+{
+  "extraKnownMarketplaces": {
+    "poiesis-harness": { "source": { "source": "directory", "path": "./tools/harness" } }
+  },
+  "enabledPlugins": { "harness@poiesis-harness": true }
+}

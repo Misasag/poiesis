@@ -1,0 +1,717 @@
+[
+  {
+    "id": "codex:gpt-6-astra",
+    "family": "openai",
+    "adapter": "codex",
+    "model": "gpt-6-astra",
+    "defaultEffort": "xhigh",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Subscription quota. No USD charge inferred from tokens."
+  },
+  {
+    "id": "codex:gpt-6-sol",
+    "family": "openai",
+    "adapter": "codex",
+    "model": "gpt-6-sol",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Subscription quota. No USD charge inferred from tokens."
+  },
+  {
+    "id": "codex:gpt-6-luna",
+    "family": "openai",
+    "adapter": "codex",
+    "model": "gpt-6-luna",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Subscription quota. No USD charge inferred from tokens."
+  },
+  {
+    "id": "codex:gpt-5.6-luna",
+    "family": "openai",
+    "adapter": "codex",
+    "model": "gpt-5.6-luna",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Subscription quota. No USD charge inferred from tokens."
+  },
+  {
+    "id": "claude:fable",
+    "family": "anthropic",
+    "adapter": "claude",
+    "model": "fable",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Native Anthropic subscription alias; CLI aliases may change upstream."
+  },
+  {
+    "id": "claude:opus",
+    "family": "anthropic",
+    "adapter": "claude",
+    "model": "opus",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Native Anthropic subscription alias; CLI aliases may change upstream."
+  },
+  {
+    "id": "claude:sonnet",
+    "family": "anthropic",
+    "adapter": "claude",
+    "model": "sonnet",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Native Anthropic subscription alias; CLI aliases may change upstream."
+  },
+  {
+    "id": "claude:haiku",
+    "family": "anthropic",
+    "adapter": "claude",
+    "model": "haiku",
+    "defaultEffort": "medium",
+    "efforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Native Anthropic subscription alias; CLI aliases may change upstream."
+  },
+  {
+    "id": "grok:default",
+    "family": "xai",
+    "adapter": "grok",
+    "model": "default",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "quota",
+    "prices": null,
+    "env": null,
+    "enabled": true,
+    "notes": "Use installed Grok default. Usage wire fixture is synthetic until a recorded sample is available."
+  },
+  {
+    "id": "or:glm-5.3",
+    "family": "zhipu",
+    "adapter": "pi",
+    "model": "z-ai/glm-5.3",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.84,
+      "cachedInputPerMTok": 0.156,
+      "outputPerMTok": 2.64,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Z.ai API states no training without express consent; Singapore. OpenRouter host policy may differ; no host pin or ZDR is implied.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:glm-5.3-flash",
+    "family": "zhipu",
+    "adapter": "pi",
+    "model": "z-ai/glm-5.3-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.15,
+      "cachedInputPerMTok": 0.05,
+      "outputPerMTok": 0.5,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Z.ai API states no training without express consent; Singapore. OpenRouter host policy may differ; no host pin or ZDR is implied.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "orc:glm-5.3-flash",
+    "family": "zhipu",
+    "adapter": "anthropic-compat",
+    "model": "z-ai/glm-5.3-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.15,
+      "cachedInputPerMTok": 0.05,
+      "outputPerMTok": 0.5,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
+      "ANTHROPIC_API_KEY": "",
+      "ANTHROPIC_MODEL": "z-ai/glm-5.3-flash",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "z-ai/glm-5.3-flash",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "z-ai/glm-5.3-flash",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "z-ai/glm-5.3-flash",
+      "CLAUDE_CODE_SUBAGENT_MODEL": "z-ai/glm-5.3-flash",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Z.ai API states no training without express consent; Singapore. OpenRouter host policy may differ; no host pin or ZDR is implied.",
+    "notes": "A/B comparison path only: Claude Code pointed at OpenRouter (unsupported by Anthropic). Measured in v1.1. Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+  },
+  {
+    "id": "or:deepseek-v4.1-flash",
+    "family": "deepseek",
+    "adapter": "pi",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.094,
+      "cachedInputPerMTok": 0.05,
+      "outputPerMTok": 0.6,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "First-party policy permits training and processing in China. OpenRouter hosts may offer different retention terms; no ZDR routing is asserted. DeepSeek first-party endpoint declares training on inputs; allowed for this public repo by policy, and recorded. No data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:deepseek-v4-pro",
+    "family": "deepseek",
+    "adapter": "pi",
+    "model": "deepseek/deepseek-v4-pro",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.955,
+      "cachedInputPerMTok": 0.08,
+      "outputPerMTok": 1.911,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "First-party policy permits training and processing in China. OpenRouter hosts may offer different retention terms; no ZDR routing is asserted. DeepSeek first-party endpoint declares training on inputs; allowed for this public repo by policy, and recorded. No data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:kimi-k3",
+    "family": "moonshot",
+    "adapter": "pi",
+    "model": "moonshotai/kimi-k3",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 3,
+      "cachedInputPerMTok": 0.3,
+      "outputPerMTok": 15,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "Kimi API may use inputs for training absent a written agreement; Singapore API terms. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:kimi-k2.7-code",
+    "family": "moonshot",
+    "adapter": "pi",
+    "model": "moonshotai/kimi-k2.7-code",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.706,
+      "cachedInputPerMTok": 0.18,
+      "outputPerMTok": 3.3,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "Kimi API may use inputs for training absent a written agreement; Singapore API terms. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:mimo-v2.6-pro",
+    "family": "xiaomi",
+    "adapter": "pi",
+    "model": "xiaomi/mimo-v2.6-pro",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.435,
+      "cachedInputPerMTok": 0.004,
+      "outputPerMTok": 0.87,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "MiMo API states submitted content is not used for model training; Netherlands/Singapore. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:mimo-v2.6-flash",
+    "family": "xiaomi",
+    "adapter": "pi",
+    "model": "xiaomi/mimo-v2.6-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.14,
+      "cachedInputPerMTok": 0.003,
+      "outputPerMTok": 0.28,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "MiMo API states submitted content is not used for model training; Netherlands/Singapore. OpenRouter host policy may differ.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:qwen3.8-max",
+    "family": "alibaba",
+    "adapter": "pi",
+    "model": "qwen/qwen3.8-max-0902",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 2,
+      "cachedInputPerMTok": 0.25,
+      "outputPerMTok": 6,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "QwenCloud states no training without consent; Singapore. OpenRouter host policy may differ. No ZDR route on the pinned first-party endpoint; no data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:qwen3.8-flash",
+    "family": "alibaba",
+    "adapter": "pi",
+    "model": "qwen/qwen3.8-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.15,
+      "cachedInputPerMTok": 0.016,
+      "outputPerMTok": 0.47,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "QwenCloud states no training without consent; Singapore. OpenRouter host policy may differ. No ZDR route on the pinned first-party endpoint; no data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:minimax-m3",
+    "family": "minimax",
+    "adapter": "pi",
+    "model": "minimax/minimax-m3",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.3,
+      "cachedInputPerMTok": 0.06,
+      "outputPerMTok": 1.2,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "International MiniMax terms permit service improvement, with no verified training opt-out; US datacenters/Singapore law.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:muse-spark-1.3",
+    "family": "meta",
+    "adapter": "pi",
+    "model": "meta/muse-spark-1.3",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 1.25,
+      "cachedInputPerMTok": 0.15,
+      "outputPerMTok": 4.25,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Muse Standard states no training; California law. Contributor variants train on inputs and are never configured. No ZDR route on the pinned first-party endpoint; no data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:gemini-3.8-flash",
+    "family": "google",
+    "adapter": "pi",
+    "model": "google/gemini-3.8-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.75,
+      "cachedInputPerMTok": 0.075,
+      "outputPerMTok": 3.75,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Paid Gemini API states no training; free-tier terms permit product improvement. This catalog uses paid OpenRouter transport.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "or:grok-4.7",
+    "family": "xai",
+    "adapter": "pi",
+    "model": "x-ai/grok-4.7",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 1.6,
+      "cachedInputPerMTok": 0.4,
+      "outputPerMTok": 4.8,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "may-train"
+    ],
+    "dataNotes": "xAI training/retention terms were not reverified in the supplied research; conservatively excluded when may-train is forbidden.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "jev",
+    "family": "typesafe",
+    "adapter": "decisions",
+    "model": "typesafe/jev-1.13",
+    "defaultEffort": "default",
+    "efforts": [
+      "default"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.042,
+      "cachedInputPerMTok": 0.042,
+      "outputPerMTok": 0,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "TypeSafe states no training; enterprise ZDR is a separate agreement, not implied by this OpenRouter route.",
+    "notes": "Typed gate only: /api/alpha/decisions, not a coding worker or LLM judge. Context 32000; gate payload bounded below 24000 tokens."
+  }
+]

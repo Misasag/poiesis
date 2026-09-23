@@ -1,0 +1,88 @@
+{
+  "id": "git-2c4bb91f4e4b",
+  "base_sha": "b3e195674fdda43fa275a5dcd8214a9cac3982f3",
+  "fix_sha": "2c4bb91f4e4b896e290591c392b96acef97c1387",
+  "test_files": [
+    "scripts/test-requirement-model.mjs",
+    "scripts/test-snapshot-store.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-requirement-model.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-snapshot-store.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window-frontend-module.ts",
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/cli-agent-provider.ts",
+    "agent-window/src/browser/requirement-model.ts",
+    "agent-window/src/browser/requirement-service.ts",
+    "agent-window/src/browser/results-skill.ts",
+    "agent-window/src/browser/style/index.css",
+    "agent-window/src/browser/task-service.ts",
+    "agent-window/src/common/agent-provider.ts",
+    "agent-window/src/common/agent-runtime-protocol.ts",
+    "agent-window/src/common/results-generation-protocol.ts",
+    "agent-window/src/common/results-question-protocol.ts",
+    "agent-window/src/electron-main/poiesis-updater-main-module.ts",
+    "agent-window/src/node/agent-runtime-server.ts",
+    "agent-window/src/node/results-generation-server.ts",
+    "agent-window/src/node/results-question-server.ts",
+    "agent-window/src/node/snapshot-store.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "requirement",
+  "validation": {
+    "ts": "2026-09-23T05:34:29.416Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.572
+      },
+      {
+        "cmd": "node scripts/test-requirement-model.mjs",
+        "exit_code": 1,
+        "wall_s": 0.044
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.408
+      },
+      {
+        "cmd": "node scripts/test-snapshot-store.mjs",
+        "exit_code": 1,
+        "wall_s": 0.047
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 2.753
+      },
+      {
+        "cmd": "node scripts/test-requirement-model.mjs",
+        "exit_code": 0,
+        "wall_s": 0.053
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.425
+      },
+      {
+        "cmd": "node scripts/test-snapshot-store.mjs",
+        "exit_code": 0,
+        "wall_s": 1.172
+      }
+    ],
+    "before_wall_s": 4.071,
+    "after_wall_s": 5.403,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-2c4bb91f4e4b.json"
+  }
+}

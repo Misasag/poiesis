@@ -1,0 +1,167 @@
+{
+  "candidates": 19,
+  "validated": [
+    "git-a42f301d09e1",
+    "git-3ab1f5742500",
+    "git-186d3258e20d",
+    "git-2ff3185361c3",
+    "git-704fcf9dee0b",
+    "git-f82cdc12c3ef",
+    "git-3b7dd47e596c",
+    "git-ea40e651c567",
+    "git-7b1c953f5725",
+    "git-2c4bb91f4e4b",
+    "git-16dd65a8a01c",
+    "git-d206665898ec"
+  ],
+  "rejected": [
+    {
+      "id": "git-838a3b3913ef",
+      "reason": "Tests already pass at base",
+      "before_exits": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-838a3b3913ef.json"
+    },
+    {
+      "id": "git-ac0ac6f4958c",
+      "reason": "No test script at base or fix for scripts/test-theme-preference.mjs",
+      "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-ac0ac6f4958c.json"
+    },
+    {
+      "id": "git-f46cc64228f9",
+      "reason": "No test script at base or fix for scripts/test-conversation-navigation.mjs",
+      "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-f46cc64228f9.json"
+    },
+    {
+      "id": "git-083f9ba4c9d2",
+      "reason": "No test script at base or fix for scripts/test-code-workspace-regressions.mjs",
+      "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-083f9ba4c9d2.json"
+    },
+    {
+      "id": "git-e24541a76c4e",
+      "reason": "No test script at base or fix for scripts/test-code-workspace-regressions.mjs",
+      "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-e24541a76c4e.json"
+    },
+    {
+      "id": "git-6a77b172d2e7",
+      "reason": "Tests still fail with source changes (node scripts/test-agent-activity-parser.mjs, exit 1)",
+      "before_exits": [
+        0,
+        1
+      ],
+      "after_exits": [
+        0,
+        1
+      ],
+      "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-6a77b172d2e7.json"
+    },
+    {
+      "id": "git-774cf50b9658",
+      "reason": "git show failed: fatal: path 'package.json' exists on disk, but not in 'ae227942f1d897d0929c949b09302fa27468a830'",
+      "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-774cf50b9658.json"
+    }
+  ],
+  "suites": {
+    "smoke": [
+      "git-d206665898ec",
+      "git-7b1c953f5725",
+      "git-ea40e651c567"
+    ],
+    "regression": [
+      "git-d206665898ec",
+      "git-7b1c953f5725",
+      "git-ea40e651c567",
+      "git-a42f301d09e1",
+      "git-16dd65a8a01c",
+      "git-f82cdc12c3ef",
+      "git-704fcf9dee0b",
+      "git-2c4bb91f4e4b",
+      "git-2ff3185361c3",
+      "git-3b7dd47e596c",
+      "git-186d3258e20d",
+      "git-3ab1f5742500"
+    ]
+  },
+  "timings": [
+    {
+      "id": "git-a42f301d09e1",
+      "area": "customize",
+      "before_s": 3.67,
+      "after_s": 3.557
+    },
+    {
+      "id": "git-3ab1f5742500",
+      "area": "deferred",
+      "before_s": 18.443,
+      "after_s": 28.302
+    },
+    {
+      "id": "git-186d3258e20d",
+      "area": "agent",
+      "before_s": 9.194,
+      "after_s": 10.34
+    },
+    {
+      "id": "git-2ff3185361c3",
+      "area": "agent",
+      "before_s": 5.224,
+      "after_s": 6.402
+    },
+    {
+      "id": "git-704fcf9dee0b",
+      "area": "agent",
+      "before_s": 5.219,
+      "after_s": 4.991
+    },
+    {
+      "id": "git-f82cdc12c3ef",
+      "area": "requirement",
+      "before_s": 4.327,
+      "after_s": 4.332
+    },
+    {
+      "id": "git-3b7dd47e596c",
+      "area": "requirement",
+      "before_s": 7.27,
+      "after_s": 7.291
+    },
+    {
+      "id": "git-ea40e651c567",
+      "area": "requirement",
+      "before_s": 2.764,
+      "after_s": 2.789
+    },
+    {
+      "id": "git-7b1c953f5725",
+      "area": "results",
+      "before_s": 2.713,
+      "after_s": 2.706
+    },
+    {
+      "id": "git-2c4bb91f4e4b",
+      "area": "requirement",
+      "before_s": 4.071,
+      "after_s": 5.403
+    },
+    {
+      "id": "git-16dd65a8a01c",
+      "area": "agent",
+      "before_s": 4.056,
+      "after_s": 4.108
+    },
+    {
+      "id": "git-d206665898ec",
+      "area": "skill",
+      "before_s": 2.555,
+      "after_s": 2.68
+    }
+  ],
+  "wall_s": 186.103,
+  "report": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/report.json"
+}

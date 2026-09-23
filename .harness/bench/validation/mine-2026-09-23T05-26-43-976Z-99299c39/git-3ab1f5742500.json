@@ -1,0 +1,178 @@
+{
+  "id": "git-3ab1f5742500",
+  "base_sha": "3b4c6caa850c875f9aa908110ec69b0c4412dd64",
+  "fix_sha": "3ab1f57425003f61ac1566486c7f999b0903cdfe",
+  "task": {
+    "id": "git-3ab1f5742500",
+    "base_sha": "3b4c6caa850c875f9aa908110ec69b0c4412dd64",
+    "fix_sha": "3ab1f57425003f61ac1566486c7f999b0903cdfe",
+    "test_files": [
+      "scripts/test-deferred-results-completion.mjs",
+      "scripts/test-session-durability.mjs",
+      "scripts/test-snapshot-cancellation.mjs",
+      "scripts/test-snapshot-store.mjs"
+    ],
+    "test_cmds": [
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-deferred-results-completion.mjs",
+      "node scripts/test-session-durability.mjs",
+      "node scripts/test-snapshot-cancellation.mjs",
+      "node scripts/test-snapshot-store.mjs"
+    ],
+    "src_files": [
+      "agent-window/src/browser/agent-window/results-part.tsx",
+      "agent-window/src/browser/agent-window/session-store.ts",
+      "agent-window/src/browser/cli-agent-provider.ts",
+      "agent-window/src/browser/components/elapsed.tsx",
+      "agent-window/src/browser/results-skill.ts",
+      "agent-window/src/browser/style/results.css",
+      "agent-window/src/browser/task-service.ts",
+      "agent-window/src/common/agent-provider.ts",
+      "agent-window/src/common/agent-runtime-protocol.ts",
+      "agent-window/src/node/agent-runtime-server.ts",
+      "agent-window/src/node/hidden-process.ts",
+      "agent-window/src/node/snapshot-store.ts"
+    ],
+    "class": "app-frontend",
+    "instruction_file": "instruction.md",
+    "instruction_source": "commit-message",
+    "area": "deferred",
+    "validation": {
+      "ts": "2026-09-23T05:27:44.049Z",
+      "before": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 3.877
+        },
+        {
+          "cmd": "node scripts/test-deferred-results-completion.mjs",
+          "exit_code": 1,
+          "wall_s": 0.519
+        },
+        {
+          "cmd": "node scripts/test-session-durability.mjs",
+          "exit_code": 0,
+          "wall_s": 0.054
+        },
+        {
+          "cmd": "node scripts/test-snapshot-cancellation.mjs",
+          "exit_code": 1,
+          "wall_s": 0.3
+        },
+        {
+          "cmd": "node scripts/test-snapshot-store.mjs",
+          "exit_code": 1,
+          "wall_s": 8.953
+        }
+      ],
+      "after": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 3.339
+        },
+        {
+          "cmd": "node scripts/test-deferred-results-completion.mjs",
+          "exit_code": 0,
+          "wall_s": 1.511
+        },
+        {
+          "cmd": "node scripts/test-session-durability.mjs",
+          "exit_code": 0,
+          "wall_s": 0.052
+        },
+        {
+          "cmd": "node scripts/test-snapshot-cancellation.mjs",
+          "exit_code": 0,
+          "wall_s": 4.394
+        },
+        {
+          "cmd": "node scripts/test-snapshot-store.mjs",
+          "exit_code": 0,
+          "wall_s": 12.61
+        }
+      ],
+      "before_wall_s": 13.703,
+      "after_wall_s": 21.906,
+      "log": ".harness/bench/validation/mine-2026-09-23T05-26-43-976Z-99299c39/git-3ab1f5742500.json"
+    }
+  },
+  "valid": true,
+  "reason": "Validated fail-to-pass",
+  "before": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm notice\nnpm notice New minor version of npm available! 11.11.0 -> 11.20.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0\nnpm notice To update run: npm install -g npm@11.20.0\nnpm notice\n",
+      "exit_code": 0,
+      "wall_s": 3.877
+    },
+    {
+      "cmd": "node scripts/test-deferred-results-completion.mjs",
+      "stdout": "",
+      "stderr": "[Poiesis][Results diagnostics] AI generation failed; using bundled template. Error: injected Results rejection\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-27-08-080Z-2c030a0b/scripts/test-deferred-results-completion.mjs:302:31\nnode:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: Requirement Results aggregation must preserve the unavailable capture reason.\r\n+ actual - expected\r\n\r\n+ undefined\r\n- '変更の記録が時間内に完了しませんでした。'\r\n\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-27-08-080Z-2c030a0b/scripts/test-deferred-results-completion.mjs:316:8 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: undefined,\r\n  expected: '変更の記録が時間内に完了しませんでした。',\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.519
+    },
+    {
+      "cmd": "node scripts/test-session-durability.mjs",
+      "stdout": "SESSION_DURABILITY_TEST={\"tasksPersisted\":15,\"tasksRestored\":15,\"legacyResultRetained\":true,\"captureErrorRetained\":true}\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.054
+    },
+    {
+      "cmd": "node scripts/test-snapshot-cancellation.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\r\n+ actual - expected\r\n\r\n+ 'git-snapshot'\r\n- 'empty'\r\n\r\n    at runTimeoutCase (file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-27-08-080Z-2c030a0b/scripts/test-snapshot-cancellation.mjs:123:12)\r\n    at async file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-27-08-080Z-2c030a0b/scripts/test-snapshot-cancellation.mjs:91:21 {\r\n  generatedMessage: true,\r\n  code: 'ERR_ASSERTION',\r\n  actual: 'git-snapshot',\r\n  expected: 'empty',\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.3
+    },
+    {
+      "cmd": "node scripts/test-snapshot-store.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: Snapshot storage and temporary indexes inside a Workspace must not enter its tree.\r\n+ actual - expected\r\n\r\n  [\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/HEAD',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/config',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/description',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/applypatch-msg.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/commit-msg.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/fsmonitor-watchman.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/post-update.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-applypatch.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-commit.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-merge-commit.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-push.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-rebase.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-receive.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/prepare-commit-msg.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/push-to-checkout.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/sendemail-validate.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/update.sample',\r\n+   '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/info/exclude',\r\n+   '.temporary/poiesis-snapshot-index-stale/index.lock',\r\n    'kept.txt'\r\n  ]\r\n\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-27-08-080Z-2c030a0b/scripts/test-snapshot-store.mjs:250:12\r\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: [\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/HEAD',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/config',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/description',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/applypatch-msg.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/commit-msg.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/fsmonitor-watchman.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/post-update.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-applypatch.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-commit.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-merge-commit.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-push.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-rebase.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/pre-receive.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/prepare-commit-msg.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/push-to-checkout.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/sendemail-validate.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/hooks/update.sample',\r\n    '.snapshot-store/af71dfec6b0db05ac1760549b4ef8635ad085d0a.git/info/exclude',\r\n    '.temporary/poiesis-snapshot-index-stale/index.lock',\r\n    'kept.txt'\r\n  ],\r\n  expected: [ 'kept.txt' ],\r\n  operator: 'deepStrictEqual',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 8.953
+    }
+  ],
+  "after": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 3.339
+    },
+    {
+      "cmd": "node scripts/test-deferred-results-completion.mjs",
+      "stdout": "DEFERRED_RESULTS_COMPLETION_TEST={\"agentCompletedBeforeResults\":true,\"secondTurnBeforeResults\":true,\"stableEvidence\":true,\"terminalPathsReady\":[\"completed\",\"failed\",\"cancelled\"],\"taskWorkspaceRetained\":\"file:///C:/work/a\",\"resultPersisted\":true,\"rejectedBackgroundHandled\":true,\"unavailableReasonPreserved\":true,\"verifiedZeroChangesUnchanged\":true,\"preparationBehavior\":{\"cancellationPreventedAgentLaunch\":true,\"cancellationPreventedPostCapture\":true,\"launchAcknowledgementKeptCancelling\":true,\"startupChangesCaptured\":true,\"failureWaitedForCleanup\":true,\"unconfirmedCleanupBlockedAgentLaunch\":true,\"phases\":[\"preparing\",\"starting\"]}}\n",
+      "stderr": "[Poiesis][Results diagnostics] AI generation failed; using bundled template. Error: injected Results rejection\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-27-08-080Z-2c030a0b/scripts/test-deferred-results-completion.mjs:302:31\n",
+      "exit_code": 0,
+      "wall_s": 1.511
+    },
+    {
+      "cmd": "node scripts/test-session-durability.mjs",
+      "stdout": "SESSION_DURABILITY_TEST={\"tasksPersisted\":15,\"tasksRestored\":15,\"legacyResultRetained\":true,\"captureErrorRetained\":true}\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.052
+    },
+    {
+      "cmd": "node scripts/test-snapshot-cancellation.mjs",
+      "stdout": "SNAPSHOT_CANCELLATION_TEST={\"timeout\":{\"elapsedMs\":1238,\"descendantsStopped\":true,\"temporaryIndexesRemoved\":true},\"queued\":{\"queuedCancelMs\":0,\"subsequentCaptureSucceeded\":true},\"disposed\":{\"descendantsStopped\":true,\"temporaryIndexesRemoved\":true},\"preSpawnCancellation\":{\"laterAgentLaunchPrevented\":true},\"delayedResolution\":{\"snapshotPrevented\":true,\"agentLaunchPrevented\":true},\"postStopChangeCapture\":{\"activeSnapshotCancelled\":true,\"processStopped\":true,\"endingCaptureAllowed\":true},\"cancelledLookup\":{\"elapsedMs\":235,\"candidates\":64,\"processesStarted\":1},\"timedOutLookup\":{\"elapsedMs\":686,\"candidates\":64,\"processesStarted\":1},\"stickyCleanupFailure\":{\"swallowedErrorStayedBlocking\":true,\"queuedSpawnPrevented\":true,\"subsequentSpawnPrevented\":true},\"failedTreeKill\":{\"strictFailuresRejected\":3,\"nonStrictCompatibilityPreserved\":true}}\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 4.394
+    },
+    {
+      "cmd": "node scripts/test-snapshot-store.mjs",
+      "stdout": "snapshot-store tests passed\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 12.61
+    }
+  ],
+  "wall_s": 36.292
+}

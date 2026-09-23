@@ -1,0 +1,125 @@
+{
+  "id": "git-16dd65a8a01c",
+  "base_sha": "8d7891dc5c18cf24736d48d29db2dfb8c6ff63ea",
+  "fix_sha": "16dd65a8a01c5a0efc1c6c5bdb8edbfce8e0aec3",
+  "task": {
+    "id": "git-16dd65a8a01c",
+    "base_sha": "8d7891dc5c18cf24736d48d29db2dfb8c6ff63ea",
+    "fix_sha": "16dd65a8a01c5a0efc1c6c5bdb8edbfce8e0aec3",
+    "test_files": [
+      "scripts/test-agent-activity-parser.mjs",
+      "scripts/test-results-normalizer.mjs"
+    ],
+    "test_cmds": [
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-agent-activity-parser.mjs",
+      "node scripts/test-results-normalizer.mjs"
+    ],
+    "src_files": [
+      "agent-window/src/browser/agent-activity-parser.ts",
+      "agent-window/src/browser/agent-window-widget.tsx",
+      "agent-window/src/browser/cli-agent-provider.ts",
+      "agent-window/src/browser/results-document-normalizer.ts",
+      "agent-window/src/browser/results-skill.ts",
+      "agent-window/src/browser/style/index.css",
+      "agent-window/src/browser/task-service.ts",
+      "agent-window/src/common/results-generation-protocol.ts",
+      "agent-window/src/common/results-question-protocol.ts",
+      "agent-window/src/node/results-generation-server.ts",
+      "agent-window/src/node/results-question-server.ts"
+    ],
+    "class": "app-frontend",
+    "instruction_file": "instruction.md",
+    "instruction_source": "commit-message",
+    "area": "agent",
+    "validation": {
+      "ts": "2026-09-23T05:28:43.078Z",
+      "before": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 2.686
+        },
+        {
+          "cmd": "node scripts/test-agent-activity-parser.mjs",
+          "exit_code": 1,
+          "wall_s": 0.045
+        },
+        {
+          "cmd": "node scripts/test-results-normalizer.mjs",
+          "exit_code": 1,
+          "wall_s": 0.045
+        }
+      ],
+      "after": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 2.4
+        },
+        {
+          "cmd": "node scripts/test-agent-activity-parser.mjs",
+          "exit_code": 0,
+          "wall_s": 0.05
+        },
+        {
+          "cmd": "node scripts/test-results-normalizer.mjs",
+          "exit_code": 0,
+          "wall_s": 0.048
+        }
+      ],
+      "before_wall_s": 2.776,
+      "after_wall_s": 2.498,
+      "log": ".harness/bench/validation/mine-2026-09-23T05-26-43-976Z-99299c39/git-16dd65a8a01c.json"
+    }
+  },
+  "valid": true,
+  "reason": "Validated fail-to-pass",
+  "before": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm notice\nnpm notice New minor version of npm available! 11.11.0 -> 11.20.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0\nnpm notice To update run: npm install -g npm@11.20.0\nnpm notice\n",
+      "exit_code": 0,
+      "wall_s": 2.686
+    },
+    {
+      "cmd": "node scripts/test-agent-activity-parser.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: Codex command wrapper must be stripped and its exit code retained.\r\n+ actual - expected\r\n\r\n+ 'dir'\r\n- 'dir (終了コード 0)'\r\n      ^\r\n\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-28-37-497Z-b90fa212/scripts/test-agent-activity-parser.mjs:41:8\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: 'dir',\r\n  expected: 'dir (終了コード 0)',\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.045
+    },
+    {
+      "cmd": "node scripts/test-results-normalizer.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1456\r\n  const err = new Error(message);\r\n              ^\r\n\r\nError: Cannot find module '../agent-window/lib/browser/results-document-normalizer.js'\r\nRequire stack:\r\n- C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-28-37-497Z-b90fa212\\scripts\\test-results-normalizer.mjs\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.require (node:internal/modules/cjs/loader:1556:12)\r\n    at require (node:internal/modules/helpers:152:16)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-28-37-497Z-b90fa212/scripts/test-results-normalizer.mjs:8:5\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26) {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: [\r\n    'C:\\\\Users\\\\owner\\\\github\\\\poiesis-wt-harness\\\\.harness\\\\worktrees\\\\wt-2026-09-23T05-28-37-497Z-b90fa212\\\\scripts\\\\test-results-normalizer.mjs'\r\n  ]\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.045
+    }
+  ],
+  "after": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 2.4
+    },
+    {
+      "cmd": "node scripts/test-agent-activity-parser.mjs",
+      "stdout": "AGENT_ACTIVITY_PARSER_TEST=passed\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.05
+    },
+    {
+      "cmd": "node scripts/test-results-normalizer.mjs",
+      "stdout": "RESULTS_NORMALIZER_TEST=passed\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.048
+    }
+  ],
+  "wall_s": 5.878
+}

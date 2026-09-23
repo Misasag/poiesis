@@ -1,0 +1,5 @@
+{
+  "name": "poiesis-harness",
+  "owner": { "name": "Poiesis" },
+  "plugins": [{ "name": "harness", "source": "./harness", "description": "Measured multi-model development harness for Poiesis", "version": "1.0.0" }]
+}

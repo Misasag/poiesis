@@ -1,0 +1,161 @@
+{
+  "providers": {
+    "openrouter": {
+      "modelOverrides": {
+        "z-ai/glm-5.3": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Z.AI"],
+              "allow_fallbacks": false,
+              "require_parameters": true,
+              "data_collection": "deny",
+              "quantizations": ["fp8", "bf16"]
+            }
+          }
+        },
+        "z-ai/glm-5.3-flash": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Z.AI"],
+              "allow_fallbacks": false,
+              "require_parameters": true,
+              "data_collection": "deny",
+              "quantizations": ["fp8", "bf16"]
+            }
+          }
+        },
+        "deepseek/deepseek-v4.1-flash": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["DeepSeek"],
+              "allow_fallbacks": false,
+              "require_parameters": true
+            }
+          }
+        },
+        "deepseek/deepseek-v4-pro": {
+          "maxTokens": 16384,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["DeepInfra", "SiliconFlow"],
+              "allow_fallbacks": false,
+              "require_parameters": true,
+              "quantizations": ["fp8", "bf16"]
+            }
+          }
+        },
+        "moonshotai/kimi-k3": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Moonshot AI", "DeepInfra"],
+              "allow_fallbacks": false,
+              "require_parameters": true,
+              "quantizations": ["mxfp4", "fp8", "bf16"]
+            }
+          }
+        },
+        "moonshotai/kimi-k2.7-code": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Moonshot AI", "GMICloud"],
+              "allow_fallbacks": false,
+              "require_parameters": true,
+              "quantizations": ["int4", "fp8", "bf16"]
+            }
+          }
+        },
+        "xiaomi/mimo-v2.6-pro": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Xiaomi"],
+              "allow_fallbacks": false,
+              "require_parameters": true,
+              "data_collection": "deny",
+              "quantizations": ["fp8", "bf16"]
+            }
+          }
+        },
+        "xiaomi/mimo-v2.6-flash": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Xiaomi"],
+              "allow_fallbacks": false,
+              "require_parameters": true,
+              "data_collection": "deny",
+              "quantizations": ["fp8", "bf16"]
+            }
+          }
+        },
+        "qwen/qwen3.8-max-0902": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Alibaba"],
+              "allow_fallbacks": false,
+              "require_parameters": true
+            }
+          }
+        },
+        "qwen/qwen3.8-flash": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Alibaba"],
+              "allow_fallbacks": false,
+              "require_parameters": true
+            }
+          }
+        },
+        "minimax/minimax-m3": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Minimax"],
+              "allow_fallbacks": false,
+              "require_parameters": true,
+              "quantizations": ["fp8", "bf16"]
+            }
+          }
+        },
+        "meta/muse-spark-1.3": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Meta"],
+              "allow_fallbacks": false,
+              "require_parameters": true
+            }
+          }
+        },
+        "google/gemini-3.8-flash": {
+          "maxTokens": 65536,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["Google"],
+              "allow_fallbacks": false,
+              "require_parameters": true,
+              "data_collection": "deny"
+            }
+          }
+        },
+        "x-ai/grok-4.7": {
+          "maxTokens": 131072,
+          "compat": {
+            "openRouterRouting": {
+              "order": ["xAI"],
+              "allow_fallbacks": false,
+              "require_parameters": true
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "id": "git-a42f301d09e1",
+  "base_sha": "88f37e08865f7e9759cbe164486a308dd555a3c4",
+  "fix_sha": "a42f301d09e1cef9d9b39c8ee07cc0f8e1526076",
+  "task": {
+    "id": "git-a42f301d09e1",
+    "base_sha": "88f37e08865f7e9759cbe164486a308dd555a3c4",
+    "fix_sha": "a42f301d09e1cef9d9b39c8ee07cc0f8e1526076",
+    "test_files": [
+      "scripts/test-customize-editor-lifecycle.mjs"
+    ],
+    "test_cmds": [
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-customize-editor-lifecycle.mjs"
+    ],
+    "src_files": [
+      "agent-window/src/browser/agent-window-widget.tsx",
+      "agent-window/src/browser/agent-window/agent-part.tsx",
+      "agent-window/src/browser/agent-window/agent-window-host.ts",
+      "agent-window/src/browser/agent-window/customize-part.tsx",
+      "agent-window/src/browser/agent-window/settings-part.tsx",
+      "agent-window/src/browser/components/poiesis-disclosure.tsx",
+      "agent-window/src/browser/style/agent.css",
+      "agent-window/src/browser/style/components.css",
+      "agent-window/src/browser/style/customize.css",
+      "agent-window/src/browser/style/settings.css",
+      "agent-window/src/browser/style/theme.css",
+      "agent-window/src/browser/theme-preference-service.ts"
+    ],
+    "class": "app-frontend",
+    "instruction_file": "instruction.md",
+    "instruction_source": "commit-message",
+    "area": "customize",
+    "validation": {
+      "ts": "2026-09-23T05:27:07.102Z",
+      "before": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 3.849
+        },
+        {
+          "cmd": "node scripts/test-customize-editor-lifecycle.mjs",
+          "exit_code": 1,
+          "wall_s": 0.16
+        }
+      ],
+      "after": [
+        {
+          "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+          "exit_code": 0,
+          "wall_s": 3.118
+        },
+        {
+          "cmd": "node scripts/test-customize-editor-lifecycle.mjs",
+          "exit_code": 0,
+          "wall_s": 0.155
+        }
+      ],
+      "before_wall_s": 4.009,
+      "after_wall_s": 3.273,
+      "log": ".harness/bench/validation/mine-2026-09-23T05-26-43-976Z-99299c39/git-a42f301d09e1.json"
+    }
+  },
+  "valid": true,
+  "reason": "Validated fail-to-pass",
+  "before": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm notice\nnpm notice New minor version of npm available! 11.11.0 -> 11.20.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0\nnpm notice To update run: npm install -g npm@11.20.0\nnpm notice\n",
+      "exit_code": 0,
+      "wall_s": 3.849
+    },
+    {
+      "cmd": "node scripts/test-customize-editor-lifecycle.mjs",
+      "stdout": "",
+      "stderr": "file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-26-59-452Z-033fe0b5/scripts/test-customize-editor-lifecycle.mjs:127\r\n    part.restoreCustomizeListScroll();\r\n         ^\r\n\r\nTypeError: part.restoreCustomizeListScroll is not a function\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-26-59-452Z-033fe0b5/scripts/test-customize-editor-lifecycle.mjs:127:10\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.16
+    }
+  ],
+  "after": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n",
+      "exit_code": 0,
+      "wall_s": 3.118
+    },
+    {
+      "cmd": "node scripts/test-customize-editor-lifecycle.mjs",
+      "stdout": "Customize editor lifecycle races verified.\n",
+      "stderr": "",
+      "exit_code": 0,
+      "wall_s": 0.155
+    }
+  ],
+  "wall_s": 7.956
+}

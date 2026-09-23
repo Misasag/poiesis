@@ -1,0 +1,87 @@
+{
+  "id": "git-3b7dd47e596c",
+  "base_sha": "ea40e651c567d1ab80e518b8e27ae1f73ae72653",
+  "fix_sha": "3b7dd47e596c1499294d7bfed2e86290ed531115",
+  "task": {
+    "id": "git-3b7dd47e596c",
+    "base_sha": "ea40e651c567d1ab80e518b8e27ae1f73ae72653",
+    "fix_sha": "3b7dd47e596c1499294d7bfed2e86290ed531115",
+    "test_files": [
+      "scripts/test-requirement-classifier.mjs",
+      "scripts/test-requirement-model.mjs",
+      "scripts/test-results-assertions.mjs",
+      "scripts/test-skill-document.mjs"
+    ],
+    "test_cmds": [
+      "npm run compile --workspace=@poiesis/theia-agent-window",
+      "node scripts/test-requirement-classifier.mjs",
+      "node scripts/test-requirement-model.mjs",
+      "node scripts/test-results-assertions.mjs",
+      "node scripts/test-skill-document.mjs"
+    ],
+    "src_files": [
+      "agent-window/src/browser/agent-window-frontend-module.ts",
+      "agent-window/src/browser/agent-window-widget.tsx",
+      "agent-window/src/browser/requirement-classification-service.ts",
+      "agent-window/src/browser/requirement-classifier.ts",
+      "agent-window/src/browser/requirement-model.ts",
+      "agent-window/src/browser/requirement-service.ts",
+      "agent-window/src/browser/results-assertions.ts",
+      "agent-window/src/browser/results-skill.ts",
+      "agent-window/src/browser/skill-document.ts",
+      "agent-window/src/browser/style/index.css",
+      "agent-window/src/browser/task-service.ts",
+      "agent-window/src/browser/workspace-skill-service.ts",
+      "agent-window/src/common/requirement-classification-protocol.ts",
+      "agent-window/src/common/results-assertion-protocol.ts",
+      "agent-window/src/common/results-generation-protocol.ts",
+      "agent-window/src/node/agent-window-backend-module.ts",
+      "agent-window/src/node/requirement-classification-server.ts",
+      "agent-window/src/node/results-assertion-server.ts",
+      "agent-window/src/node/results-generation-server.ts"
+    ],
+    "class": "app-frontend",
+    "instruction_file": "instruction.md",
+    "instruction_source": "commit-message"
+  },
+  "valid": false,
+  "reason": "Base setup failure (node scripts/test-requirement-classifier.mjs, exit 1): test environment or syntax failure",
+  "before": [
+    {
+      "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+      "stdout": "\n> @poiesis/theia-agent-window@0.0.0 compile\n> tsc -p .\n\n",
+      "stderr": "npm warn Unknown project config \"devdir\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\nnpm notice\nnpm notice New minor version of npm available! 11.11.0 -> 11.20.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v11.20.0\nnpm notice To update run: npm install -g npm@11.20.0\nnpm notice\n",
+      "exit_code": 0,
+      "wall_s": 2.89
+    },
+    {
+      "cmd": "node scripts/test-requirement-classifier.mjs",
+      "stdout": "",
+      "stderr": "file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-28-13-517Z-40812d01/scripts/test-requirement-classifier.mjs:5\r\n    parseSuggestedRequirementTitle,\r\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\nSyntaxError: Named export 'parseSuggestedRequirementTitle' not found. The requested module '../agent-window/lib/browser/requirement-classifier.js' is a CommonJS module, which may not support all module.exports as named exports.\r\nCommonJS modules can always be imported via the default export, for example using:\r\n\r\nimport pkg from '../agent-window/lib/browser/requirement-classifier.js';\r\n\r\n    at #asyncInstantiate (node:internal/modules/esm/module_job:319:21)\r\n    at async ModuleJob.run (node:internal/modules/esm/module_job:422:5)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.046
+    },
+    {
+      "cmd": "node scripts/test-requirement-model.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\r\n\r\n  assert(migrated.requirements.every(requirement => requirement.titleSource === 'task'))\r\n\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-28-13-517Z-40812d01/scripts/test-requirement-model.mjs:21:1\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: true,\r\n  code: 'ERR_ASSERTION',\r\n  actual: false,\r\n  expected: true,\r\n  operator: '==',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.044
+    },
+    {
+      "cmd": "node scripts/test-results-assertions.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/cjs/loader:1456\r\n  const err = new Error(message);\r\n              ^\r\n\r\nError: Cannot find module 'C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-28-13-517Z-40812d01\\agent-window\\lib\\browser\\results-assertions.js'\r\nRequire stack:\r\n- C:\\Users\\owner\\github\\poiesis-wt-harness\\.harness\\worktrees\\wt-2026-09-23T05-28-13-517Z-40812d01\\scripts\\test-results-assertions.mjs\r\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1066:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1071:22)\r\n    at Module._load (node:internal/modules/cjs/loader:1242:25)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\r\n    at Module.require (node:internal/modules/cjs/loader:1556:12)\r\n    at require (node:internal/modules/helpers:152:16)\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-28-13-517Z-40812d01/scripts/test-results-assertions.mjs:15:5\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26) {\r\n  code: 'MODULE_NOT_FOUND',\r\n  requireStack: [\r\n    'C:\\\\Users\\\\owner\\\\github\\\\poiesis-wt-harness\\\\.harness\\\\worktrees\\\\wt-2026-09-23T05-28-13-517Z-40812d01\\\\scripts\\\\test-results-assertions.mjs'\r\n  ]\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.047
+    },
+    {
+      "cmd": "node scripts/test-skill-document.mjs",
+      "stdout": "",
+      "stderr": "node:internal/modules/run_main:107\r\n    triggerUncaughtException(\r\n    ^\r\n\r\nAssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\r\n+ actual - expected\r\n\r\n+ undefined\r\n- [\r\n-   '要約がある',\r\n-   '確認手順がある'\r\n- ]\r\n\r\n    at file:///C:/Users/owner/github/poiesis-wt-harness/.harness/worktrees/wt-2026-09-23T05-28-13-517Z-40812d01/scripts/test-skill-document.mjs:22:8\r\n    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)\r\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)\r\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\r\n  generatedMessage: true,\r\n  code: 'ERR_ASSERTION',\r\n  actual: undefined,\r\n  expected: [ '要約がある', '確認手順がある' ],\r\n  operator: 'deepStrictEqual',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v24.14.1\r\n",
+      "exit_code": 1,
+      "wall_s": 0.044
+    }
+  ],
+  "wall_s": 3.615
+}

@@ -1,0 +1,152 @@
+{
+  "id": "git-186d3258e20d",
+  "base_sha": "3371483eb30146804d39b1677aca14bd79d03bcc",
+  "fix_sha": "186d3258e20d4dfb436269295d9c5108f5734dc1",
+  "test_files": [
+    "scripts/test-agent-send-detection.mjs",
+    "scripts/test-cli-args.mjs",
+    "scripts/test-cli-detection-lifecycle.mjs",
+    "scripts/test-model-discovery.mjs",
+    "scripts/test-model-selection.mjs"
+  ],
+  "test_cmds": [
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-cli-detection-lifecycle.mjs",
+    "node scripts/test-agent-send-detection.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-cli-args.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-model-discovery.mjs",
+    "npm run compile --workspace=@poiesis/theia-agent-window",
+    "node scripts/test-model-selection.mjs"
+  ],
+  "src_files": [
+    "agent-window/src/browser/agent-window-widget.tsx",
+    "agent-window/src/browser/agent-window/agent-window-host.ts",
+    "agent-window/src/browser/agent-window/settings-part.tsx",
+    "agent-window/src/browser/components/model-picker.tsx",
+    "agent-window/src/browser/components/poiesis-select.tsx",
+    "agent-window/src/browser/model-picker-state.ts",
+    "agent-window/src/browser/style/agent.css",
+    "agent-window/src/browser/style/components.css",
+    "agent-window/src/browser/style/results.css",
+    "agent-window/src/browser/style/settings.css",
+    "agent-window/src/common/agent-runtime-protocol.ts",
+    "agent-window/src/common/cli-detection-lifecycle.ts",
+    "agent-window/src/electron-browser/window-controls.css",
+    "agent-window/src/node/agent-runtime-server.ts",
+    "agent-window/src/node/agent-window-backend-module.ts",
+    "agent-window/src/node/cli-model-discovery.ts",
+    "agent-window/src/node/cli-provider-registry.ts",
+    "agent-window/src/node/hidden-process.ts",
+    "agent-window/src/node/known-cli-registry.ts",
+    "agent-window/src/node/requirement-classification-server.ts",
+    "agent-window/src/node/results-assertion-server.ts",
+    "agent-window/src/node/results-generation-server.ts",
+    "agent-window/src/node/results-question-server.ts"
+  ],
+  "class": "app-frontend",
+  "instruction_file": "instruction.md",
+  "instruction_source": "commit-message",
+  "area": "agent",
+  "validation": {
+    "ts": "2026-09-23T05:33:17.290Z",
+    "before": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 3.492
+      },
+      {
+        "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+        "exit_code": 1,
+        "wall_s": 0.055
+      },
+      {
+        "cmd": "node scripts/test-agent-send-detection.mjs",
+        "exit_code": 1,
+        "wall_s": 0.199
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.704
+      },
+      {
+        "cmd": "node scripts/test-cli-args.mjs",
+        "exit_code": 1,
+        "wall_s": 0.047
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.792
+      },
+      {
+        "cmd": "node scripts/test-model-discovery.mjs",
+        "exit_code": 1,
+        "wall_s": 0.049
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.81
+      },
+      {
+        "cmd": "node scripts/test-model-selection.mjs",
+        "exit_code": 1,
+        "wall_s": 0.046
+      }
+    ],
+    "after": [
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 4.13
+      },
+      {
+        "cmd": "node scripts/test-cli-detection-lifecycle.mjs",
+        "exit_code": 0,
+        "wall_s": 0.042
+      },
+      {
+        "cmd": "node scripts/test-agent-send-detection.mjs",
+        "exit_code": 0,
+        "wall_s": 0.504
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.743
+      },
+      {
+        "cmd": "node scripts/test-cli-args.mjs",
+        "exit_code": 0,
+        "wall_s": 0.051
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.657
+      },
+      {
+        "cmd": "node scripts/test-model-discovery.mjs",
+        "exit_code": 0,
+        "wall_s": 0.495
+      },
+      {
+        "cmd": "npm run compile --workspace=@poiesis/theia-agent-window",
+        "exit_code": 0,
+        "wall_s": 1.671
+      },
+      {
+        "cmd": "node scripts/test-model-selection.mjs",
+        "exit_code": 0,
+        "wall_s": 0.047
+      }
+    ],
+    "before_wall_s": 9.194,
+    "after_wall_s": 10.34,
+    "log": ".harness/bench/validation/mine-2026-09-23T05-31-49-942Z-5113b74f/git-186d3258e20d.json"
+  }
+}

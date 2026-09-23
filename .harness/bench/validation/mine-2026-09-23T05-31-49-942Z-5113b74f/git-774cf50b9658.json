@@ -1,0 +1,8 @@
+{
+  "id": "git-774cf50b9658",
+  "base_sha": "ae227942f1d897d0929c949b09302fa27468a830",
+  "fix_sha": "774cf50b96581af97a6d3be93fe43d47ca53eeb1",
+  "valid": false,
+  "reason": "git show failed: fatal: path 'package.json' exists on disk, but not in 'ae227942f1d897d0929c949b09302fa27468a830'",
+  "wall_s": 0.056
+}
