@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { context, options, required, out, fail, git, redactor } from './lib/util.mjs';
+import { context, resolveProject, initializeProject, options, required, out, fail, git, redactor } from './lib/util.mjs';
+import { poiesis } from './lib/poiesis.mjs';
 import { run } from './lib/run.mjs';
 import { verify } from './lib/verify.mjs';
 import { judge, calibration } from './lib/judge.mjs';
@@ -14,8 +15,14 @@ import { mine, benchRun, resuite } from './lib/bench.mjs';
 import { gate } from './lib/gate.mjs';
 import { exhaustedQuota } from './lib/quota.mjs';
 
-const ctx = context(), argv = process.argv.slice(2), command = argv.shift(), o = options(argv);
+const o = options(process.argv.slice(2)), command = o._.shift();
 try {
+  if (command === 'poiesis') {
+    out(await poiesis(o));
+    process.exit(0);
+  }
+  const ctx = context(resolveProject({ project: o.project }), { sharedBudget: true });
+  initializeProject(ctx, { track: Boolean(o.track) });
   let result;
   switch (command) {
     case 'run': result = await run(ctx, o); break;
@@ -58,7 +65,8 @@ try {
     case 'status': {
       const budget = budgetStatus(ctx), tickets = path.join(ctx.data, 'tickets'), exhausted = exhaustedQuota(ctx);
       const active = fs.existsSync(tickets) ? fs.readdirSync(tickets).filter(f => f.endsWith('.md')).filter(f => !/^state:\s*["']?(?:done|confirmed|確定)/mi.test(fs.readFileSync(path.join(tickets, f), 'utf8'))) : [];
-      const branch = (await git(ctx.root, ['branch', '--show-current'])).stdout.trim() || '(detached)';
+      const branchResult = await git(ctx.root, ['branch', '--show-current'], { allowFailure: true });
+      const branch = branchResult.exit_code ? '(no git)' : branchResult.stdout.trim() || '(detached)';
       const last = ledger(ctx).filter(r => !r.kind).slice(-5).map(r => ({ run_id: r.run_id, model: r.model, exit_code: r.exit_code, wall_s: r.wall_s }));
       result = { branch, active_tickets: active, policy_version: policy(ctx).version, month_usd: budget.month_usd, quota_runs_today: budget.quota_today.length, exhausted_quota: Object.fromEntries(Object.entries(exhausted).map(([key, e]) => [key, { exhausted_until: e.exhausted_until, source: e.source, seen_at: e.seen_at }])), last_runs: last };
       if (!o.json) {
@@ -72,7 +80,7 @@ try {
       break;
     }
     case 'help': case '--help': case undefined:
-      out('hx run|verify|gate|judge|route|scoreboard|outcome|tune|budget|prices|cost|bench|dogfood|status|judge-calibration [--json]'); process.exit(0);
+      out('hx run|verify|gate|judge|route|scoreboard|outcome|tune|budget|prices|cost|bench|dogfood|status|judge-calibration|poiesis install|uninstall [--project dir] [--json]'); process.exit(0);
     default: fail(`Unknown command: ${command}`);
   }
   out(command === 'cost' && !o.json ? formatCost(result) : redactor()(result)); process.exitCode = result?.exit_code ?? 0;

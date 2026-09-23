@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { json, fail } from './util.mjs';
+import { json, fail, configFile } from './util.mjs';
 import { ledger } from './ledger.mjs';
 import { catalog, listPrice } from './prices.mjs';
 import { chargedCost, meteredBudgetStatus } from './budget.mjs';
@@ -30,7 +30,7 @@ export async function costReport(ctx, o = {}, now = new Date()) {
   const all = ledger(ctx), runs = all.filter(r => !r.kind && r.ts?.startsWith(month)),
     outcomes = new Map(all.filter(r => r.kind === 'outcome').map(r => [r.run_id, r.result]));
   const models = new Map(catalog(ctx).map(p => [p.id, p]));
-  const subscriptions = json(path.join(ctx.data, 'budget/subscriptions.json')).map(s => {
+  const subscriptions = json(configFile(ctx, 'budget/subscriptions.json')).map(s => {
     const included = runs.filter(r => r.cost_basis === 'quota' && s.covers.includes(r.adapter));
     const tokens = emptyTokens(); let value = 0, valuedRuns = 0, unknownRuns = 0;
     for (const r of included) {

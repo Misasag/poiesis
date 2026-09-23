@@ -44,7 +44,7 @@ export async function run(ctx, o, dependencies = {}) {
   const prevSessionFile = prev?.session_file_rel ? path.resolve(ctx.root, prev.session_file_rel) : null;
   if (prev && p.adapter === 'pi' && !prevSessionFile) fail('pi resume requires the stored session file');
   if (prev) { o = { ...o, role: o.role ?? prev.role, ticket: o.ticket ?? prev.ticket, 'task-class': o['task-class'] ?? prev.task_class }; }
-  const env = dependencies.env ?? resolveEnv(p), redact = redactor(env);
+  const env = dependencies.env ?? resolveEnv(p, process.env, undefined, ctx), redact = redactor(env);
   // Live spend cap: pi sums assistant usage.cost.total, anthropic-compat is
   // priced from the catalog tokens; quota runs have no live USD and ignore it.
   const capUsd = p.costBasis === 'metered' ? (o['max-usd'] === undefined ? meteredLimits(ctx).per_run_usd : positive(o['max-usd'])) : null;

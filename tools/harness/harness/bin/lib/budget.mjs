@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { json, writeJson, fail, redactor } from './util.mjs';
+import { json, writeJson, fail, redactor, configFile } from './util.mjs';
 import { ledger } from './ledger.mjs';
 import { accountStatus } from './openrouter.mjs';
 
@@ -13,7 +13,7 @@ export function chargedCost(r, fallback = 0.5) {
     ? Math.max(r.cost_usd_actual_partial, estimate ?? 0) : estimate;
 }
 
-export const limits = ctx => json(path.join(ctx.data, 'budget/limits.json'));
+export const limits = ctx => json(configFile(ctx, 'budget/limits.json'));
 export const meteredLimits = ctx => limits(ctx).metered;
 
 export function budgetStatus(ctx, now = new Date()) {
@@ -29,7 +29,7 @@ const amount = n => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 // The key has no monthly reset. Serialize first observations across processes;
 // a missing/corrupt/busy baseline conservatively charges total key usage.
 function monthlyUsage(ctx, usage, now) {
-  const file = path.join(ctx.data, 'budget/openrouter-baseline.json'), lock = `${file}.lock`;
+  const file = ctx.budgetBaseline ?? path.join(ctx.data, 'budget/openrouter-baseline.json'), lock = `${file}.lock`;
   const month = now.toISOString().slice(0, 7);
   let fd;
   try {

@@ -1,0 +1,5 @@
+[
+  { "id": "chatgpt", "label": "ChatGPT Pro 20x (Codex)", "covers": ["codex"], "monthly_fee_usd": 200, "fee_source": "owner plan Pro 20x; fee assumed from the Pro 5x/20x ladder, confirm on the invoice", "review": "2026-10-07: downgrade to Pro 5x (100 USD) if the weekly peak stays <= 25% under gpt-6-sol-first routing" },
+  { "id": "claude", "label": "Claude Max 5x (Claude Code)", "covers": ["claude"], "monthly_fee_usd": 100, "fee_source": "owner plan Max 5x; historical list price, confirm on the invoice" },
+  { "id": "supergrok", "label": "SuperGrok (lowest tier)", "covers": ["grok"], "monthly_fee_usd": 30, "fee_source": "owner plan lowest tier; historical list price", "review": "2026-09-23 owner decision: cancel; grok removed from routing" }
+]

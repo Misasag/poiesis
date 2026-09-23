@@ -3,10 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 export const PLUGIN = path.resolve(ROOT, 'tools/harness/harness');
-export const VERSION = '1.6.0';
+export const VERSION = '1.7.0';
 export const read = p => fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '');
 export const json = p => JSON.parse(read(p));
 export function write(p, value) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, value, 'utf8'); }
@@ -104,7 +105,7 @@ export function redactor(env = process.env) {
     return walk(value);
   };
 }
-export function resolveEnv(provider, parent = process.env, lookup) {
+export function resolveEnv(provider, parent = process.env, lookup, ctx) {
   const env = { ...parent };
   for (const [key, value] of Object.entries(provider.env ?? {})) {
     env[key] = String(value).replace(/\$\{ENV:([^}]+)\}/g, (_, name) => {
@@ -119,7 +120,7 @@ export function resolveEnv(provider, parent = process.env, lookup) {
   delete env.CLAUDECODE;
   const cache = Object.entries(env).find(([key]) => key.toLowerCase() === 'npm_config_cache')?.[1];
   for (const key of Object.keys(env)) if (key.toLowerCase() === 'npm_config_cache') delete env[key];
-  env.npm_config_cache = cache && path.isAbsolute(cache) ? cache : path.join(ROOT, '.harness/tmp/npm-cache');
+  env.npm_config_cache = cache && path.isAbsolute(cache) ? cache : path.join(ctx?.data ?? path.join(ROOT, '.harness'), 'tmp/npm-cache');
   return env;
 }
 export function executable(name, extras = []) {
@@ -191,4 +192,41 @@ export async function command(commandText, cwd, opts = {}) {
   if (/\.(cmd|bat)$/i.test(file)) fail('Batch shims are forbidden; resolve the real executable');
   return exec(file, args, { cwd, ...opts });
 }
-export function context(root = ROOT) { return { root, data: path.join(root, '.harness'), plugin: PLUGIN }; }
+export function resolveProject({ cwd = process.cwd(), project, env = process.env } = {}) {
+  const explicit = project ?? env.HX_PROJECT;
+  if (explicit !== undefined) {
+    if (typeof explicit !== 'string' || !explicit.trim()) fail('Expected a project directory');
+    const root = path.resolve(cwd, explicit);
+    if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) fail('Project directory unavailable');
+    return root;
+  }
+  try {
+    const top = spawnSync(executable('git'), ['rev-parse', '--show-toplevel'], {
+      cwd, encoding: 'utf8', windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'ignore']
+    });
+    return top.status === 0 && top.stdout.trim() ? path.resolve(top.stdout.trim()) : path.resolve(cwd);
+  } catch { return path.resolve(cwd); }
+}
+export function context(root = ROOT, { sharedBudget = false } = {}) {
+  return { root, data: path.join(root, '.harness'), plugin: PLUGIN,
+    ...(sharedBudget ? { budgetBaseline: path.join(os.homedir(), '.poiesis', 'harness', 'openrouter-baseline.json') } : {}) };
+}
+export function initializeProject(ctx, { track = false } = {}) {
+  if (ctx.root === ROOT) return;
+  fs.mkdirSync(ctx.data, { recursive: true });
+  const ignore = path.join(ctx.data, '.gitignore');
+  if (track && fs.existsSync(ignore) && read(ignore) === '*\n') {
+    let tracked = false;
+    try {
+      tracked = spawnSync(executable('git'), ['ls-files', '--error-unmatch', '--', '.harness/.gitignore'], {
+        cwd: ctx.root, encoding: 'utf8', windowsHide: true, shell: false, stdio: 'ignore'
+      }).status === 0;
+    } catch { /* No Git metadata means there is no tracked ignore file. */ }
+    if (!tracked) fs.unlinkSync(ignore);
+  }
+  else if (!track && !fs.existsSync(ignore)) write(ignore, '*\n');
+}
+export function configFile(ctx, relative) {
+  const local = path.join(ctx.data, relative);
+  return fs.existsSync(local) ? local : path.join(ctx.plugin, 'config', 'defaults', relative);
+}

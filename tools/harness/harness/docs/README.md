@@ -1,9 +1,15 @@
-# Poiesis development harness v1.6.0
+# Poiesis development harness v1.7.0
 
 Development-only Node 24 ESM. No npm install, Python, uv, or added dependencies.
 Run from this checkout with `node tools/harness/harness/bin/hx.mjs` (`hx` below).
 The plugin is discovered through `.claude/settings.json` and the directory marketplace at `tools/harness`.
-The root is derived from the executable location, not the worker cwd. Keep this harness checkout available while its worktrees run.
+The plugin source is derived from the executable location. The project root is `--project <dir>`, then `HX_PROJECT`, then the current directory's Git top level, then the current directory. Keep this harness checkout available while its worktrees run.
+
+## Using the harness from the installed Poiesis
+
+Install the local skill catalog once with `node tools/harness/harness/bin/hx.mjs poiesis install` (preview with `--dry-run`). This writes three skills to `~/.poiesis/skills`; `poiesis uninstall` removes only the skills recorded by its manifest. `--dest <dir>` targets a separate skills directory. The installed app reads the catalog; the harness source remains in this checkout and is not packaged with the app.
+
+Run `node <absolute-path-to-hx.mjs> status` from any workspace. Project ledger, runs, tickets and runtime files live in that workspace's `.harness/`. If policy, limits or subscriptions are absent, the bundled templates apply without copying them into the project. For a foreign project, the first command creates `.harness/.gitignore` with `*`; `--track` opts out so the project can version its harness data. The Poiesis checkout retains its existing `.harness/` data. OpenRouter account usage uses one shared monthly baseline under `~/.poiesis/harness/` across projects, while each project keeps its own ledger.
 
 ## Measured loop
 

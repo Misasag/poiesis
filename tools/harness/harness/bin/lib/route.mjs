@@ -1,12 +1,12 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { json, writeJson, write, fail } from './util.mjs';
+import { json, writeJson, write, fail, configFile } from './util.mjs';
 import { ledger } from './ledger.mjs';
 import { catalog } from './prices.mjs';
 import { chargedCost } from './budget.mjs';
 import { exhaustedQuota, quotaKey } from './quota.mjs';
 
-export const policy = ctx => json(path.join(ctx.data, 'routing/policy.json'));
+export const policy = ctx => json(configFile(ctx, 'routing/policy.json'));
 export function decay(ts, now = new Date()) {
   const days = Math.max(0, (now - new Date(ts)) / 86400000);
   return days < 15 ? 1 : days < 46 ? 0.5 : 0.25;
