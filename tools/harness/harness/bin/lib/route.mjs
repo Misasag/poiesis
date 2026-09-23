@@ -5,6 +5,7 @@ import { ledger } from './ledger.mjs';
 import { catalog } from './prices.mjs';
 import { chargedCost } from './budget.mjs';
 import { exhaustedQuota, quotaKey } from './quota.mjs';
+import { adapterAvailability } from './nested.mjs';
 
 export const policy = ctx => json(configFile(ctx, 'routing/policy.json'));
 export function decay(ts, now = new Date()) {
@@ -71,7 +72,7 @@ export function scoreboard(ctx, persist = false, now = new Date()) {
   return result;
 }
 export const seeded = seed => createHash('sha256').update(String(seed)).digest().readUInt32BE(0) / 2 ** 32;
-export function route(ctx, o) {
+export function route(ctx, o, availability = adapterAvailability()) {
   const p = policy(ctx), role = p.roles[o.role];
   if (!role) fail(`Unknown role: ${o.role}`);
   if (role.fixed) return { model: role.incumbent, informational: true, reason: 'Fixed orchestrator session' };
@@ -81,14 +82,16 @@ export function route(ctx, o) {
     const key = quotaKey(m.adapter);
     return key && exhausted[key] ? { model: m.id, quota: key, exhausted_until: exhausted[key].exhausted_until, source: exhausted[key].source, reset: exhausted[key].exhausted_until ?? 'until state is edited' } : null;
   };
-  const blocked = [];
+  const blocked = [], unavailable = [];
   const candidates = [...new Set([rule.incumbent, rule.fallback, ...(rule.challengers ?? [])].filter(Boolean))].map(id => models.find(m => m.id === id)).filter(m => {
     if (!m?.enabled || excluded.includes(m.family) || !dataAllowed(p, m)) return false;
+    const adapter = availability[m.adapter];
+    if (adapter && !adapter.available) { unavailable.push({ model: m.id, reason: adapter.reason }); return false; }
     const block = quotaSkip(m); if (block) { blocked.push(block); return false; }
     return true;
   });
-  const skipped = { quota_exhausted: blocked };
-  if (!candidates.length) fail(blocked.length ? `Quota exhausted for ${[...new Set(blocked.map(b => b.quota))].join(', ')}; no eligible model` : 'No eligible model after family/data policy exclusion');
+  const skipped = { quota_exhausted: blocked, unavailable_adapters: unavailable };
+  if (!candidates.length) fail(unavailable.length ? `No eligible model: ${unavailable.map(b => `${b.model}: ${b.reason}`).join('; ')}` : blocked.length ? `Quota exhausted for ${[...new Set(blocked.map(b => b.quota))].join(', ')}; no eligible model` : 'No eligible model after family/data policy exclusion');
   const ranked = candidates.map(m => {
     const score = scores.find(s => s.role === o.role && s.task_class === (o['task-class'] ?? 'unclassified') && s.model === m.id);
     const quotaFirst = p.quota_first !== false && m.costBasis === 'quota';

@@ -9,6 +9,7 @@ import { costCapMonitor } from './costcap.mjs';
 import { generationCosts, openRouterClient } from './openrouter.mjs';
 import { policy, dataAllowed } from './route.mjs';
 import { detectQuota, openRouterReservation, quotaKey, recordQuota } from './quota.mjs';
+import { adapterAvailability } from './nested.mjs';
 
 export async function captureDiff(cwd, base) {
   let patch = (await git(cwd, ['diff', '--binary', base, '--'])).stdout;
@@ -44,6 +45,22 @@ export async function run(ctx, o, dependencies = {}) {
   const prevSessionFile = prev?.session_file_rel ? path.resolve(ctx.root, prev.session_file_rel) : null;
   if (prev && p.adapter === 'pi' && !prevSessionFile) fail('pi resume requires the stored session file');
   if (prev) { o = { ...o, role: o.role ?? prev.role, ticket: o.ticket ?? prev.ticket, 'task-class': o['task-class'] ?? prev.task_class }; }
+  const availability = (dependencies.adapterAvailability ?? adapterAvailability)()[p.adapter];
+  if (availability && !availability.available) {
+    const runId = id(o.role === 'judge' ? 'judge' : 'run'), dir = runDir(ctx, runId);
+    const hint = `${availability.reason}; use hx route or an or:* model`;
+    const redact = redactor();
+    const record = { run_id: runId, ts: new Date().toISOString(), role: o.role ?? 'worker', ticket: o.ticket ?? null,
+      task_class: o['task-class'] ?? 'unclassified', model: p.id, family: p.family, adapter: p.adapter, effort,
+      cwd_rel: path.relative(ctx.root, cwd).replaceAll('\\', '/'), base_sha: null, tokens: { input: 0, output: 0 },
+      cost_usd_est: null, cost_basis: p.costBasis, wall_s: 0, exit_code: 1, session_id: null, session_file_rel: null,
+      diff: { files: 0, added: 0, removed: 0 }, harness_ver: VERSION, infra: 'nested_sandbox', hint };
+    write(path.join(dir, 'brief.md'), redact(brief));
+    write(path.join(dir, 'final.md'), hint);
+    writeJson(path.join(dir, 'meta.json'), redact(record));
+    append(ctx, record, 'runs', redact);
+    return record;
+  }
   const env = dependencies.env ?? resolveEnv(p, process.env, undefined, ctx), redact = redactor(env);
   // Live spend cap: pi sums assistant usage.cost.total, anthropic-compat is
   // priced from the catalog tokens; quota runs have no live USD and ignore it.

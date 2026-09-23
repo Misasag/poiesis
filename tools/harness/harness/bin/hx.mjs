@@ -35,6 +35,7 @@ try {
       if (o.explain && !o.json) {
         out(`model=${result.model} effort=${result.effort ?? 'default'} exploring=${result.exploring} utility=${result.utility?.toFixed(4)} rule=${result.pricing_rule}`);
         for (const b of result.skipped.quota_exhausted) out(`skipped ${b.model}: quota ${b.quota} exhausted, resets ${b.reset}`);
+        for (const b of result.skipped.unavailable_adapters) out(`excluded ${b.model}: ${b.reason}`);
         process.exit(0);
       }
       break;
