@@ -713,12 +713,15 @@ async function smokeFallback(page, diagnostics) {
             panel: bounds('#poiesis-results-panel'),
             canvas: bounds('.poiesis-results__canvas'),
             header: bounds('.poiesis-results__fixed-header'),
+            verification: bounds('.poiesis-results__canvas .poiesis-results__verification'),
             frame: bounds('.poiesis-results__document')
         };
     });
     assert(canvasLayout.header?.height <= 52,
         `The Results fixed header is taller than 52px at 1280x720: ${JSON.stringify(canvasLayout)}`);
-    assert(canvasLayout.frame && canvasLayout.panel && canvasLayout.frame.top - canvasLayout.panel.top <= 70,
+    assert(canvasLayout.verification?.height > 0 && canvasLayout.verification.height <= 250,
+        `The app-owned evidence band must be visible and bounded: ${JSON.stringify(canvasLayout)}`);
+    assert(canvasLayout.frame && canvasLayout.panel && canvasLayout.frame.top - canvasLayout.panel.top - canvasLayout.verification.height <= 70,
         `The Results document starts too far below the panel top: ${JSON.stringify(canvasLayout)}`);
     assert(canvasLayout.frame && canvasLayout.canvas && canvasLayout.frame.width >= canvasLayout.canvas.width - 2,
         `The Results document does not use the canvas width: ${JSON.stringify(canvasLayout)}`);
@@ -942,6 +945,8 @@ async function measureResultsLayout(page) {
             canvas: rect(document.querySelector('.poiesis-results__canvas')),
             header: rect(header),
             frame: rect(document.querySelector('.poiesis-results__document')),
+            verification: rect(document.querySelector('.poiesis-results__canvas .poiesis-results__verification')),
+            answerWarning: document.querySelector('.poiesis-results__answer-warning') ? rect(document.querySelector('.poiesis-results__answer-warning')) : { height: 0 },
             title: rect(title),
             actions: actions.map(rect),
             permanentTaskRail: Boolean(document.querySelector('.poiesis-results__task-switcher')),
@@ -962,7 +967,9 @@ function assertResultsLayout(layout, { label, minimumFrameHeight }) {
         && layout.actions.every(bounds => bounds.left >= layout.header.left - 1 && bounds.right <= layout.header.right + 1)
         && layout.title.right <= layout.actions[0].left - 4,
     `${label} clipped document-toolbar content: ${JSON.stringify(layout)}`);
-    assert(layout.frame.height >= minimumFrameHeight,
+    assert(layout.verification.height > 0 && layout.verification.height <= 270 && layout.answerWarning.height <= 100,
+        `${label} must keep app evidence compact: ${JSON.stringify(layout)}`);
+    assert(layout.frame.height >= 220 && layout.frame.height + layout.verification.height + layout.answerWarning.height >= minimumFrameHeight,
         `${label} did not preserve enough document reading height: ${JSON.stringify(layout)}`);
 }
 

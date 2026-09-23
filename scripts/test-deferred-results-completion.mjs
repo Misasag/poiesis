@@ -154,7 +154,7 @@ const workspaceSkillService = {
     }
 };
 
-const generatedHtml = '<!doctype html><html lang="ja"><body><main><h2>変更内容</h2><p>更新しました。</p><a data-poiesis-citation="README.md:1">README.md</a></main></body></html>';
+const generatedHtml = '<!doctype html><html lang="ja"><body><main><h2>変更内容</h2><p>説明を更新しました。動作は未確認です。</p><a data-poiesis-citation="README.md:1">README.md</a></main></body></html>';
 const generationRequests = [];
 const generationServer = {
     async generate(request) {

@@ -10,6 +10,8 @@ const { CliProviderRegistry } = require('../agent-window/lib/node/cli-provider-r
 const { knownCliDefinitions } = require('../agent-window/lib/node/known-cli-registry.js');
 const classifier = require('../agent-window/lib/browser/requirement-classifier.js');
 const assertions = require('../agent-window/lib/browser/results-assertions.js');
+const evidence = require('../agent-window/lib/browser/results-evidence.js');
+const normalizer = require('../agent-window/lib/browser/results-document-normalizer.js');
 const protocol = require('../agent-window/lib/common/agent-runtime-protocol.js');
 const { taskProducesResult } = require('../agent-window/lib/common/task-outcome.js');
 
@@ -65,7 +67,7 @@ for (const explicit of [false, true]) {
     const assertionServer = new ResultsAssertionServerImpl(registry);
     const requirementServer = new RequirementClassificationServerImpl(registry);
     const skill = productionMethods('../agent-window/src/browser/results-skill.ts', 'AiResultsSkill', ['assertCandidate'], {
-        ...assertions, ResultsGenerationCancelledError: class extends Error {}
+        ...assertions, ...evidence, ...normalizer, ResultsGenerationCancelledError: class extends Error {}
     });
     Object.assign(skill, { context, assertionServer, normalizeAndValidate: html => html, throwIfCancelled() {} });
     await skill.assertCandidate('<html><body><h2>成果</h2></body></html>', { task: { title: 'Task' }, changeSet: { files: [] } },

@@ -1,4 +1,35 @@
 import type { AgentActivity, AgentActivityKind, AgentActivityStatus } from '../common/agent-provider';
+import type { VerificationTable } from './results-evidence';
+import type { ResultsAssertionResult } from './results-assertions';
+
+/** Format/wording guard only; it does not judge whether the user's change is correct. */
+export function checkResultsTopAnswer(html: string, table: VerificationTable): ResultsAssertionResult[] {
+    const body = (html.match(/<body\b[^>]*>([\s\S]*?)<\/body\s*>/i)?.[1] ?? html)
+        .replace(/<!--[\s\S]*?-->|<(?:style|script)\b[^>]*>[\s\S]*?<\/(?:style|script)\s*>/gi, '');
+    // Permit layout wrappers and one content heading, but never skip a details/table/image to find an answer.
+    const opening = body.replace(/^\s*(?:(?:<(?:main|article|section|div)\b[^>]*>)\s*)*/i, '')
+        .replace(/^<h[1-4]\b[^>]*>[\s\S]*?<\/h[1-4]\s*>\s*/i, '');
+    const paragraph = opening.match(/^<p\b([^>]*)>([\s\S]*?)<\/p\s*>/i);
+    const answer = paragraph ? decodeBasicEntities(paragraph[2].replace(/<[^>]*>/g, ' ')).normalize('NFKC').trim() : '';
+    const hidden = paragraph && /\bhidden\b|display\s*:\s*none|visibility\s*:\s*hidden/i.test(paragraph[1]);
+    const sentences = answer.split(/[。！？!?]+/).filter(value => value.trim()).length;
+    const exists = Boolean(answer) && !hidden && sentences >= 2 && sentences <= 4;
+    const counts = [...answer.matchAll(/(?:([0-9]+)\s*件\s*(?:成功|合格|確認済み)|(?:成功|合格|確認済み)\s*([0-9]+)\s*件)/g)]
+        .map(match => Number(match[1] ?? match[2]));
+    const blanket = /(?:すべて|全て|全部|全件|全項目|全確認|全テスト|全検証)[^。！？]{0,16}(?:成功|合格|確認済み|検証済み|通過)|(?:成功率|合格率)\s*100\s*%|\ball\s+(?:checks|tests)\s+passed\b/i.test(answer);
+    const inconsistent = counts.some(count => count > table.counts.pass)
+        || blanket && (table.counts.pass !== table.total || table.humanCount > 0);
+    const summary = /確認|成功|失敗|未確認|以前の結果|検証/.test(answer);
+    const caveat = table.counts.fail + table.counts.unknown + table.counts.outdated === 0
+        || /失敗|未確認|未検証|以前の結果|古い|未完了/.test(answer);
+    const decision = table.humanCount === 0 || /判断|決め|選択|承認/.test(answer);
+    return [
+        { source: 'app', text: '冒頭に2〜4文の短い回答がある', status: exists ? 'pass' : 'fail',
+            evidence: exists ? '冒頭の回答を確認しました。' : '最初の見出しの直後（または本文先頭）に2〜4文の段落を置いてください。' },
+        { source: 'app', text: '冒頭の確認状況がアプリの記録と一致する', status: exists && !inconsistent && summary && caveat && decision ? 'pass' : 'fail',
+            evidence: `${table.summary}。${table.humanCount ? `判断待ち ${table.humanCount}件。` : ''}成功の過大申告を避け、未確認・失敗・判断事項を冒頭に残してください。` }
+    ];
+}
 
 const AI_RESULTS_HTML_MAX_CHARS = 280_000;
 const MESSAGE_EVIDENCE_MAX_CHARS = 200;

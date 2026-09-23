@@ -80,7 +80,7 @@ try {
     assert.equal(result.broken, 'fail'); assert.equal(result.emptyAssertions, 0); assert.equal(result.svgImage, 1); assert.equal(result.style, true);
     assert.equal(result.safeDiagram, 'pass');
     const prompt = await readFile('agent-window/src/node/results-generation-server.ts', 'utf8');
-    for (const marker of ['3〜5行', '12ノード以下', '変更前', '変更後', '創作しない', '<details><summary>', 'evidence[].image', 'data-poiesis-image']) assert.ok(prompt.includes(marker), marker);
+    for (const marker of ['2〜4文', '12ノード以下', '変更前', '変更後', '創作しない', '<details><summary>', 'evidence[].image', 'data-poiesis-image']) assert.ok(prompt.includes(marker), marker);
     console.log('RESULTS_RICH_CONTENT_TEST: path confinement, signatures, budgets, decode, sanitizer, details, prompt passed');
 } finally {
     await browser?.close();

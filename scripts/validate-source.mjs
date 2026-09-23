@@ -2079,7 +2079,9 @@ for (const marker of [
     'beforeOpen.conversation === longCompletionReply',
     "!beforeOpen.conversation.includes('詳細は Results を確認してください')",
     'canvasLayout.header?.height <= 52',
-    'canvasLayout.frame.top - canvasLayout.panel.top <= 70',
+    'canvasLayout.frame.top - canvasLayout.panel.top - canvasLayout.verification.height <= 70',
+    'canvasLayout.verification.height <= 250',
+    'layout.frame.height + layout.verification.height + layout.answerWarning.height >= minimumFrameHeight',
     'canvasLayout.frame.width >= canvasLayout.canvas.width - 2',
     'denseHeader.height <= 52',
     "denseDetails.values['成果の作成'] === 'AI 生成 · Codex（モデルはCLI設定）'",
@@ -2870,4 +2872,13 @@ for (const marker of ['realpath', 'RESULTS_IMAGE_MAX_BYTES', 'RESULTS_IMAGES_MAX
 }
 assert.ok(rootPackage.scripts['test:results-rich-content'].includes('scripts/test-results-rich-content.mjs'));
 assert.ok(rootPackage.scripts['smoke:electron'].includes('scripts/smoke-results-rich-electron.mjs'));
+// Evidence is projected once for app chrome, AI input and top-answer assertions.
+const resultsEvidence = await read('agent-window/src/browser/results-evidence.ts');
+for (const marker of ['buildVerificationTable', "outdated: '以前の結果'", "human: '人間の判断待ち'", 'humanCount', 'omittedRows']) {
+    assert.ok(resultsEvidence.includes(marker), `Results evidence contract is missing ${marker}`);
+}
+assert.ok(resultsSkill.includes('verificationEvidence: verificationPrompt(buildVerificationTable('));
+assert.ok(resultsSkill.includes('appAssertions.push(...checkResultsTopAnswer('));
+assert.ok(agentWindowSource.includes('アプリの確認記録') && agentWindowSource.includes('判断待ち {humanCount}件'));
+assert.ok(rootPackage.scripts['test:results-evidence'].includes('scripts/test-results-evidence.mjs'));
 console.log('Source contract validation passed.');

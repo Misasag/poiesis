@@ -43,6 +43,7 @@ export interface ResultsGenerationRequest {
     changeSetSummary: string;
     diff: string;
     executionEvidence?: string;
+    verificationEvidence?: string;
     hookMaterial?: string;
     workspaceSkillGuidance?: string;
     assertionRetryGuidance?: string;

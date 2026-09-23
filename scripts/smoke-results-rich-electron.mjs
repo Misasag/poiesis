@@ -5,6 +5,9 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createServer } from 'node:net';
 import puppeteer from 'puppeteer-core';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { hashChangeSet } = require('../agent-window/lib/common/change-set-hash.js');
 import { DURABLE_SESSION_KEY, DURABLE_SESSION_MIGRATION_KEY, writeDurableValue } from './poiesis-smoke-state.mjs';
 
 const root = process.cwd();
@@ -23,7 +26,7 @@ const html = `<!doctype html><html lang="ja"><head><style>
 section { margin-block: 20px; } figure { margin: 0; } img { max-height: 220px; object-fit: contain; object-position: left; }
 </style></head><body><main>
 <h2>成果を画像・図・詳細から確認できます</h2>
-<p>ワークスペースの画像を成果文書に表示します。<br>画像をクリックすると大きく開けます。<br>この試験では図・画像・折りたたみ・拡大表示を確認します。</p>
+<p>ワークスペースの画像を成果文書に表示します。すべて確認済みです。</p>
 <svg viewBox="0 0 660 82" role="img" aria-label="画像を確認する流れ">
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6" fill="var(--results-accent)"/></marker></defs>
 <g fill="none" stroke="var(--results-accent)" stroke-width="2"><rect x="1" y="1" width="180" height="56" rx="8"/><rect x="231" y="1" width="180" height="56" rx="8"/><rect x="471" y="1" width="180" height="56" rx="8"/><path d="M182 29H224 M412 29H464" marker-end="url(#arrow)"/></g>
@@ -36,6 +39,13 @@ const task = { id: taskId, sessionId, workspaceUri: pathToFileURL(workspace).hre
     changeSet: { source: 'task-diff', diff: 'diff --git a/evidence.txt b/evidence.txt\n+画像の表示を確認', files: ['evidence.txt'], capturedAt: now },
     hookEvidence: [{ hookId: '画面の確認', runId: 'sample', evidence: [{ label: '作業画面', status: 'unknown', detail: 'この試験で撮影した画像', image: 'workspace-screen.png' }] }],
     resultsDocument: { taskId, status: 'ready', generator: 'ai', html } };
+task.changeSet.changeSetHash = await hashChangeSet(task.changeSet);
+const hook = spawnSync(process.execPath, [resolve(root, 'scripts/fixtures/hook.mjs'), 'versioned-evidence'], {
+    input: JSON.stringify({ taskId, runId: 'evidence-smoke', data: { changeSetHash: task.changeSet.changeSetHash } }),
+    encoding: 'utf8', shell: false, windowsHide: true
+});
+assert.equal(hook.status, 0);
+task.hookEvidence = [{ hookId: '画面の確認', runId: 'evidence-smoke', evidence: JSON.parse(hook.stdout).evidence }];
 writeDurableValue(config, DURABLE_SESSION_KEY, { version: 1, selectedSessionId: sessionId, railWidth: 258, railCollapsed: false,
     sessions: [{ id: sessionId, createdAt: Date.now(), updatedAt: Date.now(), workspaceUri: task.workspaceUri, branch: 'main', runTarget: 'local',
         title: task.title, hasUserMessage: true, lastTaskStatus: 'completed', pinned: false, archived: false, activeTab: 'agent',
@@ -83,6 +93,18 @@ try {
     const frame = await frameElement.contentFrame();
     await frame.waitForSelector('img[data-poiesis-image]');
     console.log('RICH_RESULTS: resolved image');
+    const tableSelector = '.poiesis-results__canvas .poiesis-results__verification';
+    await page.waitForSelector(`${tableSelector} tbody tr[data-status="human"]`);
+    assert.equal(await page.$$eval(`${tableSelector} tbody tr`, rows => rows.length), 5);
+    for (const status of ['pass', 'fail', 'outdated', 'human', 'unknown']) {
+        assert.equal(await page.$$eval(`${tableSelector} tbody tr[data-status="${status}"]`, rows => rows.length), 1);
+    }
+    assert.equal(await page.$eval(`${tableSelector} summary`, node => node.textContent), '確認 5件中 1件成功・1件失敗・1件未確認・1件以前の結果・1件人間の判断待ち');
+    assert.equal(await page.$eval('.poiesis-results__human-badge', node => node.textContent), '判断待ち 1件');
+    await page.waitForSelector('.poiesis-results__answer-warning');
+    await page.screenshot({ path: resolve(shots, 'results-evidence-table.png') });
+    await page.focus(`${tableSelector} summary`); await page.keyboard.press('Enter');
+    assert.equal(await page.$eval(tableSelector, node => node.open), false);
     await frame.$eval('img', image => image.scrollIntoView());
     await frame.waitForFunction(() => { const img = document.querySelector('img'); return img?.complete && img.naturalWidth > 0; });
     assert.equal(await frame.$$eval('svg', nodes => nodes.length), 1);
@@ -100,12 +122,12 @@ try {
     await page.waitForSelector('.poiesis-results__image-viewer', { visible: true });
     await page.click('[aria-label="画像を閉じる"]');
     await page.click('.poiesis-results__details-trigger');
-    await page.waitForSelector('.poiesis-results__evidence-image img');
-    await page.click('.poiesis-results__evidence-image');
+    await page.waitForSelector('#poiesis-results-details-panel .poiesis-results__evidence-image img');
+    await page.click('#poiesis-results-details-panel .poiesis-results__evidence-image');
     await page.waitForSelector('.poiesis-results__image-viewer', { visible: true });
     await page.keyboard.press('Escape');
     await page.waitForSelector('.poiesis-results__image-viewer', { hidden: true });
-    assert.equal(await page.$eval('.poiesis-results__evidence-image', node => node === document.activeElement), true);
+    assert.equal(await page.$eval('#poiesis-results-details-panel .poiesis-results__evidence-image', node => node === document.activeElement), true);
     await page.click('[aria-label="詳細を閉じる"]');
     await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
     await page.waitForSelector('input[name="poiesis-display-theme"][value="light"]');
