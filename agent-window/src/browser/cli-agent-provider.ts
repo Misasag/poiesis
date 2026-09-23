@@ -11,6 +11,7 @@ import {
     CreateSessionInput
 } from '../common/agent-provider';
 import { buildAgentExecutionPrompt } from '../common/agent-prompt';
+import { hookContext } from '../common/hooks-protocol';
 import { parseAgentCompletion } from '../common/task-outcome';
 import {
     AgentRuntimeServer,
@@ -114,6 +115,11 @@ export class CliAgentProvider implements AgentProvider {
             throw new Error(`${this.runs.get(sessionId)!.providerName} はこの会話ですでに実行中です。`);
         }
 
+        const submittedHooks = message.submittedHooks ?? await this.taskService.runHooks('promptSubmit', {
+            sessionId: message.ownerSessionId, requirementId: message.requirementId, workspaceUri: message.workspaceUri,
+            providerId: session.providerId, model: session.model
+        }, { prompt: message.content });
+        if (submittedHooks.blockReason) { throw new Error(submittedHooks.blockReason); }
         const task = this.taskService.start(
             message.ownerSessionId,
             message.content,
@@ -125,6 +131,7 @@ export class CliAgentProvider implements AgentProvider {
             session.model,
             session.effort
         );
+        this.taskService.recordHooks(task.id, submittedHooks);
         const run: CodexRun = {
             sessionId,
             taskId: task.id,
@@ -163,6 +170,13 @@ export class CliAgentProvider implements AgentProvider {
                 await this.failRun(run, '準備を安全に完了できなかったため、Agent を開始しませんでした。');
                 return;
             }
+            const startedHooks = await this.taskService.runHooks('taskStart', task, {
+                prompt: message.content, baselineHash: baselineCapture?.snapshotId ?? ''
+            });
+            if (startedHooks.blockReason) { await this.failRun(run, startedHooks.blockReason); return; }
+            const resumedHooks = message.resumeHooks
+                ? await this.taskService.runHooks('sessionResume', task, {}) : undefined;
+            if (this.runs.get(sessionId) !== run || (run.state as CodexRun['state']) === 'cancelling') { return; }
             run.phase = 'starting';
             this.emitProgress(run, true);
             run.cliStartedAt = new Date().toISOString();
@@ -173,7 +187,8 @@ export class CliAgentProvider implements AgentProvider {
                 effort: session.effort,
                 workspacePath: session.workspacePath,
                 allowCodexAgentNetworkAccess: message.allowCodexAgentNetworkAccess,
-                prompt: buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content)
+                prompt: buildAgentExecutionPrompt(message.content, message.conversation, workspaceSkills.content,
+                    hookContext([submittedHooks, startedHooks, ...resumedHooks ? [resumedHooks] : []]))
             });
             if (this.runs.get(sessionId) === run && run.state === 'starting') {
                 run.state = 'running';

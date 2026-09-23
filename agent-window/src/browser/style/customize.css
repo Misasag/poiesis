@@ -5,6 +5,16 @@
     position: relative;
 }
 
+.poiesis-hooks { display: grid; gap: 12px; }
+.poiesis-hooks__group { border-top: 1px solid var(--poiesis-chrome-line-strong); padding-top: 12px; }
+.poiesis-hooks__row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--poiesis-chrome-line-strong); }
+.poiesis-hooks__open { display: grid; gap: 4px; text-align: left; flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.poiesis-hooks__open code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poiesis-hooks__policy { border: 1px solid var(--poiesis-chrome-line-strong); border-radius: 12px; padding: 2px 8px; }
+.poiesis-hooks__last, .poiesis-hooks__error { flex-basis: 100%; margin: 0; }
+.poiesis-hooks pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.poiesis-hooks__trust { display: flex; align-items: center; gap: 8px; }
+
 .poiesis-agent-window__switch input {
     height: 1px;
     opacity: 0;

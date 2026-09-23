@@ -1,4 +1,6 @@
 import { ConnectionHandler, RpcConnectionHandler } from '@theia/core/lib/common';
+import { HooksServer, hooksServerPath } from '../common/hooks-protocol';
+import { HooksServerImpl } from './hooks-server';
 import { ContainerModule } from '@theia/core/shared/inversify';
 import {
     AgentRuntimeClient,
@@ -24,6 +26,9 @@ import { DurableStorageServer, durableStorageServerPath } from '../common/durabl
 import { DurableStorageServerImpl } from './durable-storage-server';
 
 export default new ContainerModule(bind => {
+    bind(HooksServer).toDynamicValue(() => new HooksServerImpl()).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(context => new RpcConnectionHandler(hooksServerPath,
+        () => context.container.get<HooksServer>(HooksServer))).inSingletonScope();
     bind(CliDetector).toSelf().inSingletonScope();
     bind(CliModelDiscoveryService).toDynamicValue(() => new CliModelDiscoveryService()).inSingletonScope();
     bind(CliProviderRegistry).toSelf().inSingletonScope();

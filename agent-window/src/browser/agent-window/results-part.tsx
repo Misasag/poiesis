@@ -693,10 +693,23 @@ export class ResultsPart extends AgentWindowPart {
                         </dd>
                     </div>
                     <div>
+                        <dt>適用 Hooks</dt>
+                        <dd>{[...new Set(tasks.flatMap(task => task.hookRuns?.map(run => run.id) ?? []))].join('、') || 'なし'}</dd>
+                    </div>
+                    <div>
                         <dt>タスク履歴</dt>
                         <dd>{this.host.sessions.finishedTasksForRequirement(requirement).length}件</dd>
                     </div>
                 </dl>
+                <div className='poiesis-results__hook-evidence'>
+                    {tasks.flatMap(task => task.hookEvidence ?? []).map((item, index) => <div key={index}>
+                        <strong>{item.hookId}{item.incomplete ? ' · 検証未完了' : ''}</strong>
+                        {item.notes && <p>{item.notes}</p>}
+                        {item.evidence.map((entry, evidenceIndex) => <p key={evidenceIndex}>
+                            {entry.label}: {entry.status === 'pass' ? '合格' : entry.status === 'fail' ? '不合格' : '未確認'} · {entry.detail}
+                        </p>)}
+                    </div>)}
+                </div>
                 {assertions.length > 0 && (
                     <ul className='poiesis-results__assertion-list' aria-label='成果の生成条件'>
                         {assertions.map((assertion, index) => (

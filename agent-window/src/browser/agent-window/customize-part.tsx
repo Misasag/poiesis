@@ -1,4 +1,5 @@
 import { isOnDemandAgentSkill } from '../../common/skill-catalog';
+import { HookConfiguration, HookRow, HOOK_EVENT_LABELS } from '../../common/hooks-protocol';
 import * as React from '@theia/core/shared/react';
 import { Disposable, DisposableCollection } from '@theia/core/lib/common';
 import { FileUri } from '@theia/core/lib/common/file-uri';
@@ -18,7 +19,7 @@ import { PoiesisSelect } from '../components/poiesis-select';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
 
 type NewSkillScope = 'workspace' | 'user';
-type CustomizeTab = 'skills' | 'plugins';
+type CustomizeTab = 'skills' | 'plugins' | 'hooks';
 type CustomizeScope = 'all' | 'workspace' | 'user';
 type PendingEditorNavigation = 'list' | 'close-customize';
 
@@ -40,7 +41,12 @@ export class CustomizePart extends AgentWindowPart {
 
     protected customizeTab: CustomizeTab = 'skills';
     protected customizeScope: CustomizeScope = 'all';
-    protected readonly customizeQueries: Record<CustomizeTab, string> = { skills: '', plugins: '' };
+    protected readonly customizeQueries: Record<CustomizeTab, string> = { skills: '', plugins: '', hooks: '' };
+    protected hooksConfiguration?: HookConfiguration;
+    protected selectedHook?: HookRow;
+    protected hooksError?: string;
+    protected hooksLoading = false;
+    protected hooksWorkspace = '';
     protected readonly expandedSkillGroups = new Set<string>();
     protected customizeListScrollTop = 0;
     protected customizeListScrollRestorePending = false;
@@ -112,7 +118,7 @@ export class CustomizePart extends AgentWindowPart {
             <>
                 {this.renderCustomizeToolbar()}
                 {this.customizeTab === 'skills' && this.newSkillFormVisible && this.renderNewSkillForm()}
-                {this.customizeTab === 'skills' ? this.renderSkillsPanel() : this.renderPluginsPanel()}
+                {this.customizeTab === 'skills' ? this.renderSkillsPanel() : this.customizeTab === 'hooks' ? this.renderHooksPanel() : this.renderPluginsPanel()}
             </>
         );
     }
@@ -127,8 +133,8 @@ export class CustomizePart extends AgentWindowPart {
                         <span className='codicon codicon-search' aria-hidden='true' />
                         <input
                             type='search'
-                            aria-label={this.customizeTab === 'skills' ? 'Skillsを検索' : 'Pluginsを検索'}
-                            placeholder={this.customizeTab === 'skills' ? 'Skillsを検索…' : 'Pluginsを検索…'}
+                            aria-label={this.customizeTab === 'skills' ? 'Skillsを検索' : this.customizeTab === 'hooks' ? 'Hooksを検索' : 'Pluginsを検索'}
+                            placeholder={this.customizeTab === 'skills' ? 'Skillsを検索…' : this.customizeTab === 'hooks' ? 'Hooksを検索…' : 'Pluginsを検索…'}
                             value={query}
                             onChange={event => this.setCustomizeQuery(event.currentTarget.value)}
                         />
@@ -157,7 +163,7 @@ export class CustomizePart extends AgentWindowPart {
                     <span className='poiesis-customize-view__toolbar-divider' aria-hidden='true' />
                     <div className='poiesis-customize-view__tabs-scroll'>
                         <div className='poiesis-customize-view__tabs' role='tablist' aria-label='カスタマイズの種類'>
-                            {(['skills', 'plugins'] as const).map(tab => (
+                            {(['skills', 'plugins', 'hooks'] as const).map(tab => (
                                 <button
                                     id={`poiesis-customize-${tab}-tab`}
                                     key={tab}
@@ -170,7 +176,7 @@ export class CustomizePart extends AgentWindowPart {
                                     onClick={() => this.setCustomizeTab(tab)}
                                     onKeyDown={event => this.handleCustomizeTabKeyDown(event, tab)}
                                 >
-                                    {tab === 'skills' ? 'Skills' : 'Plugins'}
+                                    {tab === 'skills' ? 'Skills' : tab === 'hooks' ? 'Hooks' : 'Plugins'}
                                 </button>
                             ))}
                         </div>
@@ -178,6 +184,75 @@ export class CustomizePart extends AgentWindowPart {
                 </div>
             </header>
         );
+    }
+
+    protected async refreshHooks(action?: () => Promise<void>): Promise<void> {
+        this.hooksLoading = true; this.hooksError = undefined; this.update();
+        const workspace = this.host.sessions.workspaceRoot()?.resource.path.fsPath() ?? '';
+        this.hooksWorkspace = workspace;
+        try {
+            if (action) { await action(); }
+            this.hooksConfiguration = await this.taskService.hooksServer!.list(workspace);
+            this.hooksWorkspace = workspace;
+        } catch (error) { this.hooksError = error instanceof Error ? error.message : 'Hooks を読み込めませんでした。'; }
+        finally { this.hooksLoading = false; this.update(); }
+    }
+
+    protected renderHooksPanel(): React.ReactNode {
+        const configuration = this.hooksConfiguration;
+        const workspace = this.host.sessions.workspaceRoot()?.resource.path.fsPath() ?? '';
+        if (!this.hooksLoading && this.hooksWorkspace !== workspace) { void this.refreshHooks(); }
+        const selected = this.selectedHook;
+        if (selected) {
+            const { id, command, timeoutMs, policy, enabled, event } = selected;
+            return <section id='poiesis-customize-hooks-panel' role='tabpanel' aria-labelledby='poiesis-customize-hooks-tab' className='poiesis-hooks'>
+                <button type='button' onClick={() => { this.selectedHook = undefined; this.update(); }}>一覧に戻る</button>
+                <h2>{id}</h2><p>{HOOK_EVENT_LABELS[event]} · {policy === 'required' ? '必須' : '助言'}</p>
+                <h3>設定</h3><pre>{JSON.stringify({ version: 1, hooks: { [event]: [{ id, command, timeoutMs, policy, enabled }] } }, undefined, 2)}</pre>
+                <p>最終実行の入力: {selected.lastRun?.stdinBytes ?? 0} バイト · 出力: {selected.lastRun?.stdoutBytes ?? 0} バイト</p>
+                {selected.lastRun?.error && <p role='alert'>{selected.lastRun.error}</p>}
+            </section>;
+        }
+        return <section id='poiesis-customize-hooks-panel' role='tabpanel' aria-labelledby='poiesis-customize-hooks-tab' className='poiesis-hooks'>
+            <p>設定ファイル: ユーザーフォルダーまたはワークスペースの .poiesis/hooks.json</p>
+            <button type='button' disabled={this.hooksLoading} onClick={() => void this.refreshHooks()}>再読み込み</button>
+            {this.hooksLoading && <p role='status'>読み込み中…</p>}
+            {this.hooksError && <p role='alert'>{this.hooksError}</p>}
+            {configuration?.errors.map((error, index) => <p role='alert' key={index}>{error}</p>)}
+            {(['user', 'workspace'] as const).filter(scope => this.customizeScope === 'all' || this.customizeScope === scope).map(scope => {
+                const rows = configuration?.rows.filter(row => row.scope === scope &&
+                    `${row.id} ${row.command.join(' ')} ${HOOK_EVENT_LABELS[row.event]}`.toLocaleLowerCase().includes(this.customizeQueries.hooks.toLocaleLowerCase())) ?? [];
+                return <section className='poiesis-hooks__group' key={scope}>
+                    <h3>{scope === 'user' ? 'すべてのフォルダー' : 'このワークスペース'} · {rows.length} 件</h3>
+                    {scope === 'workspace' && <div>
+                        <label className='poiesis-hooks__trust'>
+                            <input type='checkbox' role='switch' checked={configuration?.workspaceEnabled ?? false} disabled={!workspace || this.hooksLoading}
+                                onChange={e => { const enabled = e.currentTarget.checked; void this.refreshHooks(() => this.taskService.hooksServer!.setWorkspaceEnabled(workspace, enabled)); }} />
+                            このワークスペースで有効にする
+                        </label>
+                        <p>有効にすると、このフォルダーの設定に従ってコンピューター上でコマンドを実行します。</p>
+                    </div>}
+                    {rows.length === 0 && <p>フックはありません。</p>}
+                    {rows.map(row => <div className='poiesis-hooks__row' key={`${row.event}/${row.id}`}>
+                        <button type='button' className='poiesis-hooks__open' onClick={() => { this.selectedHook = row; this.update(); }}>
+                            <strong>{row.id}</strong><span>{HOOK_EVENT_LABELS[row.event]}</span>
+                            <code title={row.command.join(' ')}>{row.command.join(' ')}</code>
+                        </button>
+                        <span className='poiesis-hooks__policy'>{row.policy === 'required' ? '必須' : '助言'}</span>
+                        <label className='poiesis-agent-window__switch'>
+                            <input type='checkbox' role='switch' aria-label={`${row.id}を有効にする`} checked={row.enabled}
+                                disabled={this.hooksLoading || scope === 'workspace' && !configuration?.workspaceEnabled}
+                                onChange={e => { const enabled = e.currentTarget.checked; void this.refreshHooks(() => this.taskService.hooksServer!.setEnabled(workspace, scope, row.event, row.id, enabled)); }} />
+                            <span aria-hidden='true' />
+                        </label>
+                        <span>{row.enabled ? '有効' : '無効'}</span>
+                        <p className='poiesis-hooks__last'>{row.lastRun
+                            ? `${row.lastRun.status === 'pass' ? '成功' : '失敗'} · ${row.lastRun.durationMs} ms · ${new Date(row.lastRun.time).toLocaleString('ja-JP')}` : '未実行'}</p>
+                        {row.lastRun?.error && <p className='poiesis-hooks__error'>{row.lastRun.error}</p>}
+                    </div>)}
+                </section>;
+            })}
+        </section>;
     }
 
     protected renderNewSkillForm(): React.ReactNode {
@@ -535,6 +610,7 @@ export class CustomizePart extends AgentWindowPart {
 
     protected setCustomizeTab(tab: CustomizeTab): void {
         this.customizeTab = tab;
+        if (tab === 'hooks') { this.selectedHook = undefined; void this.refreshHooks(); }
         this.newSkillFormVisible = false;
         this.update();
     }
@@ -544,7 +620,8 @@ export class CustomizePart extends AgentWindowPart {
             return;
         }
         event.preventDefault();
-        const next: CustomizeTab = tab === 'skills' ? 'plugins' : 'skills';
+        const tabs: CustomizeTab[] = ['skills', 'plugins', 'hooks'];
+        const next = tabs[(tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : 2)) % tabs.length];
         this.setCustomizeTab(next);
         requestAnimationFrame(() => this.node.querySelector<HTMLElement>(`#poiesis-customize-${next}-tab`)?.focus());
     }

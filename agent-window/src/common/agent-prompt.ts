@@ -37,7 +37,8 @@ export function boundedAgentConversation(
 export function buildAgentExecutionPrompt(
     request: string,
     conversation: readonly AgentConversationTurn[] = [],
-    workspaceSkillPrompt = ''
+    workspaceSkillPrompt = '',
+    hooksContext = ''
 ): string {
     const context = boundedAgentConversation(conversation);
     const conversationSection = context.length > 0
@@ -62,5 +63,5 @@ export function buildAgentExecutionPrompt(
         'Judge the completed outcome and request together. Do not decide from one keyword, response length, or a mere mention of design or change. A failed or cancelled attempt without a usable outcome is not a result.',
         'The application removes this marker before display. If it is missing or malformed, the application falls back to observable workspace changes and does not treat an unsupported success claim as a Result.'
     ].join('\n');
-    return `You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.${conversationSection}\n\n## Current request\n${request}${workspaceSkillPrompt}${skillFileContract}${completionContract}`;
+    return `${hooksContext}You are the Poiesis implementer. Only edit files in this directory. Do not leave it. Do not git commit or push.${conversationSection}\n\n## Current request\n${request}${workspaceSkillPrompt}${skillFileContract}${completionContract}`;
 }

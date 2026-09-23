@@ -1,0 +1,7 @@
+Object.assign(process.env, {
+    POIESIS_TASK_FEEDBACK_ONLY: '1', POIESIS_AGENT_TEST_REPLY: 'Task completed.',
+    POIESIS_AGENT_TEST_DELAY_MS: '2500', POIESIS_AGENT_TEST_ACTIVITIES: '1',
+    POIESIS_AGENT_TEST_WRITE_FILE: 'round11-task-feedback-smoke.txt',
+    POIESIS_RESULTS_GENERATION_TEST_DELAY_MS: '2000', POIESIS_RESULTS_GENERATION_FORCE_FAILURE: '1'
+});
+await import('./smoke-electron.mjs');

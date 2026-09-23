@@ -112,6 +112,7 @@ export interface ResultsNotice {
 }
 
 export interface WindowAgentSession {
+    hooksResumePending?: boolean;
     id: string;
     createdAt: number;
     updatedAt: number;
@@ -424,6 +425,7 @@ export class SessionStore extends AgentWindowPartBase {
                 });
                 const latestTask = restoredTasks[restoredTasks.length - 1];
                 const restored: WindowAgentSession = {
+                    hooksResumePending: true,
                     id: candidate.id,
                     createdAt,
                     updatedAt: Number(candidate.updatedAt) || createdAt,

@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
-import { resolve, sep } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import puppeteer from 'puppeteer-core';
 import { DURABLE_SESSION_KEY, DURABLE_REQUIREMENTS_KEY, readDurableValue, writeDurableValue, waitForDurableValue, waitForDurableWritesToSettle } from './poiesis-smoke-state.mjs';
 
@@ -28,7 +29,13 @@ if (taskFeedbackOnly) mkdirSync(round12ScreenshotDirectory, { recursive: true })
 const emptyPluginsDir = resolve(runtimeDir, 'empty-plugins');
 if (lightweightElectron) mkdirSync(emptyPluginsDir, { recursive: true });
 
-const repositoryRoot = root;
+// Keep the task lifecycle fixture independent of large tracked benchmark caches in this checkout.
+const taskFeedbackWorkspace = taskFeedbackOnly ? mkdtempSync(resolve(tmpdir(), 'poiesis-task-feedback-')) : undefined;
+if (taskFeedbackWorkspace) {
+    mkdirSync(resolve(taskFeedbackWorkspace, 'docs'), { recursive: true });
+    writeFileSync(resolve(taskFeedbackWorkspace, 'docs/UX.md'), readFileSync(resolve(root, 'docs/UX.md'), 'utf8'), 'utf8');
+}
+const repositoryRoot = taskFeedbackWorkspace ?? root;
 const scmFixtureGitPath = 'docs/UX.md';
 const scmFixturePath = resolve(repositoryRoot, scmFixtureGitPath);
 const scmFixtureOriginal = readFileSync(scmFixturePath, 'utf8');
@@ -42,9 +49,17 @@ if ((taskFeedbackOnly || noChangeOnly) && existsSync(agentTestFixturePath)) thro
 removeTerminalFixture();
 
 const electronExecutable = resolve(root, 'node_modules/electron/dist/electron.exe');
+const hooksHome = resolve(tmpdir(), `poiesis-smoke-hooks-${Date.now()}`);
+if (taskFeedbackOnly) {
+    mkdirSync(resolve(hooksHome, '.poiesis'), { recursive: true });
+    writeFileSync(resolve(hooksHome, '.poiesis/hooks.json'), JSON.stringify({ version: 1, hooks: {
+        taskStart: [{ id: 'smoke-context', command: [process.execPath, resolve(root, 'scripts/fixtures/hook.mjs')],
+            timeoutMs: 10000, policy: 'advisory', enabled: true }]
+    } }), 'utf8');
+}
 const startProcess = spawn(electronExecutable, [
     resolve(root, 'electron-app'),
-    '..',
+    taskFeedbackWorkspace ?? '..',
     lightweightElectron
         ? `--plugins=local-dir:${emptyPluginsDir.replaceAll('\\', '/')}`
         : '--plugins=local-dir:../plugins',
@@ -61,6 +76,8 @@ const startProcess = spawn(electronExecutable, [
     env: {
         ...process.env,
         THEIA_CONFIG_DIR: theiaConfigDir,
+        ...(taskFeedbackOnly ? { USERPROFILE: hooksHome, POIESIS_CLI_DETECTION_TEST_FORCE_FOUND: 'codex',
+            POIESIS_AGENT_TEST_EXPECT_PROMPTS: JSON.stringify([['## Harness context (hooks)', 'HOOK_FIXTURE_CONTEXT taskStart']]) } : {}),
         ...(lightweightElectron ? { POIESIS_DISABLE_CLI_DETECTION: '1' } : {})
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -113,6 +130,14 @@ try {
     assert(initial.agentComposerVisible, 'Agent Composer is missing in Electron');
     assert(initial.sessionRailVisible, 'Session rail is missing in Electron');
     assert(!initial.legacyChangesVisible, 'Removed Changes UI is still visible in Electron');
+    await page.click('.poiesis-agent-window__rail-action[title="カスタマイズ"]');
+    await page.click('#poiesis-customize-hooks-tab');
+    await page.waitForSelector('#poiesis-customize-hooks-panel');
+    assert(await page.$eval('#poiesis-customize-hooks-panel', node => node.textContent.includes('このワークスペースで有効にする')),
+        'Hooks workspace trust switch is missing');
+    if (taskFeedbackOnly) await page.waitForFunction(() => document.querySelector('#poiesis-customize-hooks-panel')?.textContent.includes('smoke-context'));
+    await page.click('#poiesis-customize-skills-tab');
+    await page.click('[aria-label="カスタマイズを閉じる"]');
 
     const resizeChecks = [];
     const nativeWindowChecks = [];
@@ -691,10 +716,16 @@ try {
     stopProcessTree(startProcess.pid);
     await waitForCdpToStop(browserURL, 30_000).catch(error => console.warn(error.message));
     removeOwnedUserDataDir();
+    if (taskFeedbackOnly && dirname(hooksHome) === resolve(tmpdir())) {
+        rmSync(hooksHome, { recursive: true, force: true });
+    }
+    if (taskFeedbackWorkspace && dirname(taskFeedbackWorkspace) === resolve(tmpdir())) {
+        rmSync(taskFeedbackWorkspace, { recursive: true, force: true });
+    }
 }
 
 function restoreScmFixture() {
-    spawnSync('git', ['reset', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot });
+    if (!taskFeedbackOnly) spawnSync('git', ['reset', '--quiet', '--', scmFixtureGitPath], { cwd: repositoryRoot, shell: false, windowsHide: true });
     writeFileSync(scmFixturePath, scmFixtureOriginal, 'utf8');
 }
 

@@ -1,4 +1,6 @@
 import { CatalogSkill, referencedCatalogSkills } from '../common/skill-catalog';
+import URI from '@theia/core/lib/common/uri';
+import { HooksServer, HookEvent, HookInput, HookResult, HookRun, HookEvidence, emptyHookResult } from '../common/hooks-protocol';
 import { CliCallRecord, CliUsage } from '../common/cli-usage';
 import type { ResultsGenerationProgress } from '../common/results-generation-protocol';
 import { StorageService } from '@theia/core/lib/browser';
@@ -143,6 +145,8 @@ export interface TaskRequirementClassification {
 }
 
 export interface ExecutionTask {
+    hookRuns?: HookRun[];
+    hookEvidence?: HookEvidence[];
     id: string;
     sessionId: string;
     requirementId: string;
@@ -218,8 +222,31 @@ export class TaskService {
         @inject(AgentRuntimeServer) protected readonly runtimeServer: AgentRuntimeServer,
         @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService,
         @inject(GlobalStorageService) protected readonly globalStorageService: GlobalStorageService,
-        @inject(StorageService) protected readonly legacyStorageService: StorageService
+        @inject(StorageService) protected readonly legacyStorageService: StorageService,
+        @inject(HooksServer) public readonly hooksServer?: HooksServer
     ) { }
+
+    async runHooks(event: HookEvent, owner: Pick<ExecutionTask, 'sessionId' | 'requirementId' | 'workspaceUri' | 'providerId' | 'model'> & { id?: string },
+        data: Record<string, unknown>): Promise<HookResult> {
+        if (!this.hooksServer) { return emptyHookResult(); }
+        const input: HookInput = { schemaVersion: 1, event,
+            workspace: owner.workspaceUri ? new URI(owner.workspaceUri).path.fsPath() : '',
+            sessionId: owner.sessionId, taskId: owner.id ?? '', requirementId: owner.requirementId,
+            runId: `hook-${Date.now()}-${++this.sequence}`, providerId: owner.providerId ?? '', model: owner.model ?? '', data };
+        const result = await this.hooksServer.run(input);
+        if (owner.id) { this.recordHooks(owner.id, result); }
+        return result;
+    }
+
+    recordHooks(taskId: string, result: HookResult): void {
+        const task = this.tasks.get(taskId);
+        if (!task) { return; }
+        this.tasks.set(taskId, { ...task, hookRuns: [...task.hookRuns ?? [], ...result.runs],
+            hookEvidence: [...task.hookEvidence ?? [], ...result.evidence] });
+        for (const run of result.runs.filter(run => run.status === 'fail')) {
+            this.recordDiagnostic(taskId, { summary: `フック「${run.id}」を完了できませんでした。`, details: run.error });
+        }
+    }
 
     @postConstruct()
     protected loadResultsQuestionHistory(): void {
@@ -605,8 +632,21 @@ export class TaskService {
             outcomeKind: status === 'completed' ? outcomeKind : undefined,
             failure
         };
-        this.finalizeTerminalTask(task, eventType);
-        return task;
+        try {
+            await this.runHooks('taskEnd', task, {
+                outcome: { status, kind: outcomeKind ?? null },
+                changeSet: summarizeTaskChangeSet(task.changeSet).files.map(file => ({ path: file.path, status: file.status, added: file.additions, removed: file.deletions })),
+                activities: (task.activities ?? []).map(activity => ({ kind: activity.kind, title: activity.title, status: activity.status })),
+                usage: task.usage ?? null
+            });
+        } catch {
+            this.recordHooks(task.id, { ...emptyHookResult(), evidence: [{ hookId: 'Hooks', runId: '', incomplete: true, notes: '検証未完了', evidence: [] }] });
+        }
+        const hooksRecorded = this.tasks.get(task.id);
+        const finished = { ...task, hookRuns: hooksRecorded?.hookRuns, hookEvidence: hooksRecorded?.hookEvidence,
+            diagnostics: hooksRecorded?.diagnostics };
+        this.finalizeTerminalTask(finished, eventType);
+        return finished;
     }
 
     protected finalizeTerminalTask(

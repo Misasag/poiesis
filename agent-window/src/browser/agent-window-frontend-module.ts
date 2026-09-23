@@ -1,4 +1,5 @@
 import { ContainerModule } from '@theia/core/shared/inversify';
+import { HooksServer, hooksServerPath } from '../common/hooks-protocol';
 import {
     FrontendApplication,
     FrontendApplicationContribution,
@@ -50,6 +51,8 @@ import '../../src/browser/style/responsive.css';
 import '../../src/browser/style/theme.css';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
+    bind(HooksServer).toDynamicValue(context => context.container.get(WebSocketConnectionProvider)
+        .createProxy<HooksServer>(hooksServerPath)).inSingletonScope();
     rebind(FrontendApplication).to(PoiesisFrontendApplication).inSingletonScope();
     bind(PoiesisWorkspaceTrustService).toSelf().inSingletonScope();
     rebind(WorkspaceTrustService).toService(PoiesisWorkspaceTrustService);
