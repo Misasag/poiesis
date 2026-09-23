@@ -1,6 +1,6 @@
 import { shellReadPaths } from '../common/skill-catalog';
 import type { AgentActivity, AgentActivityKind, AgentActivityStatus } from '../common/agent-provider';
-import { CliUsage, codexTurnUsage, claudeResultUsage, sumCliUsage } from '../common/cli-usage';
+import { CliUsage, codexTurnUsage, claudeResultUsage, piMessageUsage, piCompactionUsage, sumCliUsage } from '../common/cli-usage';
 import type { KnownCliId } from '../common/agent-runtime-protocol';
 
 export interface ActivityParseResult {
@@ -10,6 +10,8 @@ export interface ActivityParseResult {
     finalMessage?: string;
     diagnostics: string[];
     heartbeat?: 'process' | 'turn';
+    piSettled?: boolean;
+    piSucceeded?: boolean;
 }
 
 export interface AgentActivityParser {
@@ -25,6 +27,8 @@ class CliActivityParser implements AgentActivityParser {
     protected usage?: CliUsage;
     protected sequence = 0;
     protected grokMessage = '';
+    protected piStopReason?: string;
+    protected piError = false;
 
     constructor(
         protected readonly providerId: KnownCliId,
@@ -49,9 +53,71 @@ class CliActivityParser implements AgentActivityParser {
         } catch {
             return { activities: [], diagnostics: [line] };
         }
-        return this.providerId === 'claude'
-            ? this.consumeClaude(event, now)
-            : this.consumeCodex(event, now, line);
+        return this.providerId === 'pi' ? this.consumePi(event, now)
+            : this.providerId === 'claude' ? this.consumeClaude(event, now)
+                : this.consumeCodex(event, now, line);
+    }
+
+    protected consumePi(event: JsonObject, now: Date): ActivityParseResult {
+        const result = this.emptyResult();
+        const type = stringValue(event.type);
+        if (type === 'agent_start' || type === 'session') { result.heartbeat = 'process'; }
+        if (type === 'turn_start') { result.heartbeat = 'turn'; }
+        if (type === 'message_end' && isObject(event.message) && event.message.role === 'assistant') {
+            const message = event.message;
+            this.usage = sumCliUsage([this.usage, piMessageUsage(event)]);
+            result.usage = this.usage;
+            this.piStopReason = stringValue(message.stopReason);
+            const text = (Array.isArray(message.content) ? message.content : [])
+                .flatMap(part => isObject(part) && part.type === 'text' && typeof part.text === 'string' ? [part.text] : [])
+                .join('\n').trim();
+            if (text) { result.finalMessage = text; }
+        }
+        if (type === 'compaction_end') {
+            this.usage = sumCliUsage([this.usage, piCompactionUsage(event)]);
+            result.usage = this.usage;
+        }
+        if (type === 'tool_execution_start') {
+            const id = stringValue(event.toolCallId) ?? this.nextId('pi');
+            const name = stringValue(event.toolName) ?? 'tool';
+            const args = isObject(event.args) ? event.args : {};
+            const path = this.relativePath(stringValue(args.path) ?? '');
+            const command = stringValue(args.command) ?? '';
+            const description: { kind: AgentActivityKind; title: string; detail?: string; readPaths?: string[] } =
+                name === 'read' ? { kind: 'read', title: '読み取り', detail: path, readPaths: [stringValue(args.path) ?? ''] }
+                    : name === 'bash' ? { kind: 'command', title: 'コマンド', detail: commandDetail(command), readPaths: shellReadPaths(command) }
+                        : name === 'edit' || name === 'write' ? { kind: 'file-change', title: 'ファイル変更', detail: path }
+                            : { kind: 'tool', title: name, detail: compactJson(args) };
+            const activity: AgentActivity = { id, ...description, detail: truncateDetail(description.detail),
+                status: 'running', startedAt: now.toISOString() };
+            this.activities.set(id, activity);
+            result.activities.push(activity);
+        }
+        if (type === 'tool_execution_update') {
+            const id = stringValue(event.toolCallId);
+            const previous = id ? this.activities.get(id) : undefined;
+            if (previous) { result.activities.push(previous); }
+        }
+        if (type === 'tool_execution_end') {
+            const id = stringValue(event.toolCallId);
+            const previous = id ? this.activities.get(id) : undefined;
+            if (previous) {
+                const activity: AgentActivity = { ...previous, status: event.isError === true ? 'failed' : 'completed', endedAt: now.toISOString() };
+                this.activities.set(id!, activity);
+                result.activities.push(activity);
+            }
+        }
+        if (type === 'error' || type === 'auto_retry_end' && event.success === false
+            || type === 'compaction_end' && event.errorMessage) {
+            this.piError = true;
+            result.diagnostics.push(stringValue(event.errorMessage) ?? stringValue(event.message) ?? 'pi の実行に失敗しました。');
+        }
+        if (type === 'agent_settled') {
+            result.piSettled = true;
+            result.piSucceeded = !this.piError && this.piStopReason === 'stop';
+            if (!result.piSucceeded) { result.diagnostics.push(`pi の応答が正常に完了しませんでした (${this.piStopReason ?? 'unknown'})。`); }
+        }
+        return result;
     }
 
     protected consumeCodex(event: JsonObject, now: Date, sourceLine: string): ActivityParseResult {

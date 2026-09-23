@@ -3,7 +3,7 @@ import { RpcServer } from '@theia/core/lib/common/messaging/proxy-factory';
 export const AgentRuntimeServer = Symbol('AgentRuntimeServer');
 export const agentRuntimeServerPath = '/services/poiesis/agent-runtime';
 
-export const KNOWN_CLI_IDS = ['codex', 'claude', 'grok', 'gemini'] as const;
+export const KNOWN_CLI_IDS = ['codex', 'claude', 'grok', 'gemini', 'pi'] as const;
 export type KnownCliId = typeof KNOWN_CLI_IDS[number];
 export const DEFAULT_CLI_ID: KnownCliId = 'codex';
 export type AiRole = 'agent' | 'results' | 'judge';
@@ -13,7 +13,8 @@ export const CLI_DISPLAY_NAMES: Readonly<Record<KnownCliId, string>> = {
     codex: 'Codex',
     claude: 'Claude Code',
     grok: 'Grok',
-    gemini: 'Gemini CLI'
+    gemini: 'Gemini CLI',
+    pi: 'pi'
 };
 
 /** CLI values accepted at the backend argv boundary. Model catalogs can expose a supported subset. */
@@ -21,7 +22,8 @@ export const CLI_EFFORT_LEVELS: Readonly<Record<KnownCliId, readonly string[]>> 
     claude: ['low', 'medium', 'high', 'xhigh', 'max'],
     codex: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     grok: ['low', 'medium', 'high'],
-    gemini: []
+    gemini: [],
+    pi: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 };
 
 /** Capability snapshot shown only when live Codex discovery is unavailable. */
@@ -49,6 +51,8 @@ export interface CliModelOption {
     defaultReasoningEffort?: string;
     supportedReasoningEfforts?: string[];
     inputModalities?: string[];
+    contextWindow?: string;
+    piProvider?: string;
 }
 
 export type CliModelCatalogSource = 'live' | 'cached' | 'fallback' | 'failed';
@@ -78,6 +82,7 @@ export interface CliDetection {
     models: CliModelOption[];
     defaultModel: string;
     checkedLocations: string[];
+    piAuth?: Record<string, 'ready' | 'not_ready' | 'invalid'>;
 }
 
 export interface CliDetectionReport {

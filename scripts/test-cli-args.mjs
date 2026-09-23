@@ -44,7 +44,13 @@ assert.deepEqual(agentCliArgs({ ...agentBase, providerId: 'grok', model: 'grok-4
     '--permission-mode', 'acceptEdits', '--sandbox', 'workspace', '--disable-web-search', '--no-subagents', '--no-plan'
 ]);
 
-const oneShotBase = { workspace: 'C:\\work', prompt: 'Answer.', promptViaStdin: true };
+const piAgent = agentCliArgs({ ...agentBase, providerId: 'pi', model: 'openrouter/z-ai/glm-5.3-flash', effort: 'low' });
+assert.deepEqual(piAgent, ['-p', '--mode', 'json', '--model', 'openrouter/z-ai/glm-5.3-flash', '--thinking', 'low',
+    '--no-session', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-approve', '--offline',
+    '--tools', 'read,bash,edit,write']);
+assert(!piAgent.includes(agentBase.prompt));
+
+const oneShotBase =  { workspace: 'C:\\work', prompt: 'Answer.', promptViaStdin: true };
 assert.deepEqual(oneShotCliArgs({ ...oneShotBase, providerId: 'claude', model: 'haiku' }), [
     '-p', '--model', 'haiku', '--output-format', 'json', '--permission-mode', 'plan', '--tools=',
     '--no-session-persistence', '--safe-mode', '--disable-slash-commands', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'
@@ -74,6 +80,11 @@ assert.deepEqual(oneShotCliArgs({ ...oneShotBase, providerId: 'grok', model: 'gr
     '--prompt-file', 'C:\\temp\\prompt.txt', '--cwd', 'C:\\work', '--model', 'grok-4.5', '--reasoning-effort', 'medium', '--output-format', 'plain',
     '--permission-mode', 'plan', '--sandbox', 'read-only', '--disable-web-search', '--no-subagents', '--max-turns', '1'
 ]);
+
+const piOneShot = oneShotCliArgs({ ...oneShotBase, providerId: 'pi', model: 'openrouter/z-ai/glm-5.3-flash' });
+assert(piOneShot.includes('--no-tools'));
+assert(!piOneShot.includes(oneShotBase.prompt));
+assert.deepEqual(oneShotCliArgs({ ...oneShotBase, providerId: 'pi', readOnlyFileTools: true }).slice(-2), ['--tools', 'read']);
 
 for (const [providerId, effort] of [['claude', 'minimal'], ['codex', 'extreme'], ['grok', 'max'], ['gemini', 'low']]) {
     assert.throws(

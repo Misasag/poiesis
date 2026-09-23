@@ -16,6 +16,26 @@ const codex = [
     { type: 'item.completed', item: { type: 'agent_message', text: '完了しました。\n日本語の最終回答です。' } },
     { type: 'turn.completed', usage: { input_tokens: 200, cached_input_tokens: 100, output_tokens: 20, reasoning_output_tokens: 6 } }
 ].map(event => JSON.stringify(event)).join('\n');
+const piEvents = [
+    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '途中' }], stopReason: 'toolUse', usage: { input: 100, output: 30, cacheRead: 10, cacheWrite: 2, cost: { total: 0.0003 } } } },
+    { type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '完了' }], stopReason: 'stop', usage: { input: 200, output: 40, cacheRead: 20, cacheWrite: 3, cost: { total: 0.0006 } } } },
+    { type: 'agent_settled' }
+].map(JSON.stringify).join('\n');
+const pi = parseCliOutput('pi', piEvents);
+assert.equal(pi.text, '完了');
+assert.equal(pi.failed, undefined);
+assert.equal(pi.usage.inputTokens, 300);
+assert.equal(pi.usage.cachedInputTokens, 30);
+assert.equal(pi.usage.cacheCreationInputTokens, 5);
+assert.equal(pi.usage.outputTokens, 70);
+assert.equal(pi.usage.costUsd, 0.0009);
+assert.equal(pi.usage.costSource, 'cli-estimate');
+const compactedPi = parseCliOutput('pi', piEvents.replace('{"type":"agent_settled"}',
+    '{"type":"compaction_end","result":{"usage":{"input":4,"output":2,"cacheRead":1,"cost":{"total":0.0001}}}}\n{"type":"agent_settled"}'));
+assert.equal(compactedPi.usage.inputTokens, 304);
+assert.equal(compactedPi.usage.costUsd, 0.001);
+assert.equal(parseCliOutput('pi', piEvents.replace('"stop"', '"error"')).failed, true);
+assert.equal(parseCliOutput('pi', piEvents.replace('{"type":"agent_settled"}', '')).failed, true);
 const parsed = parseCliOutput('codex', codex);
 assert.equal(parsed.text, '完了しました。\n日本語の最終回答です。');
 assert.deepEqual(parsed.usage, { inputTokens: 300, cachedInputTokens: 180, outputTokens: 30, reasoningOutputTokens: 10 });
@@ -66,6 +86,7 @@ assert.equal(cliUsageText({ inputTokens: 1_200_000, cachedInputTokens: 1_104_000
     '入力 1.2M トークン（キャッシュ 92%） · 出力 18k');
 assert.equal(renderToStaticMarkup(React.createElement(CliUsageLine, {})), '');
 assert(!renderToStaticMarkup(React.createElement(CliUsageLine, { usage: parsed.usage })).includes('推定'));
+assert(renderToStaticMarkup(React.createElement(CliUsageLine, { usage: pi.usage })).includes('推定 $0.0009'));
 const costHtml = renderToStaticMarkup(React.createElement(CliUsageLine, { usage: { costUsd: 0.42 }, partial: true }));
 assert(costHtml.includes('推定 $0.42') && costHtml.includes(CLI_COST_TOOLTIP) && costHtml.includes('記録分'));
 

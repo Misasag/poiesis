@@ -815,7 +815,7 @@ export class ResultsPart extends AgentWindowPart {
         if (document.generator === 'ai') {
             const providerId: KnownCliId = isKnownCliId(document.providerId) ? document.providerId : this.host.state.resultsCli;
             const provider = this.host.state.cliDetectionReport?.detections.find((candidate: CliDetectionReport['detections'][number]) => candidate.id === providerId)?.name
-                ?? ({ codex: 'Codex', claude: 'Claude Code', grok: 'Grok', gemini: 'Gemini CLI' } satisfies Record<KnownCliId, string>)[providerId];
+                ?? ({ codex: 'Codex', claude: 'Claude Code', grok: 'Grok', gemini: 'Gemini CLI', pi: 'pi' } satisfies Record<KnownCliId, string>)[providerId];
             const suffix = document.effort ? `（${document.effort}）` : '';
             const attempts = document.calls?.filter(call => call.purpose === 'results-generation').length;
             const details = [cliModelLabel(document.model, document.providerId) + suffix,

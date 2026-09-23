@@ -34,6 +34,21 @@ function consumeFixture(parser, lines) {
     return { activities: [...activities.values()], usage, finalMessage, diagnostics, runningCommandObserved };
 }
 
+const piParser = createAgentActivityParser('pi', 'C:\\work\\probe');
+const piLines = fixtureLines('pi-json-events.jsonl');
+const pi = consumeFixture(piParser, piLines.slice(0, -1));
+assert(pi.activities.some(activity => activity.kind === 'read' && activity.detail === 'poiesis-pi-check.txt'));
+assert(pi.activities.some(activity => activity.kind === 'command' && activity.status === 'completed'));
+assert(pi.activities.some(activity => activity.kind === 'file-change' && activity.status === 'completed'));
+assert.equal(pi.finalMessage, '完了しました。');
+assert(pi.usage.costUsd > 0);
+const piSettled = piParser.consumeLine(piLines.at(-1));
+assert.equal(piSettled.piSettled, true);
+assert.equal(piSettled.piSucceeded, true);
+const piFailed = createAgentActivityParser('pi');
+piFailed.consumeLine(JSON.stringify({ type: 'message_end', message: { role: 'assistant', stopReason: 'error' } }));
+assert.equal(piFailed.consumeLine('{"type":"agent_settled"}').piSucceeded, false);
+
 const codex = consumeFixture(
     createAgentActivityParser('codex', 'C:\\work\\probe'),
     fixtureLines('codex-exec-events.jsonl')

@@ -10,6 +10,6 @@ export function CliUsageLine({ usage, durationMs, partial }: {
     if (!text && cost === undefined) { return null; }
     return <div className='poiesis-cli-usage'>
         {partial && <span>記録分 · </span>}{text}
-        {cost !== undefined && <span title={CLI_COST_TOOLTIP}>{text ? ' · ' : ''}推定 ${cost.toFixed(2)}</span>}
+        {cost !== undefined && <span title={CLI_COST_TOOLTIP}>{text ? ' · ' : ''}推定 ${cost.toFixed(cost < 0.01 ? 4 : 2)}</span>}
     </div>;
 }

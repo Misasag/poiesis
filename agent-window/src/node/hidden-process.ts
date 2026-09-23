@@ -142,6 +142,14 @@ export function resolveKnownCliInvocation(
         return { executable: nodeExecutable(shimDirectory), args: [entryPoint, ...args] };
     }
 
+    if (providerId === 'pi') {
+        const entryPoint = join(shimDirectory, 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'bundle', 'cli.js');
+        if (!existsSync(entryPoint)) {
+            throw new Error('pi の起動ファイルが見つかりません。インストール状況を確認してください。');
+        }
+        return { executable: nodeExecutable(shimDirectory), args: [entryPoint, ...args] };
+    }
+
     // Grok is distributed as grok.exe in the registry's supported locations.
     // Gemini has no executable role yet. Refuse an unknown script shim instead
     // of falling back to a command interpreter and risking a visible console.
@@ -225,7 +233,7 @@ function nodeExecutable(shimDirectory: string): string {
         .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0)
         .find(candidate => /^node(?:\.exe)?$/i.test(basename(candidate)) && existsSync(candidate));
     if (!executable) {
-        throw new Error('Codex の起動に必要な Node.js が見つかりません。');
+        throw new Error('CLI の起動に必要な Node.js が見つかりません。');
     }
     return executable;
 }

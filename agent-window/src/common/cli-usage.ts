@@ -97,6 +97,26 @@ export function claudeResultUsage(event: JsonObject): CliUsage | undefined {
     });
 }
 
+export function piMessageUsage(event: JsonObject): CliUsage | undefined {
+    if (event.type !== 'message_end' || object(event.message).role !== 'assistant') { return undefined; }
+    const usage = object(object(event.message).usage);
+    const cost = count(object(usage.cost).total);
+    return definedUsage({
+        inputTokens: count(usage.input), cachedInputTokens: count(usage.cacheRead),
+        cacheCreationInputTokens: count(usage.cacheWrite), outputTokens: count(usage.output),
+        costUsd: cost, costSource: cost === undefined ? undefined : 'cli-estimate'
+    });
+}
+
+export function piCompactionUsage(event: JsonObject): CliUsage | undefined {
+    if (event.type !== 'compaction_end') { return undefined; }
+    const usage = object(object(event.result).usage);
+    const cost = count(object(usage.cost).total);
+    return definedUsage({ inputTokens: count(usage.input), outputTokens: count(usage.output),
+        cachedInputTokens: count(usage.cacheRead), cacheCreationInputTokens: count(usage.cacheWrite),
+        costUsd: cost, costSource: cost === undefined ? undefined : 'cli-estimate' });
+}
+
 export interface CliOutput {
     text: string;
     usage?: CliUsage;
@@ -108,6 +128,31 @@ export interface CliOutput {
 export function parseCliOutput(providerId: KnownCliId, stdout: string): CliOutput {
     if (providerId === 'grok') { return { text: stdout.trim() }; }
     const result: CliOutput = { text: '' };
+    if (providerId === 'pi') {
+        let lastStopReason: string | undefined;
+        let settled = false;
+        for (const line of stdout.split(/\r?\n/)) {
+            try {
+                const event = object(JSON.parse(line));
+                if (event.type === 'message_end' && object(event.message).role === 'assistant') {
+                    const message = object(event.message);
+                    result.text = (Array.isArray(message.content) ? message.content : [])
+                        .flatMap(part => object(part).type === 'text' && typeof object(part).text === 'string'
+                            ? [object(part).text as string] : []).join('\n').trim();
+                    lastStopReason = typeof message.stopReason === 'string' ? message.stopReason : undefined;
+                    const model = message.model;
+                    if (typeof model === 'string') { result.model = model; }
+                    result.usage = sumCliUsage([result.usage, piMessageUsage(event)]);
+                }
+                result.usage = sumCliUsage([result.usage, piCompactionUsage(event)]);
+                if (event.type === 'agent_settled') { settled = true; }
+                if (event.type === 'error' || event.type === 'auto_retry_end' && event.success === false
+                    || event.type === 'compaction_end' && event.errorMessage) { result.failed = true; }
+            } catch { /* Ignore malformed diagnostic lines. */ }
+        }
+        if (!settled || lastStopReason !== 'stop') { result.failed = true; }
+        return result;
+    }
     if (providerId === 'claude') {
         try {
             const event = object(JSON.parse(stdout));

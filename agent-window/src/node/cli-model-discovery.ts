@@ -10,6 +10,7 @@ import { grokExecutionEnvironment } from './known-cli-registry';
 
 const DEFAULT_CODEX_TIMEOUT_MS = 10_000;
 const DEFAULT_GROK_TIMEOUT_MS = 15_000;
+const DEFAULT_PI_TIMEOUT_MS = 15_000;
 const DEFAULT_CLEANUP_TIMEOUT_MS = 2_000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
 const MAX_LINE_BYTES = 1_048_576;
@@ -457,6 +458,65 @@ export class GrokModelListClient {
     }
 }
 
+/** Pi's offline table contains only authenticated providers; never treat the header as a model. */
+export function parsePiModelsOutput(output: string): CliModelOption[] {
+    const lines = output.trim().split(/\r?\n/);
+    if (!/^provider\s+model\s+context\s+max-out\s+thinking\s+images\s*$/i.test(lines.shift()?.trim() ?? '')) {
+        throw new Error('pi returned an invalid model table.');
+    }
+    const models: CliModelOption[] = [];
+    for (const line of lines) {
+        const match = /^([a-z][\w-]*)\s+(\S+)\s+(\S+)\s+(\S+)\s+(yes|no)\s+(yes|no)\s*$/i.exec(line.trim());
+        if (!match) { continue; }
+        const [, provider, model, context, , thinking, images] = match;
+        if (model.includes(':batch') || model.startsWith('~') || model.includes('/~')) { continue; }
+        const id = `${provider}/${model}`;
+        if (id.length > 160 || models.some(item => item.id === id)) { continue; }
+        models.push({ id, label: model, piProvider: provider, contextWindow: context,
+            ...(thinking.toLowerCase() === 'no' ? { supportedReasoningEfforts: ['off'] } : {}),
+            inputModalities: images.toLowerCase() === 'yes' ? ['text', 'image'] : ['text'] });
+        if (models.length >= MAX_MODELS) { break; }
+    }
+    return models;
+}
+
+/** Bounded, no-shell offline catalog invocation. */
+export class PiModelListClient {
+    constructor(protected readonly spawnProcess: (command: string) => HiddenCliProcess = command =>
+        spawnHiddenCli('pi', command, ['--list-models', '--offline', '--no-approve', '--no-extensions'])) { }
+
+    async listModels(command: string): Promise<CliModelOption[]> {
+        const child = this.spawnProcess(command);
+        try {
+            return await new Promise<CliModelOption[]>((resolvePromise, reject) => {
+                const chunks: Buffer[] = [];
+                let size = 0;
+                let settled = false;
+                const finish = (error?: Error, models?: CliModelOption[]): void => {
+                    if (settled) { return; }
+                    settled = true;
+                    clearTimeout(timeout);
+                    if (error) { reject(error); } else { resolvePromise(models ?? []); }
+                };
+                const timeout = setTimeout(() => finish(new Error('pi model discovery timed out.')), DEFAULT_PI_TIMEOUT_MS);
+                child.stdout.on('data', (chunk: Buffer | string) => {
+                    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+                    size += data.length;
+                    if (size > MAX_OUTPUT_BYTES) { finish(new Error('pi model list exceeded the safe limit.')); }
+                    else { chunks.push(data); }
+                });
+                child.stderr.on('data', () => undefined);
+                child.once('error', () => finish(new Error('pi could not be started.')));
+                child.once('close', code => {
+                    if (code !== 0) { finish(new Error('pi model list failed.')); return; }
+                    try { finish(undefined, parsePiModelsOutput(Buffer.concat(chunks).toString('utf8'))); }
+                    catch { finish(new Error('pi returned an invalid model table.')); }
+                });
+            });
+        } finally { await boundedProcessCleanup(child); }
+    }
+}
+
 interface CachedCatalog {
     fetchedAt: string;
     expiresAt: number;
@@ -509,7 +569,8 @@ export class CliModelDiscoveryService {
     constructor(
         protected readonly codexClient: Pick<CodexModelListClient, 'listModels'> = new CodexModelListClient(),
         protected readonly cacheTtlMs = DEFAULT_CACHE_TTL_MS,
-        protected readonly grokClient: Pick<GrokModelListClient, 'listModels'> = new GrokModelListClient()
+        protected readonly grokClient: Pick<GrokModelListClient, 'listModels'> = new GrokModelListClient(),
+        protected readonly piClient: Pick<PiModelListClient, 'listModels'> = new PiModelListClient()
     ) { }
 
     discover(input: CliModelDiscoveryInput): Promise<CliModelCatalog> {
@@ -548,13 +609,14 @@ export class CliModelDiscoveryService {
     }
 
     protected async performDiscovery(input: CliModelDiscoveryInput, identity: string): Promise<CliModelCatalog> {
-        if (!input.command || (input.providerId !== 'codex' && input.providerId !== 'grok')) {
+        if (!input.command || (input.providerId !== 'codex' && input.providerId !== 'grok' && input.providerId !== 'pi')) {
             return this.fallback(input.providerId, input.fallbackModels);
         }
         try {
             const discovered = input.providerId === 'codex'
                 ? await this.codexClient.listModels(input.command)
-                : await this.grokClient.listModels(input.command);
+                : input.providerId === 'pi' ? await this.piClient.listModels(input.command)
+                    : await this.grokClient.listModels(input.command);
             if (!discovered.length) {
                 throw new Error('The live catalog was empty.');
             }

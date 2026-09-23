@@ -1,4 +1,14 @@
 import assert from 'node:assert/strict';
+import { createRequire as piRequire } from 'node:module';
+const { parsePiModelsOutput } = piRequire(import.meta.url)('../agent-window/lib/node/cli-model-discovery.js');
+const { knownCliDefinitions } = piRequire(import.meta.url)('../agent-window/lib/node/known-cli-registry.js');
+assert.deepEqual(parsePiModelsOutput('provider  model  context  max-out  thinking  images\nopenrouter  z-ai/glm-5.3-flash  200k  16k  yes  no\nopenrouter  z-ai/glm-5.3-flash:batch  200k  16k  yes  no\nopenrouter  ~z-ai/glm-latest  200k  16k  yes  no\nopenai-codex  gpt-6-luna  1M  32k  no  yes\n').map(m => m.id),
+    ['openrouter/z-ai/glm-5.3-flash', 'openai-codex/gpt-6-luna']);
+assert.throws(() => parsePiModelsOutput('openrouter  x  1k  1k  yes  no'), /invalid model table/);
+assert.deepEqual(knownCliDefinitions().find(d => d.id === 'pi').models.slice(1).map(m => m.id), [
+    'openrouter/z-ai/glm-5.3', 'openrouter/z-ai/glm-5.3-flash', 'openrouter/moonshotai/kimi-k3',
+    'openrouter/deepseek/deepseek-v4.1-flash', 'openrouter/xiaomi/mimo-v2.6-pro', 'openrouter/qwen/qwen3.8-max-0902'
+]);
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
 import { createRequire } from 'node:module';

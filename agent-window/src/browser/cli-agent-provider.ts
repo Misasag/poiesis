@@ -47,6 +47,8 @@ interface CodexRun {
     diagnostics: string;
     failureDiagnostics: string;
     finalMessage?: string;
+    piSettled?: boolean;
+    piSucceeded?: boolean;
     phase: AgentRunProgress['phase'];
     lastOutputAt?: string;
     lastProgressEmittedAt?: number;
@@ -241,7 +243,8 @@ export class CliAgentProvider implements AgentProvider {
         this.emitProgress(run, true);
         this.flushStdout(run);
         this.recordCall(run, event.code);
-        const successful = event.code === 0 && !event.signal;
+        const successful = event.code === 0 && !event.signal
+            && (run.providerId !== 'pi' || run.piSettled === true && run.piSucceeded === true);
         this.clearProgressTimer(run);
         if (successful) {
             const completion = parseAgentCompletion(run.finalMessage?.trim() || 'タスクを完了しました。');
@@ -340,6 +343,7 @@ export class CliAgentProvider implements AgentProvider {
     protected consumeJsonLine(run: CodexRun, line: string): void {
         const result = run.activityParser.consumeLine(line);
         if (result.usage) { run.usage = result.usage; }
+        if (result.piSettled) { run.piSettled = true; run.piSucceeded = result.piSucceeded; }
         if (result.permissionDenials?.length) {
             this.taskService.recordDiagnostic(run.taskId, {
                 summary: `Claude が ${result.permissionDenials.length} 件の操作を許可されませんでした。`,

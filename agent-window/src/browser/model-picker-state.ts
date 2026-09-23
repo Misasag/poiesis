@@ -47,6 +47,22 @@ export interface ModelPickerAnchorRect {
     bottom: number;
 }
 
+/** Turn an OpenRouter vendor/model slug into a compact display label. */
+export function openRouterModelLabel(slug: string): string {
+    const model = slug.split('/').pop() ?? slug;
+    const words = model.split('-').filter(Boolean).map(word => {
+        const lower = word.toLowerCase();
+        if (lower === 'glm' || lower === 'gpt') { return lower.toUpperCase(); }
+        if (lower === 'kimi') { return 'Kimi'; }
+        if (lower === 'deepseek') { return 'DeepSeek'; }
+        return word.charAt(0).toUpperCase() + word.slice(1);
+    });
+    if (words.length > 1 && (words[0] === 'GLM' || words[0] === 'GPT') && /^\d/.test(words[1])) {
+        return `${words[0]}-${words.slice(1).join(' ')}`;
+    }
+    return words.join(' ');
+}
+
 export function modelPickerPlacement(
     rect: ModelPickerAnchorRect,
     viewportWidth: number,
@@ -87,6 +103,8 @@ export function modelPickerProviders(
             : [{ id: '', label: '既定' }, ...catalogModels];
         const choices: ModelPickerChoice[] = models.map(model => ({
             ...model,
+            label: detection.id === 'pi' && model.id.startsWith('openrouter/')
+                ? openRouterModelLabel(model.id.slice('openrouter/'.length)) : model.label,
             providerId: detection.id,
             providerName: detection.name
         }));
@@ -100,28 +118,43 @@ export function modelPickerProviders(
                 custom: true
             });
         }
-        return [{
-            id: detection.id,
-            name: detection.name,
-            source,
-            error: catalog?.error,
-            choices
-        }];
+        if (detection.id === 'pi') {
+            const groups = new Map<string, ModelPickerChoice[]>();
+            for (const choice of choices.filter(choice => choice.id !== '')) {
+                const piProvider = choice.piProvider ?? choice.id.split('/')[0];
+                const label = piProvider === 'openrouter' ? 'OpenRouter'
+                    : piProvider === 'openai-codex' ? 'ChatGPT（pi 経由）' : `${piProvider}（pi 経由）`;
+                choice.providerName = label;
+                groups.set(label, [...(groups.get(label) ?? []), choice]);
+            }
+            // The CLI default belongs to pi, but does not need a duplicate group/chip.
+            const defaultChoice = choices.find(choice => choice.id === '');
+            if (defaultChoice) {
+                const firstGroup = groups.keys().next().value ?? 'pi';
+                defaultChoice.providerName = firstGroup;
+                groups.set(firstGroup, [defaultChoice, ...(groups.get(firstGroup) ?? [])]);
+            }
+            return [...groups].map(([name, groupChoices]) => ({
+                id: detection.id, name, source, error: catalog?.error, choices: groupChoices
+            }));
+        }
+        return [{ id: detection.id, name: detection.id === 'claude' ? 'Claude' : detection.name,
+            source, error: catalog?.error, choices }];
     });
 }
 
 export function filterModelPickerProviders(
     providers: readonly ModelPickerProvider[],
-    providerFilter: KnownCliId | 'all',
+    providerFilter: string,
     query: string
 ): ModelPickerProvider[] {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     return providers.flatMap(provider => {
-        if (providerFilter !== 'all' && provider.id !== providerFilter) {
+        if (providerFilter !== 'all' && provider.name !== providerFilter) {
             return [];
         }
         const choices = normalizedQuery
-            ? provider.choices.filter(choice => [choice.label, choice.id, choice.providerName, choice.description ?? '']
+            ? provider.choices.filter(choice => [choice.label, choice.id]
                 .some(value => value.toLocaleLowerCase().includes(normalizedQuery)))
             : provider.choices;
         return choices.length ? [{ ...provider, choices }] : [];

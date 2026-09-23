@@ -142,6 +142,22 @@ export function knownCliDefinitions(): readonly KnownCliDefinition[] {
             defaultModel: ''
         },
         {
+            id: 'pi',
+            displayName: 'pi',
+            executableNames: ['pi'],
+            wellKnownLocations: compact([
+                appData && join(appData, 'npm', 'pi.cmd'),
+                userProfile && join(userProfile, '.local', 'bin', 'pi')
+            ]),
+            versionProbe: ['--version'],
+            executableRoles: ['agent', 'results', 'judge'],
+            models: [cliDefault, ...[
+                'z-ai/glm-5.3', 'z-ai/glm-5.3-flash', 'moonshotai/kimi-k3',
+                'deepseek/deepseek-v4.1-flash', 'xiaomi/mimo-v2.6-pro', 'qwen/qwen3.8-max-0902'
+            ].map(id => ({ id: `openrouter/${id}`, label: id, piProvider: 'openrouter' }))],
+            defaultModel: ''
+        },
+        {
             id: 'gemini',
             displayName: 'Gemini',
             executableNames: ['gemini'],

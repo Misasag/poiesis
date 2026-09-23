@@ -37,6 +37,9 @@ export function agentCliArgs(input: AgentCliArgsInput): string[] {
 function buildAgentCliArgs(input: AgentCliArgsInput): string[] {
     const model = input.model?.trim();
     const effort = effortArgs(input.providerId, input.effort);
+    if (input.providerId === 'pi') {
+        return [...piBaseArgs(model, effort), '--tools', 'read,bash,edit,write'];
+    }
     if (input.providerId === 'claude') {
         return [
             '-p',
@@ -92,6 +95,9 @@ export function oneShotCliArgs(input: OneShotCliArgsInput): string[] {
 function buildOneShotCliArgs(input: OneShotCliArgsInput): string[] {
     const model = input.model?.trim();
     const effort = effortArgs(input.providerId, input.effort);
+    if (input.providerId === 'pi') {
+        return [...piBaseArgs(model, effort), ...(input.readOnlyFileTools ? ['--tools', 'read'] : ['--no-tools'])];
+    }
     if (input.providerId === 'claude') {
         return [
             '-p',
@@ -139,6 +145,12 @@ function buildOneShotCliArgs(input: OneShotCliArgsInput): string[] {
     throw new Error('Gemini CLI の実行には対応していません。');
 }
 
+function piBaseArgs(model: string | undefined, effort: string[]): string[] {
+    return ['-p', '--mode', 'json', ...(model ? ['--model', model] : []), ...effort,
+        '--no-session', '--no-extensions', '--no-skills', '--no-prompt-templates',
+        '--no-themes', '--no-approve', '--offline'];
+}
+
 export function validateCliEffort(providerId: KnownCliId, rawEffort: string | undefined): string {
     const effort = rawEffort?.trim() ?? '';
     if (effort && !CLI_EFFORT_LEVELS[providerId].includes(effort)) {
@@ -151,6 +163,9 @@ function effortArgs(providerId: KnownCliId, rawEffort: string | undefined): stri
     const effort = validateCliEffort(providerId, rawEffort);
     if (!effort) {
         return [];
+    }
+    if (providerId === 'pi') {
+        return ['--thinking', effort];
     }
     if (providerId === 'claude') {
         return ['--effort', effort];

@@ -82,7 +82,7 @@ export const ModelPicker = ({
     const listboxId = `${pickerId}-listbox`;
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState('');
-    const [providerFilter, setProviderFilter] = React.useState<KnownCliId | 'all'>('all');
+    const [providerFilter, setProviderFilter] = React.useState<string>('all');
     const [activeKey, setActiveKey] = React.useState('');
     const [position, setPosition] = React.useState<ModelPickerPlacement>();
     const [customDraft, setCustomDraft] = React.useState<CustomModelDraft>();
@@ -420,13 +420,13 @@ export const ModelPicker = ({
                                 <div className='poiesis-model-picker__filters' role='group' aria-label='AIで絞り込む'>
                                     <button type='button' className={providerFilter === 'all' ? 'active' : ''} aria-pressed={providerFilter === 'all'} onClick={() => setProviderFilter('all')}>すべて</button>
                                     {providers.map(provider => (
-                                        <button key={provider.id} type='button' className={providerFilter === provider.id ? 'active' : ''} aria-pressed={providerFilter === provider.id} onClick={() => setProviderFilter(provider.id)}>{provider.name}</button>
+                                        <button key={`${provider.id}:${provider.name}`} type='button' className={providerFilter === provider.name ? 'active' : ''} aria-pressed={providerFilter === provider.name} onClick={() => setProviderFilter(provider.name)}>{provider.name}</button>
                                     ))}
                                 </div>
                             )}
                             <div id={listboxId} className='poiesis-model-picker__list' role='listbox' aria-label='利用できるモデル'>
                                 {filteredProviders.map(provider => (
-                                    <React.Fragment key={provider.id}>
+                                    <React.Fragment key={`${provider.id}:${provider.name}`}>
                                         <div className='poiesis-model-picker__group' role='presentation'>
                                             <span>{provider.name}</span>
                                             <small>{catalogSourceLabel(provider.source)}</small>
@@ -439,7 +439,11 @@ export const ModelPicker = ({
                                                 ? `${provider.name} の設定に従う`
                                                 : choice.custom
                                                     ? `${provider.name} · 一覧にないモデル`
-                                                    : undefined;
+                                                    : choice.providerId === 'pi' && choice.id.startsWith('openrouter/')
+                                                        ? choice.id.slice('openrouter/'.length)
+                                                        : choice.contextWindow
+                                                            ? `コンテキスト ${choice.contextWindow} · 思考 ${choice.supportedReasoningEfforts?.length === 1 && choice.supportedReasoningEfforts[0] === 'off' ? '非対応' : '対応'}`
+                                                        : undefined;
                                             return (
                                                 <div
                                                     key={key}

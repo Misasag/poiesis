@@ -354,10 +354,14 @@ details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
     border-bottom: 1px solid #3b3d38;
     display: flex;
     flex: none;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 4px;
     min-height: 34px;
+    overflow-x: auto;
+    overflow-y: hidden;
     padding: 5px 9px;
+    scrollbar-color: #666961 transparent;
+    scrollbar-width: thin;
 }
 
 .poiesis-model-picker__filters button {

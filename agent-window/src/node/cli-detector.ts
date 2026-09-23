@@ -9,7 +9,7 @@ import {
     CliLocationSource
 } from '../common/agent-runtime-protocol';
 import { KnownCliDefinition, knownCliDefinitions } from './known-cli-registry';
-import { HiddenCliProcess, spawnHiddenCli } from './hidden-process';
+import { HiddenCliProcess, killHiddenProcessTree, spawnHiddenCli } from './hidden-process';
 
 /** Registry-backed detector for PATH, well-known locations, and bounded version probes. */
 @injectable()
@@ -99,6 +99,7 @@ export class CliDetector {
                     id: definition.id,
                     name: definition.displayName,
                     status: 'found',
+                    ...(definition.id === 'pi' ? { piAuth: await this.piAuthStatus(candidate.path) } : {}),
                     path: candidate.path,
                     source: candidate.source,
                     version: await this.probeVersion(definition, candidate.path),
@@ -162,6 +163,32 @@ export class CliDetector {
         }
     }
 
+    protected async piAuthStatus(command: string): Promise<Record<string, 'ready' | 'not_ready' | 'invalid'>> {
+        const statuses: Record<string, 'ready' | 'not_ready' | 'invalid'> = {};
+        await Promise.all(['openrouter', 'openai-codex'].map(provider => new Promise<void>(resolveStatus => {
+            let child: HiddenCliProcess;
+            try { child = spawnHiddenCli('pi', command, ['auth', 'check', '--provider', provider, '--json', '--offline', '--no-approve']); }
+            catch { resolveStatus(); return; }
+            let output = '';
+            const timeout = setTimeout(() => { void killHiddenProcessTree(child); finish(); }, 8_000);
+            let done = false;
+            const finish = (): void => {
+                if (done) { return; }
+                done = true;
+                clearTimeout(timeout);
+                try {
+                    const status: unknown = (JSON.parse(output) as { status?: unknown }).status;
+                    if (status === 'ready' || status === 'not_ready' || status === 'invalid') { statuses[provider] = status; }
+                } catch { /* No credentials or raw output are exposed to the UI. */ }
+                resolveStatus();
+            };
+            readChildUtf8(child, text => output = `${output}${text}`.slice(0, 2048), () => undefined);
+            child.once('close', finish);
+            child.once('error', finish);
+        })));
+        return statuses;
+    }
+
     protected probeVersion(definition: KnownCliDefinition, command: string): Promise<string | undefined> {
         return new Promise(resolveProbe => {
             let child: HiddenCliProcess;
@@ -184,7 +211,7 @@ export class CliDetector {
                 resolveProbe(version || undefined);
             };
             const timeout = setTimeout(() => {
-                child.kill();
+                void killHiddenProcessTree(child);
                 finish();
             }, 8_000);
             readChildUtf8(child, text => output = `${output}${text}`.slice(-4_000),

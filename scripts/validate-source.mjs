@@ -895,7 +895,7 @@ assert.ok(requirementModelTest.includes('assert.equal(restoredLegacy.titleShorte
 assert.ok(requirementModelTest.includes('assert.equal(restoredAgain.title, secondLongTitle)'));
 
 for (const marker of [
-    "KNOWN_CLI_IDS = ['codex', 'claude', 'grok', 'gemini']",
+    "KNOWN_CLI_IDS = ['codex', 'claude', 'grok', 'gemini', 'pi']",
     'CLI_DISPLAY_NAMES',
     "AiRole = 'agent' | 'results'",
     "CliLocationSource = 'PATH' | 'well-known'",
@@ -905,7 +905,10 @@ for (const marker of [
     "codex: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']",
     "grok: ['low', 'medium', 'high']",
     'gemini: []',
+    "pi: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']",
     "status: 'found' | 'missing'",
+    'piAuth?: Record<string',
+    'contextWindow?: string;',
     'CodexExecutionRequest',
     'providerId: KnownCliId',
     'model?: string',
@@ -965,6 +968,8 @@ for (const marker of [
     "status: 'found'",
     "status: 'missing'",
     'probeVersion(definition, candidate.path)',
+    "spawnHiddenCli('pi', command, ['auth', 'check', '--provider', provider, '--json'",
+    'killHiddenProcessTree(child)',
     'spawnHiddenCli(definition.id, command, definition.versionProbe)'
 ]) {
     assert.ok(cliDetector.includes(marker), `CliDetector is missing ${marker}`);
@@ -978,6 +983,8 @@ for (const marker of [
     "id: 'claude'",
     "id: 'grok'",
     "id: 'gemini'",
+    "id: 'pi'",
+    "'z-ai/glm-5.3-flash'",
     "join(userProfile, '.grok', 'bin', 'grok.exe')",
     "id: 'gpt-6-astra', label: 'GPT-6-Astra'",
     "id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol'",
@@ -1018,6 +1025,11 @@ for (const marker of [
     "child.stdin?.once('error'",
     'boundedProcessCleanup(',
     'parseGrokModelsOutput',
+    'parsePiModelsOutput',
+    'this.piClient.listModels(input.command)',
+    "spawnHiddenCli('pi', command, ['--list-models', '--offline'",
+    "model.includes(':batch')",
+    "model.startsWith('~')",
     'assertEffortSupported(selection:',
     "source: 'cached'",
     "source: 'live'",
@@ -1045,6 +1057,7 @@ for (const marker of [
 ]) {
     assert.ok(modelDiscoveryTest.includes(marker), `Model discovery regression is missing ${marker}`);
 }
+assert.ok(modelDiscoveryTest.includes('parsePiModelsOutput') && modelDiscoveryTest.includes('openrouter/z-ai/glm-5.3-flash'));
 assert.ok(rootPackage.scripts['test:model-discovery']?.includes('scripts/test-model-discovery.mjs'),
     'The model discovery test script is not registered');
 
@@ -1081,6 +1094,10 @@ for (const marker of [
     "return ['--effort', effort]",
     "return ['-c', `model_reasoning_effort=${effort}`]",
     "return ['--reasoning-effort', effort]",
+    "return ['--thinking', effort]",
+    "'--no-tools'",
+    "'read,bash,edit,write'",
+    "'--no-approve', '--offline'",
     'CLI_EFFORT_LEVELS[providerId].includes(effort)',
     '`${CLI_DISPLAY_NAMES[providerId]} では選択した思考の強度を利用できません。`',
     "'--sandbox', 'workspace-write'",
@@ -1091,7 +1108,7 @@ for (const marker of [
 ]) {
     assert.ok(cliArgs.includes(marker), `Central CLI argv builder is missing ${marker}`);
 }
-for (const flag of ['model_reasoning_effort=', "'--effort'", "'--reasoning-effort'"]) {
+for (const flag of ['model_reasoning_effort=', "'--effort'", "'--reasoning-effort'", "'--thinking'"])  {
     assert.equal((cliArgs.match(new RegExp(flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) ?? []).length, 1,
         `Effort flag ${flag} must be defined exactly once in the central argv builder`);
 }
@@ -1099,6 +1116,7 @@ for (const source of [runtimeServer, resultsQuestionServer, resultsGenerationSer
     assert.ok(!source.includes('model_reasoning_effort='), 'Execution servers must delegate Codex effort argv to cli-args');
     assert.ok(!source.includes("'--effort'"), 'Execution servers must delegate Claude effort argv to cli-args');
     assert.ok(!source.includes("'--reasoning-effort'"), 'Execution servers must delegate Grok effort argv to cli-args');
+    assert.ok(!source.includes("'--thinking'"), 'Execution servers must delegate pi effort argv to cli-args');
 }
 for (const marker of [
     "providerId: 'claude', model: 'sonnet', effort: 'max'",
@@ -1114,16 +1132,22 @@ for (const marker of [
 ]) {
     assert.ok(cliArgsTest.includes(marker), `CLI argv unit test is missing ${marker}`);
 }
+assert.ok(cliArgsTest.includes("providerId: 'pi'") && cliArgsTest.includes("'--no-tools'"));
 assert.ok(rootPackage.scripts['test:cli-args']?.includes('scripts/test-cli-args.mjs'),
     'The CLI argv test script is not registered');
 const cliUsageSource = await read('agent-window/src/common/cli-usage.ts');
 const childUtf8Source = await read('agent-window/src/node/child-utf8.ts');
 const elapsedSource = await read('agent-window/src/browser/components/elapsed.tsx');
 for (const marker of ['export interface CliUsage', 'export interface CliCallRecord', "costSource?: 'cli-estimate'",
-    'codexTurnUsage(event)', 'claudeResultUsage(event)', "item.type === 'agent_message'", 'event.total_cost_usd', 'event.modelUsage']) {
+    'codexTurnUsage(event)', 'claudeResultUsage(event)', 'piMessageUsage(event)', "item.type === 'agent_message'", 'event.total_cost_usd', 'event.modelUsage']) {
     assert.ok(cliUsageSource.includes(marker), `CLI usage contract is missing ${marker}`);
 }
 assert.ok(rootPackage.scripts['test:cli-usage']?.includes('scripts/test-cli-usage.mjs'));
+assert.ok(cliUsageSource.includes("providerId === 'pi'") && cliUsageSource.includes("lastStopReason !== 'stop'"));
+assert.ok((await read('scripts/test-cli-usage.mjs')).includes("parseCliOutput('pi', piEvents)"));
+assert.ok((await read('scripts/test-agent-activity-parser.mjs')).includes("fixtureLines('pi-json-events.jsonl')"));
+assert.ok((await read('agent-window/src/browser/agent-activity-parser.ts')).includes("type === 'agent_settled'"));
+assert.ok((await read('agent-window/src/browser/cli-agent-provider.ts')).includes('run.piSettled === true && run.piSucceeded === true'));
 assert.ok(!/\binput\.prompt\b/.test(cliArgs), 'Prompt bodies must never be argv values.');
 assert.ok(cliArgs.includes('argument.length > 1_000') && hiddenProcess.includes('assertBoundedCliArgs(invocation.args)'));
 assert.ok(cliArgs.includes("'--output-format', 'json'") && cliArgs.includes("'--json'"));
@@ -1156,6 +1180,8 @@ for (const marker of [
     "'@anthropic-ai', 'claude-code', 'bin', 'claude.exe'",
     "providerId === 'codex'",
     "'@openai', 'codex', 'bin', 'codex.js'",
+    "'@earendil-works', 'pi-coding-agent', 'dist', 'bundle', 'cli.js'",
+    "providerId === 'pi'",
     'nodeExecutable(shimDirectory)',
     'windowsHide: true',
     'shell: false',

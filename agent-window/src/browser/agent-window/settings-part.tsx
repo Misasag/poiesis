@@ -118,6 +118,10 @@ const CLI_DOCUMENTATION: Partial<Record<KnownCliId, { setup: string; reference: 
         setup: 'https://code.claude.com/docs/en/setup',
         reference: 'https://code.claude.com/docs/en/cli-reference'
     },
+    pi: {
+        setup: 'https://pi.dev/docs/providers',
+        reference: 'https://pi.dev/docs/cli'
+    },
     grok: {
         setup: 'https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/01-getting-started.md',
         reference: 'https://docs.x.ai/build/cli/reference'
@@ -499,6 +503,19 @@ export class SettingsPart extends AgentWindowPart {
                                     </span>
                                     <span className={`poiesis-settings-modal__cli-status ${this.cliAvailabilityClass(availability)}`}>{status}</span>
                                 </label>
+                                {providerId === 'pi' && <div className='poiesis-settings-modal__cli-help'>
+                                    <small>pi は操作前の確認を行いません。コマンドはワークスペースで直接実行されます。</small>
+                                    {(() => {
+                                        const model = this.roleModel(role);
+                                        const piProvider = model ? model.split('/')[0] : 'openrouter';
+                                        const providerName = piProvider === 'openrouter' ? 'OpenRouter'
+                                            : piProvider === 'openai-codex' ? 'ChatGPT' : piProvider;
+                                        const status = detection?.piAuth?.[piProvider];
+                                        return <small>{providerName}: {status === 'ready' ? '利用可能'
+                                            : status === 'not_ready' ? 'APIキーが見つかりません' : '認証を確認できませんでした'}</small>;
+                                    })()}
+                                    <button type='button' onClick={() => this.openCliDocumentation('https://pi.dev/docs/providers')}>pi の認証設定について</button>
+                                </div>}
                                 {documentation && (
                                     <div className='poiesis-settings-modal__cli-help'>
                                         <button type='button' onClick={() => this.openCliDocumentation(documentation.setup)}>セットアップ</button>

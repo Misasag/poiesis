@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const {
     beginCustomModelDraft,
     filterModelPickerProviders,
     modelEffortIsUnsupported,
+    openRouterModelLabel,
     modelPickerPlacement,
     modelPickerProviders,
     modelSupportedEfforts,
@@ -50,6 +52,49 @@ const catalogs = {
     }
 };
 
+const piReport = { ...report, detections: [...report.detections, {
+    id: 'pi', name: 'pi', status: 'found', path: 'pi.cmd', executableRoles: ['agent', 'results', 'judge'],
+    models: [{ id: '', label: '既定' }], defaultModel: '', checkedLocations: []
+}] };
+const piGroups = modelPickerProviders('ready', piReport, { pi: { providerId: 'pi', source: 'live', models: [
+    { id: 'openrouter/z-ai/glm-5.3-flash', label: 'z-ai/glm-5.3-flash', piProvider: 'openrouter' },
+    { id: 'openai-codex/gpt-6-luna', label: 'gpt-6-luna', piProvider: 'openai-codex' }
+] } }, 'agent', 'pi', 'openrouter/z-ai/glm-5.3-flash').filter(group => group.id === 'pi');
+assert.deepEqual(piGroups.map(group => group.name), ['OpenRouter', 'ChatGPT（pi 経由）']);
+assert.equal(piGroups[0].choices[1].id, 'openrouter/z-ai/glm-5.3-flash');
+assert.equal(piGroups[0].choices[1].label, 'GLM-5.3 Flash');
+for (const [slug, label] of [
+    ['z-ai/glm-5.3', 'GLM-5.3'],
+    ['moonshotai/kimi-k3', 'Kimi K3'],
+    ['deepseek/deepseek-v4.1-flash', 'DeepSeek V4.1 Flash'],
+    ['openai/gpt-6-sol', 'GPT-6 Sol']
+]) {
+    assert.equal(openRouterModelLabel(slug), label);
+}
+const pickerReport = { ...report, detections: [
+    ...report.detections.map(detection => detection.id === 'grok' ? { ...detection, status: 'found', path: 'grok' } : detection),
+    piReport.detections.at(-1)
+] };
+const pickerProviders = modelPickerProviders('ready', pickerReport, {
+    pi: { providerId: 'pi', source: 'live', models: [
+        { id: 'openrouter/z-ai/glm-5.3', label: 'z-ai/glm-5.3', piProvider: 'openrouter' },
+        { id: 'openrouter/moonshotai/kimi-k3', label: 'moonshotai/kimi-k3', piProvider: 'openrouter' },
+        ...['astra', 'luna', 'sol'].map(name => ({ id: `openai-codex/gpt-6-${name}`, label: `gpt-6-${name}`, piProvider: 'openai-codex' }))
+    ] }
+}, 'agent', 'pi', 'openrouter/z-ai/glm-5.3');
+assert.deepEqual(['すべて', ...pickerProviders.map(group => group.name)],
+    ['すべて', 'Codex', 'Claude', 'Grok', 'OpenRouter', 'ChatGPT（pi 経由）'],
+    'Each selectable group has one chip, with no duplicate pi chip.');
+const pickerCss = readFileSync(new URL('../agent-window/src/browser/style/components.css', import.meta.url), 'utf8');
+assert.match(pickerCss, /\.poiesis-model-picker__filters\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s,
+    'Filter chips must remain on one horizontally scrollable line.');
+assert.deepEqual(filterModelPickerProviders(pickerProviders, 'all', 'GLM-5.3')
+    .map(group => [group.name, ...group.choices.map(choice => choice.id)]),
+    [['OpenRouter', 'openrouter/z-ai/glm-5.3']],
+    'Search filters every group and hides groups with no matching model.');
+assert.deepEqual(filterModelPickerProviders(pickerProviders, 'ChatGPT（pi 経由）', 'glm-5.3'), []);
+assert.deepEqual(filterModelPickerProviders(pickerProviders, 'OpenRouter', 'kimi k3')
+    .flatMap(group => group.choices.map(choice => choice.id)), ['openrouter/moonshotai/kimi-k3']);
 const customSelection = { providerId: 'codex', model: 'private-preview-model', effort: 'max' };
 const providers = modelPickerProviders(
     'ready', report, catalogs, 'agent', customSelection.providerId, customSelection.model
@@ -71,7 +116,7 @@ assert.equal(cliRoleAvailability('ready', {
 
 const searched = filterModelPickerProviders(providers, 'all', 'astra');
 assert.deepEqual(searched.flatMap(provider => provider.choices.map(choice => choice.id)), ['gpt-6-astra']);
-assert.deepEqual(filterModelPickerProviders(providers, 'claude', '').map(provider => provider.id), ['claude']);
+assert.deepEqual(filterModelPickerProviders(providers, 'Claude', '').map(provider => provider.id), ['claude']);
 
 assert.deepEqual(
     modelSupportedEfforts('codex', 'gpt-6-astra', providers),
