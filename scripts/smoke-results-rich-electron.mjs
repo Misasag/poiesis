@@ -36,6 +36,7 @@ section { margin-block: 20px; } figure { margin: 0; } img { max-height: 220px; o
 </main></body></html>`;
 const task = { id: taskId, sessionId, workspaceUri: pathToFileURL(workspace).href, title: '画像と図で成果を確認', request: '成果に図と画像を表示する',
     status: 'completed', startedAt: now, endedAt: now, baseline: { kind: 'workspace-snapshot', capturedAt: now },
+    activities: [{ id: 'exploratory-search', kind: 'command', title: 'ファイルを探す', detail: '終了コード 1', status: 'failed', startedAt: now, endedAt: now }],
     changeSet: { source: 'task-diff', diff: 'diff --git a/evidence.txt b/evidence.txt\n+画像の表示を確認', files: ['evidence.txt'], capturedAt: now },
     hookEvidence: [{ hookId: '画面の確認', runId: 'sample', evidence: [{ label: '作業画面', status: 'unknown', detail: 'この試験で撮影した画像', image: 'workspace-screen.png' }] }],
     resultsDocument: { taskId, status: 'ready', generator: 'ai', html } };
@@ -95,11 +96,13 @@ try {
     console.log('RICH_RESULTS: resolved image');
     const tableSelector = '.poiesis-results__canvas .poiesis-results__verification';
     await page.waitForSelector(`${tableSelector} tbody tr[data-status="human"]`);
-    assert.equal(await page.$$eval(`${tableSelector} tbody tr`, rows => rows.length), 5);
-    for (const status of ['pass', 'fail', 'outdated', 'human', 'unknown']) {
+    assert.equal(await page.$$eval(`${tableSelector} tbody tr`, rows => rows.length), 4);
+    for (const status of ['pass', 'fail', 'outdated', 'human']) {
         assert.equal(await page.$$eval(`${tableSelector} tbody tr[data-status="${status}"]`, rows => rows.length), 1);
     }
-    assert.equal(await page.$eval(`${tableSelector} summary`, node => node.textContent), '確認 5件中 1件成功・1件失敗・1件未確認・1件以前の結果・1件人間の判断待ち');
+    assert.equal(await page.$$eval(`${tableSelector} tbody tr[data-status="unknown"]`, rows => rows.length), 0);
+    assert.equal(await page.$eval(`${tableSelector} summary`, node => node.textContent), '確認 4件中 1件成功・1件失敗・1件以前の結果・1件人間の判断待ち');
+    assert.equal(await page.$eval(`${tableSelector} .poiesis-results__operation-summary`, node => node.textContent), '作業の記録: 1件の作業で操作 1件（うち失敗 1件）');
     assert.equal(await page.$eval('.poiesis-results__human-badge', node => node.textContent), '判断待ち 1件');
     await page.waitForSelector('.poiesis-results__answer-warning');
     await page.screenshot({ path: resolve(shots, 'results-evidence-table.png') });
