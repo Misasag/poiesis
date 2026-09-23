@@ -165,11 +165,18 @@
   {
     "id": "or:glm-5.3",
     "family": "zhipu",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "z-ai/glm-5.3",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -181,26 +188,52 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "z-ai/glm-5.3",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "z-ai/glm-5.3",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "z-ai/glm-5.3",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "z-ai/glm-5.3",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "z-ai/glm-5.3",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "no-training-stated"
     ],
     "dataNotes": "Z.ai API states no training without express consent; Singapore. OpenRouter host policy may differ; no host pin or ZDR is implied.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:glm-5.3-flash",
+    "family": "zhipu",
+    "adapter": "pi",
+    "model": "z-ai/glm-5.3-flash",
+    "defaultEffort": "default",
+    "efforts": [
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "costBasis": "metered",
+    "prices": {
+      "inputPerMTok": 0.15,
+      "cachedInputPerMTok": 0.05,
+      "outputPerMTok": 0.5,
+      "currency": "USD",
+      "source": "https://openrouter.ai/api/v1/models",
+      "asOf": "2026-09-23"
+    },
+    "env": {
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
+    },
+    "enabled": true,
+    "dataPolicy": [
+      "no-training-stated"
+    ],
+    "dataNotes": "Z.ai API states no training without express consent; Singapore. OpenRouter host policy may differ; no host pin or ZDR is implied.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
+  },
+  {
+    "id": "orc:glm-5.3-flash",
     "family": "zhipu",
     "adapter": "anthropic-compat",
     "model": "z-ai/glm-5.3-flash",
@@ -234,16 +267,23 @@
       "no-training-stated"
     ],
     "dataNotes": "Z.ai API states no training without express consent; Singapore. OpenRouter host policy may differ; no host pin or ZDR is implied.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "notes": "A/B comparison path only: Claude Code pointed at OpenRouter (unsupported by Anthropic). Measured in v1.1. Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
   },
   {
     "id": "or:deepseek-v4.1-flash",
     "family": "deepseek",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "deepseek/deepseek-v4.1-flash",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -255,32 +295,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "deepseek/deepseek-v4.1-flash",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek/deepseek-v4.1-flash",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek/deepseek-v4.1-flash",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek/deepseek-v4.1-flash",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek/deepseek-v4.1-flash",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "may-train"
     ],
-    "dataNotes": "First-party policy permits training and processing in China. OpenRouter hosts may offer different retention terms; no ZDR routing is asserted.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "dataNotes": "First-party policy permits training and processing in China. OpenRouter hosts may offer different retention terms; no ZDR routing is asserted. DeepSeek first-party endpoint declares training on inputs; allowed for this public repo by policy, and recorded. No data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:deepseek-v4-pro",
     "family": "deepseek",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "deepseek/deepseek-v4-pro",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -292,32 +330,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "deepseek/deepseek-v4-pro",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek/deepseek-v4-pro",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek/deepseek-v4-pro",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek/deepseek-v4-pro",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek/deepseek-v4-pro",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "may-train"
     ],
-    "dataNotes": "First-party policy permits training and processing in China. OpenRouter hosts may offer different retention terms; no ZDR routing is asserted.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "dataNotes": "First-party policy permits training and processing in China. OpenRouter hosts may offer different retention terms; no ZDR routing is asserted. DeepSeek first-party endpoint declares training on inputs; allowed for this public repo by policy, and recorded. No data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:kimi-k3",
     "family": "moonshot",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "moonshotai/kimi-k3",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -329,32 +365,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "moonshotai/kimi-k3",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "moonshotai/kimi-k3",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "moonshotai/kimi-k3",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "moonshotai/kimi-k3",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "moonshotai/kimi-k3",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "may-train"
     ],
     "dataNotes": "Kimi API may use inputs for training absent a written agreement; Singapore API terms. OpenRouter host policy may differ.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:kimi-k2.7-code",
     "family": "moonshot",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "moonshotai/kimi-k2.7-code",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -366,32 +400,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "moonshotai/kimi-k2.7-code",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "moonshotai/kimi-k2.7-code",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "moonshotai/kimi-k2.7-code",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "moonshotai/kimi-k2.7-code",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "moonshotai/kimi-k2.7-code",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "may-train"
     ],
     "dataNotes": "Kimi API may use inputs for training absent a written agreement; Singapore API terms. OpenRouter host policy may differ.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:mimo-v2.6-pro",
     "family": "xiaomi",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "xiaomi/mimo-v2.6-pro",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -403,32 +435,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "xiaomi/mimo-v2.6-pro",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "xiaomi/mimo-v2.6-pro",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "xiaomi/mimo-v2.6-pro",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "xiaomi/mimo-v2.6-pro",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "xiaomi/mimo-v2.6-pro",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "no-training-stated"
     ],
     "dataNotes": "MiMo API states submitted content is not used for model training; Netherlands/Singapore. OpenRouter host policy may differ.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:mimo-v2.6-flash",
     "family": "xiaomi",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "xiaomi/mimo-v2.6-flash",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -440,32 +470,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "xiaomi/mimo-v2.6-flash",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "xiaomi/mimo-v2.6-flash",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "xiaomi/mimo-v2.6-flash",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "xiaomi/mimo-v2.6-flash",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "xiaomi/mimo-v2.6-flash",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "no-training-stated"
     ],
     "dataNotes": "MiMo API states submitted content is not used for model training; Netherlands/Singapore. OpenRouter host policy may differ.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:qwen3.8-max",
     "family": "alibaba",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "qwen/qwen3.8-max-0902",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -477,32 +505,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "qwen/qwen3.8-max-0902",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen/qwen3.8-max-0902",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen/qwen3.8-max-0902",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen/qwen3.8-max-0902",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "qwen/qwen3.8-max-0902",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "no-training-stated"
     ],
-    "dataNotes": "QwenCloud states no training without consent; Singapore. OpenRouter host policy may differ.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "dataNotes": "QwenCloud states no training without consent; Singapore. OpenRouter host policy may differ. No ZDR route on the pinned first-party endpoint; no data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:qwen3.8-flash",
     "family": "alibaba",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "qwen/qwen3.8-flash",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -514,32 +540,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "qwen/qwen3.8-flash",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen/qwen3.8-flash",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen/qwen3.8-flash",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen/qwen3.8-flash",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "qwen/qwen3.8-flash",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "no-training-stated"
     ],
-    "dataNotes": "QwenCloud states no training without consent; Singapore. OpenRouter host policy may differ.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "dataNotes": "QwenCloud states no training without consent; Singapore. OpenRouter host policy may differ. No ZDR route on the pinned first-party endpoint; no data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:minimax-m3",
     "family": "minimax",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "minimax/minimax-m3",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -551,32 +575,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "minimax/minimax-m3",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "minimax/minimax-m3",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "minimax/minimax-m3",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "minimax/minimax-m3",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "minimax/minimax-m3",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "may-train"
     ],
     "dataNotes": "International MiniMax terms permit service improvement, with no verified training opt-out; US datacenters/Singapore law.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:muse-spark-1.3",
     "family": "meta",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "meta/muse-spark-1.3",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -588,32 +610,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "meta/muse-spark-1.3",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "meta/muse-spark-1.3",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "meta/muse-spark-1.3",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "meta/muse-spark-1.3",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "meta/muse-spark-1.3",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "no-training-stated"
     ],
-    "dataNotes": "Muse Standard states no training; California law. Contributor variants train on inputs and are never configured.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "dataNotes": "Muse Standard states no training; California law. Contributor variants train on inputs and are never configured. No ZDR route on the pinned first-party endpoint; no data_collection pin.",
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:gemini-3.8-flash",
     "family": "google",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "google/gemini-3.8-flash",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -625,32 +645,30 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "google/gemini-3.8-flash",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "google/gemini-3.8-flash",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "google/gemini-3.8-flash",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "google/gemini-3.8-flash",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "google/gemini-3.8-flash",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "no-training-stated"
     ],
     "dataNotes": "Paid Gemini API states no training; free-tier terms permit product improvement. This catalog uses paid OpenRouter transport.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "or:grok-4.7",
     "family": "xai",
-    "adapter": "anthropic-compat",
+    "adapter": "pi",
     "model": "x-ai/grok-4.7",
     "defaultEffort": "default",
     "efforts": [
-      "default"
+      "default",
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ],
     "costBasis": "metered",
     "prices": {
@@ -662,23 +680,14 @@
       "asOf": "2026-09-23"
     },
     "env": {
-      "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-      "ANTHROPIC_AUTH_TOKEN": "${ENV:OPENROUTER_API_KEY}",
-      "ANTHROPIC_API_KEY": "",
-      "ANTHROPIC_MODEL": "x-ai/grok-4.7",
-      "ANTHROPIC_DEFAULT_OPUS_MODEL": "x-ai/grok-4.7",
-      "ANTHROPIC_DEFAULT_SONNET_MODEL": "x-ai/grok-4.7",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "x-ai/grok-4.7",
-      "CLAUDE_CODE_SUBAGENT_MODEL": "x-ai/grok-4.7",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+      "OPENROUTER_API_KEY": "${ENV:OPENROUTER_API_KEY}"
     },
     "enabled": true,
     "dataPolicy": [
       "may-train"
     ],
     "dataNotes": "xAI training/retention terms were not reverified in the supplied research; conservatively excluded when may-train is forbidden.",
-    "notes": "OpenRouter via Claude Code (unsupported by Anthropic). Never use Claude total_cost_usd; generation data.total_cost supplies actual USD."
+    "notes": "OpenRouter via the pi adapter (node @earendil-works/pi-coding-agent cli.js). Provider pinning comes from the committed pi-agent template (tools/harness/harness/config/pi-agent). Actual USD from the OpenRouter generation API via assistant responseId; pi usage.cost.total is only a catalog estimate. Reasoning supported (endpoints API), so efforts map to pi --thinking levels; default omits the flag."
   },
   {
     "id": "jev",

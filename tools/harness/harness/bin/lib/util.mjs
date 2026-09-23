@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 export const PLUGIN = path.resolve(ROOT, 'tools/harness/harness');
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 export const read = p => fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '');
 export const json = p => JSON.parse(read(p));
 export function write(p, value) { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, value, 'utf8'); }

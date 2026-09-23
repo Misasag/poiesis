@@ -202,3 +202,25 @@ test('Bench suite runs command lists, records row IDs and fails test tampering w
   assert.deepEqual(result.results[1].scope_deviations, ['scripts/test-tiny.mjs']);
   assert.ok(fs.existsSync(path.join(ctx.data, 'bench/results/offline-1.json')));
 });
+
+test('Bench records quota-exhausted cells as skipped_quota, never as failures', async t => {
+  const {root, ctx, commit} = await fixture(t, {'test:tiny': 'node scripts/test-tiny.mjs'}); const base = await commit('Base');
+  write(path.join(root, 'agent-window/src/value.mjs'), 'export const value = 2;\n');
+  write(path.join(root, 'scripts/test-tiny.mjs'), "import assert from 'node:assert/strict'; import {value} from '../agent-window/src/value.mjs'; assert.equal(value, 2);\n");
+  const fix = await commit('Gold solution'), taskId = 'quota-task';
+  writeJson(path.join(ctx.data, 'bench/tasks', taskId, 'task.json'), {id: taskId, base_sha: base, fix_sha: fix, test_files: ['scripts/test-tiny.mjs'], test_cmds: ['node scripts/test-tiny.mjs'], src_files: ['agent-window/src/value.mjs'], instruction_file: 'instruction.md'});
+  write(path.join(ctx.data, 'bench/tasks', taskId, 'instruction.md'), 'Return two.');
+  write(path.join(ctx.data, 'bench/suites/smoke.txt'), `${taskId}\n`);
+  const outcomes = [];
+  const services = {
+    async run() { return {run_id: 'quota-cell', exit_code: 1, infra: 'quota_exhausted', quota_source: 'codex-usage-limit'}; },
+    async verify() { assert.fail('A quota-exhausted worker must not run acceptance commands'); },
+    outcome(_ctx, runId, result, note) { outcomes.push([runId, result, note]); },
+    judge() { assert.fail('judge none must not call a judge'); }
+  };
+  const result = await benchRun(ctx, {suite: 'smoke', models: 'codex:gpt-6-luna', repeats: '1', judge: 'none'}, services);
+  assert.deepEqual(outcomes, [['quota-cell', 'skipped_quota', 'Infrastructure: codex-usage-limit']]);
+  assert.equal(result.results[0].result, 'skipped_quota');
+  assert.deepEqual(result.summary, {pass: 0, fail: 0, skipped_quota: 1});
+  assert.equal(result.exit_code, 0);
+});

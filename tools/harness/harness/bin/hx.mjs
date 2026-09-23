@@ -12,6 +12,7 @@ import { ledger, outcome } from './lib/ledger.mjs';
 import { mine, benchRun } from './lib/bench.mjs';
 import { accountStatus } from './lib/openrouter.mjs';
 import { gate } from './lib/gate.mjs';
+import { exhaustedQuota } from './lib/quota.mjs';
 
 const ctx = context(), argv = process.argv.slice(2), command = argv.shift(), o = options(argv);
 try {
@@ -24,6 +25,11 @@ try {
     case 'route': {
       required(o, 'role'); result = route(ctx, o);
       if (!o.json && !o.explain) { out(result.model); process.exit(0); }
+      if (o.explain && !o.json) {
+        out(`model=${result.model} effort=${result.effort ?? 'default'} exploring=${result.exploring} utility=${result.utility?.toFixed(4)}`);
+        for (const b of result.skipped.quota_exhausted) out(`skipped ${b.model}: quota ${b.quota} exhausted, resets ${b.reset}`);
+        process.exit(0);
+      }
       break;
     }
     case 'scoreboard': result = o._[0] === 'judge-calibration' ? calibration(ctx) : scoreboard(ctx, Boolean(o.write)); break;
@@ -43,14 +49,15 @@ try {
       break;
     case 'dogfood': result = await (await import('./lib/dogfood.mjs')).dogfood(ctx, o); break;
     case 'status': {
-      const budget = budgetStatus(ctx), tickets = path.join(ctx.data, 'tickets');
+      const budget = budgetStatus(ctx), tickets = path.join(ctx.data, 'tickets'), exhausted = exhaustedQuota(ctx);
       const active = fs.existsSync(tickets) ? fs.readdirSync(tickets).filter(f => f.endsWith('.md')).filter(f => !/^state:\s*["']?(?:done|confirmed|確定)/mi.test(fs.readFileSync(path.join(tickets, f), 'utf8'))) : [];
       const branch = (await git(ctx.root, ['branch', '--show-current'])).stdout.trim() || '(detached)';
       const last = ledger(ctx).filter(r => !r.kind).slice(-5).map(r => ({ run_id: r.run_id, model: r.model, exit_code: r.exit_code, wall_s: r.wall_s }));
-      result = { branch, active_tickets: active, policy_version: policy(ctx).version, month_usd: budget.month_usd, quota_runs_today: budget.quota_today.length, last_runs: last };
+      result = { branch, active_tickets: active, policy_version: policy(ctx).version, month_usd: budget.month_usd, quota_runs_today: budget.quota_today.length, exhausted_quota: Object.fromEntries(Object.entries(exhausted).map(([key, e]) => [key, { exhausted_until: e.exhausted_until, source: e.source, seen_at: e.seen_at }])), last_runs: last };
       if (!o.json) {
         out(`branch=${branch} policy=${result.policy_version} month_usd=${budget.month_usd.toFixed(4)} quota_today=${budget.quota_today.length}`);
         out(`active_tickets=${active.length ? active.join(', ') : 'none'}`);
+        for (const [key, e] of Object.entries(exhausted)) out(`exhausted ${key} until ${e.exhausted_until ?? 'state edited'} source=${e.source} seen=${e.seen_at}`);
         for (const r of last) out(`${r.run_id} ${r.model} exit=${r.exit_code} wall_s=${r.wall_s}`);
         if (!last.length) out('last_runs=none');
         process.exit(0);

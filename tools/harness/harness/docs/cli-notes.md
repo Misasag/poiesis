@@ -66,3 +66,52 @@ No paid Grok run was launched. test/fixtures/grok.jsonl is explicitly SYNTHETIC 
 - Two-order live pairwise judge; its reconciliation is tested offline.
 - Live Electron dogfood/selectors, screenshots and durable facts on the current built app.
 - Real Poiesis bench execution is intentionally not run. Strict lock equality currently prevents historical task mining; see README.
+
+## pi as the OpenRouter worker (v1.2, measured 2026-09-23)
+
+pi (`@earendil-works/pi-coding-agent@0.87.1`) is the default runtime for OpenRouter-served models. It runs as `node %APPDATA%/npm/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js` (signed node.exe; the standalone pi.exe is unsigned). The Claude Code path (`anthropic-compat`) stays only as the `orc:glm-5.3-flash` A/B sibling.
+
+Measured invocation (hello.txt task, `z-ai/glm-5.3-flash`, pinned host, exit 0, wall 10.1 s):
+
+```
+node cli.js -p --mode json --provider openrouter --model z-ai/glm-5.3-flash
+  --session-dir <run>/sessions --session-id <uuid>
+  --no-extensions --no-skills --no-prompt-templates --no-themes --no-approve --offline
+  --tools read,bash,edit,write @<abs path>/prompt.md
+```
+
+Verified against installed `--help` and docs (`cli.md`, `json.md`, `message-types.md`):
+- `@path` prompt references work with absolute paths in print mode; the prompt never becomes a multi-KB argv string. Piped stdin also prepends to the first prompt; `@file` is used instead.
+- Built-in tools are read, bash, powershell, edit, write, grep, find, ls. Read-only workers use `--tools read,grep,find,ls`; judges use `--no-tools`.
+- `--thinking` accepts off, minimal, low, medium, high, xhigh, max and is clamped to the model's capabilities; `default` omits the flag. All 14 catalog models advertise the `reasoning` parameter on OpenRouter.
+- Events: session, agent_start, turn_start/end, message_start/update/end, tool_execution_*, compaction_*, agent_end, agent_settled. Usage is summed over assistant `message_end` (`message.usage.{input,output,cacheRead,cacheWrite,cost.total}`; `input` excludes cache reads, `output` includes reasoning) plus `compaction_end.result.usage`. Success requires the last assistant `stopReason == "stop"`; the exit code alone is not trusted. `message.responseId` is the OpenRouter `gen-` id, so v1.1 generation-API cost reconciliation applies unchanged and no key-delta fallback is needed.
+- pi's `usage.cost.total` is a catalog-price estimate (it matched our catalog math to the cent on the measured run: 0.00102455 USD); it is recorded as `pi_cost_estimate_usd` and never used for accounting.
+- Sessions: `--session-id` works for creation, but pi stores files as `<timestamp>_<id>.jsonl` and **cannot reopen them by the bare id**; verified resume opens the recorded file by path (`--session <file>`) inside the same `--session-dir`. The ledger stores `session_id` plus `session_file_rel`.
+- Isolation: `PI_CODING_AGENT_DIR` points at `.harness/pi-agent/`, regenerated each run from the committed template `tools/harness/harness/config/pi-agent/` (settings.json `cacheWarming: "off"`; models.json `modelOverrides` per slug). `.harness/pi-agent/` and `.harness/budget/quota-state.json` are gitignored runtime state. Context files stay enabled (workers get AGENTS.md), and the harness additionally supplies guidance in the prompt.
+
+Measured pitfall: pi's own catalog requests `max_tokens` up to 943,718 for glm-5.3-flash, which makes OpenRouter's routing funnel remove nearly every endpoint (its "Filter by Context Length" step) before the pinned host is reached, producing `stopReason:"error"` with a 404 routing-funnel body and exit code 0. The template therefore caps `maxTokens` per model to the pinned endpoints' `max_completion_tokens` (bounded by 131,072; deepseek-v4-pro is capped to 16,384 to keep its DeepInfra/SiliconFlow pins routable). Quantization filters also silently remove hosts that declare no quantization, so the filter is only set where the pinned endpoint declares one.
+
+### Provider pinning (template `models.json`, per model; all entries set `allow_fallbacks:false`, `require_parameters:true`)
+
+Chosen 2026-09-23 from `GET /api/v1/models/<slug>/endpoints`: prefer the model developer's own endpoint, else verified fp8/bf16 hosts; `quantizations` only where the pinned endpoint declares one (fp8/bf16 floor, native-lower exceptions mxfp4/int4); `data_collection:"deny"` only where a deny route exists.
+
+| Model (slug) | Pinned order | Endpoint quantization | maxTokens cap | data_collection |
+| --- | --- | --- | --- | --- |
+| z-ai/glm-5.3 | Z.AI | fp8 | 131072 | deny |
+| z-ai/glm-5.3-flash | Z.AI | fp8 | 131072 | deny |
+| deepseek/deepseek-v4.1-flash | DeepSeek | unknown | 131072 | none (endpoint declares training; policy allows for this public repo) |
+| deepseek/deepseek-v4-pro | DeepInfra, SiliconFlow | fp8, fp8 | 16384 | none (host terms unverified; catalog classifies may-train) |
+| moonshotai/kimi-k3 | Moonshot AI, DeepInfra | mxfp4, bf16 | 131072 | none (may-train catalog class) |
+| moonshotai/kimi-k2.7-code | Moonshot AI, GMICloud | int4, fp8 | 131072 | none (may-train catalog class) |
+| xiaomi/mimo-v2.6-pro | Xiaomi | fp8 | 131072 | deny |
+| xiaomi/mimo-v2.6-flash | Xiaomi | fp8 | 131072 | deny |
+| qwen/qwen3.8-max-0902 | Alibaba | unknown | 131072 | none (no ZDR route) |
+| qwen/qwen3.8-flash | Alibaba | unknown | 131072 | none (no ZDR route) |
+| minimax/minimax-m3 | Minimax | fp8 | 131072 | none (may-train catalog class) |
+| meta/muse-spark-1.3 | Meta | unknown | 131072 | none (no ZDR route) |
+| google/gemini-3.8-flash | Google | unknown | 65536 | deny (paid Google route, not AI Studio) |
+| x-ai/grok-4.7 | xAI | unknown | 131072 | none (may-train catalog class) |
+
+### Quota exhaustion (infrastructure, not model failure)
+
+Detected per adapter from stderr/events: Codex "You've hit your usage limit ... try again at 7:06 PM" (local wall-clock reset time parsed to the next occurrence), Claude usage-limit/rate_limit messages, and OpenRouter HTTP 402/429. A 402 can be an in-flight credit reservation on a new account: the runner retries pi runs twice with backoff before classifying, and a persistent 402 is recorded as credits exhausted. State is `.harness/budget/quota-state.json` (gitignored, no secrets): `{"<family>": {"exhausted_until", "source", "seen_at"}}` with keys `openai` (Codex login), `anthropic` (Claude plan), `openrouter` (key credits). Affected runs are ledgered `infra:"quota_exhausted"`, excluded from scoreboard/tune statistics, skipped by `hx route` (explain line names the reset time), shown by `hx status`, and bench cells become `skipped_quota`, never `fail`.

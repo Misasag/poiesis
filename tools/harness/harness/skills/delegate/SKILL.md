@@ -35,7 +35,9 @@ On failure, write a correction brief and call the same `hx run` with `--resume <
 Limit fixes to two, then return evidence for tier escalation. Do not recurse or use `--last`.
 Record the final accepted outcome with `hx outcome`; leave integration/merge to the orchestrator.
 
-For OpenRouter choose an enabled `or:` ID from the catalog and effort `default`.
-Use an isolated workspace; keep the measured `auto` permissions unless a separately authorized adapter change is necessary. The real GLM smoke exercised both writing and command execution with `auto`.
+For OpenRouter choose an enabled `or:` ID from the catalog and effort `default` (or a pi `--thinking` level for reasoning-heavy work).
+Adapter rule: OpenAI models run through Codex on the ChatGPT quota; Anthropic models run through Claude on the Anthropic quota; everything else runs as `or:*` through pi via OpenRouter. The `orc:*` anthropic-compat path is for A/B comparison only, never production.
+OpenRouter workers run in an isolated harness-managed workspace; pi has no permission system, so never point it at owner checkouts. Provider pinning and runtime isolation come from the committed pi-agent template.
 Call `hx budget status` before spending; USD caps are 30/month, 5/day and 1/run. Credentials resolve from process environment then HKCU\\Environment without being persisted. Never put their values in a brief.
-Inspect `cost_usd_actual`, `cost_usd_est`, and `generation_stats.coverage`; incomplete stats are unknown actual cost, not zero. Never use Claude `total_cost_usd` for OpenRouter. Catalog data notes identify models tagged `may-train`; routing and explicit worker runs obey the repository data policy.
+Inspect `cost_usd_actual`, `cost_usd_est`, and `generation_stats.coverage`; incomplete stats are unknown actual cost, not zero. Never use Claude `total_cost_usd` for OpenRouter. pi's `usage.cost.total` is a catalog estimate recorded as `pi_cost_estimate_usd`, not accounting. Catalog data notes identify models tagged `may-train`; routing and explicit worker runs obey the repository data policy.
+If a run fails with a usage-limit message or OpenRouter HTTP 402/429, it is infrastructure, not a model failure: the ledger marks `infra:"quota_exhausted"`, `hx route` skips the exhausted family, and bench cells become `skipped_quota`. Check `hx status` for reset times.

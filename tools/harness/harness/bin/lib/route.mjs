@@ -4,6 +4,7 @@ import { json, writeJson, write, fail } from './util.mjs';
 import { ledger } from './ledger.mjs';
 import { catalog } from './prices.mjs';
 import { chargedCost } from './budget.mjs';
+import { exhaustedQuota, quotaKey } from './quota.mjs';
 
 export const policy = ctx => json(path.join(ctx.data, 'routing/policy.json'));
 export function decay(ts, now = new Date()) {
@@ -46,7 +47,8 @@ export function scoreboard(ctx, persist = false, now = new Date()) {
   for (const r of lines) if (r.kind === 'outcome') outcomes.set(r.run_id, r.result);
   for (const r of lines) {
     const result = outcomes.get(r.run_id);
-    if (r.kind || !['pass', 'fail'].includes(result)) continue;
+    // Infra failures (quota exhaustion) are not model evidence.
+    if (r.kind || r.infra || !['pass', 'fail'].includes(result)) continue;
     const role = r.role === 'worker' ? (r.task_class === 'mechanical' ? 'worker-mech' : 'worker-design') : r.role;
     const key = `${role}|${r.task_class}|${r.model}`;
     const row = rows.get(key) ?? { role, task_class: r.task_class, model: r.model, alpha: 1, beta: 1, n: 0, costs: [], times: [], pass: 0, fail: 0 };
@@ -71,8 +73,18 @@ export function route(ctx, o) {
   if (role.fixed) return { model: role.incumbent, informational: true, reason: 'Fixed orchestrator session' };
   const rule = { ...role, ...(role.by_task_class?.[o['task-class']] ?? {}) };
   const excluded = o['exclude-family'] ?? [], models = catalog(ctx), scores = scoreboard(ctx).rows;
-  const candidates = [...new Set([rule.incumbent, rule.fallback, ...(rule.challengers ?? [])].filter(Boolean))].map(id => models.find(m => m.id === id)).filter(m => m?.enabled && !excluded.includes(m.family) && dataAllowed(p, m));
-  if (!candidates.length) fail('No eligible model after family/data policy exclusion');
+  const exhausted = exhaustedQuota(ctx), quotaSkip = m => {
+    const key = quotaKey(m.adapter);
+    return key && exhausted[key] ? { model: m.id, quota: key, exhausted_until: exhausted[key].exhausted_until, source: exhausted[key].source, reset: exhausted[key].exhausted_until ?? 'until state is edited' } : null;
+  };
+  const blocked = [];
+  const candidates = [...new Set([rule.incumbent, rule.fallback, ...(rule.challengers ?? [])].filter(Boolean))].map(id => models.find(m => m.id === id)).filter(m => {
+    if (!m?.enabled || excluded.includes(m.family) || !dataAllowed(p, m)) return false;
+    const block = quotaSkip(m); if (block) { blocked.push(block); return false; }
+    return true;
+  });
+  const skipped = { quota_exhausted: blocked };
+  if (!candidates.length) fail(blocked.length ? `Quota exhausted for ${[...new Set(blocked.map(b => b.quota))].join(', ')}; no eligible model` : 'No eligible model after family/data policy exclusion');
   const ranked = candidates.map(m => {
     const score = scores.find(s => s.role === o.role && s.task_class === (o['task-class'] ?? 'unclassified') && s.model === m.id);
     const meanCost = score?.mean_cost ?? (m.costBasis === 'quota' ? 0 : 1);
@@ -82,7 +94,7 @@ export function route(ctx, o) {
   const challengers = ranked.filter(m => (rule.challengers ?? []).includes(m.model));
   const exploring = o.role !== 'judge' && o.role !== 'gate' && challengers.length > 0 && seeded(seed) < p.explore_share;
   const chosen = exploring ? challengers[Math.floor(seeded(seed + ':pick') * challengers.length)] : [...ranked].sort((a, b) => b.utility - a.utility)[0];
-  return { ...chosen, effort: chosen.model === rule.incumbent ? rule.effort : models.find(m => m.id === chosen.model)?.defaultEffort, exploring, seed, policy_version: p.version, candidates: ranked };
+  return { ...chosen, effort: chosen.model === rule.incumbent ? rule.effort : models.find(m => m.id === chosen.model)?.defaultEffort, exploring, seed, policy_version: p.version, skipped, candidates: ranked };
 }
 export const dataAllowed = (policy, model) => policy.data_policy?.allow_may_train !== false || !model.dataPolicy?.includes('may-train');
 export function promotion(inc, challenger, p) {

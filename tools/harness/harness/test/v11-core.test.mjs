@@ -122,23 +122,30 @@ test('Registry expansion fails closed on cycles, missing references, depth and s
   assert.equal(windowsEnvironment('ERROR', execute, { env: {}, lookup: () => { throw new Error('fixture-secret-error-from-lookup'); } }), undefined);
 });
 
-test('Catalog contains the 14 pinned OpenRouter workers, exact environment and Jev gate', () => {
+test('Catalog contains the 14 pinned OpenRouter workers on the pi adapter, the measured orc A/B sibling, and Jev gate', () => {
   const models = catalog(context()), workers = models.filter(m => m.id.startsWith('or:'));
   assert.equal(workers.length, 14);
   assert.ok(models.every(m => m.enabled && m.model !== 'TBD' && !m.model.includes('contributor')));
+  // The orc sibling exists only where the Claude Code path was measured in v1.1.
+  const compat = models.filter(m => m.id.startsWith('orc:'));
+  assert.deepEqual(compat.map(m => m.model), ['z-ai/glm-5.3-flash']);
+  assert.ok(compat.every(m => m.adapter === 'anthropic-compat'));
   for (const m of workers) {
-    assert.equal(m.adapter, 'anthropic-compat'); assert.equal(m.costBasis, 'metered'); assert.deepEqual(m.efforts, ['default']);
+    assert.equal(m.adapter, 'pi'); assert.equal(m.costBasis, 'metered');
+    assert.deepEqual(m.efforts, ['default', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
     assert.equal(m.prices.source, 'https://openrouter.ai/api/v1/models'); assert.equal(m.prices.asOf, '2026-09-23');
-    assert.equal(m.env.ANTHROPIC_BASE_URL, 'https://openrouter.ai/api'); assert.equal(m.env.ANTHROPIC_AUTH_TOKEN, '${ENV:OPENROUTER_API_KEY}'); assert.equal(m.env.ANTHROPIC_API_KEY, '');
-    for (const field of ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL']) assert.equal(m.env[field], m.model);
-    assert.equal(m.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, '1'); assert.equal(m.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS, '1');
+    assert.deepEqual(m.env, { OPENROUTER_API_KEY: '${ENV:OPENROUTER_API_KEY}' });
     assert.ok(m.dataNotes.length > 20 && m.dataPolicy.length);
-    const call = invocation(m, { cwd: '/fixture', effort: 'default' }, () => ({ file: 'fixture-cli', prefix: [] }));
-    assert.ok(!call.args.includes('--effort')); assert.equal(call.args[call.args.indexOf('--permission-mode') + 1], 'auto');
+    assert.match(m.notes, /pi adapter/);
+    const call = invocation(m, { cwd: '/fixture', effort: 'default', promptFile: '/fixture/prompt.md', sessionDir: '/fixture/sessions' }, () => ({ file: 'fixture-cli', prefix: [] }));
+    assert.ok(!call.args.includes('--thinking'));
+    assert.equal(call.args[call.args.indexOf('--session-dir') + 1], '/fixture/sessions');
+    assert.equal(call.args.at(-1), '@/fixture/prompt.md');
   }
   const jev = provider(context(), 'jev'); assert.equal(jev.family, 'typesafe'); assert.equal(jev.adapter, 'decisions'); assert.equal(jev.prices.inputPerMTok, .042); assert.equal(jev.prices.outputPerMTok, 0);
   assert.equal(provider(context(), 'or:glm-5.3-flash').prices.cachedInputPerMTok, .05);
   for (const id of ['or:deepseek-v4.1-flash', 'or:kimi-k3', 'or:minimax-m3']) assert.ok(provider(context(), id).dataPolicy.includes('may-train'));
+  assert.match(provider(context(), 'or:deepseek-v4.1-flash').dataNotes, /declares training/);
 });
 
 test('OpenRouter HTTP client uses exact endpoints and does not expose response error bodies', async () => {

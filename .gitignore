@@ -30,6 +30,8 @@ electron-app/dist/
 .harness/worktrees/
 .harness/dogfood/
 .harness/tmp/
+.harness/pi-agent/
+.harness/budget/quota-state.json
 
 # The harness source modules are not generated application lib output.
 !tools/harness/harness/bin/lib/

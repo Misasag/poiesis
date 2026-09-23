@@ -216,8 +216,10 @@ export async function benchRun(ctx, o, services = { run, verify, outcome, judge 
         try { deviations = await restoreEvaluator(cwd, baseline); v = await services.verify(ctx, { cwd, run: r.run_id, cmd: task.test_cmds }); }
         catch (e) { error = e.message; }
         if (deviations.length) error = `Source-only scope violated: ${deviations.join(', ')}${error ? `; ${error}` : ''}`;
-        const result = !error && r.exit_code === 0 && v?.exit_code === 0 ? 'pass' : 'fail';
-        services.outcome(ctx, r.run_id, result, error ?? `Acceptance tests; repeat ${repeat + 1}`);
+        // Quota exhaustion is infrastructure, not a model failure: the cell
+        // is recorded as skipped and never counts as fail.
+        const result = r.infra === 'quota_exhausted' ? 'skipped_quota' : !error && r.exit_code === 0 && v?.exit_code === 0 ? 'pass' : 'fail';
+        services.outcome(ctx, r.run_id, result, result === 'skipped_quota' ? `Infrastructure: ${r.quota_source}` : error ?? `Acceptance tests; repeat ${repeat + 1}`);
         const j = o.judge === 'none' ? null : await services.judge(ctx, { 'worker-run': r.run_id, judge: o.judge ?? 'auto' });
         const row = { task: task.id, model, repeat: repeat + 1, run_id: r.run_id, result, judge: j?.verdict ?? null, scope_deviations: deviations, verification: v?.results ?? [], error: error ?? null };
         writeJson(path.join(ctx.data, 'bench/results', `${safeId(r.run_id)}.json`), redactor()(row));
@@ -226,5 +228,5 @@ export async function benchRun(ctx, o, services = { run, verify, outcome, judge 
       results.push(item);
     }
   }
-  return { results, exit_code: results.every(r => r.result === 'pass') ? 0 : 1 };
+  return { results, summary: { pass: results.filter(r => r.result === 'pass').length, fail: results.filter(r => r.result === 'fail').length, skipped_quota: results.filter(r => r.result === 'skipped_quota').length }, exit_code: results.some(r => r.result === 'fail') ? 1 : 0 };
 }
