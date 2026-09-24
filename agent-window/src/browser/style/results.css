@@ -1314,6 +1314,7 @@
     align-items: center;
     display: flex;
     gap: 9px;
+    min-width: 0;
 }
 
 .poiesis-results__fixed-title h1 {
@@ -1322,6 +1323,17 @@
     font-size: 15px;
     font-weight: 650;
     line-height: 1.35;
+    white-space: nowrap;
+}
+
+.poiesis-results__task-subtitle {
+    color: var(--poiesis-chrome-muted);
+    flex: 0 1 auto;
+    font-size: 12px;
+    max-width: 28ch;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 
