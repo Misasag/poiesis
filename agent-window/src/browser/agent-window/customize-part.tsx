@@ -66,6 +66,7 @@ export class CustomizePart extends AgentWindowPart {
     protected workspaceSkillDiscardConfirmation = false;
     protected workspaceSkillSaving = false;
     protected pendingEditorNavigation?: PendingEditorNavigation;
+    protected pendingExitAction?: () => void | Promise<void>;
     protected workspaceSkillOpenGeneration = 0;
 
     protected inlineEditorContainer?: HTMLDivElement;
@@ -129,6 +130,10 @@ export class CustomizePart extends AgentWindowPart {
         return (
             <header ref={this.setCustomizeListMount} className='poiesis-customize-view__toolbar'>
                 <div className='poiesis-customize-view__toolbar-primary'>
+                    <button type='button' className='poiesis-customize-view__return-chat' onClick={() => this.closeCustomize()}>
+                        <span className='codicon codicon-arrow-left' aria-hidden='true' />
+                        <span>チャットに戻る</span>
+                    </button>
                     <label className='poiesis-customize-view__search'>
                         <span className='codicon codicon-search' aria-hidden='true' />
                         <input
@@ -771,7 +776,8 @@ export class CustomizePart extends AgentWindowPart {
                 this.update();
             }));
             this.inlineEditorChangeListener = listeners;
-            control.focus();
+            // Keep focus on the page, not the editor, so Esc returns to the list until the user clicks into the text.
+            this.node.querySelector<HTMLElement>('.poiesis-customize-view__back')?.focus();
             this.update();
         } catch (error) {
             if (generation === this.inlineEditorGeneration && this.workspaceSkillEditor?.uri === state.uri) {
@@ -817,9 +823,6 @@ export class CustomizePart extends AgentWindowPart {
 
     public openCustomize(): void {
         if (this.host.state.customizeViewVisible) {
-            if (this.prepareCustomizeNavigation()) {
-                this.closeCustomize();
-            }
             return;
         }
         this.customizeOpenedFromCode = this.host.state.codeMode;
@@ -838,6 +841,7 @@ export class CustomizePart extends AgentWindowPart {
     public closeCustomize(update = true): void {
         if (this.workspaceSkillEditorDirty()) {
             this.pendingEditorNavigation = 'close-customize';
+            this.pendingExitAction = undefined;
             this.workspaceSkillDiscardConfirmation = true;
             this.update();
             return;
@@ -848,6 +852,7 @@ export class CustomizePart extends AgentWindowPart {
     protected performCloseCustomize(update: boolean): void {
         const restoreCode = update && this.customizeOpenedFromCode;
         this.customizeOpenedFromCode = false;
+        this.pendingExitAction = undefined;
         this.clearWorkspaceSkillDetail();
         this.host.state.customizeViewVisible = false;
         this.disposeWorkspaceSkillWatchers();
@@ -861,12 +866,13 @@ export class CustomizePart extends AgentWindowPart {
         }
     }
 
-    public prepareCustomizeNavigation(): boolean {
+    public prepareCustomizeNavigation(onDiscard?: () => void | Promise<void>): boolean {
         if (this.workspaceSkillSaving) {
             return false;
         }
         if (this.workspaceSkillEditorDirty()) {
             this.pendingEditorNavigation = 'close-customize';
+            this.pendingExitAction = onDiscard;
             this.workspaceSkillDiscardConfirmation = true;
             this.update();
             return false;
@@ -1010,6 +1016,7 @@ export class CustomizePart extends AgentWindowPart {
     protected requestReturnToSkillsList(): void {
         if (this.workspaceSkillEditorDirty()) {
             this.pendingEditorNavigation = 'list';
+            this.pendingExitAction = undefined;
             this.workspaceSkillDiscardConfirmation = true;
             this.update();
             return;
@@ -1022,6 +1029,7 @@ export class CustomizePart extends AgentWindowPart {
     protected cancelWorkspaceSkillClose(): void {
         this.workspaceSkillDiscardConfirmation = false;
         this.pendingEditorNavigation = undefined;
+        this.pendingExitAction = undefined;
         this.update();
         requestAnimationFrame(() => this.inlineEditor?.getControl().focus());
     }
@@ -1031,11 +1039,14 @@ export class CustomizePart extends AgentWindowPart {
             return;
         }
         const navigation = this.pendingEditorNavigation ?? 'list';
+        const exitAction = this.pendingExitAction;
         this.resetInlineEditorToSavedContent();
         this.clearWorkspaceSkillDetail();
         if (navigation === 'close-customize') {
             this.performCloseCustomize(true);
+            void exitAction?.();
         } else {
+            this.pendingExitAction = undefined;
             this.update();
             this.restoreCustomizeListScroll();
         }
@@ -1060,6 +1071,7 @@ export class CustomizePart extends AgentWindowPart {
 
     protected clearWorkspaceSkillDetail(): void {
         this.workspaceSkillOpenGeneration++;
+        this.pendingExitAction = undefined;
         this.disposeInlineEditor();
         this.selectedWorkspaceSkill = undefined;
         this.workspaceSkillEditor = undefined;

@@ -216,7 +216,7 @@ export class SessionStore extends AgentWindowPartBase {
             return;
         }
         if (this.host.state.customizeViewVisible
-            && !this.host.prepareCustomizeNavigation()) {
+            && !this.host.prepareCustomizeNavigation(() => this.selectSession(sessionId, preservePendingSearchReveal))) {
             return;
         }
         const navigationRevision = ++this.workspaceNavigationRevision;

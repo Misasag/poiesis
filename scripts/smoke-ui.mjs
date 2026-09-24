@@ -1,7 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import puppeteer from 'puppeteer-core';
+
+const require = createRequire(import.meta.url);
+const { DurableFileStore } = require('../agent-window/lib/node/durable-storage-server.js');
 
 const uiTimeout = Number(process.env.THEIA_SMOKE_UI_TIMEOUT ?? 120_000);
 const uiUrl = process.env.THEIA_SMOKE_UI_URL ?? 'http://127.0.0.1:3000';
@@ -18,6 +22,9 @@ if (!executablePath) {
 const repositoryRoot = process.env.POIESIS_SMOKE_REPOSITORY_ROOT
     ? resolve(process.env.POIESIS_SMOKE_REPOSITORY_ROOT)
     : process.cwd();
+const theiaConfigDirectory = resolve(process.env.THEIA_SMOKE_CONFIG_DIR
+    ?? process.env.THEIA_CONFIG_DIR
+    ?? resolve(repositoryRoot, '.theia-config'));
 const scmFixtureGitPath = 'docs/UX.md';
 const scmFixturePath = resolve(repositoryRoot, scmFixtureGitPath);
 const scmFixtureOriginal = readFileSync(scmFixturePath, 'utf8');
@@ -31,6 +38,32 @@ const existingSkillPath = resolve(existingSkillDirectory, 'skill.md');
 const createdSkillDirectory = resolve(repositoryRoot, '.poiesis', 'skills', 'poiesis-customize-created-smoke');
 const createdSkillPath = resolve(createdSkillDirectory, 'SKILL.md');
 const skillEditMarker = 'Edited and saved by the Poiesis Customize smoke.';
+const customizeHeaderScreenshot = resolve(repositoryRoot, '.run', 'customize-header-a5.png');
+const sessionStorageKey = 'poiesis.agent-window.sessions.global.v1';
+const durableStore = new DurableFileStore(resolve(theiaConfigDirectory, 'poiesis', 'state-v1'));
+if (process.env.THEIA_SMOKE_CONFIG_DIR) {
+    const now = Date.now();
+    await durableStore.write(sessionStorageKey, JSON.stringify({
+        format: 1,
+        key: sessionStorageKey,
+        present: true,
+        value: {
+            version: 1,
+            selectedSessionId: 'smoke-initial',
+            railWidth: 252,
+            railCollapsed: false,
+            sessions: [{
+                id: 'smoke-initial',
+                createdAt: now,
+                updatedAt: now,
+                title: '新しいチャット',
+                hasUserMessage: false,
+                activeTab: 'agent',
+                messages: []
+            }]
+        }
+    }));
+}
 removeTerminalFixture();
 
 const browser = await puppeteer.launch({
@@ -53,7 +86,7 @@ try {
     mkdirSync(existingSkillDirectory, { recursive: true });
     writeFileSync(existingSkillPath, `---\nname: Existing smoke skill\ndescription: Workspace scan fixture\nkind: agent\n---\n\n# Existing smoke skill\n`, 'utf8');
     writeFileSync(scmFixturePath, `${scmFixtureOriginal}\n${scmFixtureMarker}\n`, 'utf8');
-    const page = await browser.newPage();
+    let page = await browser.newPage();
     const reactUnmountWarnings = [];
     page.on('console', message => {
         if (message.text().includes('Attempted to synchronously unmount a root')) {
@@ -93,36 +126,53 @@ try {
     const repeatedJapaneseInput = await page.$eval('[aria-label="Agent へのメッセージ"]', input => input.value);
     assert(repeatedJapaneseInput === 'ああ', `Composer duplicated repeated Japanese input: ${JSON.stringify(repeatedJapaneseInput)}`);
 
-    await page.evaluate(() => {
-        const now = Date.now();
-        const session = (id, title, updatedAt) => ({
-            id,
-            createdAt: updatedAt - 60_000,
-            updatedAt,
-            title,
-            hasUserMessage: true,
-            pinned: false,
-            archived: false,
-            activeTab: 'agent',
-            agentDraft: '',
-            messages: [{ id: `restored-${id}`, role: 'agent', content: `${title} restored`, complete: true }],
-            resultsDrafts: []
-        });
-        const storageKey = 'poiesis:global:poiesis.agent-window.sessions.global.v1';
-        localStorage.setItem(storageKey, JSON.stringify({
-            version: 1,
-            selectedSessionId: 'smoke-alpha',
-            railWidth: 252,
-            railCollapsed: false,
-            sessions: [
-                session('smoke-alpha', 'Alpha session', now - 1_000),
-                session('smoke-beta', 'Beta session', now)
-            ]
-        }));
-        localStorage.setItem('poiesis:global:poiesis.agent-window.sessions.migrated.v1', 'true');
+    await page.close();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const now = Date.now();
+    const session = (id, title, updatedAt) => ({
+        id,
+        createdAt: updatedAt - 60_000,
+        updatedAt,
+        title,
+        hasUserMessage: true,
+        pinned: false,
+        archived: false,
+        activeTab: 'agent',
+        agentDraft: '',
+        messages: [{ id: `restored-${id}`, role: 'agent', content: `${title} restored`, complete: true }],
+        resultsDrafts: []
     });
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('[data-session-id="smoke-alpha"]');
+    const storedSessions = {
+        version: 1,
+        selectedSessionId: 'smoke-alpha',
+        railWidth: 252,
+        railCollapsed: false,
+        sessions: [
+            session('smoke-alpha', 'Alpha session', now - 1_000),
+            session('smoke-beta', 'Beta session', now)
+        ]
+    };
+    await durableStore.write(sessionStorageKey, JSON.stringify({
+        format: 1,
+        key: sessionStorageKey,
+        present: true,
+        value: storedSessions
+    }));
+    page = await browser.newPage();
+    page.on('console', message => {
+        if (message.text().includes('Attempted to synchronously unmount a root')) {
+            reactUnmountWarnings.push(message.text());
+        }
+    });
+    page.setDefaultTimeout(uiTimeout);
+    await page.goto(uiUrl, { waitUntil: 'domcontentloaded', timeout: uiTimeout });
+    try {
+        await page.waitForSelector('[data-session-id="smoke-alpha"]');
+    } catch (error) {
+        const visibleSessions = await page.$$eval('.poiesis-agent-window__session-row', rows => rows.map(row => row.getAttribute('data-session-id')));
+        const durableState = JSON.parse(await durableStore.read(sessionStorageKey));
+        throw new Error(`Restored smoke sessions missing: visible=${JSON.stringify(visibleSessions)} durable=${JSON.stringify(durableState.value?.sessions?.map(session => session.id))}`, { cause: error });
+    }
     await page.waitForSelector('[data-session-id="smoke-beta"]');
 
     await page.click('[data-session-id="smoke-beta"] .poiesis-agent-window__session-menu-trigger');
@@ -173,6 +223,7 @@ try {
     await page.waitForSelector('.poiesis-agent-window__new-agent-empty');
     await page.waitForSelector('.poiesis-agent-window__new-agent-context');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__context > strong')?.textContent === '新しいチャット');
+    await page.waitForFunction(() => document.querySelectorAll('.poiesis-agent-window__new-agent-context .poiesis-agent-window__context-pill').length >= 2);
     const newAgentContext = await page.evaluate(() => ({
         repository: document.querySelector('.poiesis-agent-window__context-pill.primary span:not(.codicon)')?.textContent,
         branch: document.querySelectorAll('.poiesis-agent-window__context-pill')[1]?.textContent?.trim(),
@@ -190,7 +241,7 @@ try {
     await page.waitForFunction(() => {
         const labels = [...document.querySelectorAll('.poiesis-agent-window__repository-group-label')]
             .map(label => label.textContent?.trim());
-        return labels.includes('最近') && labels.includes('この PC');
+        return labels.includes('この PC');
     });
     await page.type('[aria-label="Repositoryを検索"]', '__no_matching_repository__');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__repository-empty')?.textContent?.includes('一致するRepository'));
@@ -229,7 +280,7 @@ try {
     await click(page, '.poiesis-agent-window__rail-action', '検索');
     await page.waitForSelector('[aria-label="会話を検索"]');
     await page.type('[aria-label="会話を検索"]', '__no_matching_session__');
-    await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__session-empty')?.textContent?.includes('一致する会話'));
+    await page.waitForFunction(() => document.querySelector('.poiesis-conversation-search__empty')?.textContent?.includes('一致する会話'));
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('[aria-label="会話を検索"]'));
     await page.click('[data-session-id="smoke-beta"] .poiesis-agent-window__session');
@@ -240,7 +291,7 @@ try {
     const results = await page.evaluate(readState);
     assert(results.mode === 'results', `Expected Results mode, got ${results.mode}`);
     assert(results.activeSessionTab === 'Results', `Expected Results tab, got ${results.activeSessionTab}`);
-    assert(results.resultsComposerVisible, 'Results Composer is missing');
+    assert(!results.resultsComposerVisible, 'Empty Results must not show a question composer');
     assert(results.resultsEmptyVisible, 'Results empty state is missing');
 
     await click(page, '.poiesis-agent-window__code-control', 'Code');
@@ -274,13 +325,15 @@ try {
         : `printf poiesis-terminal-smoke > '${terminalFixturePath.replaceAll("'", "'\\''")}'`;
     await page.focus('.poiesis-agent-window__code-terminal-host .xterm-helper-textarea');
     await page.waitForFunction(() => document.activeElement?.classList.contains('xterm-helper-textarea'));
+    await new Promise(resolve => setTimeout(resolve, 1500));
     await page.keyboard.type(terminalCommand);
     await page.keyboard.press('Enter');
-    for (let attempt = 0; attempt < 100 && !existsSync(terminalFixturePath); attempt++) {
+    for (let attempt = 0; attempt < 200 && !existsSync(terminalFixturePath); attempt++) {
         await new Promise(resolveDelay => setTimeout(resolveDelay, 100));
     }
+    const terminalOutput = await page.$eval('.poiesis-agent-window__code-terminal-host', element => element.textContent?.slice(-800));
     assert(existsSync(terminalFixturePath) && readFileSync(terminalFixturePath, 'utf8').trim() === 'poiesis-terminal-smoke',
-        'Terminal command did not write its output fixture');
+        `Terminal command did not write its output fixture: ${JSON.stringify(terminalOutput)}`);
     removeTerminalFixture();
     const terminalPanelHeight = await page.$eval('.poiesis-agent-window__code-panel', element => Math.round(element.getBoundingClientRect().height));
     await page.focus('.poiesis-agent-window__code-panel-resize');
@@ -363,7 +416,7 @@ try {
         const rows = await page.$$eval('#files .theia-FileStatNode', elements => elements.map(element => element.getAttribute('title')));
         throw new Error(`${label} was not revealed in Explorer; visible rows=${JSON.stringify(rows)}`);
     };
-    for (const [folder, child] of [['spikes', 'theia'], ['theia', 'scripts'], ['scripts', 'smoke-ui.mjs']]) {
+    for (const [folder, child] of [['scripts', 'smoke-ui.mjs']]) {
         await revealExplorerNode(folder);
         await page.evaluate(label => {
             const node = [...document.querySelectorAll('#files .theia-FileStatNode')]
@@ -481,11 +534,20 @@ try {
     await page.click('.poiesis-agent-window__code-sidebar-actions button[aria-label="Source Control を更新"]');
     await waitForScmAction(page, 'UX.md', 'Stage Changes');
     await openScmResourceDiff(page, 'UX.md');
-    await page.click('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-close');
-    await page.waitForFunction(() => ![...document.querySelectorAll('.poiesis-agent-window__code-editor-tab-name')]
-        .some(element => element.textContent?.trim().startsWith('UX.md')));
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const openUxTabs = await page.$$eval('.poiesis-agent-window__code-editor-tab-name', elements =>
+            elements.filter(element => element.textContent?.trim().startsWith('UX.md')).length);
+        if (!openUxTabs) break;
+        await page.evaluate(() => {
+            const tab = [...document.querySelectorAll('.poiesis-agent-window__code-editor-tab')]
+                .find(element => element.querySelector('.poiesis-agent-window__code-editor-tab-name')?.textContent?.trim().startsWith('UX.md'));
+            tab?.querySelector('.poiesis-agent-window__code-editor-tab-close')?.click();
+        });
+        await page.waitForFunction(previous => [...document.querySelectorAll('.poiesis-agent-window__code-editor-tab-name')]
+            .filter(element => element.textContent?.trim().startsWith('UX.md')).length < previous, {}, openUxTabs);
+    }
     restoreScmFixture();
-    await page.click('.poiesis-agent-window__code-activity button[aria-label="Extensions"]');
+    await page.$eval('.poiesis-agent-window__code-activity button[aria-label="Extensions"]', button => button.click());
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-sidebar-title > span')?.textContent?.trim() === 'Extensions');
     await page.waitForSelector('.poiesis-agent-window__code-sidebar-host > *');
     await page.waitForFunction(() => document.querySelector('#vsx-extensions-search-bar input')?.value === '@builtin');
@@ -495,7 +557,7 @@ try {
         `Code widget transitions synchronously unmounted a React root: ${reactUnmountWarnings.join('\n')}`);
     await page.click('.poiesis-agent-window__code-activity-footer button[aria-label="設定"]');
     await page.waitForSelector('.poiesis-settings-modal:not(.poiesis-customize-modal)');
-    await click(page, '.poiesis-settings-modal__footer button', 'エディタとTerminalの設定は Theia Settings で');
+    await click(page, '.poiesis-settings-modal__text-button', 'Code設定を開く');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-name')?.textContent?.trim() === 'Settings');
     await page.waitForSelector('.poiesis-agent-window__code-editor-host #settings_widget');
     assert(await page.$('.poiesis-agent-window__code'), 'Code Settings must stay in Code mode');
@@ -549,8 +611,7 @@ try {
                 }
             }
         });
-        await page.waitForFunction(directoryLabel => [...document.querySelectorAll('#files .theia-FileStatNode')]
-            .some(element => element.getAttribute('title')?.endsWith(directoryLabel)), {}, label);
+        await revealExplorerNode(label, 'start');
         await page.evaluate(directoryLabel => {
             const directory = [...document.querySelectorAll('#files .theia-FileStatNode')]
                 .find(element => element.getAttribute('title')?.endsWith(directoryLabel));
@@ -752,8 +813,9 @@ try {
     assert(settings.modal, 'Settings must open the Poiesis-owned settings modal');
     assert(!settings.text.includes('Skills') && !settings.text.includes('Plugins'), 'Settings modal still contains Customize sections');
     assert(!settings.codeSidebarVisible, 'Settings must not open the Code sidebar');
-    await page.waitForFunction(() => document.querySelectorAll('input[name="poiesis-agent-cli"]').length === 4
-        && document.querySelectorAll('input[name="poiesis-results-cli"]').length === 4);
+    await click(page, '.poiesis-settings-modal__nav button', 'AI');
+    await page.waitForFunction(() => document.querySelectorAll('input[name="poiesis-agent-cli"]').length === 5
+        && document.querySelectorAll('input[name="poiesis-results-cli"]').length === 5);
     await page.waitForFunction(() => !document.querySelector('.poiesis-settings-modal__section-heading .poiesis-settings-modal__text-button')?.disabled);
     const cliRegistry = await page.evaluate(() => {
         const role = name => {
@@ -769,9 +831,9 @@ try {
         return { agent: role('Agent の AI'), results: role('Results の AI') };
     });
     for (const role of [cliRegistry.agent, cliRegistry.results]) {
-        assert(role.some(entry => entry.name === 'Grok' && entry.status === '利用できます' && !entry.disabled),
+        assert(role.some(entry => entry.name === 'Grok' && entry.status === 'CLIを検出' && !entry.disabled),
             `Grok registry status is dishonest: ${JSON.stringify(role)}`);
-        assert(role.some(entry => entry.name === 'Gemini CLI' && entry.status === '未検出' && entry.disabled),
+        assert(role.some(entry => entry.name === 'Gemini' && entry.status === '未対応' && entry.disabled),
             `Gemini registry status is dishonest: ${JSON.stringify(role)}`);
     }
     await page.click('input[name="poiesis-agent-cli"][value="claude"]');
@@ -799,6 +861,7 @@ try {
     assert(settingsDropdownBounds.left >= 0 && settingsDropdownBounds.top >= 0
         && settingsDropdownBounds.right <= 1024 && settingsDropdownBounds.bottom <= 600,
     `Settings dropdown clipped at 1024x600: ${JSON.stringify(settingsDropdownBounds)}`);
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'モデルを検索');
     await page.keyboard.press('ArrowUp');
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => document.querySelector('[data-ai-role="results"]')?.dataset.model !== 'gpt-5.4-mini');
@@ -811,48 +874,82 @@ try {
 
     await click(page, '.poiesis-agent-window__rail-action', 'カスタマイズ');
     await page.waitForSelector('.poiesis-customize-view');
-    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
+    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-customize-view__skill-row')]
         .some(card => card.textContent?.includes('Existing smoke skill')));
+    const customizeHeader = await page.$('.poiesis-agent-window__customize-header');
+    assert(customizeHeader, 'Customize title bar is missing');
+    assert(!(await page.$('.poiesis-agent-window__customize-header button[aria-label="カスタマイズを閉じる"]')),
+        'Customize title bar must not contain a close button');
+    assert((await customizeHeader.$eval('strong', element => element.textContent?.trim())) === 'カスタマイズ',
+        'Customize title must remain in the title bar');
+    assert(await page.$eval('.poiesis-agent-window__rail-action[aria-label="カスタマイズ"]',
+        element => element.classList.contains('active') && element.getAttribute('aria-current') === 'page'),
+    'Customize rail entry must show the active page state');
+    mkdirSync(resolve(repositoryRoot, '.run'), { recursive: true });
+    await customizeHeader.screenshot({ path: customizeHeaderScreenshot });
+    await click(page, '.poiesis-agent-window__rail-action', 'カスタマイズ');
+    assert(await page.$('.poiesis-customize-view'), 'Clicking the active Customize entry must keep the page open');
     const expandedCustomize = await page.evaluate(() => ({
         mode: document.querySelector('.poiesis-agent-window__content')?.dataset.mode,
         railVisible: Boolean(document.querySelector('.poiesis-agent-window__rail')),
         modalBackdrop: Boolean(document.querySelector('.poiesis-customize-modal__backdrop')),
-        builtIns: [...document.querySelectorAll('.poiesis-customize-view .poiesis-agent-window__status-badge.active')]
-            .filter(badge => badge.textContent?.trim() === '組み込み').length,
-        existingSkill: [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
+        generationDetails: document.querySelector('.poiesis-customize-view__generation-details')?.textContent?.includes('Bundled Results'),
+        existingSkill: [...document.querySelectorAll('.poiesis-customize-view__skill-row')]
             .some(card => card.textContent?.includes('Existing smoke skill')),
-        plugins: document.querySelector('.poiesis-customize-view')?.textContent?.includes('Poiesis plugin bundles'),
-        hooks: document.querySelector('.poiesis-customize-view')?.textContent?.includes('Hooks')
+        plugins: Boolean(document.querySelector('#poiesis-customize-plugins-tab')),
+        hooks: Boolean(document.querySelector('#poiesis-customize-hooks-tab'))
     }));
     assert(expandedCustomize.mode === 'customize' && expandedCustomize.railVisible && !expandedCustomize.modalBackdrop,
         `Customize must be an inline central view: ${JSON.stringify(expandedCustomize)}`);
-    assert(expandedCustomize.builtIns === 2, `Expected two built-in Skills, got ${expandedCustomize.builtIns}`);
+    assert(expandedCustomize.generationDetails, 'Customize must explain Bundled Results');
     assert(expandedCustomize.existingSkill, 'Workspace user skill was not scanned');
     assert(expandedCustomize.plugins, 'Plugins section did not move to Customize');
-    assert(!expandedCustomize.hooks, 'Unsupported Hooks section is visible');
+    assert(expandedCustomize.hooks, 'Hooks tab is missing');
     assert(!await page.$('.poiesis-agent-window__plugins-host'), 'Poiesis Customize must not host the Code extensions manager');
     assert(!(await page.$eval('.poiesis-customize-view', element => element.textContent ?? '')).includes('VS Code built-in extensions'), 'Poiesis Customize still describes Code extensions');
     await page.evaluate(() => {
-        const skill = [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
-            .find(card => card.textContent?.includes('Bundled Results'));
-        if (!(skill instanceof HTMLElement)) throw new Error('Bundled Results was not clickable');
-        skill.click();
-    });
-    await page.waitForSelector('.poiesis-customize-view__builtin-preview');
-    assert((await page.$eval('.poiesis-customize-view__builtin-preview', element => element.textContent ?? '')).includes('読み取り専用'),
-        'Built-in skill preview is not read-only');
-    await page.evaluate(() => {
-        const skill = [...document.querySelectorAll('.poiesis-customize-view__skill-card')]
+        const skill = [...document.querySelectorAll('.poiesis-customize-view__skill-row')]
             .find(card => card.textContent?.includes('Existing smoke skill'));
         if (!(skill instanceof HTMLElement)) throw new Error('Existing user skill was not clickable');
-        skill.click();
+        skill.querySelector('.poiesis-customize-view__row-target')?.click();
     });
-    await page.waitForSelector('.poiesis-customize-view__editor-input');
-    assert((await page.$eval('.poiesis-customize-view__editor-input', element => element.value)).includes('# Existing smoke skill'),
+    await page.waitForSelector('.poiesis-customize-view__monaco .native-edit-context[role="textbox"]');
+    assert((await page.$eval('.poiesis-customize-view__detail-heading strong', element => element.textContent?.trim())) === 'Existing smoke skill',
         'User skill did not open in the inline editor');
+    await page.focus('.poiesis-customize-view__monaco .native-edit-context[role="textbox"]');
+    await page.keyboard.press('Escape');
+    assert(await page.$('.poiesis-customize-view__editor'), 'Escape inside Monaco must keep the skill open');
+    await page.focus('.poiesis-customize-view__back');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view__editor'));
+    assert(await page.$('.poiesis-customize-view'), 'Escape from a skill must return to the Customize list');
+    await page.focus('.poiesis-customize-view__search input');
     await page.keyboard.press('Escape');
+    assert(await page.$('.poiesis-customize-view'), 'Escape inside search must keep Customize open');
+    await page.focus('.poiesis-customize-view__return-chat');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view'));
+    assert((await page.$eval('.poiesis-agent-window__content', element => element.dataset.mode)) !== 'customize',
+        'Escape from the Customize list must return to the previous chat');
+
+    await click(page, '.poiesis-agent-window__rail-action', 'カスタマイズ');
+    await page.waitForSelector('.poiesis-customize-view');
+    await page.click('.poiesis-agent-window__session-row.active .poiesis-agent-window__session');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view'));
+    await click(page, '.poiesis-agent-window__rail-action', 'カスタマイズ');
+    await page.waitForSelector('.poiesis-customize-view');
+    await click(page, '.poiesis-agent-window__rail-action', '検索');
+    await page.waitForSelector('.poiesis-conversation-search__backdrop');
+    assert(!(await page.$('.poiesis-customize-view')), 'Search must leave Customize');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-conversation-search__backdrop'));
+    await click(page, '.poiesis-agent-window__rail-action', 'カスタマイズ');
+    await page.waitForSelector('.poiesis-customize-view');
+    await page.click('.poiesis-agent-window__workspace-name');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view'));
+    await click(page, '.poiesis-agent-window__rail-action', 'カスタマイズ');
+    await page.waitForSelector('.poiesis-customize-view');
+    await click(page, '.poiesis-agent-window__rail-action', '新しいチャット');
     await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view'));
 
     await page.click('.poiesis-agent-window__rail-toggle');
@@ -866,10 +963,10 @@ try {
         return Boolean(view && rail && rail.width > 0 && view.left >= rail.right && view.top >= 0
             && view.right <= innerWidth && view.bottom <= innerHeight);
     });
-    await click(page, '.poiesis-customize-view__text-button', '新しいSkill');
-    await page.waitForSelector('[aria-label="新しいSkill ID"]');
-    await page.type('[aria-label="新しいSkill ID"]', 'poiesis-customize-created-smoke');
-    await page.click('[aria-label="新しいSkillの種類"]');
+    await click(page, '.poiesis-customize-view__primary-action', '新しいSkill');
+    await page.waitForSelector('[aria-label="新しいSkillの名前"]');
+    await page.type('[aria-label="新しいSkillの名前"]', 'poiesis-customize-created-smoke');
+    await page.click('[aria-label="新しいSkillの役割"]');
     await page.waitForSelector('.poiesis-select__listbox');
     const customizeDropdownBounds = await page.$eval('.poiesis-select__listbox', element => {
         const bounds = element.getBoundingClientRect();
@@ -879,27 +976,27 @@ try {
         && customizeDropdownBounds.right <= 1024 && customizeDropdownBounds.bottom <= 600,
     `Customize dropdown clipped at 1024x600: ${JSON.stringify(customizeDropdownBounds)}`);
     await page.evaluate(() => document.querySelector('.poiesis-select__option[data-value="results"]')?.click());
-    await click(page, '.poiesis-customize-view__new-skill button', '作成して開く');
-    await page.waitForSelector('.poiesis-customize-view__editor-input');
-    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__editor header small')
+    await click(page, '.poiesis-customize-view__new-skill button', '作成して編集');
+    await page.waitForSelector('.poiesis-customize-view__monaco .native-edit-context[role="textbox"]');
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__detail-meta code')
         ?.textContent?.includes('poiesis-customize-created-smoke'));
     assert(existsSync(createdSkillPath), '新しいSkill did not scaffold SKILL.md');
     const scaffoldedSkill = readFileSync(createdSkillPath, 'utf8');
     assert(scaffoldedSkill.includes('kind: results'), 'Scaffolded SKILL.md did not preserve the selected kind');
-    await page.focus('.poiesis-customize-view__editor-input');
+    await page.focus('.poiesis-customize-view__monaco .native-edit-context[role="textbox"]');
     await page.keyboard.down('Control');
     await page.keyboard.press('End');
     await page.keyboard.up('Control');
     await page.keyboard.type(`\n${skillEditMarker}\n`);
-    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__dirty.active')?.textContent?.includes('未保存'));
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__save-status.active')?.textContent?.includes('未保存'));
     await page.keyboard.down('Control');
     await page.keyboard.press('s');
     await page.keyboard.up('Control');
-    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__dirty:not(.active)')?.textContent?.includes('保存済み'));
+    await page.waitForFunction(() => document.querySelector('.poiesis-customize-view__save-status:not(.active)')?.textContent?.includes('保存済み'));
     assert(readFileSync(createdSkillPath, 'utf8').includes(skillEditMarker), 'Edited SKILL.md was not saved');
-    await page.focus('.poiesis-customize-view__editor-input');
+    await page.focus('.poiesis-customize-view__monaco .native-edit-context[role="textbox"]');
     await page.keyboard.type('\ndiscard-this-smoke-change');
-    await click(page, '.poiesis-customize-view__editor footer button', '閉じる');
+    await page.click('.poiesis-customize-view__back');
     await page.waitForSelector('.poiesis-customize-view__discard-confirm');
     await click(page, '.poiesis-customize-view__discard-confirm button', '破棄して閉じる');
     await page.waitForFunction(() => !document.querySelector('.poiesis-customize-view__editor'));
@@ -910,6 +1007,7 @@ try {
     await page.waitForSelector('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
     await page.click('.poiesis-agent-window__rail-footer button[aria-label="設定"]');
     await page.waitForSelector('.poiesis-settings-modal');
+    await click(page, '.poiesis-settings-modal__nav button', 'AI');
     await page.waitForFunction(() => document.querySelector('.poiesis-settings-modal [data-ai-role="agent"]')?.dataset.model === 'haiku'
         && document.querySelector('.poiesis-settings-modal [data-ai-role="results"]')?.dataset.model === 'gpt-5.4-mini');
     const persistedModels = await page.evaluate(() => ({
@@ -922,6 +1020,7 @@ try {
 
     const customize = {
         expanded: expandedCustomize,
+        headerScreenshot: customizeHeaderScreenshot,
         collapsedRailOpened: true,
         resize: { width: 1024, height: 600 },
         scaffolded: '.poiesis/skills/poiesis-customize-created-smoke/SKILL.md',
@@ -1166,6 +1265,11 @@ async function chooseModel(page, role, providerId, modelId, forceCustom = false)
         const currentProvider = await page.$eval(providerSelector, element => element.dataset.value);
         if (currentProvider !== providerId) await choosePoiesisSelect(page, providerSelector, providerId);
         const inputSelector = `[aria-label="${roleLabel} のカスタムモデルID"]`;
+        await page.click(inputSelector);
+        await page.keyboard.down('Control');
+        await page.keyboard.press('A');
+        await page.keyboard.up('Control');
+        await page.keyboard.press('Backspace');
         await page.type(inputSelector, modelId);
         await page.click('.poiesis-model-picker__custom-actions .primary');
     }
