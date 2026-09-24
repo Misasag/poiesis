@@ -68,6 +68,8 @@ export interface WorkspaceSkillPreview {
 /** Reads compatible Skill bundles at the execution boundary and keeps only activation state globally. */
 @injectable()
 export class WorkspaceSkillService {
+    protected readonly missingSkillDirectories = new Set<string>();
+
     constructor(
         @inject(FileService) protected readonly fileService: FileService,
         @inject(GlobalStorageService) protected readonly globalStorageService: GlobalStorageService,
@@ -263,10 +265,11 @@ export class WorkspaceSkillService {
             return [];
         }
         const stat = await this.fileService.resolve(root.uri);
-        return Promise.all((stat.children ?? [])
+        const skills = await Promise.all((stat.children ?? [])
             .filter(child => child.isDirectory)
             .sort((left, right) => left.name.localeCompare(right.name))
             .map(child => this.readSkillDirectory(child.name, child.resource, root, enablement)));
+        return skills.filter((skill): skill is WorkspaceSkillDefinition => skill !== undefined);
     }
 
     protected async readSkillDirectory(
@@ -274,33 +277,27 @@ export class WorkspaceSkillService {
         skillDirectory: URI,
         root: WorkspaceSkillDiscoveryRoot,
         enablement: WorkspaceSkillEnablement
-    ): Promise<WorkspaceSkillDefinition> {
+    ): Promise<WorkspaceSkillDefinition | undefined> {
         const stat = await this.fileService.resolve(skillDirectory);
         const entries = (stat.children ?? [])
             .filter(child => !child.isDirectory && child.name.toLowerCase() === 'skill.md')
             .sort((left, right) => left.name.localeCompare(right.name));
         const preferred = entries.find(entry => entry.name === 'SKILL.md') ?? entries[0];
-        const skillUri = preferred?.resource ?? skillDirectory.resolve('SKILL.md');
+        if (!preferred) {
+            const directoryUri = skillDirectory.toString();
+            if (!this.missingSkillDirectories.has(directoryUri)) {
+                this.missingSkillDirectories.add(directoryUri);
+                console.warn(`[Poiesis] Skillフォルダー「${directoryUri}」をスキップしました: skill.mdまたはSKILL.mdがありません。`);
+            }
+            return undefined;
+        }
+        this.missingSkillDirectories.delete(skillDirectory.toString());
+        const skillUri = preferred.resource;
         const rawUri = skillUri.toString();
         const enabled = enablement[rawUri] !== false;
         const warnings = entries.length > 1
             ? ['skill.md と SKILL.md の両方があるため SKILL.md を使用します']
             : [];
-        if (!preferred) {
-            return {
-                id,
-                name: id,
-                description: '',
-                kind: 'agent',
-                assertions: [],
-                uri: rawUri,
-                enabled,
-                error: 'skill.mdまたはSKILL.mdがありません。',
-                source: root.source,
-                rank: root.rank,
-                warnings
-            };
-        }
         try {
             const content = await this.fileService.read(skillUri);
             return this.parse(id, skillUri, content.value, enabled, root.source, root.rank, warnings);

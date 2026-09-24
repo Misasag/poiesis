@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { productionMethods } from './production-methods.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { mergeSkillsByRank, parseSkillDocument } = require(resolve(root, 'agent-window/lib/browser/skill-document.js'));
+const URI = require('@theia/core/lib/common/uri').default;
 
 const document = (frontmatter, body = '# Instructions\n\nFollow this skill.') => `---\n${frontmatter}\n---\n\n${body}\n`;
 
@@ -94,5 +96,59 @@ const agentAssertions = parseSkillDocument('agent-assertions', document([
 ].join('\n')), {});
 assert.deepEqual(agentAssertions.assertions, []);
 assert(agentAssertions.warnings.includes('assertions は Results Skill だけが使えます'));
+
+// Exercise production discovery without starting a browser or reading user skill folders.
+const warnings = [];
+const service = productionMethods('../agent-window/src/browser/workspace-skill-service.ts', 'WorkspaceSkillService',
+    ['getDiscoveryRoots', 'list', 'listRoot', 'readSkillDirectory', 'parse', 'readEnablement', 'errorMessage'],
+    { URI, mergeSkillsByRank, parseSkillDocument, WORKSPACE_SKILL_ENABLEMENT_STORAGE_KEY: 'test-skill-enablement',
+        console: { warn: message => warnings.push(message) } });
+service.missingSkillDirectories = new Set();
+service.envVariablesServer = { getHomeDirUri: async () => 'file:///C:/home' };
+service.globalStorageService = { getData: async () => ({}) };
+const workspaceUri = new URI('file:///C:/workspace');
+const roots = await service.getDiscoveryRoots(workspaceUri);
+assert.deepEqual([...roots.map(item => item.pathLabel)], [
+    '.poiesis/skills', '.agents/skills', '~/.poiesis/skills', '~/.agents/skills'
+]);
+const directories = new Map();
+const contents = new Map();
+const readUris = [];
+for (const discoveryRoot of roots) {
+    const children = [];
+    for (const id of ['missing', 'valid', 'malformed']) {
+        const skillDirectory = discoveryRoot.uri.resolve(id);
+        children.push({ name: id, resource: skillDirectory, isDirectory: true });
+        const documentChildren = [];
+        if (id !== 'missing') {
+            const entryName = id === 'valid' && discoveryRoot.source === 'workspace' ? 'skill.md' : 'SKILL.md';
+            const documentUri = skillDirectory.resolve(entryName);
+            documentChildren.push({ name: entryName, resource: documentUri, isDirectory: false });
+            contents.set(documentUri.toString(), id === 'valid'
+                ? document('name: Valid skill\ndescription: Valid description\nkind: agent')
+                : document('description: Missing name\nkind: agent'));
+        }
+        directories.set(skillDirectory.toString(), { children: documentChildren });
+    }
+    directories.set(discoveryRoot.uri.toString(), { children });
+}
+service.fileService = {
+    exists: async uri => directories.has(uri.toString()),
+    resolve: async uri => directories.get(uri.toString()),
+    read: async uri => {
+        readUris.push(uri.toString());
+        return { value: contents.get(uri.toString()) };
+    }
+};
+const discovered = await service.list(workspaceUri);
+assert.equal(discovered.length, 8, 'Only directories with a skill document should be listed.');
+assert(discovered.every(skill => skill.id !== 'missing'));
+assert.equal(discovered.filter(skill => skill.id === 'valid').length, roots.length);
+assert(discovered.filter(skill => skill.id === 'malformed').every(skill => skill.error?.includes('frontmatter')));
+assert.equal(readUris.length, 8, 'Discovery must never open a document for a folder without one.');
+assert.equal(warnings.length, roots.length, 'Each missing folder should produce one diagnostic line.');
+assert(warnings.every(warning => warning.includes('skill.mdまたはSKILL.mdがありません。')));
+await service.list(workspaceUri);
+assert.equal(warnings.length, roots.length, 'Repeated scans must not duplicate missing-folder diagnostics.');
 
 console.log('skill-document tests passed');
