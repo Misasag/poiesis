@@ -203,7 +203,7 @@ export interface AgentWindowHost {
     renderCustomizeView(): React.ReactNode;
     openCustomize(): void;
     closeCustomize(update?: boolean): void;
-    prepareCustomizeNavigation(): boolean;
+    prepareCustomizeNavigation(onDiscard?: () => void | Promise<void>): boolean;
     handleCustomizeEscape(): void;
     installWorkspaceSkillSaveShortcut(): void;
     scheduleWorkspaceSkillsRefresh(): void;

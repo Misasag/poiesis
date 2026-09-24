@@ -45,6 +45,9 @@ const sessionStore = await read('agent-window/src/browser/agent-window/session-s
 const resultsPartSource = await read('agent-window/src/browser/agent-window/results-part.tsx');
 const agentPartSource = await read('agent-window/src/browser/agent-window/agent-part.tsx');
 const railPartSource = await read('agent-window/src/browser/agent-window/rail-part.tsx');
+const headerPartSource = await read('agent-window/src/browser/agent-window/header-part.tsx');
+const customizePartSource = await read('agent-window/src/browser/agent-window/customize-part.tsx');
+const agentWidgetSource = await read('agent-window/src/browser/agent-window-widget.tsx');
 const workspaceContext = await read('agent-window/src/browser/agent-window/workspace-context.ts');
 const composerBehavior = await read('agent-window/src/browser/composer-behavior.ts');
 const composerBehaviorTest = await read('scripts/test-composer-behavior.mjs');
@@ -296,6 +299,39 @@ assert.ok(agentWidget.includes("className='poiesis-agent-window__window-drag-sur
     'Every Electron header must expose a bounded native drag surface');
 assert.equal((agentWidget.match(/className='poiesis-agent-window__window-drag-surface'/g) ?? []).length, 3,
     'Code, Customize, and Agent headers must each expose one native drag surface');
+assert.ok(headerPartSource.includes("<strong>カスタマイズ</strong>"), 'Customize title must remain in the header');
+assert.ok(!headerPartSource.includes('poiesis-agent-window__customize-close'),
+    'Customize header must not add a close button beside the window controls');
+assert.ok(customizePartSource.includes("className='poiesis-customize-view__return-chat' onClick={() => this.closeCustomize()}"),
+    'Customize list must provide a keyboard-reachable return to chat');
+assert.ok(customizePartSource.includes('<span>チャットに戻る</span>'), 'Customize return action needs its Japanese label');
+assert.ok(customizePartSource.includes('if (this.host.state.customizeViewVisible) {\n            return;\n        }'),
+    'Clicking the active Customize rail entry must keep the page open');
+assert.ok(agentWidgetSource.includes('.poiesis-customize-view__monaco, input, textarea, [contenteditable="true"], [role="textbox"]'),
+    'Escape must leave Customize text editing controls alone');
+for (const marker of [
+    'prepareCustomizeNavigation(() => this.showSessionSearch())',
+    'prepareCustomizeNavigation(() => this.openSessionSearchResult(match, query))',
+    'prepareCustomizeNavigation(() => this.toggleWorkspaceGroup(groupKey))',
+    'prepareCustomizeNavigation(() => this.openKnownWorkspace(workspaceUri))'
+]) {
+    assert.ok(railPartSource.includes(marker), `Rail navigation must resume after confirming unsaved Skill edits: ${marker}`);
+}
+assert.ok(sessionStore.includes('prepareCustomizeNavigation(() => this.selectSession(sessionId, preservePendingSearchReveal))'),
+    'Selecting a chat must resume after confirming unsaved Skill edits');
+assert.ok(agentWidgetSource.includes('prepareCustomizeNavigation(() => this.newChat())'),
+    'New chat must resume after confirming unsaved Skill edits');
+for (const marker of [
+    'customize-header-a5.png',
+    'Escape inside Monaco must keep the skill open',
+    'Escape from a skill must return to the Customize list',
+    'Escape from the Customize list must return to the previous chat',
+    'Search must leave Customize',
+    "await page.click('.poiesis-agent-window__session-row.active .poiesis-agent-window__session')",
+    "await page.click('.poiesis-agent-window__workspace-name')"
+]) {
+    assert.ok(uiSmoke.includes(marker), `Customize navigation smoke is missing ${marker}`);
+}
 assert.ok(!electronWindowStyles.includes('.poiesis-agent-window__header *,'),
     'The full header compositor layer must not become a drag region over the fixed controls');
 assert.equal(extensionPackage.dependencies['@theia/scm'], '1.73.1');

@@ -289,7 +289,9 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     public renderCustomizeView(): React.ReactNode { return this.customizePart.renderCustomizeView(); }
     public openCustomize(): void { this.customizePart.openCustomize(); }
     public closeCustomize(update = true): void { this.customizePart.closeCustomize(update); }
-    public prepareCustomizeNavigation(): boolean { return this.customizePart.prepareCustomizeNavigation(); }
+    public prepareCustomizeNavigation(onDiscard?: () => void | Promise<void>): boolean {
+        return this.customizePart.prepareCustomizeNavigation(onDiscard);
+    }
     public handleCustomizeEscape(): void { this.customizePart.handleCustomizeEscape(); }
     public installWorkspaceSkillSaveShortcut(): void { this.customizePart.installWorkspaceSkillSaveShortcut(); }
     public scheduleWorkspaceSkillsRefresh(): void { this.customizePart.scheduleWorkspaceSkillsRefresh(); }
@@ -434,6 +436,12 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
                 event.stopPropagation();
                 this.closeSettings();
             } else if (this.state.customizeViewVisible) {
+                const target = event.target;
+                if (target instanceof Element && target.closest(
+                    '.poiesis-customize-view__monaco, input, textarea, [contenteditable="true"], [role="textbox"]'
+                )) {
+                    return;
+                }
                 event.preventDefault();
                 event.stopPropagation();
                 this.handleCustomizeEscape();
@@ -614,7 +622,11 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     }
 
     public toggleCodeMode(): void {
-        if (this.state.customizeViewVisible && !this.prepareCustomizeNavigation()) {
+        if (this.state.customizeViewVisible && !this.prepareCustomizeNavigation(() => {
+            if (!this.state.codeMode) {
+                this.toggleCodeMode();
+            }
+        })) {
             return;
         }
         if (this.state.codeMode) {
@@ -646,7 +658,7 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
 
     public async newChat(): Promise<void> {
         await this.sessions.sessionsInitialization;
-        if (this.state.customizeViewVisible && !this.prepareCustomizeNavigation()) {
+        if (this.state.customizeViewVisible && !this.prepareCustomizeNavigation(() => this.newChat())) {
             return;
         }
         this.clearPendingAgentSearchReveal();

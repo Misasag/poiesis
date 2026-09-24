@@ -867,6 +867,10 @@ export class RailPart extends AgentWindowPart {
         if (this.host.state.settingsModalVisible || this.host.state.folderExplorerVisible) {
             return;
         }
+        if (this.host.state.customizeViewVisible && !this.host.prepareCustomizeNavigation(() => this.showSessionSearch())) {
+            return;
+        }
+        this.host.closeCustomize(false);
         this.sessionSearchPreviousFocus = document.activeElement instanceof HTMLElement
             ? document.activeElement
             : this.sessionSearchTrigger;
@@ -982,7 +986,7 @@ export class RailPart extends AgentWindowPart {
         if (!session) {
             return;
         }
-        if (this.host.state.customizeViewVisible && !this.host.prepareCustomizeNavigation()) {
+        if (this.host.state.customizeViewVisible && !this.host.prepareCustomizeNavigation(() => this.openSessionSearchResult(match, query))) {
             this.closeSessionSearch(false);
             requestAnimationFrame(() => this.node.querySelector<HTMLElement>(
                 '.poiesis-customize-view__discard-confirm button'
@@ -1043,6 +1047,10 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected toggleWorkspaceGroup(groupKey: string): void {
+        if (this.host.state.customizeViewVisible && !this.host.prepareCustomizeNavigation(() => this.toggleWorkspaceGroup(groupKey))) {
+            return;
+        }
+        this.host.closeCustomize(false);
         if (this.host.state.expandedWorkspaceGroups.has(groupKey)) {
             this.host.state.expandedWorkspaceGroups.delete(groupKey);
         } else {
@@ -1194,6 +1202,11 @@ export class RailPart extends AgentWindowPart {
     }
 
     protected openKnownWorkspace(workspaceUri: string): void {
+        if (this.host.state.customizeViewVisible
+            && !this.host.prepareCustomizeNavigation(() => this.openKnownWorkspace(workspaceUri))) {
+            return;
+        }
+        this.host.closeCustomize(false);
         this.host.sessions.cancelPendingWorkspaceNavigation();
         this.host.state.workspacePickerVisible = false;
         this.host.state.workspacePickerAnchor = undefined;

@@ -137,7 +137,7 @@ try {
         'Hooks workspace trust switch is missing');
     if (taskFeedbackOnly) await page.waitForFunction(() => document.querySelector('#poiesis-customize-hooks-panel')?.textContent.includes('smoke-context'));
     await page.click('#poiesis-customize-skills-tab');
-    await page.click('[aria-label="カスタマイズを閉じる"]');
+    await page.click('.poiesis-customize-view__return-chat');
 
     const resizeChecks = [];
     const nativeWindowChecks = [];

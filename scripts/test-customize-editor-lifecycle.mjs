@@ -116,6 +116,37 @@ function editorState(content = 'base') {
 }
 
 {
+    const { host, part } = createPart();
+    part.workspaceSkillEditor = { ...editorState(), content: 'unsaved edit' };
+    part.openCustomize();
+    assert.equal(host.state.customizeViewVisible, true, 'The active Customize rail entry must keep the page open.');
+    assert.equal(part.workspaceSkillDiscardConfirmation, false, 'Clicking the active entry must not prompt to discard edits.');
+    assert.equal(part.prepareCustomizeNavigation(), false, 'Leaving a dirty skill must request confirmation.');
+    assert.equal(part.workspaceSkillDiscardConfirmation, true);
+}
+
+{
+    const { host, part } = createPart();
+    let navigationCount = 0;
+    part.workspaceSkillEditor = { ...editorState(), content: 'unsaved edit' };
+    assert.equal(part.prepareCustomizeNavigation(() => { navigationCount += 1; }), false);
+    assert.equal(navigationCount, 0, 'The requested destination must wait for discard confirmation.');
+    part.discardWorkspaceSkillChanges();
+    assert.equal(host.state.customizeViewVisible, false);
+    assert.equal(navigationCount, 1, 'Discard must continue to the requested rail destination.');
+}
+
+{
+    const { host, part } = createPart();
+    part.selectedWorkspaceSkill = { id: 'example' };
+    part.handleCustomizeEscape();
+    assert.equal(part.selectedWorkspaceSkill, undefined, 'Escape from a skill must return to the list.');
+    assert.equal(host.state.customizeViewVisible, true);
+    part.handleCustomizeEscape();
+    assert.equal(host.state.customizeViewVisible, false, 'Escape from the list must restore the chat view.');
+}
+
+{
     const { part } = createPart();
     const firstListView = { scrollTop: 0 };
     const firstListMount = {

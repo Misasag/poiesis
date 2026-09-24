@@ -91,6 +91,24 @@
     min-width: 0;
 }
 
+.poiesis-customize-view__return-chat {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: var(--poiesis-chrome-muted);
+    cursor: pointer;
+    display: inline-flex;
+    flex: none;
+    gap: 5px;
+    padding: 7px 6px;
+    white-space: nowrap;
+}
+
+.poiesis-customize-view__return-chat:hover {
+    color: var(--poiesis-chrome-text);
+}
+
 .poiesis-customize-view__search {
     align-items: center;
     background: var(--poiesis-chrome-panel);
