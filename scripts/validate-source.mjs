@@ -43,6 +43,8 @@ const agentWidget = (await Promise.all([
 ].map(read))).join('\n');
 const sessionStore = await read('agent-window/src/browser/agent-window/session-store.ts');
 const resultsPartSource = await read('agent-window/src/browser/agent-window/results-part.tsx');
+const resultsPresentationSource = await read('agent-window/src/browser/results-presentation.ts');
+const resultsPresentationTest = await read('scripts/test-results-presentation.mjs');
 const agentPartSource = await read('agent-window/src/browser/agent-window/agent-part.tsx');
 const railPartSource = await read('agent-window/src/browser/agent-window/rail-part.tsx');
 const headerPartSource = await read('agent-window/src/browser/agent-window/header-part.tsx');
@@ -2316,6 +2318,11 @@ for (const marker of [
     'this.requirementService.create(session.id, taskTitleForRequest(request))',
     "this.renderResultsAuxiliaryHeader('成果'",
     '<h1 data-result-title={title} title={title}>{title}</h1>',
+    'const selectedTitle = selectedRequirement?.title;',
+    'resultsHeaderText(requirement.title, task.title)',
+    "title={`${selectedTitle}の成果`}",
+    'open={verificationTableExpanded(table, expanded)}',
+    'this.verificationExpandedByScope.set(scopeKey, !(event.currentTarget.parentElement as HTMLDetailsElement).open)',
     'this.renderRequirementCard(',
     'this.requirementService.moveTask(taskId, targetRequirementId)',
     'this.requirementService.splitTaskToNew(taskId)',
@@ -2330,6 +2337,15 @@ for (const marker of [
 ]) {
     assert.ok(agentWidget.includes(marker), `Requirement UI is missing ${marker}`);
 }
+assert.ok(resultsPresentationSource.includes("return { title, secondaryTitle: secondary };")
+    && resultsPresentationTest.includes("resultsHeaderText(requirement, 'その理解で進めてください。')")
+    && resultsPresentationTest.includes("resultsHeaderText(requirement, '作業履歴を検索できるようにしてください。')"),
+    'Results heading must keep the requirement title and show only substantive task context');
+assert.ok(resultsPresentationSource.includes("row.status !== 'pass' || row.human === true")
+    && resultsPresentationTest.includes("for (const status of ['fail', 'unknown', 'outdated', 'human'])")
+    && resultsPresentationTest.includes("verificationTableExpanded(table(row('fail')), false)"),
+    'Verification must open for attention statuses while preserving a person\'s choice');
+assert.ok(rootPackage.scripts['test:results-presentation'].includes('scripts/test-results-presentation.mjs'));
 const requirementPillSource = agentWidget.match(/protected renderRequirementPill\([\s\S]*?\n    protected renderNewAgentContext/)?.[0] ?? '';
 assert.ok(requirementPillSource.indexOf("group: '関連付け'") < requirementPillSource.indexOf("group: '新規'")
     && requirementPillSource.indexOf("group: '新規'") < requirementPillSource.indexOf("group: 'この会話の成果'"),

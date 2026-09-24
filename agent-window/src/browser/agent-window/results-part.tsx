@@ -69,6 +69,7 @@ import { formatTaskElapsedTime, shouldSubmitComposer } from '../composer-behavio
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from '../typography';
 import { formatExecutionEvidence, checkResultsTopAnswer } from '../results-document-normalizer';
 import { buildVerificationTable, VerificationTable, VERIFICATION_LABELS } from '../results-evidence';
+import { resultsHeaderText, verificationTableExpanded } from '../results-presentation';
 import { Requirement } from '../requirement-model';
 import { RequirementService } from '../requirement-service';
 import { RequirementClassificationService } from '../requirement-classification-service';
@@ -115,6 +116,8 @@ export class ResultsPart extends AgentWindowPart {
 
     protected readonly expandedRequirementIds = new Set<string>();
 
+    protected readonly verificationExpandedByScope = new Map<string, boolean>();
+
     protected resultsAuxiliaryPanel?: 'navigator' | 'details';
 
     protected resultsAuxiliaryScopeKey?: string;
@@ -146,7 +149,7 @@ export class ResultsPart extends AgentWindowPart {
         const questionPanelExpanded = scopeKey
             ? session?.resultsQaExpanded.get(scopeKey) === true
             : false;
-        const selectedTitle = selectedTask?.title ?? selectedRequirement?.title;
+        const selectedTitle = selectedRequirement?.title;
         const questionCount = questionHistory.length + (questionSending ? 1 : 0);
         const auxiliaryPanel = this.resultsAuxiliaryScopeKey === scopeKey ? this.resultsAuxiliaryPanel : undefined;
         const evidencePaths = (selectedTask ? [selectedTask] : selectedRequirement?.taskIds.map(id => this.taskService.get(id)) ?? [])
@@ -176,6 +179,7 @@ export class ResultsPart extends AgentWindowPart {
                     <div className='poiesis-results__canvas' aria-label='Results HTML キャンバス'>
                         {!selectedRequirement && <div className='poiesis-results__empty'>Agent でタスクを完了すると、ここに要件ごとの成果が表示されます。</div>}
                         {selectedTask && this.renderResultsHeader(
+                            selectedRequirement,
                             selectedTask,
                             requirements.length,
                             scopeKey,
@@ -559,6 +563,7 @@ export class ResultsPart extends AgentWindowPart {
     }
 
     protected renderResultsHeader(
+        requirement: Requirement,
         task: ExecutionTask,
         resultsCount: number,
         scopeKey: string | undefined,
@@ -569,8 +574,9 @@ export class ResultsPart extends AgentWindowPart {
         humanCount = 0
     ): React.ReactNode {
         const document = this.resultsService.get(task.id);
+        const heading = resultsHeaderText(requirement.title, task.title);
         return this.renderResultsToolbar(
-            task.title,
+            heading.title,
             resultsCount,
             scopeKey,
             draft,
@@ -578,7 +584,8 @@ export class ResultsPart extends AgentWindowPart {
             questionSending,
             questionPanelExpanded,
             this.resultsActionStatus(document, task),
-            humanCount
+            humanCount,
+            heading.secondaryTitle
         );
     }
 
@@ -616,7 +623,8 @@ export class ResultsPart extends AgentWindowPart {
         questionSending: boolean,
         questionPanelExpanded: boolean,
         actionStatus: { label: string; kind: string } | undefined,
-        humanCount = 0
+        humanCount = 0,
+        secondaryTitle?: string
     ): React.ReactNode {
         const navigatorExpanded = this.resultsAuxiliaryPanel === 'navigator' && this.resultsAuxiliaryScopeKey === scopeKey;
         const detailsExpanded = this.resultsAuxiliaryPanel === 'details' && this.resultsAuxiliaryScopeKey === scopeKey;
@@ -627,6 +635,7 @@ export class ResultsPart extends AgentWindowPart {
             <header className='poiesis-results__fixed-header'>
                 <div className='poiesis-results__fixed-title'>
                     <h1 data-result-title={title} title={title}>{title}</h1>
+                    {secondaryTitle && <span className='poiesis-results__task-subtitle' title={secondaryTitle}>作業: {secondaryTitle}</span>}
                     {humanCount > 0 && <span className='poiesis-results__human-badge' role='status'>判断待ち {humanCount}件</span>}
                     {actionStatus && (
                         <span className={`poiesis-results__action-status ${actionStatus.kind}`} role='status'>
@@ -680,8 +689,14 @@ export class ResultsPart extends AgentWindowPart {
     }
 
     protected renderVerificationTable(table: VerificationTable, scopeKey?: string): React.ReactNode {
-        return <details key={scopeKey} className='poiesis-results__verification' open>
-            <summary>{table.summary}</summary>
+        const expanded = scopeKey ? this.verificationExpandedByScope.get(scopeKey) : undefined;
+        return <details key={scopeKey} className='poiesis-results__verification'
+            open={verificationTableExpanded(table, expanded)}>
+            <summary onClick={event => {
+                if (scopeKey) {
+                    this.verificationExpandedByScope.set(scopeKey, !(event.currentTarget.parentElement as HTMLDetailsElement).open);
+                }
+            }}>{table.summary}</summary>
             <div className='poiesis-results__verification-scroll' tabIndex={0} aria-label='確認記録をスクロール'>
                 <table aria-label='アプリの確認記録'>
                     <thead><tr><th scope='col'>確認項目</th><th scope='col'>結果</th><th scope='col'>根拠・判断すること</th></tr></thead>
