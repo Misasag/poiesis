@@ -94,20 +94,23 @@ try {
     const frame = await frameElement.contentFrame();
     await frame.waitForSelector('img[data-poiesis-image]');
     console.log('RICH_RESULTS: resolved image');
-    const tableSelector = '.poiesis-results__canvas .poiesis-results__verification';
+    assert.equal(await page.$('.poiesis-results__canvas .poiesis-results__verification'), null);
+    await page.waitForSelector('.poiesis-results__answer-warning');
+    assert.equal(await page.$eval('.poiesis-results__answer-warning', node => node.textContent.includes('詳細の確認記録を参照してください')), true);
+    await page.click('.poiesis-results__details-trigger');
+    const tableSelector = '#poiesis-results-details-panel .poiesis-results__verification';
     await page.waitForSelector(`${tableSelector} tbody tr[data-status="human"]`);
     assert.equal(await page.$$eval(`${tableSelector} tbody tr`, rows => rows.length), 4);
     for (const status of ['pass', 'fail', 'outdated', 'human']) {
         assert.equal(await page.$$eval(`${tableSelector} tbody tr[data-status="${status}"]`, rows => rows.length), 1);
     }
     assert.equal(await page.$$eval(`${tableSelector} tbody tr[data-status="unknown"]`, rows => rows.length), 0);
-    assert.equal(await page.$eval(`${tableSelector} summary`, node => node.textContent), '確認 4件中 1件成功・1件失敗・1件以前の結果・1件人間の判断待ち');
+    assert.equal(await page.$eval(`${tableSelector} .poiesis-results__verification-heading`, node => node.textContent), '確認 4件中 1件成功・1件失敗・1件以前の結果・1件人間の判断待ち');
     assert.equal(await page.$eval(`${tableSelector} .poiesis-results__operation-summary`, node => node.textContent), '作業の記録: 1件の作業で操作 1件（うち失敗 1件）');
     assert.equal(await page.$eval('.poiesis-results__human-badge', node => node.textContent), '判断待ち 1件');
     await page.waitForSelector('.poiesis-results__answer-warning');
     await page.screenshot({ path: resolve(shots, 'results-evidence-table.png') });
-    await page.focus(`${tableSelector} summary`); await page.keyboard.press('Enter');
-    assert.equal(await page.$eval(tableSelector, node => node.open), false);
+    await page.click('[aria-label="詳細を閉じる"]');
     await frame.$eval('img', image => image.scrollIntoView());
     await frame.waitForFunction(() => { const img = document.querySelector('img'); return img?.complete && img.naturalWidth > 0; });
     assert.equal(await frame.$$eval('svg', nodes => nodes.length), 1);

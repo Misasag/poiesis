@@ -522,7 +522,6 @@
 
 .poiesis-agent-window__code-editor-tabs {
     min-height: 35px;
-    scrollbar-width: none;
 }
 
 .poiesis-agent-window__code-editor-tabs::-webkit-scrollbar {

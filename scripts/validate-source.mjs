@@ -1679,7 +1679,7 @@ for (const marker of [
     'body > :first-child, body > * > :first-child, body > * > * > :first-child { margin-top: 0 !important; }',
     'body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }',
     'code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }',
-    '::-webkit-scrollbar-thumb:hover',
+    'RESULTS_RICH_STYLE',
     'protected async clearSavedSessionData(): Promise<void>',
     '<strong>Poiesis plugin bundles</strong>',
     "this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)",
@@ -2117,9 +2117,9 @@ for (const marker of [
     'beforeOpen.conversation === longCompletionReply',
     "!beforeOpen.conversation.includes('詳細は Results を確認してください')",
     'canvasLayout.header?.height <= 52',
-    'canvasLayout.frame.top - canvasLayout.panel.top - canvasLayout.verification.height <= 70',
-    'canvasLayout.verification.height <= 250',
-    'layout.frame.height + layout.verification.height + layout.answerWarning.height >= minimumFrameHeight',
+    'canvasLayout.frame.top - canvasLayout.header.top - canvasLayout.header.height <= 22',
+    '!canvasLayout.hasCanvasVerification',
+    'layout.frame.height + layout.answerWarning.height >= minimumFrameHeight',
     'canvasLayout.frame.width >= canvasLayout.canvas.width - 2',
     'denseHeader.height <= 52',
     "denseDetails.values['成果の作成'] === 'AI 生成 · Codex（モデルはCLI設定）'",
@@ -2321,8 +2321,10 @@ for (const marker of [
     'const selectedTitle = selectedRequirement?.title;',
     'resultsHeaderText(requirement.title, task.title)',
     "title={`${selectedTitle}の成果`}",
-    'open={verificationTableExpanded(table, expanded)}',
-    'this.verificationExpandedByScope.set(scopeKey, !(event.currentTarget.parentElement as HTMLDetailsElement).open)',
+    "<section className='poiesis-results__verification' aria-label='確認記録'>",
+    "<h3 className='poiesis-results__verification-heading'>{table.summary}</h3>",
+    'this.renderVerificationTable(buildVerificationTable(tasks, changeSet))',
+    '詳細の確認記録を参照してください。',
     'this.renderRequirementCard(',
     'this.requirementService.moveTask(taskId, targetRequirementId)',
     'this.requirementService.splitTaskToNew(taskId)',
@@ -2341,10 +2343,14 @@ assert.ok(resultsPresentationSource.includes("return { title, secondaryTitle: se
     && resultsPresentationTest.includes("resultsHeaderText(requirement, 'その理解で進めてください。')")
     && resultsPresentationTest.includes("resultsHeaderText(requirement, '作業履歴を検索できるようにしてください。')"),
     'Results heading must keep the requirement title and show only substantive task context');
-assert.ok(resultsPresentationSource.includes("row.status !== 'pass' || row.human === true")
-    && resultsPresentationTest.includes("for (const status of ['fail', 'unknown', 'outdated', 'human'])")
-    && resultsPresentationTest.includes("verificationTableExpanded(table(row('fail')), false)"),
-    'Verification must open for attention statuses while preserving a person\'s choice');
+const resultsCanvas = resultsPartSource.slice(resultsPartSource.indexOf("className='poiesis-results__canvas'"), resultsPartSource.indexOf('this.renderImageViewer()'));
+const resultsDetails = resultsPartSource.slice(resultsPartSource.indexOf('protected renderResultsDetails('), resultsPartSource.indexOf('protected renderResultsAuxiliaryHeader('));
+assert.ok(!resultsCanvas.includes('this.renderVerificationTable(')
+    && resultsDetails.indexOf('this.renderVerificationTable(buildVerificationTable(tasks, changeSet))')
+        < resultsDetails.indexOf("<dl className='poiesis-results__details-list'>")
+    && !resultsPresentationSource.includes('verificationTableExpanded')
+    && resultsPresentationTest.includes('The detail table must be a noncollapsible section with status rows'),
+    'Verification belongs at the top of Details and must stay out of the reading canvas');
 assert.ok(rootPackage.scripts['test:results-presentation'].includes('scripts/test-results-presentation.mjs'));
 const requirementPillSource = agentWidget.match(/protected renderRequirementPill\([\s\S]*?\n    protected renderNewAgentContext/)?.[0] ?? '';
 assert.ok(requirementPillSource.indexOf("group: '関連付け'") < requirementPillSource.indexOf("group: '新規'")
@@ -2916,9 +2922,17 @@ assert.ok(cliProvider.includes("hookContext([submittedHooks, startedHooks,"));
 // boundary and the real Electron viewer replace the former raw-HTML pin.
 const richResults = await read('agent-window/src/browser/results-rich-content.ts');
 const resultsImages = await read('agent-window/src/node/results-images.ts');
-for (const marker of ['DOMPurify.sanitize', 'foreignObject', 'RESULTS_IMAGES_MAX_BYTES', 'decodesImage', 'summary:focus-visible', '@media print']) {
+for (const marker of ['DOMPurify.sanitize', 'foreignObject', 'RESULTS_IMAGES_MAX_BYTES', 'decodesImage', 'summary:focus-visible', '@media print',
+    'padding: 12px 16px !important', '--results-scrollbar-opacity: 18%', '::-webkit-scrollbar-button']) {
     assert.ok(richResults.includes(marker), `Rich Results boundary is missing ${marker}`);
 }
+assert.ok(agentStyles.includes('--poiesis-scrollbar-opacity: 18%')
+    && agentStyles.includes('--poiesis-scrollbar-hover-opacity: 40%')
+    && agentStyles.includes('::-webkit-scrollbar-button')
+    && !agentStyles.includes('scrollbar-color:')
+    && resultsSkill.includes('var(--results-fg) var(--results-scrollbar-opacity)')
+    && !resultsPartSource.includes('#9a9183'),
+    'Poiesis scroll surfaces and the Results document must share theme-derived WebKit scrollbars');
 for (const marker of ['realpath', 'RESULTS_IMAGE_MAX_BYTES', 'RESULTS_IMAGES_MAX_BYTES', 'file.stat()', 'data:${mime};base64,']) {
     assert.ok(resultsImages.includes(marker), `Workspace image validation is missing ${marker}`);
 }

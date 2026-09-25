@@ -132,16 +132,18 @@ export class BundledResultsSkill implements ResultsSkill {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>成果本文</title>
   <style>
-    :root { font: 14px/1.55 ${POIESIS_FONT_SANS}; background: #f1efe8; color: #262721; }
+    /* The bundled paper is always light, so pin the page and text tokens in every theme. */
+    :root, :root[data-theme] { --results-bg: #f1efe8; --results-fg: #262721; --results-scrollbar-opacity: 22%; --results-scrollbar-hover-opacity: 40%; font: 14px/1.55 ${POIESIS_FONT_SANS}; background: #f1efe8; color: #262721; }
     * { box-sizing: border-box; }
     html, body { min-height: 100%; }
     body { margin: 0; min-height: 100vh; background: #f1efe8; }
     .paper { width: 100%; max-width: none; min-height: 100vh; display: grid; align-content: start; gap: 22px; margin-inline: 0; padding: clamp(14px, 1.2vw, 20px) clamp(16px, 2vw, 28px); background: #f1efe8; }
     .paper > :first-child { margin-top: 0; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9a9183; background-clip: padding-box; }
-    ::-webkit-scrollbar-thumb:hover { background: #766d61; background-clip: padding-box; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+    ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+    ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--results-fg) var(--results-scrollbar-opacity), transparent) padding-box; }
+    ::-webkit-scrollbar-thumb:hover { border-width: 2px; background: color-mix(in srgb, var(--results-fg) var(--results-scrollbar-hover-opacity), transparent) padding-box; }
     .fallback { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; border: 1px solid #c6a56e; border-radius: 8px; background: #eee3cd; }
     .fallback div { display: grid; gap: 2px; }
     .fallback span { color: #665c4d; font-size: 12px; }

@@ -701,6 +701,10 @@ async function smokeFallback(page, diagnostics) {
         && details['タスク履歴'] === '1件'
         && !details['成果の生成条件'],
     `The disclosed Results metadata is incomplete: ${JSON.stringify(details)}`);
+    assert.equal(await page.$('.poiesis-results__canvas .poiesis-results__verification'), null);
+    assert.equal(await page.$eval('#poiesis-results-details-panel .poiesis-results__verification', section =>
+        Boolean(section.querySelector('.poiesis-results__verification-heading')?.textContent?.startsWith('確認 '))
+        && section.querySelectorAll('tbody tr[data-status]').length > 0), true);
     await page.click('[aria-label="詳細を閉じる"]');
     const canvasLayout = await page.evaluate(() => {
         const bounds = selector => {
@@ -713,15 +717,15 @@ async function smokeFallback(page, diagnostics) {
             panel: bounds('#poiesis-results-panel'),
             canvas: bounds('.poiesis-results__canvas'),
             header: bounds('.poiesis-results__fixed-header'),
-            verification: bounds('.poiesis-results__canvas .poiesis-results__verification'),
+            hasCanvasVerification: Boolean(document.querySelector('.poiesis-results__canvas .poiesis-results__verification')),
             frame: bounds('.poiesis-results__document')
         };
     });
     assert(canvasLayout.header?.height <= 52,
         `The Results fixed header is taller than 52px at 1280x720: ${JSON.stringify(canvasLayout)}`);
-    assert(canvasLayout.verification?.height > 0 && canvasLayout.verification.height <= 250,
-        `The app-owned evidence band must be visible and bounded: ${JSON.stringify(canvasLayout)}`);
-    assert(canvasLayout.frame && canvasLayout.panel && canvasLayout.frame.top - canvasLayout.panel.top - canvasLayout.verification.height <= 70,
+    assert(!canvasLayout.hasCanvasVerification,
+        `The verification table must stay in Details: ${JSON.stringify(canvasLayout)}`);
+    assert(canvasLayout.frame && canvasLayout.header && canvasLayout.frame.top - canvasLayout.header.top - canvasLayout.header.height <= 22,
         `The Results document starts too far below the panel top: ${JSON.stringify(canvasLayout)}`);
     assert(canvasLayout.frame && canvasLayout.canvas && canvasLayout.frame.width >= canvasLayout.canvas.width - 2,
         `The Results document does not use the canvas width: ${JSON.stringify(canvasLayout)}`);
@@ -945,7 +949,7 @@ async function measureResultsLayout(page) {
             canvas: rect(document.querySelector('.poiesis-results__canvas')),
             header: rect(header),
             frame: rect(document.querySelector('.poiesis-results__document')),
-            verification: rect(document.querySelector('.poiesis-results__canvas .poiesis-results__verification')),
+            hasCanvasVerification: Boolean(document.querySelector('.poiesis-results__canvas .poiesis-results__verification')),
             answerWarning: document.querySelector('.poiesis-results__answer-warning') ? rect(document.querySelector('.poiesis-results__answer-warning')) : { height: 0 },
             title: rect(title),
             actions: actions.map(rect),
@@ -967,9 +971,9 @@ function assertResultsLayout(layout, { label, minimumFrameHeight }) {
         && layout.actions.every(bounds => bounds.left >= layout.header.left - 1 && bounds.right <= layout.header.right + 1)
         && layout.title.right <= layout.actions[0].left - 4,
     `${label} clipped document-toolbar content: ${JSON.stringify(layout)}`);
-    assert(layout.verification.height > 0 && layout.verification.height <= 270 && layout.answerWarning.height <= 100,
-        `${label} must keep app evidence compact: ${JSON.stringify(layout)}`);
-    assert(layout.frame.height >= 220 && layout.frame.height + layout.verification.height + layout.answerWarning.height >= minimumFrameHeight,
+    assert(!layout.hasCanvasVerification && layout.answerWarning.height <= 100,
+        `${label} must keep verification in Details and any warning compact: ${JSON.stringify(layout)}`);
+    assert(layout.frame.height >= 220 && layout.frame.height + layout.answerWarning.height >= minimumFrameHeight,
         `${label} did not preserve enough document reading height: ${JSON.stringify(layout)}`);
 }
 

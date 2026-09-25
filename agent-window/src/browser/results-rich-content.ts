@@ -117,20 +117,27 @@ function decodesImage(source: string): Promise<boolean> {
 }
 
 export const RESULTS_RICH_STYLE = `
-:root { --results-bg: #f1efe8; --results-fg: #262721; --results-muted: #61645c; --results-border: #d6d3c9; --results-accent: #386e63; color-scheme: light; }
-:root[data-theme="dark"] { --results-bg: #242722; --results-fg: #eceee8; --results-muted: #b5b9af; --results-border: #50574b; --results-accent: #91cdb9; color-scheme: dark; }
+:root { --results-bg: #f1efe8; --results-fg: #262721; --results-muted: #61645c; --results-border: #d6d3c9; --results-accent: #386e63; --results-scrollbar-opacity: 22%; --results-scrollbar-hover-opacity: 40%; color-scheme: light; }
+:root[data-theme="dark"] { --results-bg: #242722; --results-fg: #eceee8; --results-muted: #b5b9af; --results-border: #50574b; --results-accent: #91cdb9; --results-scrollbar-opacity: 18%; --results-scrollbar-hover-opacity: 35%; color-scheme: dark; }
 body { background: var(--results-bg); color: var(--results-fg); }
 svg { color: var(--results-fg); height: auto; }
 svg text { fill: currentColor; }
 img[data-poiesis-image] { cursor: zoom-in; height: auto; border-radius: 8px; }
 figcaption { color: var(--results-muted); font-size: .9em; }
-details { border: 1px solid var(--results-border); border-radius: 8px; margin-block: 16px; padding: 12px 16px; break-inside: avoid; }
-summary { cursor: pointer; font-weight: 600; list-style: none; }
-summary::-webkit-details-marker { display: none; }
-summary::before { content: '›'; display: inline-block; margin-right: 10px; transition: transform .12s; }
-details[open] > summary::before { transform: rotate(90deg); }
-details[open] > summary { margin-bottom: 12px; }
+details { border: 1px solid var(--results-border) !important; border-radius: 8px !important; margin-block: 16px !important; padding: 12px 16px !important; break-inside: avoid; }
+details > summary { cursor: pointer !important; font-weight: 600 !important; list-style: none !important; margin-bottom: 0 !important; }
+details > summary::-webkit-details-marker { display: none !important; }
+details > summary::marker { content: '' !important; }
+details > summary::before { content: '›' !important; display: inline-block !important; margin-right: 10px !important; transition: transform .12s !important; }
+details[open] > summary::before { transform: rotate(90deg) !important; }
+details[open] > summary { margin-bottom: 12px !important; }
 details > :not(summary) { content-visibility: auto; overflow-wrap: anywhere; }
 summary:focus-visible, img:focus-visible { outline: 2px solid var(--results-accent); outline-offset: 4px; }
+::-webkit-scrollbar { width: 10px !important; height: 10px !important; }
+/* Paint the track with the page color: a transparent track shows the host frame element behind the iframe. */
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--results-bg) !important; }
+::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
+::-webkit-scrollbar-thumb { border: 3px solid transparent !important; border-radius: 999px !important; background: color-mix(in srgb, var(--results-fg) var(--results-scrollbar-opacity), transparent) padding-box !important; }
+::-webkit-scrollbar-thumb:hover { border-width: 2px !important; background: color-mix(in srgb, var(--results-fg) var(--results-scrollbar-hover-opacity), transparent) padding-box !important; }
 @media print { details { break-inside: auto; } details::details-content { display: block; content-visibility: visible; } details > :not(summary) { content-visibility: visible; } }
 `;

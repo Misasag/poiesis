@@ -572,48 +572,6 @@
     position: relative;
 }
 
-.poiesis-agent-window__content,
-.poiesis-agent-window__sessions,
-.poiesis-agent-window__messages,
-.poiesis-agent-window__code,
-.poiesis-agent-window__code-sidebar-host,
-.poiesis-agent-window__code-editor-host,
-.poiesis-agent-window__code-panel-body,
-.poiesis-settings-modal__body,
-.poiesis-results__task-switcher,
-.poiesis-results__task-list,
-.poiesis-results__qa-history,
-.poiesis-agent-window__workspace-picker,
-.poiesis-agent-window__repository-picker {
-    scrollbar-color: #5c5f58 transparent;
-    scrollbar-width: thin;
-}
-
-.poiesis-agent-window__content ::-webkit-scrollbar,
-.poiesis-settings-modal ::-webkit-scrollbar {
-    height: 8px;
-    width: 8px;
-}
-
-.poiesis-agent-window__content ::-webkit-scrollbar-track,
-.poiesis-settings-modal ::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.poiesis-agent-window__content ::-webkit-scrollbar-thumb,
-.poiesis-settings-modal ::-webkit-scrollbar-thumb {
-    background: #5c5f58;
-    background-clip: padding-box;
-    border: 2px solid transparent;
-    border-radius: 999px;
-}
-
-.poiesis-agent-window__content ::-webkit-scrollbar-thumb:hover,
-.poiesis-settings-modal ::-webkit-scrollbar-thumb:hover {
-    background: #777a72;
-    background-clip: padding-box;
-}
-
 .poiesis-agent-window__session-rename:focus-visible,
 .poiesis-settings-modal__model-field input:focus-visible,
 .poiesis-customize-view__new-skill input:focus-visible,

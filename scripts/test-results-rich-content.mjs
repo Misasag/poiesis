@@ -79,6 +79,84 @@ try {
     assert.ok(result.safe.includes('href="#arrow"')); assert.ok(result.safe.includes('url(#arrow)')); assert.ok(!result.safe.includes('https'));
     assert.equal(result.broken, 'fail'); assert.equal(result.emptyAssertions, 0); assert.equal(result.svgImage, 1); assert.equal(result.style, true);
     assert.equal(result.safeDiagram, 'pass');
+    const detailsLayout = await page.evaluate(() => {
+        document.documentElement.dataset.theme = 'dark';
+        const base = document.createElement('style');
+        base.textContent = `${window.rich.RESULTS_RICH_STYLE}\n* { box-sizing: border-box; } table, pre { max-width: 100%; overflow-x: auto; }`;
+        document.head.append(base);
+        document.body.innerHTML = '<details open><summary>確認</summary><pre>長いコードの表示</pre><table><tbody><tr><td>表の内容</td></tr></tbody></table></details>';
+        const details = document.querySelector('details');
+        const summary = details.querySelector('summary');
+        const read = () => {
+            const frame = details.getBoundingClientRect();
+            const children = [...details.querySelectorAll('pre, table')].map(node => node.getBoundingClientRect());
+            const detailStyle = getComputedStyle(details);
+            const summaryStyle = getComputedStyle(summary);
+            return {
+                paddingLeft: detailStyle.paddingLeft, paddingRight: detailStyle.paddingRight,
+                borderTop: detailStyle.borderTopWidth, borderRadius: detailStyle.borderTopLeftRadius,
+                marginTop: detailStyle.marginTop, marginBottom: detailStyle.marginBottom,
+                summaryWeight: summaryStyle.fontWeight, summaryMargin: summaryStyle.marginBottom,
+                marker: getComputedStyle(summary, '::before').content,
+                childrenInside: children.every(child => child.left >= frame.left + 16 && child.right <= frame.right - 16)
+            };
+        };
+        const baseline = read();
+        const generated = document.createElement('style');
+        generated.textContent = 'details { border-top: 1px solid red; border-radius: 0; margin: 0; padding: 12px 0; } details > summary { font-weight: 400; margin-bottom: 0; } details > summary::before { content: ""; }';
+        document.head.append(generated);
+        const withGeneratedStyle = read();
+        const scrollbar = getComputedStyle(document.body, '::-webkit-scrollbar');
+        const thumb = getComputedStyle(document.body, '::-webkit-scrollbar-thumb');
+        return { baseline, withGeneratedStyle, scrollbarWidth: scrollbar.width, thumbBorder: thumb.borderLeftWidth,
+            trackBackground: getComputedStyle(document.body, '::-webkit-scrollbar-track').backgroundColor,
+            thumbColor: thumb.backgroundColor,
+            scrollbarColor: getComputedStyle(document.body).scrollbarColor,
+            scrollbarWidthMode: getComputedStyle(document.body).scrollbarWidth };
+    });
+    assert.deepEqual(detailsLayout.withGeneratedStyle, detailsLayout.baseline);
+    assert.equal(detailsLayout.baseline.paddingLeft, '16px');
+    assert.equal(detailsLayout.baseline.paddingRight, '16px');
+    assert.equal(detailsLayout.baseline.borderTop, '1px');
+    assert.equal(detailsLayout.baseline.borderRadius, '8px');
+    assert.equal(detailsLayout.baseline.marginTop, '16px');
+    assert.equal(detailsLayout.baseline.marginBottom, '16px');
+    assert.equal(detailsLayout.baseline.summaryWeight, '600');
+    assert.equal(detailsLayout.baseline.summaryMargin, '12px');
+    assert.equal(detailsLayout.baseline.childrenInside, true);
+    // The track must carry the dark page color; a transparent track shows the light host frame.
+    assert.equal(detailsLayout.trackBackground, 'rgb(36, 39, 34)');
+    assert.equal(detailsLayout.scrollbarWidth, '10px');
+    assert.equal(detailsLayout.thumbBorder, '3px');
+    assert.notEqual(detailsLayout.thumbColor, 'rgba(0, 0, 0, 0)');
+    assert.equal(detailsLayout.scrollbarColor, 'auto');
+    assert.equal(detailsLayout.scrollbarWidthMode, 'auto');
+    const appPage = await browser.newPage();
+    await appPage.setContent('<div id="poiesis-window-host"><div class="poiesis-agent-window__content" style="--poiesis-chrome-text: #efeee9"><div class="scroll-surface" style="width: 100px; height: 100px; overflow: auto"><div style="height: 300px"></div></div></div></div>');
+    await appPage.addStyleTag({ content: await readFile('agent-window/src/browser/style/components.css', 'utf8') });
+    const appScrollbar = await appPage.evaluate(() => {
+        const surface = document.querySelector('.scroll-surface');
+        const read = () => ({
+            width: getComputedStyle(surface, '::-webkit-scrollbar').width,
+            border: getComputedStyle(surface, '::-webkit-scrollbar-thumb').borderLeftWidth,
+            color: getComputedStyle(surface, '::-webkit-scrollbar-thumb').backgroundColor,
+            standardColor: getComputedStyle(surface).scrollbarColor,
+            standardWidth: getComputedStyle(surface).scrollbarWidth
+        });
+        const dark = read();
+        document.documentElement.dataset.poiesisColorMode = 'light';
+        document.querySelector('.poiesis-agent-window__content').style.setProperty('--poiesis-chrome-text', '#23241f');
+        return { dark, light: read() };
+    });
+    for (const mode of [appScrollbar.dark, appScrollbar.light]) {
+        assert.equal(mode.width, '10px');
+        assert.equal(mode.border, '3px');
+        assert.notEqual(mode.color, 'rgba(0, 0, 0, 0)');
+        assert.equal(mode.standardColor, 'auto');
+        assert.equal(mode.standardWidth, 'auto');
+    }
+    assert.notEqual(appScrollbar.dark.color, appScrollbar.light.color);
+    await appPage.close();
     const prompt = await readFile('agent-window/src/node/results-generation-server.ts', 'utf8');
     for (const marker of ['2〜4文', '12ノード以下', '変更前', '変更後', '創作しない', '<details><summary>', 'evidence[].image', 'data-poiesis-image']) assert.ok(prompt.includes(marker), marker);
     console.log('RESULTS_RICH_CONTENT_TEST: path confinement, signatures, budgets, decode, sanitizer, details, prompt passed');
