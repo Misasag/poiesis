@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { parseCliOutput, sumCliUsage, finishCliCall } = require('../agent-window/lib/common/cli-usage.js');
+const { parseCliOutput, sumCliUsage, finishCliCall, CliStdoutBuffer } = require('../agent-window/lib/common/cli-usage.js');
 const { captureCliCall } = require('../agent-window/lib/node/cli-call.js');
 const { tasksForDurableSession, restoredDurableTaskCandidates } = require('../agent-window/lib/common/session-persistence.js');
 const { cliUsageText, formatCliTokens, formatCliDuration, cliModelLabel, CLI_COST_TOOLTIP } = require('../agent-window/lib/browser/cli-usage-display.js');
@@ -36,6 +36,34 @@ assert.equal(compactedPi.usage.inputTokens, 304);
 assert.equal(compactedPi.usage.costUsd, 0.001);
 assert.equal(parseCliOutput('pi', piEvents.replace('"stop"', '"error"')).failed, true);
 assert.equal(parseCliOutput('pi', piEvents.replace('{"type":"agent_settled"}', '')).failed, true);
+// pi streams one message_update per token delta with a fixed envelope; the buffer drops them so a long
+// Japanese document stays far below the callers' output limits, whatever the chunk boundaries are.
+const piReply = '<!doctype html><html><body><p>' + '回数を表示します。'.repeat(2400) + '</p></body></html>';
+const piDelta = delta => JSON.stringify({ type: 'message_update', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, assistantMessageEvent: { type: 'text_delta', contentIndex: 1, delta } });
+const piStream = [
+    JSON.stringify({ type: 'agent_start' }),
+    ...Array.from({ length: Math.ceil(piReply.length / 3) }, (_, index) => piDelta(piReply.slice(index * 3, index * 3 + 3))),
+    JSON.stringify({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: piReply }], stopReason: 'stop', usage: { input: 10, output: 5 } } }),
+    JSON.stringify({ type: 'agent_settled' })
+].join('\n') + '\n';
+assert.ok(piStream.length > 1_120_000, 'the raw pi stream exceeds the Results output limit');
+for (const size of [1, 7, 4096, piStream.length]) {
+    const buffer = new CliStdoutBuffer('pi');
+    for (let offset = 0; offset < piStream.length; offset += size) { buffer.append(piStream.slice(offset, offset + size)); }
+    assert.ok(buffer.length < piReply.length * 2, `pi buffer keeps only the events the parser reads (chunk ${size})`);
+    assert.equal(buffer.toString().includes('message_update'), false);
+    const buffered = parseCliOutput('pi', buffer.toString());
+    assert.equal(buffered.text, piReply);
+    assert.equal(buffered.failed, undefined);
+}
+const unterminated = new CliStdoutBuffer('pi');
+unterminated.append(piEvents);
+assert.equal(unterminated.toString(), piEvents, 'a final line without a newline is kept');
+const codexBuffer = new CliStdoutBuffer('codex');
+codexBuffer.append(codex.slice(0, 10));
+codexBuffer.append(codex.slice(10));
+assert.equal(codexBuffer.toString(), codex, 'other CLIs keep stdout unchanged');
 const parsed = parseCliOutput('codex', codex);
 assert.equal(parsed.text, '完了しました。\n日本語の最終回答です。');
 assert.deepEqual(parsed.usage, { inputTokens: 300, cachedInputTokens: 180, outputTokens: 30, reasoningOutputTokens: 10 });

@@ -1,5 +1,6 @@
 import { readChildUtf8 } from './child-utf8';
 import { resolveResultsImages } from './results-images';
+import { CliStdoutBuffer } from '../common/cli-usage';
 import { captureCliCall, CliCallCapture } from './cli-call';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -161,7 +162,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
 
     protected collectResult(taskId: string, run: ResultsGenerationRun): Promise<ResultsGenerationResult> {
         return new Promise(resolvePromise => {
-            let stdout = '';
+            const stdout = new CliStdoutBuffer(run.call.start.providerId);
             let stderr = '';
             let settled = false;
             let timedOut = false;
@@ -176,7 +177,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                 this.runs.delete(taskId);
                 this.cancelledTaskIds.delete(taskId);
                 void this.cleanupPrompt(run);
-                run.call.parse(stdout);
+                run.call.parse(stdout.toString());
                 resolvePromise(result);
             };
             const timeout = setTimeout(() => {
@@ -188,10 +189,9 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                 if (tooLarge) {
                     return;
                 }
-                stdout += text;
+                stdout.append(text);
                 if (stdout.length > OUTPUT_MAX_CHARS) {
                     tooLarge = true;
-                    stdout = stdout.slice(0, OUTPUT_MAX_CHARS);
                     void this.killProcess(run.process);
                 }
             }, text => {
@@ -207,7 +207,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             });
             run.process.once('close', (code, signal) => {
                 run.call.exitCode = code ?? undefined;
-                const output = run.call.parse(stdout);
+                const output = run.call.parse(stdout.toString());
                 if (run.cancelled) {
                     finish({
                         status: 'cancelled',
@@ -309,10 +309,10 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             ] : []),
             '本文は次の順にしてください。最初に結果を述べる<p>を1つ置き、1〜2文にします。件数と確認状況はアプリが表示するため繰り返しません。',
             'その直後に主図を置きます。図の部品を1〜4枚使い、利用者から見た振る舞い、画面の部品、処理の関係を示してください。差分の清書やファイル一覧を図にしないでください。3つ以上の部品が動く場合は、1枚ずつ1部品を足す連作にしてください。見た目の変更で前後の画像があればcompareを使ってください。',
-            '失敗・未確認・以前の結果は折りたたみの外に、各項目の対象と理由だけを1行で書いてください。人の判断が残る場合だけ、判断待ちのカードを各判断に1枚置いてください。',
+            '失敗・未確認・以前の結果は折りたたみの外に、1項目1行で対象と理由を書き、状態はアプリの札と同じ語（失敗・未確認・以前の結果）で書いてください。人の判断が残る場合だけ、判断待ちのカードを各判断に1枚置いてください。',
             '未実施の確認手順、コマンド、ログ、引用、根拠の説明はすべて具体的な名前の<details>に入れてください。未実施の確認手順はその中に番号付きで書き、前提と期待する観察を添えてください。実施済みと混同しないでください。',
             '見出しは対象を指す短い名詞句だけにしてください。疑問詞、疑問形、「〜とは」、どの文書にも付く枠の名前、前置きの札を使わず、小さな変更では見出しを置かないでください。変更一覧、ファイルごとの説明、自由記述の欄、折りたたみの外のログやコマンド、太字の札とコロンで始まる箇条書きは置かないでください。',
-            '図はアプリが描きます。AIはSVGや配置を書かず、浅いHTMLに中身だけを書いてください。<figure data-poiesis-figure="flow">…<figcaption>1文</figcaption></figure>の形で、種類はflow・states・tree・compareから選びます。キャプションは60字以内、項目は24字以内、疑問詞で始めません。図内にstyle、class、svg、script、on*を書かないでください。',
+            '図はアプリが描きます。AIはSVGや配置を書かず、浅いHTMLに中身だけを書いてください。<figure data-poiesis-figure="flow">…<figcaption>1文</figcaption></figure>の形で、種類はflow・states・tree・compareから選びます。キャプションは図が示す結果を述べる1文にし、句点「。」で終え、60字以内にします。撮影条件や確認の方法などの注記はキャプションに入れず、図の直後に1行で書いてください。項目は24字以内です。どちらも疑問詞で始めません。図内にstyle、class、svg、script、on*を書かないでください。',
             'flow: <ol data-label="変更前"><li>開始</li><li>終了</li></ol>と<ol data-label="変更後"><li>開始</li><li data-changed>通知</li><li>終了</li></ol>を使います。olは1〜2列、各2〜6項目、変更項目は1〜3件です。2列なら両方のlabelと変更項目が必須です。',
             'states: <ul><li data-from="作業中" data-to="休憩中" data-changed>25分たったとき</li></ul>を使います。1〜8項目、変わった項目は最大3件です。',
             'tree: <ul><li>画面<ul><li data-change="added">表示</li></ul></li></ul>を使います。深さ3段、合計12項目までで、added、removed、changedの印を1件以上付けます。',

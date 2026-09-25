@@ -40,6 +40,20 @@ const unresolved = { ...verification, counts: { ...verification.counts, fail: 1,
     humanCount: 1, total: 4 };
 assert.equal(statuses(document('入力を保持します。', figure, '<p>失敗: 接続。未確認: 操作。以前の結果: 撮影。判断待ち: 配布。</p>'), unresolved)['確認状況がアプリの記録と一致する'], 'pass');
 assert.equal(statuses(document('入力を保持します。', figure, '<details><summary>接続の記録</summary>失敗、未確認、以前の結果、判断待ち</details>'), unresolved)['確認状況がアプリの記録と一致する'], 'fail');
+// A real Results AI paraphrased the unconfirmed item and skipped the decision card; the retry must learn exactly that.
+const humanUnknown = { ...verification, counts: { ...verification.counts, pass: 2, unknown: 1 }, humanCount: 1, total: 3,
+    summary: '確認 3件中 2件成功・1件未確認' };
+const consistency = html => checkResultsTopAnswer(html, humanUnknown).find(result => result.text === '確認状況がアプリの記録と一致する');
+const paraphrased = consistency(document('回数を表示しました。', figure, '<p>画面の見やすさは、実際の画面での確認がまだありません。</p>'));
+assert.equal(paraphrased.status, 'fail');
+assert(paraphrased.evidence.startsWith('確認 3件中 2件成功・1件未確認。'), 'The evidence starts with the application summary.');
+assert(paraphrased.evidence.includes('未確認 1件の対象を、折りたたみの外に1項目1行で、対象・「未確認」の語・理由を含めて書いてください。'));
+assert(paraphrased.evidence.includes('人の判断が残る項目が1件あります。判断ごとに判断待ちのカードを置いてください。'));
+assert(!paraphrased.evidence.includes('失敗 ') && !paraphrased.evidence.includes('以前の結果 '), 'Only the broken conditions are named.');
+const stated = consistency(document('回数を表示しました。', figure,
+    '<p>画面の見やすさは未確認です。人の目での確認がまだありません。</p><section class="poiesis-decision" data-poiesis-decision-rendered="decision"><span>判断待ち</span><h3>回数の大きさ</h3></section>'));
+assert.equal(stated.status, 'pass');
+assert.equal(stated.evidence, '確認 3件中 2件成功・1件未確認。本文の確認状況は記録と一致しています。');
 
 const titled = normalizeAiResultsHtml(
     '<!doctype html><html><head><title>Result</title></head><body><h1>Long task title…</h1><p>Body</p></body></html>',
@@ -109,6 +123,18 @@ assert.throws(() => normalizeAiResultsHtml(
     '<html><head></head><body>First</body></html><html><body>Second</body></html>',
     { taskTitle: 'Repeated html' }
 ), /one complete HTML document/, 'Multiple html elements must still be rejected.');
+
+// A real Results AI returned only the body content; the app owns the envelope, so the fragment is kept.
+const fragment = normalizeAiResultsHtml(
+    '<p>開始ボタンの文字に細い縁取りを加えました。</p>\n<details><summary>変更の根拠</summary><p>縁取りを足しました。</p></details>',
+    { taskTitle: 'Fragment' }
+);
+assert(/^<!doctype html>\s*<html lang="ja">/i.test(fragment.html) && fragment.html.match(/<html(?:\s|>)/gi).length === 1
+    && /<body>\s*<p>開始ボタンの文字に細い縁取りを加えました。<\/p>/.test(fragment.html) && /<\/html>\s*$/.test(fragment.html),
+    'A body fragment must be wrapped in one complete document.');
+assert(fragment.notes.some(note => note.includes('fragment')), 'Wrapping a fragment must be reported in normalization notes.');
+assert.throws(() => normalizeAiResultsHtml('以下が成果文書です。\n<p>本文</p>', { taskTitle: 'Preface' }),
+    /one complete HTML document/, 'Prose before the document must still be rejected.');
 
 const activities = [
     {

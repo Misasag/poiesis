@@ -164,6 +164,30 @@ try {
         'var(--results-fg)', 'var(--results-muted)', 'var(--results-border)', 'var(--results-accent)', 'var(--results-bg)',
         '@media (max-width: 560px)']) assert.ok(figureStyle.includes(marker), marker);
     assert.match(figureStyle, /\.poiesis-figure[^\n]*!important/, 'App figure style must override generated CSS.');
+    // Flat output (paragraph, figure, bare note, details directly in body) is gathered into one wrapper so every block
+    // shares the reading layout's edges; a document that already has one wrapper is left as written.
+    const wrapped = await page.evaluate(() => {
+        const summarize = html => {
+            const doc = new DOMParser().parseFromString(window.rich.wrapFlatResultsBody(html), 'text/html');
+            return { children: Array.from(doc.body.children).map(child => child.localName),
+                inMain: doc.querySelector('body > main')?.textContent.replace(/\s+/g, ' ').trim() ?? '' };
+        };
+        return {
+            flat: summarize('<html><head><style>p{}</style></head><body><p>冒頭です。</p><figure class="poiesis-figure">図</figure>図の直後の注記です。<details><summary>根拠</summary>記録</details><style>b{}</style></body></html>'),
+            single: summarize('<html><body><main><p>冒頭です。</p><p>次です。</p></main></body></html>'),
+            bareText: summarize('<html><body>注記だけです。</body></html>'),
+            paper: summarize('<html><body><div class="paper"><p>簡易表示</p></div><script>1</script></body></html>')
+        };
+    });
+    assert.deepEqual(wrapped.flat.children, ['main', 'style'], 'Flat blocks move into one main; style stays outside.');
+    assert.equal(wrapped.flat.inMain, '冒頭です。図図の直後の注記です。根拠記録', 'Bare text keeps its order inside the wrapper.');
+    assert.deepEqual(wrapped.single.children, ['main'], 'A single wrapper is not wrapped again.');
+    assert.deepEqual(wrapped.bareText.children, ['main'], 'Bare body text gets the wrapper padding.');
+    assert.deepEqual(wrapped.paper.children, ['div', 'script'], 'The bundled template wrapper is left as written.');
+    assert.match(figureStyle, /\.poiesis-figure__compare img \{[^}]*height: auto !important; max-height: clamp\(220px, 38vw, 400px\) !important;/,
+        'Compare images keep their own aspect ratio up to the height cap, so the frame has no empty bands.');
+    assert.match(figureStyle, /\.poiesis-figure__flow > li:not\(:last-child\)::after \{[^}]*left: 14px !important; transform: none !important;/,
+        'Flow arrows sit under the left-aligned boxes they connect.');
     console.log('RESULTS_RICH_CONTENT_TEST: path confinement, signatures, budgets, decode, sanitizer, details, prompt passed');
 } finally {
     await browser?.close();

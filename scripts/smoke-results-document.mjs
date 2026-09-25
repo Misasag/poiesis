@@ -581,7 +581,7 @@ async function smokeCitation(page) {
         const session = state?.sessions?.find(candidate => (candidate.tasks ?? []).some(task => task.id === taskId));
         const task = session?.tasks?.find(candidate => candidate.id === taskId);
         const resultDocument = task?.resultsDocument ?? session?.resultsDocuments?.find(candidate => candidate.taskId === taskId);
-        return Array.isArray(resultDocument?.assertions) && resultDocument.assertions.length === 3;
+        return Array.isArray(resultDocument?.assertions) && resultDocument.assertions.length === 2;
     }, timeout);
     const session = persisted?.sessions?.find(candidate => (candidate.tasks ?? []).some(task => task.id === taskId));
     const task = session?.tasks?.find(candidate => candidate.id === taskId);
@@ -600,11 +600,12 @@ async function smokeCitation(page) {
         assertions: resultDocument?.assertions,
         attempts: resultDocument?.assertionAttempts
     };
-    assert(assertionState.summary === '3/3 通過'
-        && assertionState.conditions.length === 3
+    // The seeded document carries the two application checks that remain after the always-passing heading check was removed.
+    assert(assertionState.summary === '2/2 通過'
+        && assertionState.conditions.length === 2
         && assertionState.conditions.every((condition, index) => condition.status === 'pass'
             && condition.text === assertionState.assertions[index]?.text)
-        && assertionState.assertions?.length === 3
+        && assertionState.assertions?.length === 2
         && assertionState.assertions.every(result => result.source === 'app' && result.status === 'pass')
         && assertionState.attempts === 1,
     `AI assertion results were not persisted and rendered: ${JSON.stringify(assertionState)}`);
@@ -700,10 +701,12 @@ async function smokeFallback(page, diagnostics) {
         && details['タスク履歴'] === '1件'
         && !details['成果の生成条件'],
     `The disclosed Results metadata is incomplete: ${JSON.stringify(details)}`);
-    assert.equal(await page.$('.poiesis-results__canvas .poiesis-results__verification'), null);
-    assert.equal(await page.$eval('#poiesis-results-details-panel .poiesis-results__verification', section =>
+    assert(await page.$('.poiesis-results__canvas .poiesis-results__verification') === null,
+        'The verification table must not sit above the Results body.');
+    assert(await page.$eval('#poiesis-results-details-panel .poiesis-results__verification', section =>
         Boolean(section.querySelector('.poiesis-results__verification-heading')?.textContent?.startsWith('確認 '))
-        && section.querySelectorAll('tbody tr[data-status]').length > 0), true);
+        && section.querySelectorAll('tbody tr[data-status]').length > 0) === true,
+        'The verification table must open as the first section of the Details panel.');
     await page.click('[aria-label="詳細を閉じる"]');
     const canvasLayout = await page.evaluate(() => {
         const bounds = selector => {

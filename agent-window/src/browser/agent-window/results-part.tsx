@@ -1,5 +1,5 @@
 import { CliUsageLine } from '../components/cli-usage';
-import { PreparedResults, prepareResultsContent, RESULTS_RICH_STYLE, sanitizeResultsHtml } from '../results-rich-content';
+import { PreparedResults, prepareResultsContent, RESULTS_RICH_STYLE, sanitizeResultsHtml, wrapFlatResultsBody } from '../results-rich-content';
 import { cliModelLabel, formatCliDuration } from '../cli-usage-display';
 import { sumCliUsage } from '../../common/cli-usage';
 import * as React from '@theia/core/shared/react';
@@ -1162,7 +1162,7 @@ export class ResultsPart extends AgentWindowPart {
     }
 
     protected resultsDocumentHtml(html: string): string {
-        const sanitized = sanitizeResultsHtml(html).replace(/<html\b[^>]*>/i,
+        const sanitized = wrapFlatResultsBody(sanitizeResultsHtml(html)).replace(/<html\b[^>]*>/i,
             `<html data-theme="${this.host.themePreferenceService.effectiveMode}">`);
         const policy = this.host.state.allowExternalResultsResources
             ? ''

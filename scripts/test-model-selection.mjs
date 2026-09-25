@@ -101,10 +101,12 @@ assert.deepEqual(['すべて', ...pickerProviders.map(group => group.name)],
 const pickerCss = readFileSync(new URL('../agent-window/src/browser/style/components.css', import.meta.url), 'utf8');
 assert.match(pickerCss, /\.poiesis-model-picker__filters\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s,
     'Filter chips must remain on one horizontally scrollable line.');
-assert.match(pickerCss, /\.poiesis-model-picker__filters::-webkit-scrollbar\s*\{\s*height:\s*4px;/,
-    'The provider chip scrollbar must stay slim.');
-assert.match(pickerCss, /\.poiesis-model-picker__filters::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*transparent;/s,
-    'The provider chip scrollbar thumb must be hidden by default.');
+// The owner chose one scrollbar design for every Poiesis surface (2026-09-26): the chip row inside the picker
+// popover uses the shared thin, rounded, token-colored scrollbar instead of its own override.
+assert.doesNotMatch(pickerCss, /\.poiesis-model-picker__filters(?::hover)?::-webkit-scrollbar/,
+    'The provider chip row must not keep a separate scrollbar design.');
+assert.match(pickerCss, /\.poiesis-model-picker__popover, \.poiesis-model-picker__popover \*,[\s\S]*?::-webkit-scrollbar-thumb\s*\{[^}]*border-radius:\s*999px;[^}]*var\(--poiesis-scrollbar-opacity\)/,
+    'The picker popover, including the chip row, must use the shared rounded token-colored scrollbar thumb.');
 assert.deepEqual(filterModelPickerProviders(pickerProviders, 'all', 'GLM-5.3')
     .map(group => [group.name, ...group.choices.map(choice => choice.id)]),
     [['OpenRouter', 'openrouter/z-ai/glm-5.3']],

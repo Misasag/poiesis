@@ -27,6 +27,27 @@ export function sanitizeResultsHtml(html: string): string {
     return '<!doctype html>\n' + doc.documentElement.outerHTML;
 }
 
+const LAYOUT_NEUTRAL_TAGS = new Set(['script', 'style', 'template']);
+
+/**
+ * The reading layout pads one content wrapper in <body>. Flat output puts paragraphs, figures and details directly
+ * in <body>, so each block took the wrapper padding and their left edges disagreed; gather them into one <main>.
+ */
+export function wrapFlatResultsBody(html: string): string {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const neutral = (node: ChildNode): boolean => node.nodeType === Node.ELEMENT_NODE && LAYOUT_NEUTRAL_TAGS.has((node as Element).localName)
+        || node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.TEXT_NODE
+        || node.nodeType === Node.TEXT_NODE && !node.textContent?.trim();
+    const blocks = Array.from(doc.body.childNodes).filter(node => !neutral(node));
+    if (blocks.length === 0 || blocks.length === 1 && blocks[0].nodeType === Node.ELEMENT_NODE) {
+        return html;
+    }
+    const main = doc.createElement('main');
+    main.append(...Array.from(doc.body.childNodes).filter(node => !neutral(node) || node.nodeType === Node.TEXT_NODE));
+    doc.body.prepend(main);
+    return '<!doctype html>\n' + doc.documentElement.outerHTML;
+}
+
 export interface PreparedResults {
     html: string;
     images: Map<string, string>;
@@ -132,7 +153,7 @@ figcaption { color: var(--results-muted); font-size: .9em; }
 .poiesis-figure__label { display: inline-block !important; margin: 0 0 9px !important; padding: 2px 8px !important; border: 1px solid var(--results-border) !important; border-radius: 999px !important; font-size: 12px !important; color: var(--results-muted) !important; }
 .poiesis-figure__flow, .poiesis-figure__states, .poiesis-figure__tree, .poiesis-decision ul { list-style: none !important; margin: 0 !important; padding: 0 !important; }
 .poiesis-figure__flow > li { position: relative !important; margin: 0 0 22px !important; padding: 0 !important; list-style: none !important; }
-.poiesis-figure__flow > li:not(:last-child)::after { content: '↓' !important; position: absolute !important; inset-block-start: 100% !important; left: 50% !important; transform: translateX(-50%) !important; color: var(--results-muted) !important; }
+.poiesis-figure__flow > li:not(:last-child)::after { content: '↓' !important; position: absolute !important; inset-block-start: 100% !important; left: 14px !important; transform: none !important; line-height: 22px !important; color: var(--results-muted) !important; }
 .poiesis-figure__flow > li:last-child { margin-bottom: 0 !important; }
 .poiesis-figure__item { display: inline-flex !important; align-items: center !important; flex-wrap: wrap !important; gap: 5px !important; min-width: 0 !important; max-width: 100% !important; padding: 8px 10px !important; border: 1px solid var(--results-border) !important; border-radius: 9px !important; background: var(--results-bg) !important; overflow-wrap: anywhere !important; }
 .poiesis-figure__item:has(.poiesis-figure__badge) { border-color: var(--results-accent) !important; }
@@ -144,7 +165,7 @@ figcaption { color: var(--results-muted); font-size: .9em; }
 .poiesis-figure__tree { border-left: 1px solid var(--results-border) !important; margin-left: 12px !important; padding-left: 12px !important; }
 .poiesis-figure__tree > li { position: relative !important; margin: 0 0 8px !important; padding: 0 !important; list-style: none !important; }
 .poiesis-figure__tree > li::before { content: '' !important; position: absolute !important; width: 10px !important; left: -12px !important; top: 18px !important; border-top: 1px solid var(--results-border) !important; }
-.poiesis-figure__compare img { display: block !important; width: 100% !important; height: clamp(220px, 38vw, 400px) !important; object-fit: contain !important; border: 1px solid var(--results-border) !important; background: var(--results-bg) !important; }
+.poiesis-figure__compare img { display: block !important; width: 100% !important; height: auto !important; max-height: clamp(220px, 38vw, 400px) !important; object-fit: contain !important; border-radius: 6px !important; border: 1px solid var(--results-border) !important; background: var(--results-bg) !important; }
 .poiesis-figure__value { display: block !important; padding: 12px !important; border: 1px solid var(--results-border) !important; border-radius: 8px !important; white-space: pre-wrap !important; }
 .poiesis-figure figcaption { display: block !important; margin-top: 12px !important; font-size: 13px !important; color: var(--results-muted) !important; }
 .poiesis-figure__error { margin: 0 0 8px !important; color: var(--results-fg) !important; font-weight: 700 !important; }

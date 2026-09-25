@@ -48,6 +48,19 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable,
         && (table.counts.unknown === 0 || /未確認|未検証/.test(outsideText))
         && (table.counts.outdated === 0 || /以前の結果|古い/.test(outsideText));
     const decision = table.humanCount === 0 || /判断|決め|選択|承認/.test(outsideText);
+    // Name each broken condition so the regeneration can fix it; the status words match the application badges.
+    const statusLine = (count: number, word: string): string =>
+        `${word} ${count}件の対象を、折りたたみの外に1項目1行で、対象・「${word}」の語・理由を含めて書いてください。`;
+    const consistencyProblems = [
+        ...(!exists ? ['冒頭に1〜2文の段落がありません。'] : []),
+        ...(counts.some(count => count > table.counts.pass) ? [`冒頭の成功の件数が記録の成功 ${table.counts.pass}件より多くなっています。`] : []),
+        ...(blanket && (table.counts.pass !== table.total || table.humanCount > 0)
+            ? ['成功していない確認や人の判断が残るため、「すべて成功」のような言い方は使えません。'] : []),
+        ...(table.counts.fail > 0 && !/失敗/.test(outsideText) ? [statusLine(table.counts.fail, '失敗')] : []),
+        ...(table.counts.unknown > 0 && !/未確認|未検証/.test(outsideText) ? [statusLine(table.counts.unknown, '未確認')] : []),
+        ...(table.counts.outdated > 0 && !/以前の結果|古い/.test(outsideText) ? [statusLine(table.counts.outdated, '以前の結果')] : []),
+        ...(!decision ? [`人の判断が残る項目が${table.humanCount}件あります。判断ごとに判断待ちのカードを置いてください。`] : [])
+    ];
     const afterAnswer = paragraph ? opening.slice(paragraph[0].length).trimStart() : '';
     const smallChange = options.changeSet?.files.length === 1 && !options.changeSet.error
         && options.changeSet.diff.split(/\r?\n/).filter(line => /^[+-]/.test(line) && !/^(?:\+\+\+ |--- )/.test(line)).length < 20
@@ -72,13 +85,14 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable,
         { source: 'app', text: '冒頭に1〜2文の短い回答がある', status: exists ? 'pass' : 'fail',
             evidence: exists ? '冒頭の回答を確認しました。' : '最初の見出しの直後（または本文先頭）に1〜2文の段落を置いてください。' },
         { source: 'app', text: '確認状況がアプリの記録と一致する', status: exists && !inconsistent && caveat && decision ? 'pass' : 'fail',
-            evidence: `${table.summary}。成功の過大申告を避け、失敗・未確認・以前の結果・判断事項は折りたたみの外に対象と理由を1行で書いてください。` },
+            evidence: `${table.summary}。${consistencyProblems.length ? consistencyProblems.join('') : '本文の確認状況は記録と一致しています。'}` },
         { source: 'app', text: '冒頭の確認件数がアプリの記録と一致する', status: exists && !countMismatch ? 'pass' : 'fail',
             evidence: `${table.summary}。件数はアプリが表示します。冒頭で書く場合はこの集計と一致させてください。` },
         { source: 'app', text: '冒頭の直後に主図がある', status: mainFigure || smallChange ? 'pass' : 'fail',
             evidence: '冒頭の段落の直後に、検査済みの図の部品か画像を置いてください。変更1ファイルかつ変更20行未満で画像入力がない場合だけ省略できます。' },
         { source: 'app', text: '見出しと折りたたみの名前が対象を示す', status: badHeadings.length === 0 ? 'pass' : 'fail',
-            evidence: `対象を指す短い名詞句に直してください。定型句・疑問詞・疑問形は使えません: ${badHeadings.join('、')}` },
+            evidence: badHeadings.length ? `対象を指す短い名詞句に直してください。定型句・疑問詞・疑問形は使えません: ${badHeadings.join('、')}`
+                : '見出しと折りたたみの名前を確認しました。' },
         { source: 'app', text: '冒頭と図の文が疑問詞で始まらない', status: !interrogative.test(firstSentence) && captions.every(caption => !interrogative.test(caption)) ? 'pass' : 'fail',
             evidence: '冒頭の最初の文と図のキャプションは、対象を主語にして直接述べてください。' },
         { source: 'app', text: '太字の札とコロンを使わない', status: labelLines.length === 0 ? 'pass' : 'fail',
@@ -119,8 +133,18 @@ export function normalizeAiResultsHtml(
         throw new Error(`AI Results HTML exceeded ${AI_RESULTS_HTML_MAX_CHARS} characters.`);
     }
     const documentStart = /^(?:<!doctype\s+html[^>]*>\s*)?<html(?:\s|>)/i;
-    const htmlOpenCount = html.match(/<html(?:\s|>)/gi)?.length ?? 0;
-    const htmlCloseCount = html.match(/<\/html\s*>/gi)?.length ?? 0;
+    let htmlOpenCount = html.match(/<html(?:\s|>)/gi)?.length ?? 0;
+    let htmlCloseCount = html.match(/<\/html\s*>/gi)?.length ?? 0;
+    // Some models return only the body content. The application owns the document envelope (its CSP and
+    // styles go into <head> later), so output that starts with an element is wrapped rather than discarded.
+    if (htmlOpenCount === 0 && htmlCloseCount === 0 && /^<[a-z]/i.test(html)) {
+        html = /<(?:head|body)(?:\s|>)/i.test(html)
+            ? `<!doctype html>\n<html lang="ja">\n${html}\n</html>`
+            : `<!doctype html>\n<html lang="ja">\n<head>\n<meta charset="utf-8">\n</head>\n<body>\n${html}\n</body>\n</html>`;
+        htmlOpenCount = 1;
+        htmlCloseCount = 1;
+        notes.push('An HTML fragment without a document wrapper was wrapped in one.');
+    }
     if (!documentStart.test(html) || htmlOpenCount !== 1 || htmlCloseCount > 1
         || htmlCloseCount === 1 && !/<\/html\s*>\s*$/i.test(html)) {
         throw new Error('AI Results did not return one complete HTML document.');

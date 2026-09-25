@@ -1,4 +1,5 @@
 import { readChildUtf8 } from './child-utf8';
+import { CliStdoutBuffer } from '../common/cli-usage';
 import { captureCliCall, CliCallCapture } from './cli-call';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -133,7 +134,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
 
     protected collectResult(taskId: string, run: ResultsAssertionRun): Promise<ResultsAssertionJudgeResult> {
         return new Promise(resolvePromise => {
-            let stdout = '';
+            const stdout = new CliStdoutBuffer(run.call.start.providerId);
             let stderr = '';
             let settled = false;
             let timedOut = false;
@@ -147,7 +148,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                 this.runs.delete(taskId);
                 this.cancelledTaskIds.delete(taskId);
                 void this.cleanupPrompt(run);
-                run.call.parse(stdout);
+                run.call.parse(stdout.toString());
                 resolvePromise(result);
             };
             const timeout = setTimeout(() => {
@@ -159,10 +160,9 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
                 if (tooLarge) {
                     return;
                 }
-                stdout += text;
+                stdout.append(text);
                 if (stdout.length > OUTPUT_MAX_CHARS) {
                     tooLarge = true;
-                    stdout = stdout.slice(0, OUTPUT_MAX_CHARS);
                     void killHiddenProcessTree(run.process);
                 }
             }, text => {
@@ -178,7 +178,7 @@ export class ResultsAssertionServerImpl implements ResultsAssertionServer {
             });
             run.process.once('close', (code, signal) => {
                 run.call.exitCode = code ?? undefined;
-                const output = run.call.parse(stdout);
+                const output = run.call.parse(stdout.toString());
                 if (run.cancelled) {
                     finish(this.cancelled(code, signal));
                     return;
