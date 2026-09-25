@@ -25,14 +25,16 @@ const sessionId = 'rich-results-session';
 const html = `<!doctype html><html lang="ja"><head><style>
 section { margin-block: 20px; } figure { margin: 0; } img { max-height: 220px; object-fit: contain; object-position: left; }
 </style></head><body><main>
-<h2>成果を画像・図・詳細から確認できます</h2>
-<p>ワークスペースの画像を成果文書に表示します。すべて確認済みです。</p>
+<h2>作業画面</h2>
+<p>ワークスペースの画像を成果文書に表示します。</p>
+<img src="workspace-screen.png" alt="この試験で撮影した作業画面">
+<p>作業画面の確認は未確認です。</p>
+<details><summary>画像と図の記録</summary>
 <svg viewBox="0 0 660 82" role="img" aria-label="画像を確認する流れ">
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6" fill="var(--results-accent)"/></marker></defs>
 <g fill="none" stroke="var(--results-accent)" stroke-width="2"><rect x="1" y="1" width="180" height="56" rx="8"/><rect x="231" y="1" width="180" height="56" rx="8"/><rect x="471" y="1" width="180" height="56" rx="8"/><path d="M182 29H224 M412 29H464" marker-end="url(#arrow)"/></g>
 <g font-size="16" text-anchor="middle"><text x="91" y="36">画像を検証</text><text x="321" y="36">成果に表示</text><text x="561" y="36">クリックで拡大</text></g></svg>
-<section><figure><img src="workspace-screen.png" alt="この試験で撮影した作業画面"><figcaption>変更前: この試験で撮影した作業画面</figcaption></figure></section>
-<details><summary>検証の手順と根拠</summary><ol><li>画像を開き、Escで閉じます。</li><li>詳細パネルの画像も拡大します。</li></ol><pre>この画面の操作結果は試験完了時に記録します。</pre><a href="#" data-poiesis-citation="evidence.txt:1-2">確認内容の根拠</a></details>
+<ol><li>画像を開き、Escで閉じます。</li><li>詳細パネルの画像も拡大します。</li></ol><pre>この画面の操作結果は試験完了時に記録します。</pre><a href="#" data-poiesis-citation="evidence.txt:1-2">確認内容の根拠</a></details>
 </main></body></html>`;
 const task = { id: taskId, sessionId, workspaceUri: pathToFileURL(workspace).href, title: '画像と図で成果を確認', request: '成果に図と画像を表示する',
     status: 'completed', startedAt: now, endedAt: now, baseline: { kind: 'workspace-snapshot', capturedAt: now },

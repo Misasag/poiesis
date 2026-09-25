@@ -1,9 +1,21 @@
 import type { AgentActivity, AgentActivityKind, AgentActivityStatus } from '../common/agent-provider';
 import type { VerificationTable } from './results-evidence';
+import type { TaskChangeSet } from './task-service';
 import type { ResultsAssertionResult } from './results-assertions';
 
+export const RESULTS_VISIBLE_PROSE_MAX_CHARS = 400;
+export const RESULTS_GENERIC_HEADINGS = [
+    '変更点', '主な変更点', '変更したこと', '変更内容', '確認できたこと', '未確認の点', '動作確認',
+    '動作確認の手順', 'まとめ', '概要', '背景', '根拠', '結論', '要点', 'ポイント', '補足',
+    '特記事項', 'はじめに', 'Summary', 'Changes', 'Test Plan', 'Overview'
+] as const;
+const interrogative = /^(?:何|なぜ|どう|どの|どこ|いつ|誰)/;
+const invalidHeading = (value: string): boolean => /[か？?]$/.test(value) || /(?:何|なぜ|どう|どの|どこ|いつ|誰)/.test(value)
+    || /とは/.test(value) || RESULTS_GENERIC_HEADINGS.some(label => label.toLowerCase() === value.toLowerCase());
+
 /** Format/wording guard only; it does not judge whether the user's change is correct. */
-export function checkResultsTopAnswer(html: string, table: VerificationTable): ResultsAssertionResult[] {
+export function checkResultsTopAnswer(html: string, table: VerificationTable,
+    options: { changeSet?: TaskChangeSet; imageInputs?: readonly string[] } = {}): ResultsAssertionResult[] {
     const body = (html.match(/<body\b[^>]*>([\s\S]*?)<\/body\s*>/i)?.[1] ?? html)
         .replace(/<!--[\s\S]*?-->|<(?:style|script)\b[^>]*>[\s\S]*?<\/(?:style|script)\s*>/gi, '');
     // Permit layout wrappers and one content heading, but never skip a details/table/image to find an answer.
@@ -13,7 +25,7 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable): R
     const answer = paragraph ? decodeBasicEntities(paragraph[2].replace(/<[^>]*>/g, ' ')).normalize('NFKC').trim() : '';
     const hidden = paragraph && /\bhidden\b|display\s*:\s*none|visibility\s*:\s*hidden/i.test(paragraph[1]);
     const sentences = answer.split(/[。！？!?]+/).filter(value => value.trim()).length;
-    const exists = Boolean(answer) && !hidden && sentences >= 2 && sentences <= 4;
+    const exists = Boolean(answer) && !hidden && sentences >= 1 && sentences <= 2;
     const counts = [...answer.matchAll(/(?:([0-9]+)\s*件\s*(?:成功|合格|確認済み)|(?:成功|合格|確認済み)\s*([0-9]+)\s*件)/g)]
         .map(match => Number(match[1] ?? match[2]));
     const denominators = [...answer.matchAll(/([0-9]+)\s*件\s*中/g)].map(match => Number(match[1]));
@@ -30,17 +42,51 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable): R
     const blanket = /(?:すべて|全て|全部|全件|全項目|全確認|全テスト|全検証)[^。！？]{0,16}(?:成功|合格|確認済み|検証済み|通過)|(?:成功率|合格率)\s*100\s*%|\ball\s+(?:checks|tests)\s+passed\b/i.test(answer);
     const inconsistent = counts.some(count => count > table.counts.pass)
         || blanket && (table.counts.pass !== table.total || table.humanCount > 0);
-    const summary = /確認|成功|失敗|未確認|以前の結果|検証/.test(answer);
-    const caveat = table.counts.fail + table.counts.unknown + table.counts.outdated === 0
-        || /失敗|未確認|未検証|以前の結果|古い|未完了/.test(answer);
-    const decision = table.humanCount === 0 || /判断|決め|選択|承認/.test(answer);
+    const outside = body.replace(/<details\b[^>]*>[\s\S]*?<\/details\s*>/gi, ' ');
+    const outsideText = decodeBasicEntities(outside.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ');
+    const caveat = (table.counts.fail === 0 || /失敗/.test(outsideText))
+        && (table.counts.unknown === 0 || /未確認|未検証/.test(outsideText))
+        && (table.counts.outdated === 0 || /以前の結果|古い/.test(outsideText));
+    const decision = table.humanCount === 0 || /判断|決め|選択|承認/.test(outsideText);
+    const afterAnswer = paragraph ? opening.slice(paragraph[0].length).trimStart() : '';
+    const smallChange = options.changeSet?.files.length === 1 && !options.changeSet.error
+        && options.changeSet.diff.split(/\r?\n/).filter(line => /^[+-]/.test(line) && !/^(?:\+\+\+ |--- )/.test(line)).length < 20
+        && !options.imageInputs?.length;
+    // Layout wrappers may close around the answer and open around the visual; a decision card is not a wrapper.
+    const afterWrappers = afterAnswer.replace(
+        /^(?:\s*(?:<\/(?:div|section|main|article)\s*>|<(?:div|main|article)\b[^>]*>|<section\b(?![^>]*\sdata-poiesis-decision)[^>]*>))*\s*/i, '');
+    const mainFigure = /^(?:<figure\b[^>]*\bdata-poiesis-figure-rendered\s*=|<figure\b[^>]*>\s*<img\b|<img\b)/i.test(afterWrappers);
+    const headings = [...body.matchAll(/<(?:h[2-4]|summary)\b[^>]*>([\s\S]*?)<\/(?:h[2-4]|summary)\s*>/gi)]
+        .map(match => decodeBasicEntities(match[1].replace(/<[^>]*>/g, '')).trim());
+    const badHeadings = headings.filter(invalidHeading);
+    const captions = [...body.matchAll(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption\s*>/gi)]
+        .map(match => decodeBasicEntities(match[1].replace(/<[^>]*>/g, '')).trim());
+    const firstSentence = answer.split(/[。！？!?]/)[0].trim();
+    const labelLines = [...outside.matchAll(/<(?:p|li)\b[^>]*>\s*<(?:strong|b)\b[^>]*>\s*[^<]{1,24}\s*<\/(?:strong|b)>\s*[:：]/gi)];
+    const visible = outside.replace(/<figure\b[^>]*>[\s\S]*?<\/figure\s*>/gi, match =>
+        match.match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption\s*>/i)?.[1] ?? '')
+        .replace(/<(?:table|pre|code|svg)\b[^>]*>[\s\S]*?<\/(?:table|pre|code|svg)\s*>/gi, ' ');
+    const numberedOutside = /<ol\b/i.test(outside.replace(/<figure\b[^>]*>[\s\S]*?<\/figure\s*>/gi, ' '));
+    const visibleCount = [...decodeBasicEntities(visible.replace(/<[^>]*>/g, '')).replace(/\s/g, '')].length;
     return [
-        { source: 'app', text: '冒頭に2〜4文の短い回答がある', status: exists ? 'pass' : 'fail',
-            evidence: exists ? '冒頭の回答を確認しました。' : '最初の見出しの直後（または本文先頭）に2〜4文の段落を置いてください。' },
-        { source: 'app', text: '冒頭の確認状況がアプリの記録と一致する', status: exists && !inconsistent && summary && caveat && decision ? 'pass' : 'fail',
-            evidence: `${table.summary}。${table.humanCount ? `判断待ち ${table.humanCount}件。` : ''}成功の過大申告を避け、未確認・失敗・判断事項を冒頭に残してください。` },
+        { source: 'app', text: '冒頭に1〜2文の短い回答がある', status: exists ? 'pass' : 'fail',
+            evidence: exists ? '冒頭の回答を確認しました。' : '最初の見出しの直後（または本文先頭）に1〜2文の段落を置いてください。' },
+        { source: 'app', text: '確認状況がアプリの記録と一致する', status: exists && !inconsistent && caveat && decision ? 'pass' : 'fail',
+            evidence: `${table.summary}。成功の過大申告を避け、失敗・未確認・以前の結果・判断事項は折りたたみの外に対象と理由を1行で書いてください。` },
         { source: 'app', text: '冒頭の確認件数がアプリの記録と一致する', status: exists && !countMismatch ? 'pass' : 'fail',
-            evidence: `${table.summary}。冒頭で件数を書く場合は、この集計と一致させてください。` }
+            evidence: `${table.summary}。件数はアプリが表示します。冒頭で書く場合はこの集計と一致させてください。` },
+        { source: 'app', text: '冒頭の直後に主図がある', status: mainFigure || smallChange ? 'pass' : 'fail',
+            evidence: '冒頭の段落の直後に、検査済みの図の部品か画像を置いてください。変更1ファイルかつ変更20行未満で画像入力がない場合だけ省略できます。' },
+        { source: 'app', text: '見出しと折りたたみの名前が対象を示す', status: badHeadings.length === 0 ? 'pass' : 'fail',
+            evidence: `対象を指す短い名詞句に直してください。定型句・疑問詞・疑問形は使えません: ${badHeadings.join('、')}` },
+        { source: 'app', text: '冒頭と図の文が疑問詞で始まらない', status: !interrogative.test(firstSentence) && captions.every(caption => !interrogative.test(caption)) ? 'pass' : 'fail',
+            evidence: '冒頭の最初の文と図のキャプションは、対象を主語にして直接述べてください。' },
+        { source: 'app', text: '太字の札とコロンを使わない', status: labelLines.length === 0 ? 'pass' : 'fail',
+            evidence: '段落や箇条書きの先頭に太字の短い札とコロンを置かず、内容をそのまま書いてください。' },
+        { source: 'app', text: '番号付きの手順を折りたたむ', status: !numberedOutside ? 'pass' : 'fail',
+            evidence: '番号付きの確認手順は、具体的な名前の<details>の中に置いてください。' },
+        { source: 'app', text: '折りたたみの外の文章が短い', status: visibleCount <= RESULTS_VISIBLE_PROSE_MAX_CHARS ? 'pass' : 'fail',
+            evidence: `折りたたみの外の本文を${RESULTS_VISIBLE_PROSE_MAX_CHARS}字以内にしてください。現在${visibleCount}字です。` }
     ];
 }
 
@@ -86,12 +132,10 @@ export function normalizeAiResultsHtml(
     if (html.length > AI_RESULTS_HTML_MAX_CHARS) {
         throw new Error(`AI Results HTML exceeded ${AI_RESULTS_HTML_MAX_CHARS} characters.`);
     }
-    // Media has its own DOM sanitizer and resolution assertions; rejected images
-    // become diagnostics rather than discarding an otherwise useful document.
-    const nonMedia = html.replace(/<svg\b[^>]*>[\s\S]*?<\/svg\s*>/gi, '').replace(/<img\b[^>]*>/gi, '');
-    if (/<script\b|<link\b|\son\w+\s*=|(?:src|href)\s*=\s*["']\s*(?:https?:)?\/\/|url\(\s*["']?\s*(?:https?:)?\/\//i.test(nonMedia)) {
-        throw new Error('AI Results HTML contained scripts or external resources.');
-    }
+    // Figure parts and decision cards are rebuilt from escaped text by renderResultsFigures,
+    // which drops anything else inside them; the rendered document is checked again afterwards.
+    assertNoActiveResultsContent(html.replace(/<figure\b[^>]*\sdata-poiesis-figure\s*=[^>]*>[\s\S]*?<\/figure\s*>/gi, '')
+        .replace(/<section\b[^>]*\sdata-poiesis-decision(?=[\s=>/])[^>]*>[\s\S]*?<\/section\s*>/gi, ''));
 
     html = removeLeadingTaskTitleHeading(html, options.taskTitle, notes);
     if (/<h1\b/i.test(html)) {
@@ -104,6 +148,17 @@ export function normalizeAiResultsHtml(
         html: maskTaskIdsInText(html),
         notes
     };
+}
+
+/**
+ * Rejects scripts, event handlers and external resources outside media. Media has its own DOM sanitizer
+ * and resolution assertions; rejected images become diagnostics rather than discarding a useful document.
+ */
+export function assertNoActiveResultsContent(html: string): void {
+    const nonMedia = html.replace(/<svg\b[^>]*>[\s\S]*?<\/svg\s*>/gi, '').replace(/<img\b[^>]*>/gi, '');
+    if (/<script\b|<link\b|\son\w+\s*=|(?:src|href)\s*=\s*["']\s*(?:https?:)?\/\/|url\(\s*["']?\s*(?:https?:)?\/\//i.test(nonMedia)) {
+        throw new Error('AI Results HTML contained scripts or external resources.');
+    }
 }
 
 /** Hides internal task IDs in reader-facing text, never inside tags or file paths (image sources must stay resolvable). */

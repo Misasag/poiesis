@@ -1707,5 +1707,10 @@
 .poiesis-results__operation-summary { padding: 6px 16px; border-top: 1px solid var(--theia-panel-border); color: var(--theia-foreground); }
 .poiesis-results__verification .poiesis-results__evidence-image img { max-height: 48px; max-width: 96px; }
 .poiesis-results__human-badge { white-space: nowrap; font-size: 12px; color: var(--theia-editorWarning-foreground, #d9b968); }
+/* Verification status badges in the fixed header: text and count carry the meaning, color only reinforces it. */
+.poiesis-results__status-badge { white-space: nowrap; font-size: 12px; }
+.poiesis-results__status-badge--fail { color: var(--theia-errorForeground, #f48771); }
+.poiesis-results__status-badge--unknown { color: var(--theia-editorWarning-foreground, #d9b968); }
+.poiesis-results__status-badge--outdated { color: var(--theia-descriptionForeground, #9da39a); }
 .poiesis-results__answer-warning { flex: 0 0 auto; padding: 7px 16px; color: var(--theia-foreground); background: var(--theia-editor-background); border-left: 3px solid var(--theia-editorWarning-foreground, #d9b968); font-size: 12px; }
 .poiesis-results__answer-warning span { display: block; }

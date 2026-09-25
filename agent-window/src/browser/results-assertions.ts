@@ -18,7 +18,6 @@ export interface ResultsAssertionCandidate<T> {
 }
 
 const CITATION_ASSERTION = '変更ファイルがある場合、本文に根拠引用がある';
-const HEADING_ASSERTION = '本文に見出し（h2〜h4）がある';
 const EMPTY_HEADING_ASSERTION = '空の見出しがない';
 const RETRY_INTRO = '前回の生成は次の必須条件を満たしていませんでした。今回は必ず満たしてください:';
 
@@ -39,12 +38,6 @@ export function checkAppResultsAssertions(
             evidence: changedFiles.length === 0
                 ? '変更ファイルがないため引用は不要です。'
                 : hasCitation ? '根拠引用を確認しました。' : '根拠引用がありません。'
-        },
-        {
-            text: HEADING_ASSERTION,
-            source: 'app',
-            status: headings.length > 0 ? 'pass' : 'fail',
-            evidence: headings.length > 0 ? `見出しを${headings.length}件確認しました。` : '見出しがありません。'
         },
         {
             text: EMPTY_HEADING_ASSERTION,
@@ -191,7 +184,8 @@ export function selectBetterResultsAssertionCandidate<T>(
 
 export function buildFailedAssertionPromptSection(assertions: readonly ResultsAssertionResult[]): string {
     const failed = assertions.filter(assertion => assertion.status === 'fail');
-    return failed.length > 0 ? `${RETRY_INTRO}\n${failed.map(assertion => `- ${assertion.text}`).join('\n')}` : '';
+    return failed.length > 0 ? `${RETRY_INTRO}\n${failed.map(assertion =>
+        `- ${assertion.text}${assertion.evidence ? `: ${assertion.evidence}` : ''}`).join('\n')}` : '';
 }
 
 /** Produces a stable short fallback when the title AI is unavailable or invalid. */

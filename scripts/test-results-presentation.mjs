@@ -16,6 +16,7 @@ const resultsPart = await readFile('agent-window/src/browser/agent-window/result
 const canvas = resultsPart.slice(resultsPart.indexOf("className='poiesis-results__canvas'"), resultsPart.indexOf('this.renderImageViewer()'));
 const details = resultsPart.slice(resultsPart.indexOf('protected renderResultsDetails('), resultsPart.indexOf('protected renderResultsAuxiliaryHeader('));
 const verification = resultsPart.slice(resultsPart.indexOf('protected renderVerificationTable('), resultsPart.indexOf('protected resultsActionStatus('));
+const toolbar = resultsPart.slice(resultsPart.indexOf('protected renderResultsToolbar('), resultsPart.indexOf('protected renderVerificationTable('));
 assert.ok(!canvas.includes('this.renderVerificationTable('), 'The reading canvas must not contain the verification table');
 assert.ok(details.indexOf('this.renderVerificationTable(buildVerificationTable(tasks, changeSet))')
     > details.indexOf("this.renderResultsAuxiliaryHeader('詳細'")
@@ -26,4 +27,14 @@ assert.ok(verification.includes("<section className='poiesis-results__verificati
     && verification.includes('<tbody>{table.rows.map((row, index) => <tr key={index} data-status={row.status}>')
     && !verification.includes('<details'), 'The detail table must be a noncollapsible section with status rows');
 assert.ok(resultsPart.includes('詳細の確認記録を参照してください。'));
+assert(toolbar.includes("['fail', 'unknown', 'outdated']") && toolbar.includes('counts[status] > 0')
+    && toolbar.includes('VERIFICATION_LABELS[status]') && toolbar.includes('counts[status]}件')
+    && toolbar.includes('poiesis-results__status-badge poiesis-results__status-badge--${status}'),
+    'Only nonzero verification statuses must appear as text badges in the fixed toolbar.');
+assert(!toolbar.includes('onClick={event => this.toggleResultsAuxiliary') || toolbar.indexOf('counts[status]') < toolbar.indexOf('onClick={event => this.toggleResultsAuxiliary'),
+    'Verification badges must not be clickable controls.');
+const documentHtml = resultsPart.slice(resultsPart.indexOf('protected resultsDocumentHtml('), resultsPart.indexOf('public handleResultsFrameMessage('));
+assert(documentHtml.includes('sanitized.replace(headOpen, match => policy ? `${match}\\n  ${policy}` : match)')
+    && documentHtml.includes('.replace(headClose, match => `  ${baseStyle}\\n${match}`)'),
+    'The CSP must open <head> before any AI head content while the base style closes <head> to win the cascade.');
 console.log('results-presentation tests passed');

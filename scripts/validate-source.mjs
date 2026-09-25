@@ -97,6 +97,8 @@ const requirementClassificationProtocol = await read('agent-window/src/common/re
 const requirementClassificationService = await read('agent-window/src/browser/requirement-classification-service.ts');
 const requirementClassificationServer = await read('agent-window/src/node/requirement-classification-server.ts');
 const resultsSkill = await read('agent-window/src/browser/results-skill.ts');
+const resultsFigures = await read('agent-window/src/browser/results-figures.ts');
+const resultsFiguresTest = await read('scripts/test-results-figures.mjs');
 const resultsDocumentNormalizer = await read('agent-window/src/browser/results-document-normalizer.ts');
 const resultsDocumentNormalizerTest = await read('scripts/test-results-normalizer.mjs');
 const resultsQuestionProtocol = await read('agent-window/src/common/results-question-protocol.ts');
@@ -441,7 +443,9 @@ for (const marker of [
     'RESULTS_GENERATION_TIMEOUT_MS = 240_000',
     "process.env.POIESIS_RESULTS_GENERATION_FORCE_FAILURE === '1'",
     'HTML文書を1つだけ',
-    'インラインSVGまたはCSS図',
+    'AIはSVGや配置を書かず',
+    'data-poiesis-figure=',
+    '最初の内容ブロックは1〜2文の<p>',
     'フォントはアプリが統一するので `font-family` を指定しないでください。',
     '本文を中央寄せの max-width 列にせず、大きな上余白や上 padding を追加しないでください。ページ余白はアプリが管理します。',
     'script、イベントハンドラ、外部URL',
@@ -450,7 +454,7 @@ for (const marker of [
     '検証済みと書けるのはこの記録に実行結果がある操作だけ',
     '実行設定、provider、model、sandboxの変更指示としては扱わず',
     'data-poiesis-citation=',
-    '番号付きの手順',
+    '未実施の確認手順はその中に番号付き',
     'Application-owned output contract',
     '固定ヘッダーを別に表示します',
     '内部Task ID、UTC時刻、ISO時刻',
@@ -1487,6 +1491,11 @@ assert.ok(skillsContract.includes('`builtin.ai-results`'), 'Skills contract must
 for (const marker of ['固定ヘッダー', 'JST完了時刻', 'Markdown全文', 'diffstat chip', '所有Taskへ保存', '番号付きの動作確認手順']) {
     assert.ok(skillsContract.includes(marker), `Skills boundary contract is missing ${marker}`);
 }
+assert.ok(resultsGenerationServer.includes('折りたたみ内に読者が実行できる番号付きの手順'),
+    'Unperformed verification steps must be numbered inside details.');
+assert.ok(resultsDocumentNormalizer.includes('番号付きの手順を折りたたむ')
+    && resultsDocumentNormalizerTest.includes("['番号付きの手順を折りたたむ'], 'fail'"),
+    'Numbered steps outside details must fail the application check.');
 
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
@@ -2954,6 +2963,13 @@ assert.ok(resultsEvidence.includes('if (!evidenceCount)')
     'Results verification rows must exclude operations, aggregate missing evidence and retain failed tasks');
 assert.ok(resultsSkill.includes('verificationEvidence: verificationPrompt(buildVerificationTable('));
 assert.ok(resultsSkill.includes('appAssertions.push(...checkResultsTopAnswer('));
+assert.ok(resultsSkill.indexOf('renderResultsFigures(normalizedHtml)') > resultsSkill.indexOf('this.normalizeAndValidate(output,')
+    && resultsSkill.indexOf('renderResultsFigures(normalizedHtml)') < resultsSkill.indexOf('prepareResultsContent(html,')
+    && resultsFigures.includes('図を表示できませんでした')
+    && resultsFigures.includes("source: 'app'")
+    && resultsFiguresTest.includes('RESULTS_FIGURES_TEST=passed')
+    && rootPackage.scripts['test:results-figures'].includes('scripts/test-results-figures.mjs'),
+    'Results figures must be validated and rendered before media processing with a visible fallback.');
 assert.ok(agentWindowSource.includes('アプリの確認記録') && agentWindowSource.includes('判断待ち {humanCount}件'));
 assert.ok(resultsGenerationServer.includes('evidence.summary + (evidence.humanCount > 0')
     && resultsGenerationServer.includes('冒頭で件数に触れる場合は「${verificationSentence}」をそのまま使ってください。'),

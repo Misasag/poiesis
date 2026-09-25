@@ -3,9 +3,43 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const {
+    assertNoActiveResultsContent,
+    checkResultsTopAnswer,
     formatExecutionEvidence,
-    normalizeAiResultsHtml
+    normalizeAiResultsHtml,
+    RESULTS_VISIBLE_PROSE_MAX_CHARS
 } = require('../agent-window/lib/browser/results-document-normalizer.js');
+
+const verification = { counts: { pass: 0, fail: 0, unknown: 0, outdated: 0, human: 0 },
+    total: 0, humanCount: 0, summary: '確認なし' };
+const figure = '<figure data-poiesis-figure-rendered="flow"><figcaption>操作が続きます。</figcaption></figure>';
+const document = (opening, next = figure, rest = '') => `<html><body><p>${opening}</p>${next}${rest}</body></html>`;
+const statuses = (html, table = verification, options = {}) => Object.fromEntries(
+    checkResultsTopAnswer(html, table, options).map(result => [result.text, result.status]));
+assert.equal(RESULTS_VISIBLE_PROSE_MAX_CHARS, 400);
+assert(Object.values(statuses(document('入力を保持します。'))).every(status => status === 'pass'));
+assert.equal(statuses(document('入力を保持します。確認できました。次も動きます。'))['冒頭に1〜2文の短い回答がある'], 'fail');
+assert.equal(statuses(document('入力を保持します。', ''))['冒頭の直後に主図がある'], 'fail');
+assert.equal(statuses(document('入力を保持します。', '<svg><rect/></svg>'))['冒頭の直後に主図がある'], 'fail');
+assert.equal(statuses(document('入力を保持します。', '<img src="shot.png" alt="画面">'))['冒頭の直後に主図がある'], 'pass');
+const small = { files: ['one.ts'], diff: '+line\n+line' };
+assert.equal(statuses(document('入力を保持します。', ''), verification, { changeSet: small })['冒頭の直後に主図がある'], 'pass');
+assert.equal(statuses(document('入力を保持します。', ''), verification, { changeSet: small, imageInputs: ['shot.png'] })['冒頭の直後に主図がある'], 'fail');
+for (const heading of ['何が変わったか', '開始ボタンとは', '変更点', '概要', 'Test Plan', '確認できたこと']) {
+    assert.equal(statuses(`<html><body><h2>${heading}</h2><p>入力を保持します。</p>${figure}</body></html>`)['見出しと折りたたみの名前が対象を示す'], 'fail', heading);
+}
+assert.equal(statuses(document('入力を保持します。', figure, '<details><summary>まとめ</summary>記録</details>'))['見出しと折りたたみの名前が対象を示す'], 'fail');
+assert.equal(statuses(document('何が残るか分かります。'))['冒頭と図の文が疑問詞で始まらない'], 'fail');
+assert.equal(statuses(document('入力を保持します。', '<figure data-poiesis-figure-rendered="flow"><figcaption>どう進むか分かります。</figcaption></figure>'))['冒頭と図の文が疑問詞で始まらない'], 'fail');
+assert.equal(statuses(document('入力を保持します。', figure, '<ul><li><strong>確認</strong>: 成功</li></ul>'))['太字の札とコロンを使わない'], 'fail');
+assert.equal(statuses(document('入力を保持します。', figure, '<ol><li>画面を開く</li></ol>'))['番号付きの手順を折りたたむ'], 'fail');
+assert.equal(statuses(document('入力を保持します。', figure, '<details><summary>画面の確認手順</summary><ol><li>画面を開く</li></ol></details>'))['番号付きの手順を折りたたむ'], 'pass');
+assert.equal(statuses(document('入力を保持します。', figure, `<p>${'長'.repeat(410)}</p>`))['折りたたみの外の文章が短い'], 'fail');
+assert.equal(statuses(document('入力を保持します。', figure, `<details><summary>実行記録</summary>${'長'.repeat(500)}</details>`))['折りたたみの外の文章が短い'], 'pass');
+const unresolved = { ...verification, counts: { ...verification.counts, fail: 1, unknown: 1, outdated: 1 },
+    humanCount: 1, total: 4 };
+assert.equal(statuses(document('入力を保持します。', figure, '<p>失敗: 接続。未確認: 操作。以前の結果: 撮影。判断待ち: 配布。</p>'), unresolved)['確認状況がアプリの記録と一致する'], 'pass');
+assert.equal(statuses(document('入力を保持します。', figure, '<details><summary>接続の記録</summary>失敗、未確認、以前の結果、判断待ち</details>'), unresolved)['確認状況がアプリの記録と一致する'], 'fail');
 
 const titled = normalizeAiResultsHtml(
     '<!doctype html><html><head><title>Result</title></head><body><h1>Long task title…</h1><p>Body</p></body></html>',
@@ -24,6 +58,27 @@ assert.throws(() => normalizeAiResultsHtml(
     '<html><head></head><body><script>alert(1)</script></body></html>',
     { taskTitle: 'Unsafe' }
 ), /scripts or external resources/, 'Script-bearing output must still be rejected.');
+assert.doesNotThrow(() => normalizeAiResultsHtml(
+    '<html><body><figure data-poiesis-figure="flow"><script>alert(1)</script></figure></body></html>',
+    { taskTitle: 'Figure content' }
+), 'Figure renderer removes forbidden markup inside figure data.');
+for (const [html, label] of [
+    ['<figure><img src="a.png" alt="画面"><script>alert(1)</script></figure>', 'plain figure'],
+    ['<figure data-poiesis-figure-x="flow"><script>alert(1)</script></figure>', 'look-alike figure attribute'],
+    ['<section onclick="alert(1)"><p>本文</p></section>', 'ordinary section'],
+    ['<section data-poiesis-decisions onclick="alert(1)"><p>本文</p></section>', 'look-alike decision attribute']
+]) {
+    assert.throws(() => normalizeAiResultsHtml(`<html><body>${html}</body></html>`, { taskTitle: 'Unsafe' }),
+        /scripts or external resources/, `Active content inside a ${label} must be rejected.`);
+}
+assert.throws(() => assertNoActiveResultsContent('<html><body><div onclick="x()">a</div></body></html>'),
+    /scripts or external resources/, 'The rendered document is checked with the same rule.');
+assert.equal(statuses('<html><body><section><p>入力を保持します。</p></section><section><figure data-poiesis-figure-rendered="flow"><figcaption>操作が続きます。</figcaption></figure></section></body></html>')['冒頭の直後に主図がある'], 'pass',
+    'Layout wrappers between the answer and the visual must not hide the main figure.');
+assert.equal(statuses(document('入力を保持します。', '<figure><img src="shot.png" alt="画面"><figcaption>画面です。</figcaption></figure>'))['冒頭の直後に主図がある'], 'pass',
+    'A captioned image counts as the main visual.');
+assert.equal(statuses(document('入力を保持します。', '<section data-poiesis-decision-rendered="decision"><h3>配布</h3></section>'))['冒頭の直後に主図がある'], 'fail',
+    'A decision card is not the main visual.');
 
 const fenced = normalizeAiResultsHtml(
     '```html\n<html><head></head><body><p>Fenced</p></body></html>\n```',

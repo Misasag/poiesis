@@ -158,7 +158,12 @@ try {
     assert.notEqual(appScrollbar.dark.color, appScrollbar.light.color);
     await appPage.close();
     const prompt = await readFile('agent-window/src/node/results-generation-server.ts', 'utf8');
-    for (const marker of ['2〜4文', '12ノード以下', '変更前', '変更後', '創作しない', '<details><summary>', 'evidence[].image', 'data-poiesis-image']) assert.ok(prompt.includes(marker), marker);
+    for (const marker of ['1〜2文', '図の部品', 'data-poiesis-figure', '創作しない', '<details>', 'evidence[].image', 'data-poiesis-image']) assert.ok(prompt.includes(marker), marker);
+    const figureStyle = await readFile('agent-window/src/browser/results-rich-content.ts', 'utf8');
+    for (const marker of ['.poiesis-figure__columns', '.poiesis-figure__tree', '.poiesis-decision li',
+        'var(--results-fg)', 'var(--results-muted)', 'var(--results-border)', 'var(--results-accent)', 'var(--results-bg)',
+        '@media (max-width: 560px)']) assert.ok(figureStyle.includes(marker), marker);
+    assert.match(figureStyle, /\.poiesis-figure[^\n]*!important/, 'App figure style must override generated CSS.');
     console.log('RESULTS_RICH_CONTENT_TEST: path confinement, signatures, budgets, decode, sanitizer, details, prompt passed');
 } finally {
     await browser?.close();

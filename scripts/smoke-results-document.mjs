@@ -563,10 +563,9 @@ function seedCitationDurableState(workspacePath) {
                 taskId,
                 status: 'ready',
                 generator: 'ai',
-                html: '<!doctype html><html><head><title>Citation</title></head><body><h2 style="font-family: Georgia, serif">根拠</h2><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></body></html>',
+                html: '<!doctype html><html><head><title>Citation</title></head><body><h2 style="font-family: Georgia, serif">引用先</h2><p>引用先を開けるようにしました。</p><p>確認は未確認です。</p><details open><summary>引用先の記録</summary><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></details></body></html>',
                 assertions: [
                     { text: '変更ファイルがある場合、本文に根拠引用がある', source: 'app', status: 'pass' },
-                    { text: '本文に見出し（h2〜h4）がある', source: 'app', status: 'pass' },
                     { text: '空の見出しがない', source: 'app', status: 'pass' }
                 ],
                 assertionAttempts: 1

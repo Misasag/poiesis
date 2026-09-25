@@ -47,7 +47,9 @@ const expectedPrompts = [
     [requests[1], visibleReplies[1], requests[2]],
     [requests[0], '花子', requests[2], '太郎', requests[3]]
 ];
-const deterministicResultsHtml = '<!doctype html><html lang="ja"><body><main><h1>タスクリスト設計</h1><p>決定済み応答を使った実アプリ検証です。</p></main></body></html>';
+const deterministicResultsHtml = '<!doctype html><html lang="ja"><body><main><p>決定済み応答を使った実アプリ検証です。</p>'
+    + '<figure data-poiesis-figure="flow"><ol><li>依頼を受ける</li><li data-changed>設計を更新する</li></ol><figcaption>依頼に合わせて設計を更新します。</figcaption></figure>'
+    + '<p>確認は未確認です。</p></main></body></html>';
 
 const port = await freePort();
 const uiUrl = `http://127.0.0.1:${port}`;

@@ -1,7 +1,8 @@
 import { CliCallRecord } from '../common/cli-usage';
 import { hashChangeSet } from '../common/change-set-hash';
 import { buildVerificationTable, verificationPrompt } from './results-evidence';
-import { checkResultsTopAnswer } from './results-document-normalizer';
+import { assertNoActiveResultsContent, checkResultsTopAnswer } from './results-document-normalizer';
+import { renderResultsFigures } from './results-figures';
 import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import {
@@ -414,9 +415,17 @@ export class AiResultsSkill implements ResultsSkill {
         const observedModel = calls.filter(call => call.purpose === 'results-generation').at(-1)?.model ?? request.model;
         input.onProgress?.({ phase: 'judge', ...judgeSelection,
             attempt: request.attempt ?? 1, startedAt: new Date().toISOString() });
-        const html = this.normalizeAndValidate(output, input.requirement?.title ?? input.task.title);
+        const normalizedHtml = this.normalizeAndValidate(output, input.requirement?.title ?? input.task.title);
+        const figures = renderResultsFigures(normalizedHtml);
+        assertNoActiveResultsContent(figures.html);
+        const html = figures.html;
         const appAssertions = checkAppResultsAssertions(html, input.changeSet.files);
-        appAssertions.push(...checkResultsTopAnswer(html, buildVerificationTable(input.requirement?.tasks ?? [input.task], input.changeSet)));
+        appAssertions.push(...figures.assertions);
+        appAssertions.push(...checkResultsTopAnswer(html, buildVerificationTable(input.requirement?.tasks ?? [input.task], input.changeSet), {
+            changeSet: input.changeSet,
+            imageInputs: (input.requirement?.tasks ?? [input.task]).flatMap(task => task.hookEvidence ?? [])
+                .flatMap(report => report.evidence).flatMap(entry => entry.image ? [entry.image] : [])
+        }));
         if (/<(?:img|svg)[\s>]/i.test(html)) {
             const media = await prepareResultsContent(html, request.workspaceUri,
                 (workspace, paths) => this.generationServer.resolveImages(workspace, paths));
