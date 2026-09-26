@@ -12,6 +12,8 @@ import {
     AgentRuntimeServer,
     GitChangeSetCapture,
     GitSnapshotCapture,
+    EncodingDamage,
+    RestoreEncodingDamageResult,
     KnownCliId
 } from '../common/agent-runtime-protocol';
 import type { AgentActivity, AgentActivityKind } from '../common/agent-provider';
@@ -34,6 +36,12 @@ export interface TaskChangeSet {
     files: string[];
     capturedAt: string;
     error?: string;
+    encodingDamage?: EncodingDamage[];
+    encodingDamageErrors?: string[];
+}
+
+export interface TaskEncodingRestore extends RestoreEncodingDamageResult {
+    restoredAt: string;
 }
 
 export interface TaskChangedFileSummary {
@@ -173,6 +181,7 @@ export interface ExecutionTask {
     baselineSnapshotId?: string;
     endSnapshotId?: string;
     changeSet?: TaskChangeSet;
+    encodingRestore?: TaskEncodingRestore;
     failure?: TaskFailure;
     activities?: AgentActivity[];
     usage?: CliUsage;
@@ -188,7 +197,7 @@ export interface ExecutionTask {
 }
 
 export interface TaskEvent {
-    type: 'started' | 'ended' | 'failed' | 'cancelled';
+    type: 'started' | 'ended' | 'failed' | 'cancelled' | 'updated';
     task: ExecutionTask;
 }
 
@@ -209,6 +218,7 @@ export class TaskService {
     static readonly MAX_RESULTS_QUESTION_CHARS = 4_000;
     static readonly MAX_RESULTS_RESPONSE_CHARS = 12_000;
     protected readonly tasks = new Map<string, ExecutionTask>();
+    protected readonly restoringEncodingTaskIds = new Set<string>();
     protected readonly baselineCaptures = new Map<string, Promise<GitSnapshotCapture>>();
     protected readonly terminalFinalizers = new Set<(task: ExecutionTask) => Promise<void>>();
     protected readonly finalizingTaskIds = new Set<string>();
@@ -486,6 +496,49 @@ export class TaskService {
 
     get(taskId: string): ExecutionTask | undefined {
         return this.tasks.get(taskId);
+    }
+
+    hasRunningTaskInWorkspace(task: ExecutionTask): boolean {
+        if (!task.workspaceUri) { return false; }
+        const workspace = new URI(task.workspaceUri).path.fsPath().replace(/\\/g, '/').toLocaleLowerCase();
+        return this.list().some(other => other.id !== task.id && other.status === 'running'
+            && other.workspaceUri && new URI(other.workspaceUri).path.fsPath()
+                .replace(/\\/g, '/').toLocaleLowerCase() === workspace);
+    }
+
+    async restoreEncodingDamage(taskId: string): Promise<TaskEncodingRestore> {
+        const task = this.tasks.get(taskId);
+        const damage = task?.changeSet?.encodingDamage ?? [];
+        const paths = damage.map(item => item.path).filter(path =>
+            !task?.encodingRestore?.restoredPaths.includes(path)
+            && (!task?.encodingRestore || task.encodingRestore.skippedReasons[path] === 'unavailable'));
+        if (!task || task.status === 'running' || this.hasRunningTaskInWorkspace(task)
+            || this.restoringEncodingTaskIds.has(taskId) || !task.workspaceUri
+            || !task.baselineSnapshotId || !task.endSnapshotId || paths.length === 0) {
+            throw new Error('作業前の内容を戻せません。');
+        }
+        const workspacePath = new URI(task.workspaceUri).path.fsPath();
+        this.restoringEncodingTaskIds.add(taskId);
+        try {
+            const result = await this.runtimeServer.restoreEncodingDamage({
+                workspacePath, baselineSnapshotId: task.baselineSnapshotId,
+                endSnapshotId: task.endSnapshotId, paths
+            });
+            const restoredPaths = [...new Set([
+                ...(task.encodingRestore?.restoredPaths ?? []), ...result.restoredPaths
+            ])];
+            const skippedReasons = { ...task.encodingRestore?.skippedReasons, ...result.skippedReasons };
+            for (const path of restoredPaths) { delete skippedReasons[path]; }
+            const skippedPaths = damage.map(item => item.path).filter(path => skippedReasons[path]);
+            const encodingRestore = { restoredPaths, skippedPaths, skippedReasons,
+                restoredAt: new Date().toISOString() };
+            const updated = { ...task, encodingRestore };
+            this.tasks.set(taskId, updated);
+            this.onDidChangeEmitter.fire({ type: 'updated', task: updated });
+            return encodingRestore;
+        } finally {
+            this.restoringEncodingTaskIds.delete(taskId);
+        }
     }
 
     list(sessionId?: string): ExecutionTask[] {

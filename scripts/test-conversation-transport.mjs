@@ -21,6 +21,10 @@ history.push(
 
 const restoredHistory = JSON.parse(JSON.stringify(history));
 const prompt = buildAgentExecutionPrompt('私の名前は何ですか。', restoredHistory);
+assert(prompt.includes('Edit files with your file-editing tool (for example apply_patch).'));
+assert(prompt.includes('Windows PowerShell 5.1 Get-Content, Set-Content or Out-File without explicit UTF-8 encoding'));
+assert(prompt.includes('git checkout, git restore, git reset, git stash or git show'));
+assert(prompt.includes('Never revert changes you did not make.'));
 assert(prompt.includes('私の名前は花子です'));
 assert(prompt.includes('名前は太郎です'));
 assert(prompt.indexOf('名前は太郎です') > prompt.indexOf('私の名前は花子です'));

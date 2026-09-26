@@ -99,6 +99,8 @@ interface ResultsMetadataBadge {
 }
 
 export class ResultsPart extends AgentWindowPart {
+    protected readonly encodingRestorePending = new Set<string>();
+    protected readonly encodingRestoreErrors = new Map<string, string>();
     protected richSignature = '';
     protected richContent?: PreparedResults;
     protected imageViewer?: { source: string; label: string; trigger?: HTMLElement };
@@ -131,6 +133,7 @@ export class ResultsPart extends AgentWindowPart {
                 .find(task => task?.id === session.selectedResultsTaskId && task?.status !== 'running')
             : undefined;
         const latestTask = selectedRequirement ? this.host.sessions.latestTaskForRequirement(selectedRequirement) : undefined;
+        const encodingTask = selectedTask ?? latestTask;
         const scopeKey = selectedTask?.id ?? (selectedRequirement ? `requirement:${selectedRequirement.id}` : undefined);
         const document = selectedTask
             ? this.resultsService.get(selectedTask.id)
@@ -226,6 +229,13 @@ export class ResultsPart extends AgentWindowPart {
                                 <p>{visibleChangeSet.error}</p>
                             </div>
                         )}
+                        {encodingTask?.changeSet?.encodingDamage?.length
+                            ? this.renderEncodingDamageNotice(encodingTask, Boolean(session?.archived)) : null}
+                        {encodingTask?.changeSet?.encodingDamageErrors?.length
+                            ? <div className='poiesis-results__state poiesis-results__capture-notice' role='status'>
+                                <strong>文字の状態を確認できなかったファイル {encodingTask.changeSet.encodingDamageErrors.length}件</strong>
+                                <ul>{encodingTask.changeSet.encodingDamageErrors.map(path => <li key={path}>{path}</li>)}</ul>
+                            </div> : null}
                         {selectedRequirement && (document?.status === 'generating' && !document.html
                                 || latestTask?.status === 'completed' && !document) && (
                             <div className='poiesis-results__empty poiesis-results__generating'>
@@ -285,6 +295,52 @@ export class ResultsPart extends AgentWindowPart {
                 )}
             </section>
         );
+    }
+
+    protected renderEncodingDamageNotice(task: ExecutionTask, archived: boolean): React.ReactNode {
+        const damage = task.changeSet?.encodingDamage ?? [];
+        const outcome = task.encodingRestore;
+        const restored = new Set(outcome?.restoredPaths ?? []);
+        const remaining = damage.filter(item => !restored.has(item.path));
+        const actionable = remaining.filter(item => !outcome || outcome.skippedReasons[item.path] === 'unavailable');
+        const pending = this.encodingRestorePending.has(task.id);
+        const busy = this.taskService.hasRunningTaskInWorkspace(task);
+        return <div className='poiesis-results__state poiesis-results__encoding-damage' role='alert'>
+            <strong>{remaining.length > 0 ? `文字が壊れたファイル ${remaining.length}件`
+                : `${restored.size}件を作業前の内容に戻しました`}</strong>
+            {remaining.length > 0 && <p>作業の前は正しく読めた文字が、作業の後は読めない状態になっています。</p>}
+            <ul>{damage.map(item => <li key={item.path}>{item.path}: {restored.has(item.path)
+                ? '作業前の内容に戻しました'
+                : outcome?.skippedReasons[item.path] === 'changed-after-task'
+                    ? '作業の後に変更されているため戻せませんでした'
+                    : outcome?.skippedReasons[item.path] === 'unavailable'
+                        ? 'このファイルは戻せませんでした' : '文字を読めない状態です'}</li>)}</ul>
+            {actionable.length > 0 && !archived && <>
+                <p>このファイルに AI が加えた変更も元に戻ります。</p>
+                {busy && <p>別の作業が実行中です。終わってから戻せます。</p>}
+                <button type='button' disabled={pending || busy} onClick={() => void this.restoreDamagedFiles(task.id)}>
+                    {pending ? '戻しています…' : '作業前の内容に戻す'}
+                </button>
+            </>}
+            {this.encodingRestoreErrors.get(task.id) && <p>{this.encodingRestoreErrors.get(task.id)}</p>}
+        </div>;
+    }
+
+    protected async restoreDamagedFiles(taskId: string): Promise<void> {
+        if (this.encodingRestorePending.has(taskId)) { return; }
+        this.encodingRestorePending.add(taskId);
+        this.encodingRestoreErrors.delete(taskId);
+        this.update();
+        try {
+            await this.taskService.restoreEncodingDamage(taskId);
+            await this.host.sessions.persistWindowState();
+        } catch (error) {
+            this.encodingRestoreErrors.set(taskId,
+                error instanceof Error ? error.message : '作業前の内容に戻せませんでした。');
+        } finally {
+            this.encodingRestorePending.delete(taskId);
+            this.update();
+        }
     }
 
     protected ensureRichResults(html: string, workspace: string, paths: string[], scope?: string): void {

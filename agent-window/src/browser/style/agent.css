@@ -325,6 +325,11 @@
     color: var(--poiesis-chrome-text);
 }
 
+.poiesis-agent-window__encoding-damage-chip {
+    border-color: #aa5549;
+    color: #b65d52;
+}
+
 .poiesis-agent-window__requirement-classification {
     align-items: center;
     color: #8f928b;

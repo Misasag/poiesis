@@ -112,6 +112,7 @@ export interface GitChangeSetBetweenRequest {
     fromSnapshotId: string;
     toSnapshotId: string;
     paths?: string[];
+    detectEncodingDamage?: boolean;
 }
 
 export interface GitChangeSetCapture {
@@ -120,6 +121,26 @@ export interface GitChangeSetCapture {
     files: string[];
     endSnapshotId?: string;
     error?: string;
+    encodingDamage?: EncodingDamage[];
+    encodingDamageErrors?: string[];
+}
+
+export interface EncodingDamage {
+    path: string;
+    reason: 'invalid-utf8' | 'replacement-characters';
+}
+
+export interface RestoreEncodingDamageRequest {
+    workspacePath: string;
+    baselineSnapshotId: string;
+    endSnapshotId: string;
+    paths: string[];
+}
+
+export interface RestoreEncodingDamageResult {
+    restoredPaths: string[];
+    skippedPaths: string[];
+    skippedReasons: Record<string, 'changed-after-task' | 'unavailable'>;
 }
 
 export interface GitSnapshotFileRequest {
@@ -182,6 +203,7 @@ export interface AgentRuntimeServer extends RpcServer<AgentRuntimeClient> {
     captureGitChangeSet(request: GitChangeSetRequest): Promise<GitChangeSetCapture>;
     captureGitChangeSetBetween(request: GitChangeSetBetweenRequest): Promise<GitChangeSetCapture>;
     readGitSnapshotFile(request: GitSnapshotFileRequest): Promise<GitSnapshotFileCapture>;
+    restoreEncodingDamage(request: RestoreEncodingDamageRequest): Promise<RestoreEncodingDamageResult>;
     runCodex(request: CodexExecutionRequest): Promise<void>;
     cancelCodex(executionId: string): Promise<void>;
     browseFolders(request: FolderBrowserRequest): Promise<FolderBrowserResult>;
