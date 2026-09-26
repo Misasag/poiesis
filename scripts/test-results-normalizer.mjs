@@ -6,8 +6,7 @@ const {
     assertNoActiveResultsContent,
     checkResultsTopAnswer,
     formatExecutionEvidence,
-    normalizeAiResultsHtml,
-    RESULTS_VISIBLE_PROSE_MAX_CHARS
+    normalizeAiResultsHtml
 } = require('../agent-window/lib/browser/results-document-normalizer.js');
 
 const verification = { counts: { pass: 0, fail: 0, unknown: 0, outdated: 0, human: 0 },
@@ -16,7 +15,6 @@ const figure = '<figure data-poiesis-figure-rendered="flow"><figcaption>操作�
 const document = (opening, next = figure, rest = '') => `<html><body><p>${opening}</p>${next}${rest}</body></html>`;
 const statuses = (html, table = verification, options = {}) => Object.fromEntries(
     checkResultsTopAnswer(html, table, options).map(result => [result.text, result.status]));
-assert.equal(RESULTS_VISIBLE_PROSE_MAX_CHARS, 400);
 assert(Object.values(statuses(document('入力を保持します。'))).every(status => status === 'pass'));
 assert.equal(statuses(document('入力を保持します。確認できました。次も動きます。'))['冒頭に1〜2文の短い回答がある'], 'fail');
 assert.equal(statuses(document('入力を保持します。', ''))['冒頭の直後に主図がある'], 'fail');
@@ -34,8 +32,9 @@ assert.equal(statuses(document('入力を保持します。', '<figure data-poie
 assert.equal(statuses(document('入力を保持します。', figure, '<ul><li><strong>確認</strong>: 成功</li></ul>'))['太字の札とコロンを使わない'], 'fail');
 assert.equal(statuses(document('入力を保持します。', figure, '<ol><li>画面を開く</li></ol>'))['番号付きの手順を折りたたむ'], 'fail');
 assert.equal(statuses(document('入力を保持します。', figure, '<details><summary>画面の確認手順</summary><ol><li>画面を開く</li></ol></details>'))['番号付きの手順を折りたたむ'], 'pass');
-assert.equal(statuses(document('入力を保持します。', figure, `<p>${'長'.repeat(410)}</p>`))['折りたたみの外の文章が短い'], 'fail');
-assert.equal(statuses(document('入力を保持します。', figure, `<details><summary>実行記録</summary>${'長'.repeat(500)}</details>`))['折りたたみの外の文章が短い'], 'pass');
+// The owner decided against a prose cap (2026-09-26): prose length alone never fails a document or triggers a regeneration.
+const longProse = checkResultsTopAnswer(document('入力を保持します。', figure, `<p>${'長'.repeat(410)}</p>`), verification);
+assert(longProse.every(result => result.status === 'pass') && !longProse.some(result => /文章が短い|字以内/.test(result.text + result.evidence)));
 const unresolved = { ...verification, counts: { ...verification.counts, fail: 1, unknown: 1, outdated: 1 },
     humanCount: 1, total: 4 };
 assert.equal(statuses(document('入力を保持します。', figure, '<p>失敗: 接続。未確認: 操作。以前の結果: 撮影。判断待ち: 配布。</p>'), unresolved)['確認状況がアプリの記録と一致する'], 'pass');

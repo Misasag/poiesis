@@ -3,7 +3,6 @@ import type { VerificationTable } from './results-evidence';
 import type { TaskChangeSet } from './task-service';
 import type { ResultsAssertionResult } from './results-assertions';
 
-export const RESULTS_VISIBLE_PROSE_MAX_CHARS = 400;
 export const RESULTS_GENERIC_HEADINGS = [
     '変更点', '主な変更点', '変更したこと', '変更内容', '確認できたこと', '未確認の点', '動作確認',
     '動作確認の手順', 'まとめ', '概要', '背景', '根拠', '結論', '要点', 'ポイント', '補足',
@@ -76,11 +75,7 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable,
         .map(match => decodeBasicEntities(match[1].replace(/<[^>]*>/g, '')).trim());
     const firstSentence = answer.split(/[。！？!?]/)[0].trim();
     const labelLines = [...outside.matchAll(/<(?:p|li)\b[^>]*>\s*<(?:strong|b)\b[^>]*>\s*[^<]{1,24}\s*<\/(?:strong|b)>\s*[:：]/gi)];
-    const visible = outside.replace(/<figure\b[^>]*>[\s\S]*?<\/figure\s*>/gi, match =>
-        match.match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption\s*>/i)?.[1] ?? '')
-        .replace(/<(?:table|pre|code|svg)\b[^>]*>[\s\S]*?<\/(?:table|pre|code|svg)\s*>/gi, ' ');
     const numberedOutside = /<ol\b/i.test(outside.replace(/<figure\b[^>]*>[\s\S]*?<\/figure\s*>/gi, ' '));
-    const visibleCount = [...decodeBasicEntities(visible.replace(/<[^>]*>/g, '')).replace(/\s/g, '')].length;
     return [
         { source: 'app', text: '冒頭に1〜2文の短い回答がある', status: exists ? 'pass' : 'fail',
             evidence: exists ? '冒頭の回答を確認しました。' : '最初の見出しの直後（または本文先頭）に1〜2文の段落を置いてください。' },
@@ -98,9 +93,7 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable,
         { source: 'app', text: '太字の札とコロンを使わない', status: labelLines.length === 0 ? 'pass' : 'fail',
             evidence: '段落や箇条書きの先頭に太字の短い札とコロンを置かず、内容をそのまま書いてください。' },
         { source: 'app', text: '番号付きの手順を折りたたむ', status: !numberedOutside ? 'pass' : 'fail',
-            evidence: '番号付きの確認手順は、具体的な名前の<details>の中に置いてください。' },
-        { source: 'app', text: '折りたたみの外の文章が短い', status: visibleCount <= RESULTS_VISIBLE_PROSE_MAX_CHARS ? 'pass' : 'fail',
-            evidence: `折りたたみの外の本文を${RESULTS_VISIBLE_PROSE_MAX_CHARS}字以内にしてください。現在${visibleCount}字です。` }
+            evidence: '番号付きの確認手順は、具体的な名前の<details>の中に置いてください。' }
     ];
 }
 
