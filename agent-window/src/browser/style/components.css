@@ -114,24 +114,7 @@ details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
     overflow-y: auto;
     padding: 4px;
     position: fixed;
-    scrollbar-color: #666961 transparent;
-    scrollbar-width: thin;
     z-index: 500;
-}
-
-.poiesis-select__listbox::-webkit-scrollbar {
-    width: 8px;
-}
-
-.poiesis-select__listbox::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.poiesis-select__listbox::-webkit-scrollbar-thumb {
-    background: #666961;
-    background-clip: padding-box;
-    border: 2px solid transparent;
-    border-radius: 999px;
 }
 
 .poiesis-select__option {
@@ -360,21 +343,6 @@ details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
     overflow-x: auto;
     overflow-y: hidden;
     padding: 5px 9px;
-    scrollbar-color: #666961 transparent;
-    scrollbar-width: thin;
-}
-
-.poiesis-model-picker__filters::-webkit-scrollbar {
-    height: 4px;
-}
-
-.poiesis-model-picker__filters::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 999px;
-}
-
-.poiesis-model-picker__filters:hover::-webkit-scrollbar-thumb {
-    background: #666961;
 }
 
 .poiesis-model-picker__filters button {
@@ -400,8 +368,6 @@ details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
     overflow-x: hidden;
     overflow-y: auto;
     padding: 4px;
-    scrollbar-color: #666961 transparent;
-    scrollbar-width: thin;
 }
 
 .poiesis-model-picker__group {
@@ -639,8 +605,63 @@ details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-width: thin;
     width: 100%;
+}
+
+/* Chromium uses these pseudo-elements only when scrollbar-color and scrollbar-width are unset. */
+:root {
+    --poiesis-scrollbar-opacity: 18%;
+    --poiesis-scrollbar-hover-opacity: 35%;
+}
+
+html[data-poiesis-color-mode='light'] {
+    --poiesis-scrollbar-opacity: 22%;
+    --poiesis-scrollbar-hover-opacity: 40%;
+}
+
+:is(#poiesis-window-host, #poiesis-window-host *, .poiesis-select__listbox,
+    .poiesis-model-picker__popover, .poiesis-model-picker__popover *,
+    .poiesis-settings-modal, .poiesis-settings-modal *,
+    body .lm-Widget.dialogOverlay, body .lm-Widget.dialogOverlay *):not(.monaco-editor, .monaco-editor *)::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+:is(#poiesis-window-host, #poiesis-window-host *, .poiesis-select__listbox,
+    .poiesis-model-picker__popover, .poiesis-model-picker__popover *,
+    .poiesis-settings-modal, .poiesis-settings-modal *,
+    body .lm-Widget.dialogOverlay, body .lm-Widget.dialogOverlay *):not(.monaco-editor, .monaco-editor *)::-webkit-scrollbar-track,
+:is(#poiesis-window-host, #poiesis-window-host *, .poiesis-select__listbox,
+    .poiesis-model-picker__popover, .poiesis-model-picker__popover *,
+    .poiesis-settings-modal, .poiesis-settings-modal *,
+    body .lm-Widget.dialogOverlay, body .lm-Widget.dialogOverlay *):not(.monaco-editor, .monaco-editor *)::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+:is(#poiesis-window-host, #poiesis-window-host *, .poiesis-select__listbox,
+    .poiesis-model-picker__popover, .poiesis-model-picker__popover *,
+    .poiesis-settings-modal, .poiesis-settings-modal *,
+    body .lm-Widget.dialogOverlay, body .lm-Widget.dialogOverlay *):not(.monaco-editor, .monaco-editor *)::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+:is(#poiesis-window-host, #poiesis-window-host *, .poiesis-select__listbox,
+    .poiesis-model-picker__popover, .poiesis-model-picker__popover *,
+    .poiesis-settings-modal, .poiesis-settings-modal *,
+    body .lm-Widget.dialogOverlay, body .lm-Widget.dialogOverlay *):not(.monaco-editor, .monaco-editor *)::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--poiesis-chrome-text, currentColor) var(--poiesis-scrollbar-opacity), transparent) padding-box;
+}
+
+:is(#poiesis-window-host, #poiesis-window-host *, .poiesis-select__listbox,
+    .poiesis-model-picker__popover, .poiesis-model-picker__popover *,
+    .poiesis-settings-modal, .poiesis-settings-modal *,
+    body .lm-Widget.dialogOverlay, body .lm-Widget.dialogOverlay *):not(.monaco-editor, .monaco-editor *)::-webkit-scrollbar-thumb:hover {
+    border-width: 2px;
+    background: color-mix(in srgb, var(--poiesis-chrome-text, currentColor) var(--poiesis-scrollbar-hover-opacity), transparent) padding-box;
 }
 
 .poiesis-customize-view.is-detail {

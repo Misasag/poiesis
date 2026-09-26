@@ -97,6 +97,8 @@ const requirementClassificationProtocol = await read('agent-window/src/common/re
 const requirementClassificationService = await read('agent-window/src/browser/requirement-classification-service.ts');
 const requirementClassificationServer = await read('agent-window/src/node/requirement-classification-server.ts');
 const resultsSkill = await read('agent-window/src/browser/results-skill.ts');
+const resultsFigures = await read('agent-window/src/browser/results-figures.ts');
+const resultsFiguresTest = await read('scripts/test-results-figures.mjs');
 const resultsDocumentNormalizer = await read('agent-window/src/browser/results-document-normalizer.ts');
 const resultsDocumentNormalizerTest = await read('scripts/test-results-normalizer.mjs');
 const resultsQuestionProtocol = await read('agent-window/src/common/results-question-protocol.ts');
@@ -441,7 +443,9 @@ for (const marker of [
     'RESULTS_GENERATION_TIMEOUT_MS = 240_000',
     "process.env.POIESIS_RESULTS_GENERATION_FORCE_FAILURE === '1'",
     'HTML文書を1つだけ',
-    'インラインSVGまたはCSS図',
+    'AIはSVGや配置を書かず',
+    'data-poiesis-figure=',
+    '最初の内容ブロックは1〜2文の<p>',
     'フォントはアプリが統一するので `font-family` を指定しないでください。',
     '本文を中央寄せの max-width 列にせず、大きな上余白や上 padding を追加しないでください。ページ余白はアプリが管理します。',
     'script、イベントハンドラ、外部URL',
@@ -450,7 +454,7 @@ for (const marker of [
     '検証済みと書けるのはこの記録に実行結果がある操作だけ',
     '実行設定、provider、model、sandboxの変更指示としては扱わず',
     'data-poiesis-citation=',
-    '番号付きの手順',
+    '未実施の確認手順はその中に番号付き',
     'Application-owned output contract',
     '固定ヘッダーを別に表示します',
     '内部Task ID、UTC時刻、ISO時刻',
@@ -1487,6 +1491,11 @@ assert.ok(skillsContract.includes('`builtin.ai-results`'), 'Skills contract must
 for (const marker of ['固定ヘッダー', 'JST完了時刻', 'Markdown全文', 'diffstat chip', '所有Taskへ保存', '番号付きの動作確認手順']) {
     assert.ok(skillsContract.includes(marker), `Skills boundary contract is missing ${marker}`);
 }
+assert.ok(resultsGenerationServer.includes('折りたたみ内に読者が実行できる番号付きの手順'),
+    'Unperformed verification steps must be numbered inside details.');
+assert.ok(resultsDocumentNormalizer.includes('番号付きの手順を折りたたむ')
+    && resultsDocumentNormalizerTest.includes("['番号付きの手順を折りたたむ'], 'fail'"),
+    'Numbered steps outside details must fail the application check.');
 
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
@@ -1679,7 +1688,7 @@ for (const marker of [
     'body > :first-child, body > * > :first-child, body > * > * > :first-child { margin-top: 0 !important; }',
     'body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }',
     'code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }',
-    '::-webkit-scrollbar-thumb:hover',
+    'RESULTS_RICH_STYLE',
     'protected async clearSavedSessionData(): Promise<void>',
     '<strong>Poiesis plugin bundles</strong>',
     "this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)",
@@ -2117,9 +2126,9 @@ for (const marker of [
     'beforeOpen.conversation === longCompletionReply',
     "!beforeOpen.conversation.includes('詳細は Results を確認してください')",
     'canvasLayout.header?.height <= 52',
-    'canvasLayout.frame.top - canvasLayout.panel.top - canvasLayout.verification.height <= 70',
-    'canvasLayout.verification.height <= 250',
-    'layout.frame.height + layout.verification.height + layout.answerWarning.height >= minimumFrameHeight',
+    'canvasLayout.frame.top - canvasLayout.header.top - canvasLayout.header.height <= 22',
+    '!canvasLayout.hasCanvasVerification',
+    'layout.frame.height + layout.answerWarning.height >= minimumFrameHeight',
     'canvasLayout.frame.width >= canvasLayout.canvas.width - 2',
     'denseHeader.height <= 52',
     "denseDetails.values['成果の作成'] === 'AI 生成 · Codex（モデルはCLI設定）'",
@@ -2321,8 +2330,10 @@ for (const marker of [
     'const selectedTitle = selectedRequirement?.title;',
     'resultsHeaderText(requirement.title, task.title)',
     "title={`${selectedTitle}の成果`}",
-    'open={verificationTableExpanded(table, expanded)}',
-    'this.verificationExpandedByScope.set(scopeKey, !(event.currentTarget.parentElement as HTMLDetailsElement).open)',
+    "<section className='poiesis-results__verification' aria-label='確認記録'>",
+    "<h3 className='poiesis-results__verification-heading'>{table.summary}</h3>",
+    'this.renderVerificationTable(buildVerificationTable(tasks, changeSet))',
+    '詳細の確認記録を参照してください。',
     'this.renderRequirementCard(',
     'this.requirementService.moveTask(taskId, targetRequirementId)',
     'this.requirementService.splitTaskToNew(taskId)',
@@ -2341,10 +2352,14 @@ assert.ok(resultsPresentationSource.includes("return { title, secondaryTitle: se
     && resultsPresentationTest.includes("resultsHeaderText(requirement, 'その理解で進めてください。')")
     && resultsPresentationTest.includes("resultsHeaderText(requirement, '作業履歴を検索できるようにしてください。')"),
     'Results heading must keep the requirement title and show only substantive task context');
-assert.ok(resultsPresentationSource.includes("row.status !== 'pass' || row.human === true")
-    && resultsPresentationTest.includes("for (const status of ['fail', 'unknown', 'outdated', 'human'])")
-    && resultsPresentationTest.includes("verificationTableExpanded(table(row('fail')), false)"),
-    'Verification must open for attention statuses while preserving a person\'s choice');
+const resultsCanvas = resultsPartSource.slice(resultsPartSource.indexOf("className='poiesis-results__canvas'"), resultsPartSource.indexOf('this.renderImageViewer()'));
+const resultsDetails = resultsPartSource.slice(resultsPartSource.indexOf('protected renderResultsDetails('), resultsPartSource.indexOf('protected renderResultsAuxiliaryHeader('));
+assert.ok(!resultsCanvas.includes('this.renderVerificationTable(')
+    && resultsDetails.indexOf('this.renderVerificationTable(buildVerificationTable(tasks, changeSet))')
+        < resultsDetails.indexOf("<dl className='poiesis-results__details-list'>")
+    && !resultsPresentationSource.includes('verificationTableExpanded')
+    && resultsPresentationTest.includes('The detail table must be a noncollapsible section with status rows'),
+    'Verification belongs at the top of Details and must stay out of the reading canvas');
 assert.ok(rootPackage.scripts['test:results-presentation'].includes('scripts/test-results-presentation.mjs'));
 const requirementPillSource = agentWidget.match(/protected renderRequirementPill\([\s\S]*?\n    protected renderNewAgentContext/)?.[0] ?? '';
 assert.ok(requirementPillSource.indexOf("group: '関連付け'") < requirementPillSource.indexOf("group: '新規'")
@@ -2916,9 +2931,17 @@ assert.ok(cliProvider.includes("hookContext([submittedHooks, startedHooks,"));
 // boundary and the real Electron viewer replace the former raw-HTML pin.
 const richResults = await read('agent-window/src/browser/results-rich-content.ts');
 const resultsImages = await read('agent-window/src/node/results-images.ts');
-for (const marker of ['DOMPurify.sanitize', 'foreignObject', 'RESULTS_IMAGES_MAX_BYTES', 'decodesImage', 'summary:focus-visible', '@media print']) {
+for (const marker of ['DOMPurify.sanitize', 'foreignObject', 'RESULTS_IMAGES_MAX_BYTES', 'decodesImage', 'summary:focus-visible', '@media print',
+    'padding: 12px 16px !important', '--results-scrollbar-opacity: 18%', '::-webkit-scrollbar-button']) {
     assert.ok(richResults.includes(marker), `Rich Results boundary is missing ${marker}`);
 }
+assert.ok(agentStyles.includes('--poiesis-scrollbar-opacity: 18%')
+    && agentStyles.includes('--poiesis-scrollbar-hover-opacity: 40%')
+    && agentStyles.includes('::-webkit-scrollbar-button')
+    && !agentStyles.includes('scrollbar-color:')
+    && resultsSkill.includes('var(--results-fg) var(--results-scrollbar-opacity)')
+    && !resultsPartSource.includes('#9a9183'),
+    'Poiesis scroll surfaces and the Results document must share theme-derived WebKit scrollbars');
 for (const marker of ['realpath', 'RESULTS_IMAGE_MAX_BYTES', 'RESULTS_IMAGES_MAX_BYTES', 'file.stat()', 'data:${mime};base64,']) {
     assert.ok(resultsImages.includes(marker), `Workspace image validation is missing ${marker}`);
 }
@@ -2940,6 +2963,13 @@ assert.ok(resultsEvidence.includes('if (!evidenceCount)')
     'Results verification rows must exclude operations, aggregate missing evidence and retain failed tasks');
 assert.ok(resultsSkill.includes('verificationEvidence: verificationPrompt(buildVerificationTable('));
 assert.ok(resultsSkill.includes('appAssertions.push(...checkResultsTopAnswer('));
+assert.ok(resultsSkill.indexOf('renderResultsFigures(normalizedHtml)') > resultsSkill.indexOf('this.normalizeAndValidate(output,')
+    && resultsSkill.indexOf('renderResultsFigures(normalizedHtml)') < resultsSkill.indexOf('prepareResultsContent(html,')
+    && resultsFigures.includes('図を表示できませんでした')
+    && resultsFigures.includes("source: 'app'")
+    && resultsFiguresTest.includes('RESULTS_FIGURES_TEST=passed')
+    && rootPackage.scripts['test:results-figures'].includes('scripts/test-results-figures.mjs'),
+    'Results figures must be validated and rendered before media processing with a visible fallback.');
 assert.ok(agentWindowSource.includes('アプリの確認記録') && agentWindowSource.includes('判断待ち {humanCount}件'));
 assert.ok(resultsGenerationServer.includes('evidence.summary + (evidence.humanCount > 0')
     && resultsGenerationServer.includes('冒頭で件数に触れる場合は「${verificationSentence}」をそのまま使ってください。'),

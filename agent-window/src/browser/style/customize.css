@@ -247,7 +247,6 @@
     min-width: 0;
     overflow-x: auto;
     padding: 2px;
-    scrollbar-width: thin;
 }
 
 .poiesis-customize-view__tabs {

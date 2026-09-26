@@ -154,7 +154,8 @@ const workspaceSkillService = {
     }
 };
 
-const generatedHtml = '<!doctype html><html lang="ja"><body><main><h2>変更内容</h2><p>説明を更新しました。動作は未確認です。</p><a data-poiesis-citation="README.md:1">README.md</a></main></body></html>';
+// A document that meets the application's writing checks, so the first attempt is kept without a regeneration.
+const generatedHtml = '<!doctype html><html lang="ja"><body><main><p>説明を更新しました。動作は未確認です。</p><a data-poiesis-citation="README.md:1">README.md</a></main></body></html>';
 const generationRequests = [];
 const generationServer = {
     async generate(request) {

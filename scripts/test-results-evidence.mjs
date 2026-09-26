@@ -59,8 +59,8 @@ assert.equal(cancelledTask.counts.fail, 1);
 assert.match(cancelledTask.rows[0].detail, /キャンセル/);
 assert.equal(buildVerificationTable([{ changeSet: current, activities: [{ kind: 'command', status: 'running' }] }], current).counts.unknown, 1);
 const passing = buildVerificationTable([{ changeSet: current, activities: [{ kind: 'command', status: 'completed' }] }], current);
-const doc = answer => `<html><body><main><h2>要点</h2><p>${answer}</p><h2>根拠</h2></main></body></html>`;
-const good = '入力を保持できるようにしました。確認4件中1件成功で、通信の確認は失敗、以前の結果が残ります。配布するか人間の判断が必要です。';
+const doc = answer => `<html><body><main><h2>入力保持</h2><p>${answer}</p><figure data-poiesis-figure-rendered="flow"><figcaption>入力が保持されます。</figcaption></figure><p>通信確認は失敗、撮影は以前の結果、配布は判断待ちです。未確認の項目も残ります。</p></main></body></html>`;
+const good = '入力を保持できるようにしました。通信確認は失敗、撮影は以前の結果、配布は判断待ちです。';
 assert(checkResultsTopAnswer(normalizeAiResultsHtml(doc(good), { taskTitle: '入力保持' }).html, table).every(a => a.status === 'pass'));
 assert(checkResultsTopAnswer(doc('操作を終了しました。確認1件中1件未確認です。'), passing).every(a => a.status === 'pass'));
 assert(checkResultsTopAnswer(doc('探索を終了しました。確認1件中1件未確認です。'), execution).every(a => a.status === 'pass'));
@@ -90,11 +90,10 @@ for (const answer of [
     '入力を保持します。全件成功です。',
     '入力を保持します。確認4件中4件成功です。失敗は残り、判断が必要です。',
     '入力を保持します。成功 ５件です。未確認と判断待ちです。',
-    '入力を保持します。合格率100%です。',
-    '入力を保持します。確認4件中1件成功です。',
-    '入力を保持します。確認4件中1件成功で失敗もあります。',
-    '説明だけ'
+    '入力を保持します。合格率100%です。'
 ]) assert(checkResultsTopAnswer(doc(answer), table).some(a => a.status === 'fail'), answer);
+assert(checkResultsTopAnswer(doc('入力を保持します。確認4件中1件成功です。'), table).every(a => a.status === 'pass'),
+    'Status outside the opening paragraph satisfies the contract.');
 for (const html of ['<h2>空</h2>', `<details><summary>要点</summary><p>${good}</p></details>`, `<table></table><p>${good}</p>`, `<p hidden>${good}</p>`]) {
     assert.equal(checkResultsTopAnswer(html, table)[0].status, 'fail');
 }
@@ -104,6 +103,6 @@ assert.equal(packet.summary, table.summary);
 assert.equal(packet.operationSummary, table.operationSummary);
 assert(packet.omittedRows > 0);
 const prompt = await readFile('agent-window/src/node/results-generation-server.ts', 'utf8');
-for (const text of ['App verification table', '2〜4文', '利用者への変更', '最重要の未確認', 'AI本文に確認表を再生成しない', '入力保持を確認した手順', 'details の中だけに置かない']) assert(prompt.includes(text), text);
+for (const text of ['App verification table', '1〜2文', 'AI本文に確認表を再生成しない', '図の部品', 'data-poiesis-decision', 'details の中だけに置かない']) assert(prompt.includes(text), text);
 assert(prompt.includes('冒頭で件数に触れる場合は「${verificationSentence}」をそのまま使ってください。'));
 console.log('results-evidence tests passed');

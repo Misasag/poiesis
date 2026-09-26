@@ -593,11 +593,3 @@ html[data-poiesis-color-mode='light'] body .lm-Widget.dialogOverlay .dialogContr
     border-color: #704323;
     color: #ffffff;
 }
-
-html[data-poiesis-color-mode='light'] :is(
-    .poiesis-agent-window__content ::-webkit-scrollbar-thumb,
-    .poiesis-settings-modal ::-webkit-scrollbar-thumb,
-    body .lm-Widget.dialogOverlay ::-webkit-scrollbar-thumb
-) {
-    background: #b1b4ab;
-}

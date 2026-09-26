@@ -563,10 +563,9 @@ function seedCitationDurableState(workspacePath) {
                 taskId,
                 status: 'ready',
                 generator: 'ai',
-                html: '<!doctype html><html><head><title>Citation</title></head><body><h2 style="font-family: Georgia, serif">根拠</h2><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></body></html>',
+                html: '<!doctype html><html><head><title>Citation</title></head><body><h2 style="font-family: Georgia, serif">引用先</h2><p>引用先を開けるようにしました。</p><p>確認は未確認です。</p><details open><summary>引用先の記録</summary><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></details></body></html>',
                 assertions: [
                     { text: '変更ファイルがある場合、本文に根拠引用がある', source: 'app', status: 'pass' },
-                    { text: '本文に見出し（h2〜h4）がある', source: 'app', status: 'pass' },
                     { text: '空の見出しがない', source: 'app', status: 'pass' }
                 ],
                 assertionAttempts: 1
@@ -582,7 +581,7 @@ async function smokeCitation(page) {
         const session = state?.sessions?.find(candidate => (candidate.tasks ?? []).some(task => task.id === taskId));
         const task = session?.tasks?.find(candidate => candidate.id === taskId);
         const resultDocument = task?.resultsDocument ?? session?.resultsDocuments?.find(candidate => candidate.taskId === taskId);
-        return Array.isArray(resultDocument?.assertions) && resultDocument.assertions.length === 3;
+        return Array.isArray(resultDocument?.assertions) && resultDocument.assertions.length === 2;
     }, timeout);
     const session = persisted?.sessions?.find(candidate => (candidate.tasks ?? []).some(task => task.id === taskId));
     const task = session?.tasks?.find(candidate => candidate.id === taskId);
@@ -601,11 +600,12 @@ async function smokeCitation(page) {
         assertions: resultDocument?.assertions,
         attempts: resultDocument?.assertionAttempts
     };
-    assert(assertionState.summary === '3/3 通過'
-        && assertionState.conditions.length === 3
+    // The seeded document carries the two application checks that remain after the always-passing heading check was removed.
+    assert(assertionState.summary === '2/2 通過'
+        && assertionState.conditions.length === 2
         && assertionState.conditions.every((condition, index) => condition.status === 'pass'
             && condition.text === assertionState.assertions[index]?.text)
-        && assertionState.assertions?.length === 3
+        && assertionState.assertions?.length === 2
         && assertionState.assertions.every(result => result.source === 'app' && result.status === 'pass')
         && assertionState.attempts === 1,
     `AI assertion results were not persisted and rendered: ${JSON.stringify(assertionState)}`);
@@ -701,6 +701,12 @@ async function smokeFallback(page, diagnostics) {
         && details['タスク履歴'] === '1件'
         && !details['成果の生成条件'],
     `The disclosed Results metadata is incomplete: ${JSON.stringify(details)}`);
+    assert(await page.$('.poiesis-results__canvas .poiesis-results__verification') === null,
+        'The verification table must not sit above the Results body.');
+    assert(await page.$eval('#poiesis-results-details-panel .poiesis-results__verification', section =>
+        Boolean(section.querySelector('.poiesis-results__verification-heading')?.textContent?.startsWith('確認 '))
+        && section.querySelectorAll('tbody tr[data-status]').length > 0) === true,
+        'The verification table must open as the first section of the Details panel.');
     await page.click('[aria-label="詳細を閉じる"]');
     const canvasLayout = await page.evaluate(() => {
         const bounds = selector => {
@@ -713,15 +719,15 @@ async function smokeFallback(page, diagnostics) {
             panel: bounds('#poiesis-results-panel'),
             canvas: bounds('.poiesis-results__canvas'),
             header: bounds('.poiesis-results__fixed-header'),
-            verification: bounds('.poiesis-results__canvas .poiesis-results__verification'),
+            hasCanvasVerification: Boolean(document.querySelector('.poiesis-results__canvas .poiesis-results__verification')),
             frame: bounds('.poiesis-results__document')
         };
     });
     assert(canvasLayout.header?.height <= 52,
         `The Results fixed header is taller than 52px at 1280x720: ${JSON.stringify(canvasLayout)}`);
-    assert(canvasLayout.verification?.height > 0 && canvasLayout.verification.height <= 250,
-        `The app-owned evidence band must be visible and bounded: ${JSON.stringify(canvasLayout)}`);
-    assert(canvasLayout.frame && canvasLayout.panel && canvasLayout.frame.top - canvasLayout.panel.top - canvasLayout.verification.height <= 70,
+    assert(!canvasLayout.hasCanvasVerification,
+        `The verification table must stay in Details: ${JSON.stringify(canvasLayout)}`);
+    assert(canvasLayout.frame && canvasLayout.header && canvasLayout.frame.top - canvasLayout.header.top - canvasLayout.header.height <= 22,
         `The Results document starts too far below the panel top: ${JSON.stringify(canvasLayout)}`);
     assert(canvasLayout.frame && canvasLayout.canvas && canvasLayout.frame.width >= canvasLayout.canvas.width - 2,
         `The Results document does not use the canvas width: ${JSON.stringify(canvasLayout)}`);
@@ -945,7 +951,7 @@ async function measureResultsLayout(page) {
             canvas: rect(document.querySelector('.poiesis-results__canvas')),
             header: rect(header),
             frame: rect(document.querySelector('.poiesis-results__document')),
-            verification: rect(document.querySelector('.poiesis-results__canvas .poiesis-results__verification')),
+            hasCanvasVerification: Boolean(document.querySelector('.poiesis-results__canvas .poiesis-results__verification')),
             answerWarning: document.querySelector('.poiesis-results__answer-warning') ? rect(document.querySelector('.poiesis-results__answer-warning')) : { height: 0 },
             title: rect(title),
             actions: actions.map(rect),
@@ -967,9 +973,9 @@ function assertResultsLayout(layout, { label, minimumFrameHeight }) {
         && layout.actions.every(bounds => bounds.left >= layout.header.left - 1 && bounds.right <= layout.header.right + 1)
         && layout.title.right <= layout.actions[0].left - 4,
     `${label} clipped document-toolbar content: ${JSON.stringify(layout)}`);
-    assert(layout.verification.height > 0 && layout.verification.height <= 270 && layout.answerWarning.height <= 100,
-        `${label} must keep app evidence compact: ${JSON.stringify(layout)}`);
-    assert(layout.frame.height >= 220 && layout.frame.height + layout.verification.height + layout.answerWarning.height >= minimumFrameHeight,
+    assert(!layout.hasCanvasVerification && layout.answerWarning.height <= 100,
+        `${label} must keep verification in Details and any warning compact: ${JSON.stringify(layout)}`);
+    assert(layout.frame.height >= 220 && layout.frame.height + layout.answerWarning.height >= minimumFrameHeight,
         `${label} did not preserve enough document reading height: ${JSON.stringify(layout)}`);
 }
 

@@ -179,6 +179,42 @@ export function parseCliOutput(providerId: KnownCliId, stdout: string): CliOutpu
     return result;
 }
 
+const PI_DELTA_EVENT = /^\s*\{\s*"type"\s*:\s*"message_update"\s*[,}]/;
+
+/**
+ * Collects one-shot CLI stdout for parseCliOutput. pi's JSON mode emits one message_update event per
+ * token delta with a fixed envelope, so a Japanese reply grows about 90 times in transit; the parser
+ * never reads those events, so they are dropped before callers measure the output against their limit.
+ */
+export class CliStdoutBuffer {
+    protected kept = '';
+    protected partial = '';
+
+    constructor(protected readonly providerId: KnownCliId) { }
+
+    append(text: string): void {
+        if (this.providerId !== 'pi') {
+            this.kept += text;
+            return;
+        }
+        const lines = `${this.partial}${text}`.split('\n');
+        this.partial = lines.pop() ?? '';
+        for (const line of lines) {
+            if (!PI_DELTA_EVENT.test(line)) {
+                this.kept += `${line}\n`;
+            }
+        }
+    }
+
+    get length(): number {
+        return this.kept.length + this.partial.length;
+    }
+
+    toString(): string {
+        return `${this.kept}${this.partial}`;
+    }
+}
+
 export function finishCliCall(
     start: Pick<CliCallRecord, 'purpose' | 'providerId' | 'model' | 'effort' | 'startedAt' | 'attempt'>,
     usage?: CliUsage, exitCode?: number | null, now = new Date()

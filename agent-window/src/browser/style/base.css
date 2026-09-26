@@ -354,18 +354,3 @@ body .lm-Widget.dialogOverlay :is(button, .theia-button, .closeButton):focus-vis
     outline: 2px solid #c28b60;
     outline-offset: 2px;
 }
-
-body .lm-Widget.dialogOverlay ::-webkit-scrollbar {
-    height: 8px;
-    width: 8px;
-}
-
-body .lm-Widget.dialogOverlay ::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-body .lm-Widget.dialogOverlay ::-webkit-scrollbar-thumb {
-    background: #5c5f58;
-    border: 2px solid transparent;
-    border-radius: 999px;
-}

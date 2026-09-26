@@ -1,4 +1,5 @@
 import { readChildUtf8 } from './child-utf8';
+import { CliStdoutBuffer } from '../common/cli-usage';
 import { captureCliCall, CliCallCapture } from './cli-call';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -182,7 +183,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
         run: RequirementClassificationRun
     ): Promise<RequirementClassificationResult> {
         return new Promise(resolvePromise => {
-            let stdout = '';
+            const stdout = new CliStdoutBuffer(run.call.start.providerId);
             let stderr = '';
             let settled = false;
             let timedOut = false;
@@ -195,7 +196,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 clearTimeout(timeout);
                 this.runs.delete(taskId);
                 void this.cleanupPrompt(run);
-                run.call.parse(stdout);
+                run.call.parse(stdout.toString());
                 resolvePromise(result);
             };
             const timeout = setTimeout(() => {
@@ -208,10 +209,9 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 if (tooLarge) {
                     return;
                 }
-                stdout += text;
+                stdout.append(text);
                 if (stdout.length > OUTPUT_MAX_CHARS) {
                     tooLarge = true;
-                    stdout = stdout.slice(0, OUTPUT_MAX_CHARS);
                     void killHiddenProcessTree(run.process);
                 }
             }, text => {
@@ -227,7 +227,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
             });
             run.process.once('close', (code, signal) => {
                 run.call.exitCode = code ?? undefined;
-                const output = run.call.parse(stdout);
+                const output = run.call.parse(stdout.toString());
                 if (timedOut) {
                     finish(this.failed({ code: 'timeout', message: '要件の自動分類が時間内に完了しませんでした。' }));
                     return;
@@ -265,7 +265,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
         run: RequirementClassificationRun
     ): Promise<RequirementTitleSuggestionResult> {
         return new Promise(resolvePromise => {
-            let stdout = '';
+            const stdout = new CliStdoutBuffer(run.call.start.providerId);
             let stderr = '';
             let settled = false;
             let timedOut = false;
@@ -278,7 +278,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 clearTimeout(timeout);
                 this.runs.delete(taskId);
                 void this.cleanupPrompt(run);
-                run.call.parse(stdout);
+                run.call.parse(stdout.toString());
                 resolvePromise(result);
             };
             const timeout = setTimeout(() => {
@@ -291,10 +291,9 @@ export class RequirementClassificationServerImpl implements RequirementClassific
                 if (tooLarge) {
                     return;
                 }
-                stdout += text;
+                stdout.append(text);
                 if (stdout.length > OUTPUT_MAX_CHARS) {
                     tooLarge = true;
-                    stdout = stdout.slice(0, OUTPUT_MAX_CHARS);
                     void killHiddenProcessTree(run.process);
                 }
             }, text => {
@@ -310,7 +309,7 @@ export class RequirementClassificationServerImpl implements RequirementClassific
             });
             run.process.once('close', (code, signal) => {
                 run.call.exitCode = code ?? undefined;
-                const output = run.call.parse(stdout);
+                const output = run.call.parse(stdout.toString());
                 if (timedOut) {
                     finish({ status: 'failed', error: { code: 'timeout', message: '要件名の提案が時間内に完了しませんでした。' } });
                     return;

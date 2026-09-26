@@ -622,7 +622,8 @@ progressService.onDidChange(document => { if (document.progress) progressEvents.
 await progressService.generateTask(progressTask);
 assert.deepEqual(progressEvents.map(document => document.progress.phase), ['generation', 'judge', 'regeneration', 'judge']);
 assert.deepEqual(progressEvents.map(document => document.progress.attempt), [1, 1, 2, 2]);
-assert.equal(progressEvents[2].progress.failedAssertions, 5, 'Missing citation, top answer, verification count phrase, evidence consistency and skill evidence must trigger regeneration');
+// Counts are shown by the application badges, so the opening no longer has to repeat them; a frame heading such as 「概要」 fails instead.
+assert.equal(progressEvents[2].progress.failedAssertions, 4, 'Missing citation, evidence consistency, a frame heading and skill evidence must trigger regeneration');
 assert.equal(new Set(progressEvents.map(document => document.generationStartedAt)).size, 1);
 assert(progressEvents[1].progress.startedAt > progressEvents[0].progress.startedAt, 'Phase clocks must restart.');
 assert(progressEvents.every(document => document.progress.model === 'gpt-6-astra'));

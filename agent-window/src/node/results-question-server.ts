@@ -1,4 +1,5 @@
 import { readChildUtf8 } from './child-utf8';
+import { CliStdoutBuffer } from '../common/cli-usage';
 import { captureCliCall, CliCallCapture } from './cli-call';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -147,7 +148,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
 
     protected collectResult(taskId: string, run: ResultsQuestionRun): Promise<ResultsQuestionResult> {
         return new Promise(resolvePromise => {
-            let stdout = '';
+            const stdout = new CliStdoutBuffer(run.call.start.providerId);
             let stderr = '';
             let settled = false;
             let timedOut = false;
@@ -161,7 +162,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
                 clearTimeout(timeout);
                 this.runs.delete(taskId);
                 if (run.promptDirectory) { void rm(run.promptDirectory, { recursive: true, force: true }).catch(() => undefined); }
-                run.call.parse(stdout);
+                run.call.parse(stdout.toString());
                 resolvePromise(result);
             };
 
@@ -173,10 +174,9 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             }, this.timeoutMs);
             readChildUtf8(run.process, text => {
                 if (tooLarge) { return; }
-                stdout += text;
+                stdout.append(text);
                 if (stdout.length > RESULTS_QUESTION_OUTPUT_MAX_CHARS) {
                     tooLarge = true;
-                    stdout = stdout.slice(0, RESULTS_QUESTION_OUTPUT_MAX_CHARS);
                     void this.killProcess(run.process);
                 }
             }, text => {
@@ -192,7 +192,7 @@ export class ResultsQuestionServerImpl implements ResultsQuestionServer {
             });
             run.process.once('close', (code, signal) => {
                 run.call.exitCode = code ?? undefined;
-                const output = run.call.parse(stdout);
+                const output = run.call.parse(stdout.toString());
                 if (run.cancelled) {
                     finish({
                         status: 'cancelled',

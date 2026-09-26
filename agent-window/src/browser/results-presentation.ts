@@ -1,5 +1,3 @@
-import type { VerificationTable } from './results-evidence';
-
 export interface ResultsHeaderText {
     title: string;
     secondaryTitle?: string;
@@ -14,9 +12,4 @@ export function resultsHeaderText(requirementTitle: string, taskTitle?: string):
         return { title };
     }
     return { title, secondaryTitle: secondary };
-}
-
-/** Show evidence immediately whenever a person needs to inspect a result. */
-export function verificationTableExpanded(table: VerificationTable, userChoice?: boolean): boolean {
-    return userChoice ?? table.rows.some(row => row.status !== 'pass' || row.human === true);
 }

@@ -1,5 +1,5 @@
 import { CliUsageLine } from '../components/cli-usage';
-import { PreparedResults, prepareResultsContent, RESULTS_RICH_STYLE, sanitizeResultsHtml } from '../results-rich-content';
+import { PreparedResults, prepareResultsContent, RESULTS_RICH_STYLE, sanitizeResultsHtml, wrapFlatResultsBody } from '../results-rich-content';
 import { cliModelLabel, formatCliDuration } from '../cli-usage-display';
 import { sumCliUsage } from '../../common/cli-usage';
 import * as React from '@theia/core/shared/react';
@@ -69,7 +69,7 @@ import { formatTaskElapsedTime, shouldSubmitComposer } from '../composer-behavio
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from '../typography';
 import { formatExecutionEvidence, checkResultsTopAnswer } from '../results-document-normalizer';
 import { buildVerificationTable, VerificationTable, VERIFICATION_LABELS } from '../results-evidence';
-import { resultsHeaderText, verificationTableExpanded } from '../results-presentation';
+import { resultsHeaderText } from '../results-presentation';
 import { Requirement } from '../requirement-model';
 import { RequirementService } from '../requirement-service';
 import { RequirementClassificationService } from '../requirement-classification-service';
@@ -82,8 +82,8 @@ import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
 
 /** Reader-facing wording for failed top-answer checks; the check texts describe the expected state. */
 const TOP_ANSWER_WARNINGS: Readonly<Record<string, string>> = {
-    '冒頭に2〜4文の短い回答がある': '冒頭に短い回答がありません',
-    '冒頭の確認状況がアプリの記録と一致する': '冒頭の確認状況がアプリの記録と一致しません',
+    '冒頭に1〜2文の短い回答がある': '冒頭に短い回答がありません',
+    '確認状況がアプリの記録と一致する': '本文の確認状況がアプリの記録と一致しません',
     '冒頭の確認件数がアプリの記録と一致する': '冒頭の確認件数がアプリの記録と一致しません'
 };
 
@@ -115,8 +115,6 @@ export class ResultsPart extends AgentWindowPart {
     protected requirementRenameDraft = '';
 
     protected readonly expandedRequirementIds = new Set<string>();
-
-    protected readonly verificationExpandedByScope = new Map<string, boolean>();
 
     protected resultsAuxiliaryPanel?: 'navigator' | 'details';
 
@@ -158,7 +156,8 @@ export class ResultsPart extends AgentWindowPart {
         const verification = buildVerificationTable(selectedTask ? [selectedTask]
             : selectedRequirement ? this.host.sessions.finishedTasksForRequirement(selectedRequirement) : [], visibleChangeSet);
         const answerWarnings = document?.html && document.generator === 'ai'
-            ? checkResultsTopAnswer(document.html, verification).filter(result => result.status === 'fail') : [];
+            ? checkResultsTopAnswer(document.html, verification, { changeSet: visibleChangeSet, imageInputs: evidencePaths })
+                .filter(result => result.status === 'fail' && TOP_ANSWER_WARNINGS[result.text]) : [];
 
         return (
             <section
@@ -187,7 +186,8 @@ export class ResultsPart extends AgentWindowPart {
                             questionCount,
                             questionSending,
                             questionPanelExpanded,
-                            verification.humanCount
+                            verification.humanCount,
+                            verification.counts
                         )}
                         {!selectedTask && selectedRequirement && latestTask
                             && this.renderRequirementResultsHeader(
@@ -199,12 +199,12 @@ export class ResultsPart extends AgentWindowPart {
                                 questionCount,
                                 questionSending,
                                 questionPanelExpanded,
-                                verification.humanCount
+                                verification.humanCount,
+                                verification.counts
                             )}
-                        {selectedRequirement && this.renderVerificationTable(verification, scopeKey)}
                         {answerWarnings.length > 0 && <div className='poiesis-results__answer-warning' role='alert'>
                             <strong>本文の確認状況を見直してください</strong>
-                            <span>{answerWarnings.map(result => TOP_ANSWER_WARNINGS[result.text] ?? result.text).join('。')}。上の確認記録を参照してください。</span>
+                            <span>{answerWarnings.map(result => TOP_ANSWER_WARNINGS[result.text] ?? result.text).join('。')}。詳細の確認記録を参照してください。</span>
                         </div>}
                         {latestTask?.status === 'failed' && !document && (
                             <div className='poiesis-results__state error' role='alert'>
@@ -571,7 +571,8 @@ export class ResultsPart extends AgentWindowPart {
         questionCount: number,
         questionSending: boolean,
         questionPanelExpanded: boolean,
-        humanCount = 0
+        humanCount = 0,
+        counts?: VerificationTable['counts']
     ): React.ReactNode {
         const document = this.resultsService.get(task.id);
         const heading = resultsHeaderText(requirement.title, task.title);
@@ -585,7 +586,8 @@ export class ResultsPart extends AgentWindowPart {
             questionPanelExpanded,
             this.resultsActionStatus(document, task),
             humanCount,
-            heading.secondaryTitle
+            heading.secondaryTitle,
+            counts
         );
     }
 
@@ -598,7 +600,8 @@ export class ResultsPart extends AgentWindowPart {
         questionCount: number,
         questionSending: boolean,
         questionPanelExpanded: boolean,
-        humanCount = 0
+        humanCount = 0,
+        counts?: VerificationTable['counts']
     ): React.ReactNode {
         const document = this.resultsService.getRequirement(requirement.id);
         return this.renderResultsToolbar(
@@ -610,7 +613,9 @@ export class ResultsPart extends AgentWindowPart {
             questionSending,
             questionPanelExpanded,
             this.resultsActionStatus(document, latestTask),
-            humanCount
+            humanCount,
+            undefined,
+            counts
         );
     }
 
@@ -624,7 +629,8 @@ export class ResultsPart extends AgentWindowPart {
         questionPanelExpanded: boolean,
         actionStatus: { label: string; kind: string } | undefined,
         humanCount = 0,
-        secondaryTitle?: string
+        secondaryTitle?: string,
+        counts?: VerificationTable['counts']
     ): React.ReactNode {
         const navigatorExpanded = this.resultsAuxiliaryPanel === 'navigator' && this.resultsAuxiliaryScopeKey === scopeKey;
         const detailsExpanded = this.resultsAuxiliaryPanel === 'details' && this.resultsAuxiliaryScopeKey === scopeKey;
@@ -637,6 +643,10 @@ export class ResultsPart extends AgentWindowPart {
                     <h1 data-result-title={title} title={title}>{title}</h1>
                     {secondaryTitle && <span className='poiesis-results__task-subtitle' title={secondaryTitle}>作業: {secondaryTitle}</span>}
                     {humanCount > 0 && <span className='poiesis-results__human-badge' role='status'>判断待ち {humanCount}件</span>}
+                    {counts && (['fail', 'unknown', 'outdated'] as const).map(status => counts[status] > 0 &&
+                        <span key={status} className={`poiesis-results__status-badge poiesis-results__status-badge--${status}`} role='status'>
+                            {VERIFICATION_LABELS[status]} {counts[status]}件
+                        </span>)}
                     {actionStatus && (
                         <span className={`poiesis-results__action-status ${actionStatus.kind}`} role='status'>
                             {actionStatus.kind === 'running' && <span className='codicon codicon-loading codicon-modifier-spin' aria-hidden='true' />}
@@ -688,15 +698,9 @@ export class ResultsPart extends AgentWindowPart {
         );
     }
 
-    protected renderVerificationTable(table: VerificationTable, scopeKey?: string): React.ReactNode {
-        const expanded = scopeKey ? this.verificationExpandedByScope.get(scopeKey) : undefined;
-        return <details key={scopeKey} className='poiesis-results__verification'
-            open={verificationTableExpanded(table, expanded)}>
-            <summary onClick={event => {
-                if (scopeKey) {
-                    this.verificationExpandedByScope.set(scopeKey, !(event.currentTarget.parentElement as HTMLDetailsElement).open);
-                }
-            }}>{table.summary}</summary>
+    protected renderVerificationTable(table: VerificationTable): React.ReactNode {
+        return <section className='poiesis-results__verification' aria-label='確認記録'>
+            <h3 className='poiesis-results__verification-heading'>{table.summary}</h3>
             <div className='poiesis-results__verification-scroll' tabIndex={0} aria-label='確認記録をスクロール'>
                 <table aria-label='アプリの確認記録'>
                     <thead><tr><th scope='col'>確認項目</th><th scope='col'>結果</th><th scope='col'>根拠・判断すること</th></tr></thead>
@@ -712,7 +716,7 @@ export class ResultsPart extends AgentWindowPart {
                 </table>
             </div>
             {table.operationSummary && <div className='poiesis-results__operation-summary'>{table.operationSummary}</div>}
-        </details>;
+        </section>;
     }
 
     protected resultsActionStatus(
@@ -779,6 +783,7 @@ export class ResultsPart extends AgentWindowPart {
                 onKeyDown={event => this.handleResultsAuxiliaryKeyDown(event, () => this.closeResultsAuxiliary())}
             >
                 {this.renderResultsAuxiliaryHeader('詳細', '詳細を閉じる', () => this.closeResultsAuxiliary())}
+                {this.renderVerificationTable(buildVerificationTable(tasks, changeSet))}
                 <dl className='poiesis-results__details-list'>
                     <div>
                         <dt>状態</dt>
@@ -825,7 +830,6 @@ export class ResultsPart extends AgentWindowPart {
                         <dd>{this.host.sessions.finishedTasksForRequirement(requirement).length}件</dd>
                     </div>
                 </dl>
-                {this.renderVerificationTable(buildVerificationTable(tasks, changeSet), `details:${task.id}`)}
                 {assertions.length > 0 && (
                     <ul className='poiesis-results__assertion-list' aria-label='成果の生成条件'>
                         {assertions.map((assertion, index) => (
@@ -1158,7 +1162,7 @@ export class ResultsPart extends AgentWindowPart {
     }
 
     protected resultsDocumentHtml(html: string): string {
-        const sanitized = sanitizeResultsHtml(html).replace(/<html\b[^>]*>/i,
+        const sanitized = wrapFlatResultsBody(sanitizeResultsHtml(html)).replace(/<html\b[^>]*>/i,
             `<html data-theme="${this.host.themePreferenceService.effectiveMode}">`);
         const policy = this.host.state.allowExternalResultsResources
             ? ''
@@ -1177,10 +1181,6 @@ p, li, td, th { font-size: max(15px, .9375rem) !important; }
 table, pre { max-width: 100%; overflow-x: auto; }
 table { display: block; }
 img, svg, figure { max-width: 100%; }
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: #9a9183; background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { background: #766d61; background-clip: padding-box; }
 </style>`;
         const bridge = `<script data-poiesis-results-bridge="v1">
 (function () {
@@ -1219,8 +1219,15 @@ img, svg, figure { max-width: 100%; }
 })();
 </script>`;
         const headContent = [policy, baseStyle].filter(Boolean).join('\n  ');
-        const withHead = /<head(?:\s[^>]*)?>/i.test(sanitized)
-            ? sanitized.replace(/<head(?:\s[^>]*)?>/i, match => `${match}\n  ${headContent}`)
+        const headOpen = /<head(?:\s[^>]*)?>/i;
+        const headClose = /<\/head\s*>/i;
+        // The CSP must come first so it governs everything the AI put in <head>;
+        // the base style goes last so it wins the cascade over AI head styles.
+        const withHead = headOpen.test(sanitized) && headClose.test(sanitized)
+            ? sanitized.replace(headOpen, match => policy ? `${match}\n  ${policy}` : match)
+                .replace(headClose, match => `  ${baseStyle}\n${match}`)
+            : headOpen.test(sanitized)
+                ? sanitized.replace(headOpen, match => `${match}\n  ${headContent}`)
             : /<html(?:\s[^>]*)?>/i.test(sanitized)
                 ? sanitized.replace(/<html(?:\s[^>]*)?>/i, match => `${match}\n<head>\n  ${headContent}\n</head>`)
                 : `<head>\n  ${headContent}\n</head>\n${sanitized}`;
