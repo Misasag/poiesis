@@ -2328,7 +2328,8 @@ for (const marker of [
     "this.renderResultsAuxiliaryHeader('成果'",
     '<h1 data-result-title={title} title={title}>{title}</h1>',
     'const selectedTitle = selectedRequirement?.title;',
-    'resultsHeaderText(requirement.title, task.title)',
+    'resultsHeaderText(requirement.title, taskDisplayTitle(task))',
+    '<span title={taskLabel}>{taskLabel}</span>',
     "title={`${selectedTitle}の成果`}",
     "<section className='poiesis-results__verification' aria-label='確認記録'>",
     "<h3 className='poiesis-results__verification-heading'>{table.summary}</h3>",
@@ -2352,6 +2353,13 @@ assert.ok(resultsPresentationSource.includes("return { title, secondaryTitle: se
     && resultsPresentationTest.includes("resultsHeaderText(requirement, 'その理解で進めてください。')")
     && resultsPresentationTest.includes("resultsHeaderText(requirement, '作業履歴を検索できるようにしてください。')"),
     'Results heading must keep the requirement title and show only substantive task context');
+// A reply such as an approval says nothing about the work; the classifier names the task from what it did.
+assert.ok(requirementClassificationServer.includes('"taskTitle":"新しいタスクで行った作業を表す24文字以内の日本語名詞句"')
+    && requirementClassificationServer.includes('taskTitleは依頼文を写さず')
+    && requirementClassifier.includes('taskTitle: normalizeTaskTitle(parsed.taskTitle)')
+    && resultsPresentationSource.includes('return task.requirementClassification?.taskTitle?.trim() || task.title;')
+    && resultsPresentationTest.includes("const approval = '承認します。実装してください。';"),
+    'Results must label a task by the work it did, not by an approval reply');
 const resultsCanvas = resultsPartSource.slice(resultsPartSource.indexOf("className='poiesis-results__canvas'"), resultsPartSource.indexOf('this.renderImageViewer()'));
 const resultsDetails = resultsPartSource.slice(resultsPartSource.indexOf('protected renderResultsDetails('), resultsPartSource.indexOf('protected renderResultsAuxiliaryHeader('));
 assert.ok(!resultsCanvas.includes('this.renderVerificationTable(')

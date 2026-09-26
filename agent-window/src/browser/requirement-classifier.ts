@@ -29,6 +29,8 @@ export interface ParsedRequirementClassification {
     decision: RequirementClassificationDecision;
     confidence?: number;
     title?: string;
+    /** What the new task actually did, as a short noun phrase; absent when the model omitted it. */
+    taskTitle?: string;
     reason: string;
 }
 
@@ -80,6 +82,7 @@ export function parseClassification(text: string): ParsedRequirementClassificati
             decision: parsed.decision === 'new' && confidence >= 0.8 ? 'new' : 'continue',
             confidence,
             title,
+            taskTitle: normalizeTaskTitle(parsed.taskTitle),
             reason
         };
     } catch {
@@ -98,6 +101,15 @@ export function parseSuggestedRequirementTitle(text: string): string | undefined
     } catch {
         return undefined;
     }
+}
+
+/** A missing or malformed task title leaves the decision intact; the request text stays the fallback label. */
+function normalizeTaskTitle(value: unknown): string | undefined {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+    const title = value.replace(/\s+/g, ' ').trim().replace(/[。.]+$/, '');
+    return title ? title.slice(0, 24) : undefined;
 }
 
 function invalidClassification(): ParsedRequirementClassification {

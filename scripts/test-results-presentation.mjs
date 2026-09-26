@@ -3,9 +3,17 @@ import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 
 const require = createRequire(import.meta.url);
-const { resultsHeaderText } = require('../agent-window/lib/browser/results-presentation.js');
+const { resultsHeaderText, taskDisplayTitle } = require('../agent-window/lib/browser/results-presentation.js');
 
 const requirement = '作業の記録を残して、あとで振り返れるようにしたいです。';
+// A follow-up that only approves a proposal is labelled by the work it started, not by the reply.
+const approval = '承認します。実装してください。';
+assert.equal(taskDisplayTitle({ title: approval, requirementClassification: { taskTitle: '作業履歴の検索機能の実装' } }),
+    '作業履歴の検索機能の実装');
+assert.deepEqual(resultsHeaderText(requirement, taskDisplayTitle({ title: approval, requirementClassification: { taskTitle: '作業履歴の検索機能の実装' } })),
+    { title: requirement, secondaryTitle: '作業履歴の検索機能の実装' });
+assert.equal(taskDisplayTitle({ title: approval }), approval, 'Without a classifier title the request text stays the label');
+assert.equal(taskDisplayTitle({ title: approval, requirementClassification: { taskTitle: '  ' } }), approval);
 assert.deepEqual(resultsHeaderText(requirement, 'その理解で進めてください。'), { title: requirement });
 assert.deepEqual(resultsHeaderText(requirement, '作業履歴を検索できるようにしてください。'),
     { title: requirement, secondaryTitle: '作業履歴を検索できるようにしてください。' });

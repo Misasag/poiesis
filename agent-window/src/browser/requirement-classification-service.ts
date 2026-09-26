@@ -115,7 +115,8 @@ export class RequirementClassificationService {
                     source: 'ai',
                     confidence: parsed.confidence,
                     reason: parsed.reason,
-                    decidedAt: new Date().toISOString()
+                    decidedAt: new Date().toISOString(),
+                    taskTitle: parsed.taskTitle
                 });
                 return;
             }
@@ -127,7 +128,8 @@ export class RequirementClassificationService {
                     source: 'skipped',
                     confidence: parsed.confidence,
                     reason: this.enabled ? 'requirement-changed' : 'setting-off',
-                    decidedAt: new Date().toISOString()
+                    decidedAt: new Date().toISOString(),
+                    taskTitle: parsed.taskTitle
                 });
                 return;
             }
@@ -140,7 +142,8 @@ export class RequirementClassificationService {
                     source: 'ai',
                     confidence: parsed.confidence,
                     reason: 'split-failed',
-                    decidedAt: new Date().toISOString()
+                    decidedAt: new Date().toISOString(),
+                    taskTitle: parsed.taskTitle
                 });
                 return;
             }
@@ -151,6 +154,7 @@ export class RequirementClassificationService {
                 confidence: parsed.confidence,
                 reason: parsed.reason,
                 decidedAt: new Date().toISOString(),
+                taskTitle: parsed.taskTitle,
                 appliedNewRequirementId: split.id,
                 previousRequirementId
             });
