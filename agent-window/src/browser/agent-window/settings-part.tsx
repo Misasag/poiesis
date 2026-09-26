@@ -555,7 +555,9 @@ export class SettingsPart extends AgentWindowPart {
                                 {providerId === 'pi' && <div className='poiesis-settings-modal__cli-help'>
                                     <small>pi は操作前の確認を行いません。コマンドはワークスペースで直接実行されます。</small>
                                     {(() => {
-                                        const model = this.roleModel(role);
+                                        // Another CLI's model name says nothing about pi's provider, so only pi's own choice counts.
+                                        const piChosen = selected === 'pi' && (selectionRole === 'question' ? !sameAsResults : role !== 'judge' || !this.host.state.judgeSameAsResults);
+                                        const model = piChosen ? selectionRole === 'question' ? selectedModel ?? '' : this.roleModel(role) : '';
                                         const piProvider = model ? model.split('/')[0] : 'openrouter';
                                         const providerName = piProvider === 'openrouter' ? 'OpenRouter'
                                             : piProvider === 'openai-codex' ? 'ChatGPT' : piProvider;

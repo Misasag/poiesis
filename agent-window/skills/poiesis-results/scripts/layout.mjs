@@ -57,7 +57,8 @@ function orderProcessing(nodes, edges) {
   }
   return result;
 }
-function arrange(model) {
+// The screen box grows only when a screenshot will be drawn inside it; an empty frame reads as missing content.
+function arrange(model, { screenImage = false } = {}) {
   const boxes = model.nodes.map(n => {
     const column = COLUMNS[n.layer];
     const titleLines = wrapTitle(n.title, column.w - 20);
@@ -70,7 +71,7 @@ function arrange(model) {
     });
     if (n.subs.length > 3) subLines[2] = 'ほかの呼び出しは中身に表示';
     const textHeight = 18 + titleLines.length * 19 + subLines.length * 15 + 10;
-    return { ...n, ...column, title: n.title, titleLines, subLines, h: Math.max(62, textHeight) + (n.kind === 'screen' ? 90 : 0), y: 34 };
+    return { ...n, ...column, title: n.title, titleLines, subLines, h: Math.max(62, textHeight) + (n.kind === 'screen' && screenImage ? 90 : 0), y: 34 };
   });
   const byId = new Map(boxes.map(b => [b.id, b]));
   const processing = orderProcessing(boxes.filter(b => b.layer === 1), model.edges);
@@ -217,11 +218,11 @@ function compactRoutes(model, { boxes, byId, height }, detour) {
   return routed;
 }
 
-export function layoutGraph(nodes, edges, { forceCorridors = false } = {}) {
+export function layoutGraph(nodes, edges, { forceCorridors = false, screenImage = false } = {}) {
   if (!nodes.length) throw new Error('地図の部品がありません。');
   const model = reduceGraph(nodes, edges);
   checkCapacity(model.nodes);
-  const arranged = arrange(model);
+  const arranged = arrange(model, { screenImage });
   let routed = !forceCorridors && compactRoutes(model, arranged, false), routing = 'compact';
   if (!routed && !forceCorridors) { routed = compactRoutes(model, arranged, true); routing = 'detour'; }
   let height = arranged.height, bridges = 0;

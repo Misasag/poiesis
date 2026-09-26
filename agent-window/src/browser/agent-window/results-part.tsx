@@ -254,6 +254,13 @@ export class ResultsPart extends AgentWindowPart {
                             </div>
                         )}
                         {selectedRequirement && document?.html && !this.richContent && <p role='status'>成果を読み込んでいます…</p>}
+                        {selectedRequirement && document?.html && document.progress && this.resultsService.isGenerating(document.taskId) && (
+                            // Regenerating keeps the previous document readable; say so instead of looking idle.
+                            <div className='poiesis-results__regenerating' role='status'>
+                                <PoiesisResultsElapsed key={`${scopeKey}-regenerating`} progress={document.progress} generationStartedAt={document.generationStartedAt} />
+                                <span>終わるまで前の成果を表示しています。</span>
+                            </div>
+                        )}
                         {selectedRequirement && document?.html && this.richContent && (document.status === 'ready' || document.status === 'generating') && (
                             <iframe
                                 key={`${scopeKey}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}
@@ -853,6 +860,11 @@ export class ResultsPart extends AgentWindowPart {
                             {generation?.accessibleLabel ?? (document?.status === 'generating' ? '作成中' : document?.status === 'failed' ? '作成失敗' : '未作成')}
                             {document?.calls?.length ? <CliUsageLine usage={sumCliUsage(document.calls.map(call => call.usage))}
                                 partial={document.calls.some(call => !call.usage)} /> : null}
+                            {document?.html && document.status === 'ready' && !this.resultsService.isGenerating(document.taskId)
+                                && !this.host.sessions.selectedSession()?.archived && (
+                                <button type='button' className='poiesis-results__details-action'
+                                    onClick={() => this.regenerateResults(requirement, selectedTask)}>作り直す</button>
+                            )}
                         </dd>
                     </div>
                     {assertions.length > 0 && (
@@ -1649,6 +1661,14 @@ export class ResultsPart extends AgentWindowPart {
                 history.scrollTop = history.scrollHeight;
             }
         });
+    }
+
+    /** A readable document can be rebuilt on request; a single-task requirement regenerates its task document. */
+    protected regenerateResults(requirement: Requirement, selectedTask: ExecutionTask | undefined): void {
+        const finished = this.host.sessions.finishedTasksForRequirement(requirement);
+        const task = selectedTask ?? (finished.length === 1 ? finished[0] : undefined);
+        this.closeResultsAuxiliary();
+        void (task ? this.retryResults(task.id) : this.retryRequirementResults(requirement.id));
     }
 
     protected async retryResults(taskId: string): Promise<void> {

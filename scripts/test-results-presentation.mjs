@@ -66,6 +66,18 @@ assert(!toolbar.includes('onClick={event => this.toggleResultsAuxiliary') || too
 const documentHtml = resultsPart.slice(resultsPart.indexOf('protected resultsDocumentHtml('), resultsPart.indexOf('public handleResultsFrameMessage('));
 assert(documentHtml.includes('resultsFrameHtml(html, this.host.themePreferenceService.effectiveMode, this.host.state.allowExternalResultsResources)'),
     'The Results panel must hand the skill document to the shared frame builder with the theme and the owner external-resource setting.');
+// Regenerating keeps the previous document on screen, so the app must say that work is running.
+const regenerating = canvas.slice(canvas.indexOf("className='poiesis-results__regenerating'") - 400, canvas.indexOf('終わるまで前の成果を表示しています。'));
+assert(regenerating.includes('document.progress && this.resultsService.isGenerating(document.taskId)')
+    && regenerating.includes("role='status'") && regenerating.includes('<PoiesisResultsElapsed'),
+    'A running regeneration over a readable document must show its elapsed status.');
+// The app owns when a document is rebuilt, so a readable document offers a rebuild in Details.
+assert(details.includes("onClick={() => this.regenerateResults(requirement, selectedTask)}>作り直す</button>")
+    && details.includes("document.status === 'ready' && !this.resultsService.isGenerating(document.taskId)"),
+    'Details must offer a rebuild for a readable document while no generation runs.');
+const regenerate = resultsPart.slice(resultsPart.indexOf('protected regenerateResults('), resultsPart.indexOf('protected async retryResults('));
+assert(regenerate.includes('this.closeResultsAuxiliary();')
+    && regenerate.includes('void (task ? this.retryResults(task.id) : this.retryRequirementResults(requirement.id));'));
 // R9: the frame adds only policy, theme tokens and scrollbar styling; the document owns its own layout.
 const richContent = await readFile('agent-window/src/browser/results-rich-content.ts', 'utf8');
 const frame = richContent.slice(richContent.indexOf('export function resultsFrameHtml('), richContent.indexOf('export class ResultsFrameRetryGate'));

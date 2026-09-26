@@ -46,11 +46,11 @@ const imagePath = (workspace, path, budget) => {
   return { src: `data:${mime};base64,${data.toString('base64')}`, path: rel.replace(/\\/g, '/') };
 };
 
-function validate(prepared, draft) {
+function validate(prepared, draft, imagePaths = []) {
   const reasons = [];
   if (!prepared?.ok || !Array.isArray(prepared?.map?.nodes) || !Array.isArray(prepared?.map?.edges) || !Array.isArray(prepared?.hunks)) return ['準備の出力がありません。準備をやり直してください。'];
   if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return ['JSON の本文をオブジェクトとして書き直してください。'];
-  onlyKeys(draft, ['lead', 'mapCaption', 'nodes', 'edges', 'offMap', 'interpretations', 'concerns', 'unverified'], 'JSON の本文', reasons);
+  onlyKeys(draft, ['lead', 'mapCaption', 'nodes', 'edges', 'offMap', 'screenImage', 'interpretations', 'concerns', 'unverified'], 'JSON の本文', reasons);
   oneSentence(draft.lead, '冒頭', reasons);
   if (prepared.map.nodes.length && list(draft.nodes).length) oneSentence(draft.mapCaption, '地図の説明', reasons);
   const nodes = new Map(prepared.map.nodes.map(n => [n.id, n]));
@@ -76,6 +76,12 @@ function validate(prepared, draft) {
     for (const id of list(item?.hunkIds)) if (prepared.skipped?.includes(hunks.get(id)?.file))
       reasons.push(`地図で解析しないファイル ${hunks.get(id).file} の変更は、ファイルごとの説明へ割り当ててください。`);
     assign(item?.hunkIds, `部品 ${item?.id ?? '(ID なし)'}`);
+  }
+  if (draft.screenImage !== undefined) {
+    if (typeof draft.screenImage !== 'string' || !imagePaths.includes(draft.screenImage.replaceAll('\\', '/')))
+      reasons.push('screenImage は input.json の images か確認の表の画像の path から1つ選んでください。画像がなければこの項目を書きません。');
+    else if (!list(draft.nodes).some(item => nodes.get(item?.id)?.kind === 'screen'))
+      reasons.push('screenImage を使うときは、画面の部品を nodes に選んでください。');
   }
   if (!Array.isArray(draft.edges)) reasons.push('描く矢印を edges に指定してください。');
   const selectedEdges = new Set();
@@ -117,7 +123,10 @@ function render(prepared, draft, evidence, request, input) {
   const edges = new Map(prepared.map.edges.map(e => [e.id, e]));
   const hunks = new Map(prepared.hunks.map(h => [h.id, h]));
   const selected = draft.nodes.map(item => ({ ...nodes.get(item.id), title: item.title, caption: item.caption, hunkIds: item.hunkIds }));
-  const graph = layoutGraph(selected, draft.edges.map(id => edges.get(id)));
+  const budget = { used: 0 };
+  const shotEntry = draft.screenImage ? evidenceImages(evidence).find(item => item.path.replaceAll('\\', '/') === draft.screenImage.replaceAll('\\', '/')) : null;
+  const mapShotImage = shotEntry && selected.some(n => n.kind === 'screen') ? imagePath(prepared.workspace, shotEntry.path, budget) : null;
+  const graph = layoutGraph(selected, draft.edges.map(id => edges.get(id)), { screenImage: Boolean(mapShotImage?.src) });
   const { width, height } = graph;
   const positions = new Map(graph.boxes.map(box => [box.id, box]));
   const diffRows = (lines, file) => lines.map(l => `<span class="ex-l ${l.kind === 'add' ? 'ex-add' : l.kind === 'delete' ? 'ex-del' : ''}" data-diff-file="${esc(file)}" data-diff-line="${l.line}" data-diff-kind="${l.kind}"><span class="ex-n">${l.line}</span>${l.kind === 'add' ? '+' : l.kind === 'delete' ? '-' : ' '} ${esc(l.text)}</span>`).join('');
@@ -177,17 +186,15 @@ function render(prepared, draft, evidence, request, input) {
   svg.push('</svg>');
   const screen = selected.find(n => n.kind === 'screen');
   const screenBox = screen ? positions.get(screen.id) : null;
-  const budget = { used: 0 };
-  const mapShotImage = evidence.mapImage && screenBox ? imagePath(prepared.workspace, evidence.mapImage, budget) : null;
-  const mapShot = mapShotImage?.src ? `<img class="ex-mapshot" src="${esc(mapShotImage.src)}" alt="画面で確かめた表示" data-poiesis-image="${esc(mapShotImage.path)}" style="left:${((screenBox.x + 10) / width * 100).toFixed(3)}%;top:${((screenBox.y + screenBox.h - 84) / height * 100).toFixed(3)}%;width:${((screenBox.w - 20) / width * 100).toFixed(3)}%;height:${(74 / height * 100).toFixed(3)}%;object-fit:contain">` : '';
+  const mapShot = mapShotImage?.src && screenBox ? `<img class="ex-mapshot" src="${esc(mapShotImage.src)}" alt="${esc(shotEntry.label ?? '画面の画像')}" data-poiesis-image="${esc(mapShotImage.path)}" style="left:${((screenBox.x + 10) / width * 100).toFixed(3)}%;top:${((screenBox.y + screenBox.h - 84) / height * 100).toFixed(3)}%;width:${((screenBox.w - 20) / width * 100).toFixed(3)}%;height:${(74 / height * 100).toFixed(3)}%;object-fit:contain">` : '';
   const hits = graph.boxes.map(p => `<details class="ex-hit" name="ex-panel" data-node-id="${p.id}" style="left:${(p.x / width * 100).toFixed(3)}%;top:${(p.y / height * 100).toFixed(3)}%;width:${(p.w / width * 100).toFixed(3)}%;height:${(p.h / height * 100).toFixed(3)}%"><summary aria-label="${esc(p.title)}の中身を右に表示"></summary>${nodePanel(p)}</details>`).join('');
-  const foldedPanels = selected.filter(n => graph.helperIds.includes(n.id)).map(n => `<details class="ex-hit-inline" name="ex-panel" data-node-id="${n.id}"><summary>${esc(n.title)}の中身</summary>${nodePanel(n)}</details>`).join('・');
+  const foldedPanels = selected.filter(n => graph.helperIds.includes(n.id)).map(n => `<details class="ex-hit-inline" name="ex-panel" data-node-id="${n.id}"><summary>${esc(n.title)}</summary>${nodePanel(n)}</details>`).join('・');
   const offMap = draft.offMap.map(item => {
     const count = item.hunkIds.flatMap(id => hunks.get(id).lines).filter(line => line.kind === 'add' || line.kind === 'delete').length;
     return `<details class="ex-hit-inline" name="ex-panel"><summary>${esc(item.title)} ${count}行</summary>${offMapPanel(item)}</details>`;
   }).join('・');
   const concerns = draft.concerns.map(c => `<li><details class="ex-hit-inline" name="ex-panel"><summary>${esc(c.text)}</summary>${concernPanel(c)}</details></li>`).join('');
-  const imageEntries = uniqueImages([...(evidence.images ?? []), ...(evidence.verification?.rows ?? []).filter(row => row.image).map(row => ({ path: row.image, label: row.label }))]);
+  const imageEntries = evidenceImages(evidence);
   const pictures = imageEntries.map(item => ({ ...item, data: imagePath(prepared.workspace, item.path, budget) }));
   const picture = item => item.data.src
     ? `<figure><button type="button" class="ex-image-button" data-poiesis-image="${esc(item.data.path)}"><img src="${esc(item.data.src)}" alt="${esc(item.label ?? item.path)}"></button><figcaption>${esc(item.label ?? item.path)}</figcaption></figure>`
@@ -208,7 +215,7 @@ function render(prepared, draft, evidence, request, input) {
 ${input.task?.status === 'failed' ? '<p>作業を完了できませんでした。</p>' : input.task?.status === 'cancelled' ? '<p>作業は取り消されました。</p>' : ''}
 <figure class="ex-mapfig"><div class="ex-mapviewport"><div class="ex-mapbox">${svg.join('')}${mapShot}${hits}</div></div><figcaption>${esc(draft.mapCaption)}</figcaption></figure>
 <p class="ex-legend">部品を押すと、変更の根拠を右に表示します。</p>
-<p class="ex-legend">実線と「新規」は追加、破線と「変更」は既存への変更、点線の矢印は既存の呼び出しです。矢印 ${graph.edges.length}本・箱の説明に畳んだ呼び出し ${graph.folded.length}本。${graph.bridges ? '線の交差にある切れ目は、つながらずに通り越すことを示します。' : ''}</p>
+<p class="ex-legend">実線と「新規」は追加、破線と「変更」は既存への変更、点線の矢印は既存の呼び出しです。矢印の数字は呼び出している行です。${graph.folded.length ? `補助の処理の呼び出し ${graph.folded.length}か所は、矢印にせず呼び出す側の箱の中に書いています。` : ''}${graph.bridges ? '線の交差にある切れ目は、つながらずに通り越すことを示します。' : ''}</p>
 <div class="ex-tally">新しい関数 ${newFunctions} ・ 手を入れた既存の処理 ${modifiedProcessing} ・ 補助の処理 ${foldedPanels || 'なし'} ・ 地図に載らない変更 ${offMap || 'なし'} ・ 割り当てのない差分 ${unassignedHunks}件</div>
 <h2>依頼と判断</h2><p class="ex-request">${esc(request)}</p><table class="ex-interp"><tr><th>補った判断</th><th>確かめ方</th></tr>${draft.interpretations.map(r => `<tr><td>${esc(r.decision)}</td><td>${esc(r.evidence)}</td></tr>`).join('')}</table>
 ${input.requirement ? `<h2>関連する作業</h2><ul>${(input.requirement.tasks ?? []).map(task => `<li>${esc(task.title)}：${esc(task.completionSummary || task.failureSummary || '確認中')}</li>`).join('')}</ul>` : ''}
@@ -221,6 +228,7 @@ ${verificationHtml}<details><summary>まだ確かめていないこと ${draft.u
 // The app also lists verification images in input.images; show each file once.
 const uniqueImages = items => [...new Map(items.filter(item => typeof item?.path === 'string')
   .map(item => [item.path.replaceAll('\\', '/'), item])).values()];
+const evidenceImages = evidence => uniqueImages([...(evidence.images ?? []), ...(evidence.verification?.rows ?? []).filter(row => row.image).map(row => ({ path: row.image, label: row.label }))]);
 
 const readJson = (name) => {
   const bytes = readFileSync(resolve(process.cwd(), name));
@@ -236,7 +244,7 @@ const readJson = (name) => {
 try {
   rmSync(resolve(process.cwd(), 'results.html'), { force: true });
   const input = readJson('input.json'), prepared = readJson('prepared.json'), draft = readJson('draft.json');
-  const reasons = validate(prepared, draft);
+  const reasons = validate(prepared, draft, evidenceImages({ images: input.images, verification: input.verification }).map(item => item.path.replaceAll('\\', '/')));
   if (input.schema !== 'poiesis-results-input/1') reasons.push('入力の形式が違います。');
   if (reasons.length) emit({ ok: false, reasons });
   else {

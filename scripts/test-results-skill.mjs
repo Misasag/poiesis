@@ -89,6 +89,30 @@ assert.match(readFileSync(htmlPath, 'utf8'), /関連する作業/);
 input.requirement = null;
 writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
 
+// The screen box grows only for a screenshot the AI chose, so a document without images has no empty frame.
+const screenNode = draft.nodes.find(item => prepared.map.nodes.find(node => node.id === item.id)?.kind === 'screen');
+assert(screenNode, 'The fixture draft must include the screen part.');
+const screenHeight = body => body.geometry.boxes.find(box => box.id === screenNode.id).h;
+const plain = render();
+assert.equal(plain.body.ok, true, JSON.stringify(plain.body.reasons));
+const plainHtml = readFileSync(htmlPath, 'utf8');
+assert(!plainHtml.includes('class="ex-mapshot"'));
+assert(!plainHtml.includes('の中身</summary>'), 'Helper names read as their own names, not "〜の中身".');
+assert(plainHtml.includes('矢印の数字は呼び出している行です。') && !plainHtml.includes('箱の説明に畳んだ'));
+input.images = [{ path: 'sample.png', label: '変更後の画面' }];
+writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
+const withShot = { ...structuredClone(draft), screenImage: 'sample.png' };
+writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(withShot), 'utf8');
+const shot = render();
+assert.equal(shot.body.ok, true, JSON.stringify(shot.body.reasons));
+assert.equal(screenHeight(shot.body), screenHeight(plain.body) + 90);
+assert.match(readFileSync(htmlPath, 'utf8'), /<img class="ex-mapshot" src="data:image\/png;base64,[^"]+" alt="変更後の画面"/);
+expectReason(Buffer.from(JSON.stringify({ ...withShot, screenImage: 'missing.png' }), 'utf8'), /screenImage/);
+input.images = [];
+writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
+expectReason(Buffer.from(JSON.stringify(withShot), 'utf8'), /screenImage/);
+copyFixtureDraft();
+
 const invalid = structuredClone(draft);
 invalid.nodes[0].id = 'not-a-candidate';
 expectReason(Buffer.from(JSON.stringify(invalid), 'utf8'), /候補にない部品/);

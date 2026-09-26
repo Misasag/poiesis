@@ -74,4 +74,6 @@ for (const id of ['grok', 'pi']) {
     assert.equal(lifecycle.cliRoleAvailability('ready', detectionReport, id, 'results', 'question'), 'available');
 }
 assert.match(settingsSource, /<ModelPicker role='results' purpose='question'/);
+// pi's provider note follows pi's own model, not a Codex or Claude model chosen in the same group.
+assert(settingsSource.includes("const model = piChosen ? selectionRole === 'question' ? selectedModel ?? '' : this.roleModel(role) : '';"));
 console.log('RESULTS_QUESTION_SELECTION_TEST=passed');
