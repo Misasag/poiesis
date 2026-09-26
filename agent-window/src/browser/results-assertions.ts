@@ -17,36 +17,7 @@ export interface ResultsAssertionCandidate<T> {
     assertions: readonly ResultsAssertionResult[];
 }
 
-const CITATION_ASSERTION = '変更ファイルがある場合、本文に根拠引用がある';
-const EMPTY_HEADING_ASSERTION = '空の見出しがない';
-const RETRY_INTRO = '前回の生成は次の必須条件を満たしていませんでした。今回は必ず満たしてください:';
-
-/** Runs the Application-owned checks that apply to every AI-generated Results document. */
-export function checkAppResultsAssertions(
-    html: string,
-    changedFiles: readonly string[]
-): ResultsAssertionResult[] {
-    const body = html.match(/<body\b[^>]*>([\s\S]*?)<\/body\s*>/i)?.[1] ?? html;
-    const headings = [...body.matchAll(/<h([2-4])\b[^>]*>([\s\S]*?)<\/h\1\s*>/gi)];
-    const hasCitation = /\bdata-poiesis-citation\s*=/i.test(body);
-    const emptyHeadings = headings.filter(match => !htmlText(match[2]).trim());
-    return [
-        {
-            text: CITATION_ASSERTION,
-            source: 'app',
-            status: changedFiles.length === 0 || hasCitation ? 'pass' : 'fail',
-            evidence: changedFiles.length === 0
-                ? '変更ファイルがないため引用は不要です。'
-                : hasCitation ? '根拠引用を確認しました。' : '根拠引用がありません。'
-        },
-        {
-            text: EMPTY_HEADING_ASSERTION,
-            source: 'app',
-            status: emptyHeadings.length === 0 ? 'pass' : 'fail',
-            evidence: emptyHeadings.length === 0 ? '空の見出しはありません。' : `空の見出しが${emptyHeadings.length}件あります。`
-        }
-    ];
-}
+const RETRY_INTRO = "前回の生成は次の必須条件を満たしていませんでした。今回は必ず満たしてください:";
 
 const ASSERTION_TEXT_MAX_CHARS = 60_000;
 const TABLE_MAX_BODY_ROWS = 50;

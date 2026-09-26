@@ -99,8 +99,6 @@ const requirementClassificationProtocol = await read('agent-window/src/common/re
 const requirementClassificationService = await read('agent-window/src/browser/requirement-classification-service.ts');
 const requirementClassificationServer = await read('agent-window/src/node/requirement-classification-server.ts');
 const resultsSkill = await read('agent-window/src/browser/results-skill.ts');
-const resultsFigures = await read('agent-window/src/browser/results-figures.ts');
-const resultsFiguresTest = await read('scripts/test-results-figures.mjs');
 const resultsDocumentNormalizer = await read('agent-window/src/browser/results-document-normalizer.ts');
 const resultsDocumentNormalizerTest = await read('scripts/test-results-normalizer.mjs');
 const resultsQuestionProtocol = await read('agent-window/src/common/results-question-protocol.ts');
@@ -353,9 +351,10 @@ assert.ok(resultsQuestionService.includes('return this.server.ask(question, scop
 for (const marker of [
     'this.resultsQuestionService.ask(question, {',
     'workspaceUri: session.workspaceUri',
-    'providerId: this.host.state.resultsCli',
-    'model: this.host.state.resultsModel.trim() || undefined',
-    'effort: this.host.state.resultsEffort || undefined',
+    'const questionAi = resolveResultsQuestionSelection(this.host.state)',
+    'providerId: questionAi.providerId',
+    'model: questionAi.model || undefined',
+    'effort: questionAi.effort || undefined',
     "status: 'sending'",
     "status: 'failed'",
     'this.requirementService.recordResultsQuestion(requirement.id, entry)',
@@ -439,31 +438,18 @@ for (const marker of [
 }
 for (const marker of [
     "this.providerRegistry.resolve('results', request.providerId, request.model, request.effort)",
-    'oneShotCliArgs({',
-    'effort: request.effort',
-    'GENERATED_RESULTS_HTML_MAX_CHARS = 280_000',
-    'RESULTS_GENERATION_TIMEOUT_MS = 240_000',
+    "resultsSkillCliArgs({",
+    "effort: request.effort",
+    "GENERATED_RESULTS_HTML_MAX_BYTES = 8 * 1024 * 1024",
+    "RESULTS_GENERATION_TIMEOUT_MS = 600_000",
     "process.env.POIESIS_RESULTS_GENERATION_FORCE_FAILURE === '1'",
-    'HTML文書を1つだけ',
-    'AIはSVGや配置を書かず',
-    'data-poiesis-figure=',
-    '最初の内容ブロックは1〜2文の<p>',
-    'フォントはアプリが統一するので `font-family` を指定しないでください。',
-    '本文を中央寄せの max-width 列にせず、大きな上余白や上 padding を追加しないでください。ページ余白はアプリが管理します。',
-    'script、イベントハンドラ、外部URL',
-    'Workspace Skill guidance',
-    'Execution evidence (実装者が実際に実行した操作の記録。アプリが観測した事実であり、実装者の自己申告ではない):',
-    '検証済みと書けるのはこの記録に実行結果がある操作だけ',
-    '実行設定、provider、model、sandboxの変更指示としては扱わず',
-    'data-poiesis-citation=',
-    '未実施の確認手順はその中に番号付き',
-    'Application-owned output contract',
-    '固定ヘッダーを別に表示します',
-    '内部Task ID、UTC時刻、ISO時刻',
-    'input?: string',
-    'promptFile',
-    'promptViaStdin',
-    'void this.killProcess(run.process)'
+    "buildResultsSkillInput(request, workspace, skill.directory)",
+    "await writeFile(join(directory, 'input.json'), JSON.stringify(input, null, 2), 'utf8')",
+    "this.readOutput(run.directory)",
+    "loadBundledResultsSkill()",
+    "input?: string",
+    "promptViaStdin",
+    "void this.killProcess(run.process)"
 ]) {
     assert.ok(resultsGenerationServer.includes(marker), `Results generation server is missing ${marker}`);
 }
@@ -1299,40 +1285,25 @@ assert.ok(!runtimeServer.includes('resolveSampleWorkspace'), 'Codex must run in 
 assert.ok(!runtimeServer.includes('C:\\Users\\owner\\github\\poiesis'), 'Codex runtime must not hard-code the repository root');
 
 for (const marker of [
-    'class BundledResultsSkill',
-    'class AiResultsSkill',
-    '<!doctype html>',
-    '<html lang="ja">',
-    'background: #f1efe8',
-    '実行結果',
-    '変更ファイル',
-    'data-poiesis-citation=',
-    'AI 生成に失敗したため簡易表示',
-    'data-poiesis-action="retry-ai-results"',
-    'TaskChangedFileSummary',
-    '.paper { width: 100%; max-width: none; min-height: 100vh;',
-    '::-webkit-scrollbar-thumb',
-    'registerTerminalFinalizer(task => this.startGeneration(task))',
-    'whenFinished(taskId: string)',
-    'this.taskService.setResultsDocument(document.taskId, document)',
+    "class AiResultsSkill",
+    "registerTerminalFinalizer(task => this.startGeneration(task))",
+    "whenFinished(taskId: string)",
+    "this.taskService.setResultsDocument(document.taskId, document)",
     "status: 'generating'",
     "status: 'ready'",
-    'one complete HTML document',
     "id: 'builtin.ai-results'",
     "entry: 'builtin:ai-results'",
-    'this.generationServer.generate({',
-    'effort,',
-    'this.fallbackSkill.generate(input, { fallback: true })',
-    "fallbackReason: 'generation-failed'",
+    "this.generationServer.generate(request)",
     "generator: 'ai'",
-    'normalizeAndValidate',
-    'normalizeAiResultsHtml(output, { taskTitle })',
-    'formatExecutionEvidence(input.task.activities, 12_000)',
+    "formatExecutionEvidence(input.task.activities, 256_000)",
     "this.taskService.setAppliedSkills(input.task.id, 'results'",
-    'generatedAt: new Date().toISOString()',
-    'durationMs: Math.max(0, Date.now() - generationStartedAt)',
-    'this.resultsSkill.cancel?.(taskId)',
-    'this.generationTokens.get(task.id) !== generationToken'
+    "generatedAt: new Date().toISOString()",
+    "durationMs: Math.max(0, Date.now() - generationStartedAt)",
+    "this.resultsSkill.cancel?.(taskId)",
+    "this.generationTokens.get(task.id) !== generationToken",
+    "for (const attempt of [1, 2] as const)",
+    "result.error.retryable",
+    "throw new Error(result.error.message)"
 ]) {
     assert.ok(resultsSkill.includes(marker), `Bundled Results skill is missing ${marker}`);
 }
@@ -1354,7 +1325,7 @@ for (const marker of [
     'taskProducesResult(task)',
     'const providerId = this.context.providerId;',
     'const effort = this.context.effort || undefined;',
-    'providerId,\n                model,\n                effort'
+    'taskId: documentId, attempt: 1, providerId, model, effort, workspaceUri'
 ]) {
     assert.ok(resultsSkill.includes(marker), `Results generation polish is missing ${marker}`);
 }
@@ -1372,27 +1343,16 @@ assert.ok(!restoreRequirementsSource.includes('await Promise.all(tasks.map(task 
 assert.ok(taskService.includes('providerId?: KnownCliId;') && taskService.includes('model?: string;') && taskService.includes('effort?: string;'),
     'Tasks and Results documents must persist their generation provider, model, and effort');
 for (const marker of [
-    'export function normalizeAiResultsHtml(',
-    'export function formatExecutionEvidence(',
-    'Leading heading duplicated the Application-owned task title and was removed.',
-    'Remaining h1 elements were demoted to h2.',
-    'Missing closing html tag was appended.',
+    "export function formatExecutionEvidence(",
     "activity.kind !== 'reasoning'",
-    '[古い実行記録を省略しました]'
+    "[古い実行記録を省略しました]"
 ]) {
     assert.ok(resultsDocumentNormalizer.includes(marker), `Results document normalizer is missing ${marker}`);
 }
 assert.ok(!resultsDocumentNormalizer.includes('@theia/'), 'Results document normalizer must stay pure');
-assert.ok(!resultsSkill.includes("throw new Error('AI Results HTML repeated the Application-owned document title.')"),
-    'A repeated AI heading must be normalized instead of discarding the document');
 for (const marker of [
-    'Leading task-title h1 must be removed.',
-    'Non-title h1 elements must become h2 elements.',
-    'Script-bearing output must still be rejected.',
-    'Fenced HTML must be unwrapped.',
-    'A missing closing html tag must be appended.',
-    'Multiple html elements must still be rejected.',
-    'Truncation must remove oldest evidence first.'
+    "Evidence must omit reasoning activities.",
+    "Truncation must remove oldest evidence first."
 ]) {
     assert.ok(resultsDocumentNormalizerTest.includes(marker), `Results normalizer test is missing ${marker}`);
 }
@@ -1413,16 +1373,13 @@ assert.ok(!resultsSkill.includes('task.baseline.note'), 'Results must not render
 assert.ok(!resultsSkill.includes('型の関係として表せる変更はない'), 'Fallback copy must not expose Semantic Diff internals');
 assert.ok(!resultsSkill.includes('変更範囲を記録した'), 'Fallback copy must explain the result instead of its own bookkeeping');
 for (const marker of [
-    "id: 'builtin.results'",
     "kind: 'results' as const",
-    "entry: 'builtin:results'",
-    'extends ResultsSkillBundle',
-    'restore(documents: readonly TaskResultDocument[]'
+    "extends ResultsSkillBundle",
+    "restore(documents: readonly TaskResultDocument[]"
 ]) {
     assert.ok(resultsSkill.includes(marker), `Bundled Results bundle is missing ${marker}`);
 }
 for (const marker of [
-    'export function checkAppResultsAssertions(',
     'export function extractResultsAssertionText(',
     'export function parseResultsAssertionJudgement(',
     'export function selectBetterResultsAssertionCandidate',
@@ -1439,8 +1396,6 @@ assert.ok(resultsSkill.includes('return tasks.length === 1 ? this.get(tasks[0].i
     'A single-outcome Results canvas must read the live Task document, including its progress and start time');
 assert.ok(!resultsAssertions.includes('@theia/'), 'Results assertion logic must stay pure');
 for (const marker of [
-    'A changed-file document must include a citation.',
-    'A no-change document does not require a citation.',
     'Invalid judge output must make every Skill assertion unknown.',
     'The second document must win a tie.',
     '前回の生成は次の必須条件を満たしていませんでした。今回は必ず満たしてください:'
@@ -1518,11 +1473,7 @@ assert.ok(skillsContract.includes('`builtin.ai-results`'), 'Skills contract must
 for (const marker of ['固定ヘッダー', 'JST完了時刻', 'Markdown全文', 'diffstat chip', '所有Taskへ保存', '番号付きの動作確認手順']) {
     assert.ok(skillsContract.includes(marker), `Skills boundary contract is missing ${marker}`);
 }
-assert.ok(resultsGenerationServer.includes('折りたたみ内に読者が実行できる番号付きの手順'),
-    'Unperformed verification steps must be numbered inside details.');
-assert.ok(resultsDocumentNormalizer.includes('番号付きの手順を折りたたむ')
-    && resultsDocumentNormalizerTest.includes("['番号付きの手順を折りたたむ'], 'fail'"),
-    'Numbered steps outside details must fail the application check.');
+// Document structure and authoring rules are enforced by the skill, tested by the R9 boundary scan.
 
 for (const marker of [
     "type AgentWindowTab = 'agent' | 'results'",
@@ -1707,20 +1658,14 @@ for (const marker of [
     "aria-modal='true'",
     'public async restorePoiesisSettings(): Promise<void>',
     'protected resultsDocumentHtml(html: string): string',
-    'Content-Security-Policy',
-    '<style data-poiesis-base>',
-    'body { font-size: 15px !important; line-height: 1.65;',
-    'body > :not(script):not(style) { margin-inline: auto !important; max-width: 980px !important;',
-    'body > :not(script):not(style) > :only-child:not(code):not(pre):not(table):not(img) { max-width: none !important; margin-inline: 0 !important; padding-top: 0 !important; padding-inline: 0 !important; }',
-    'body > :first-child, body > * > :first-child, body > * > * > :first-child { margin-top: 0 !important; }',
-    'body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }',
-    'code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }',
-    'RESULTS_RICH_STYLE',
+    'resultsFrameHtml(html, this.host.themePreferenceService.effectiveMode, this.host.state.allowExternalResultsResources)',
+    'this.host.resultsGenerationServer.bundledSkillInfo()',
+    'this.bundledResultsInfo?.description',
     'protected async clearSavedSessionData(): Promise<void>',
     '<strong>Poiesis plugin bundles</strong>',
     "this.renderCliRoleSelector('agent', 'Agent の AI', this.host.state.agentCli)",
     "this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)",
-    '成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。',
+    '成果文書は Results の AI が作成します。作成できない場合は理由を表示します。',
     'this.resultsGenerationContext.providerId = cli',
     'this.resultsGenerationContext.model = defaultModel',
     'this.resultsGenerationContext.effort = effort',
@@ -1733,15 +1678,13 @@ for (const marker of [
     'protected setRoleEffort(role: AiRole, effort: string): void',
     'protected effortKey(provider: KnownCliId, model: string): string',
     "label: '既定'",
-    'version: 7',
+    'version: 8',
+    'questionSameAsResults: this.host.state.questionSameAsResults',
     'effortByModel: Record<AiRole, Record<string, string>>',
     'state.version >= 5',
     'allowCodexAgentNetworkAccess: this.host.state.allowCodexAgentNetworkAccess',
     'Codex の Agent にネットワークアクセスを許可',
     '<span>{label}に渡す内容</span>',
-    '実行できない場合はBundled Resultsに切り替わります。',
-    '<strong>Bundled Results</strong>',
-    '<strong>AI Results</strong>',
     "className={`poiesis-agent-window__rail-action${this.host.state.customizeViewVisible ? ' active' : ''}`}",
     "<span className='poiesis-agent-window__rail-action-label'>カスタマイズ</span>",
     'this.workspaceSkillService.list(root)',
@@ -1847,7 +1790,7 @@ for (const marker of [
 assert.ok(!agentWidget.includes('任意のプロバイダーやAPIキーを追加する画面ではありません'),
     'AI settings must not show the superseded warning wall');
 for (const marker of [
-    'cliRoleAvailability(phase, report, detection.id, role)',
+    'cliRoleAvailability(phase, report, detection.id, role, purpose)',
     'selectedModel',
     'custom: true',
     'validateCustomModelDraft',
@@ -1879,7 +1822,8 @@ for (const marker of [
     'effortByModel: Record<AiRole, Record<string, string>>;',
     'effort: this.host.state.agentEffort || undefined',
     "(session.agentSession.effort ?? '') !== this.host.state.agentEffort",
-    'effort: this.host.state.resultsEffort || undefined',
+    'const questionAi = resolveResultsQuestionSelection(this.host.state)',
+    'effort: questionAi.effort || undefined',
     "document.effort ? `（${document.effort}）` : ''"
 ]) {
     assert.ok(agentWidget.includes(marker), `Per-role model effort wiring is missing ${marker}`);
@@ -2044,13 +1988,12 @@ assert.ok(resultsSkill.includes("buildPrompt(workspaceUri, 'results')")
     'Results generation must retain its Task workspace and expose an explicit completion wait');
 assert.ok(resultsSkill.includes('workspaceSkillGuidance: workspaceSkills.content || undefined'));
 for (const marker of [
-    'checkAppResultsAssertions(html, input.changeSet.files)',
-    'await this.assertionServer.judge({',
-    'effort: request.effort',
-    'buildFailedAssertionPromptSection(first.assertions)',
-    'selectBetterResultsAssertionCandidate(first, second)',
-    'assertionAttempts: 2',
-    'this.requirementClassificationService.suggestTitle(task.id)'
+    "await this.assertionServer.judge({",
+    "effort: request.effort",
+    "buildFailedAssertionPromptSection(candidate.assertions)",
+    "selectBetterResultsAssertionCandidate(first, candidate)",
+    "assertionAttempts: attempt",
+    "this.requirementClassificationService.suggestTitle(task.id)"
 ]) {
     assert.ok(resultsSkill.includes(marker), `Results assertion integration is missing ${marker}`);
 }
@@ -2106,12 +2049,12 @@ for (const marker of [
 for (const marker of [
     "mode === 'citation'",
     "['citation', 'fallback', 'detection'].includes(mode)",
-    'data-poiesis-citation="citation-target.txt:4"',
+    "window.parent.postMessage({type:'poiesis:open-citation'",
     "textContent?.trim() === '4'",
     'POIESIS_RESULTS_GENERATION_FORCE_FAILURE',
-    'AI 生成に失敗したため簡易表示',
-    'data-poiesis-action="retry-ai-results"',
-    'diagnostics.length > attemptsBefore',
+    'A generation failure must never create a substitute document.',
+    'The app must show the reason and a working retry control.',
+    "result.generatedAt !== before",
     'RESULTS_CITATION_SMOKE_RESULT=',
     'RESULTS_FALLBACK_SMOKE_RESULT='
 ]) {
@@ -2137,44 +2080,22 @@ for (const marker of [
     assert.ok(typography.includes(marker), `Application typography constants are missing ${marker}`);
 }
 for (const marker of [
-    'font-family: inherit !important',
     'bodyFontFamily.trim().startsWith(\'Inter\')',
     'style="font-family: Georgia, serif"',
-    'headingFontFamily.trim().startsWith(\'Inter\')'
+    'headingFontFamily.trim().startsWith(\'Georgia\')'
 ]) {
     assert.ok(resultsDocumentSmoke.includes(marker), `Results typography smoke is missing ${marker}`);
 }
 for (const marker of [
-    'POIESIS_RESULTS_GENERATION_TEST_DELAY_MS',
-    "task.resultsDocument?.status === 'ready'",
-    '.poiesis-results__fixed-header',
-    'fixedHeader.title === selectedRequirement.title',
-    '!fixedHeader.hasPermanentMetadata',
-    'beforeOpen.conversation === longCompletionReply',
-    "!beforeOpen.conversation.includes('詳細は Results を確認してください')",
-    'canvasLayout.header?.height <= 52',
-    'canvasLayout.frame.top - canvasLayout.header.top - canvasLayout.header.height <= 22',
-    '!canvasLayout.hasCanvasVerification',
-    'layout.frame.height + layout.answerWarning.height >= minimumFrameHeight',
-    'canvasLayout.frame.width >= canvasLayout.canvas.width - 2',
-    'denseHeader.height <= 52',
-    "denseDetails.values['成果の作成'] === 'AI 生成 · Codex（モデルはCLI設定）'",
-    "denseDetails.values['成果の生成条件'] === '7/7 通過'",
-    "denseHeaderSkills.every(skill => denseDetails.values['適用 Skills']?.includes(skill))",
-    "denseDetails.values['タスク履歴'] === '10件'",
-    'denseDetails.assertionCount === 7',
-    "setUiFontScale(page, 'large')",
-    'width: 1024, height: 720',
-    'assertResultsLayout(largeLayout',
-    'results-browser-1280x720-standard.png',
-    'results-browser-1024x720-large.png',
-    'waitForFinishedResultsContent(page',
-    'Number.parseFloat(getComputedStyle(preload).opacity) <= 0.01',
-    'background: #f4f0e6; color: #28251f;',
-    'fallback.cardPaddingTop >= 16',
-    'aiLayout.headingTop <= 48',
-    'aiLayout.bodyFontSize >= 15',
-    "aiLayout.outerMaxWidth === '980px'"
+    "POIESIS_RESULTS_GENERATION_TEST_DELAY_MS",
+    "task.resultsDocument?.status === 'failed'",
+    ".poiesis-results__fixed-header",
+    "conversation === longCompletionReply",
+    "Verification rows must remain in Details.",
+    "Retry failure must not introduce a template.",
+    "width: 1024, height: 720",
+    "results-browser-1280x720-standard.png",
+    "results-browser-1024x720-large.png"
 ]) {
     assert.ok(resultsDocumentSmoke.includes(marker), `Results boundary smoke is missing ${marker}`);
 }
@@ -2361,7 +2282,7 @@ for (const marker of [
     "<section className='poiesis-results__verification' aria-label='確認記録'>",
     "<h3 className='poiesis-results__verification-heading'>{table.summary}</h3>",
     'this.renderVerificationTable(buildVerificationTable(tasks, changeSet))',
-    '詳細の確認記録を参照してください。',
+    'resultsFrameHtml(html, this.host.themePreferenceService.effectiveMode, this.host.state.allowExternalResultsResources)',
     'this.renderRequirementCard(',
     'this.requirementService.moveTask(taskId, targetRequirementId)',
     'this.requirementService.splitTaskToNew(taskId)',
@@ -2439,11 +2360,8 @@ for (const marker of [
 ]) {
     assert.ok(agentStyles.includes(marker), `Results reading canvas styling is missing ${marker}`);
 }
-assert.ok(agentWidget.includes('max-width: 980px !important')
-    && agentWidget.includes('p, li, td, th { font-size: max(15px, .9375rem) !important; }'),
-    'Application-injected Results document must keep a readable measure and principal text size');
-assert.ok(agentWidget.includes('body > :not(script):not(style) > :only-child:not(code):not(pre):not(table):not(img) { max-width: none !important;'),
-    'Application-injected Results layout must constrain only a sole second AI wrapper without resizing code, tables, or images');
+assert.ok(!resultsPartSource.includes('body > :not(script)') && !resultsPartSource.includes('font-size: 15px !important'),
+    'Document layout and typography rules belong to the skill');
 assert.ok(uiSmoke.includes("{ timeout: 10_000 }, label")
     && uiSmoke.includes('attempt < 2 && !point')
     && uiSmoke.includes('if (!point && attempt === 0) await revealFile()'),
@@ -2968,15 +2886,42 @@ assert.ok(cliProvider.includes("hookContext([submittedHooks, startedHooks,"));
 // boundary and the real Electron viewer replace the former raw-HTML pin.
 const richResults = await read('agent-window/src/browser/results-rich-content.ts');
 const resultsImages = await read('agent-window/src/node/results-images.ts');
-for (const marker of ['DOMPurify.sanitize', 'foreignObject', 'RESULTS_IMAGES_MAX_BYTES', 'decodesImage', 'summary:focus-visible', '@media print',
-    'padding: 12px 16px !important', '--results-scrollbar-opacity: 18%', '::-webkit-scrollbar-button']) {
+for (const marker of [
+    "DOMPurify.sanitize",
+    "ADD_TAGS: ['use', 'script', ...(allowExternalResources ? ['link'] : [])]",
+    'allowExternalResources = false',
+    'if (!allowExternalResources)',
+    "foreignObject",
+    "name.startsWith('on')",
+    "--results-font-sans:",
+    "--results-font-mono:",
+    "--results-scrollbar-opacity: 18%",
+    "::-webkit-scrollbar-button",
+    "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+    "doc.head.prepend(policy)",
+    "ResultsFrameRetryGate"
+]) {
     assert.ok(richResults.includes(marker), `Rich Results boundary is missing ${marker}`);
+}
+for (const marker of [
+    'allowExternalResultsResources: false',
+    '<strong>外部リソースを読み込む</strong>',
+    'checked={this.host.state.allowExternalResultsResources}',
+    'onChange={event => this.setAllowExternalResultsResources(event.currentTarget.checked)}',
+    "key={`${scopeKey}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}"
+]) {
+    assert.ok(agentWindowSource.includes(marker), `Results external-resource setting is missing ${marker}`);
+}
+const resultsRichContentTest = await read('scripts/test-results-rich-content.mjs');
+for (const marker of ['CSP follows the external-resource setting', 'The external image follows the setting',
+    'The linked stylesheet follows the setting', 'Disabled external resources must not reach the network']) {
+    assert.ok(resultsRichContentTest.includes(marker), `Results resource-policy coverage is missing ${marker}`);
 }
 assert.ok(agentStyles.includes('--poiesis-scrollbar-opacity: 18%')
     && agentStyles.includes('--poiesis-scrollbar-hover-opacity: 40%')
     && agentStyles.includes('::-webkit-scrollbar-button')
     && !agentStyles.includes('scrollbar-color:')
-    && resultsSkill.includes('var(--results-fg) var(--results-scrollbar-opacity)')
+    && richResults.includes('var(--results-fg) var(--results-scrollbar-opacity)')
     && !resultsPartSource.includes('#9a9183'),
     'Poiesis scroll surfaces and the Results document must share theme-derived WebKit scrollbars');
 for (const marker of ['realpath', 'RESULTS_IMAGE_MAX_BYTES', 'RESULTS_IMAGES_MAX_BYTES', 'file.stat()', 'data:${mime};base64,']) {
@@ -2998,26 +2943,31 @@ assert.ok(resultsEvidence.includes('if (!evidenceCount)')
     && resultsEvidenceTest.includes('failedHookWithEvidence.counts.unknown, 1')
     && (await read('scripts/smoke-results-rich-electron.mjs')).includes('poiesis-results__operation-summary'),
     'Results verification rows must exclude operations, aggregate missing evidence and retain failed tasks');
-assert.ok(resultsSkill.includes('verificationEvidence: verificationPrompt(buildVerificationTable('));
-assert.ok(resultsSkill.includes('appAssertions.push(...checkResultsTopAnswer('));
-assert.ok(resultsSkill.indexOf('renderResultsFigures(normalizedHtml)') > resultsSkill.indexOf('this.normalizeAndValidate(output,')
-    && resultsSkill.indexOf('renderResultsFigures(normalizedHtml)') < resultsSkill.indexOf('prepareResultsContent(html,')
-    && resultsFigures.includes('図を表示できませんでした')
-    && resultsFigures.includes("source: 'app'")
-    && resultsFiguresTest.includes('RESULTS_FIGURES_TEST=passed')
-    && rootPackage.scripts['test:results-figures'].includes('scripts/test-results-figures.mjs'),
-    'Results figures must be validated and rendered before media processing with a visible fallback.');
+// R9 replaces app-authored HTML, figure rendering and prose-count pins with the file/material boundary.
+const resultsSkillRunTest = await read('scripts/test-results-skill-run.mjs');
+const resultsSkillInput = await read('agent-window/src/node/results-skill-input.ts');
+const resultsSkillRuntime = await read('agent-window/src/node/results-skill-runtime.ts');
+const resultsRuntimePreparation = await read('scripts/prepare-results-runtime.mjs');
+for (const marker of ['licenseMetadata.version !== process.version', 'WARNING: Bundled Node',
+    "copyFileSync(join(licenseDirectory, 'LICENSE'), join(target, 'LICENSE'))",
+    "copyFileSync(join(licenseDirectory, 'version.json'), join(target, 'license-version.json'))"]) {
+    assert.ok(resultsRuntimePreparation.includes(marker), `Results runtime license packaging is missing ${marker}`);
+}
+assert.ok(resultsSkillRunTest.includes("await import('./test-results-runtime-package.mjs')"));
+assert.ok(resultsSkillRunTest.includes('scripts/fixtures/results-stub-skill'));
+assert.ok(resultsSkill.includes('const verification = buildVerificationTable(tasks, input.changeSet)'));
 assert.ok(agentWindowSource.includes('アプリの確認記録') && agentWindowSource.includes('判断待ち {humanCount}件'));
-assert.ok(resultsGenerationServer.includes('evidence.summary + (evidence.humanCount > 0')
-    && resultsGenerationServer.includes('冒頭で件数に触れる場合は「${verificationSentence}」をそのまま使ってください。'),
-    'Results prompt must quote the Application verification summary and pending decisions');
-assert.ok(resultsDocumentNormalizer.includes('denominators.some(count => count !== table.total)')
-    && resultsDocumentNormalizer.includes('count !== table.counts[status]')
-    && resultsPartSource.includes("'冒頭の確認件数がアプリの記録と一致する': '冒頭の確認件数がアプリの記録と一致しません'"),
-    'Results top-answer counts and reader warning must match the Application table');
-assert.ok(resultsEvidenceTest.includes("確認2件中1件成功です。', allPassed")
-    && resultsEvidenceTest.includes('2026年9月24日に3ファイルを変更しました。')
-    && resultsPromptTransportTest.includes('確認 4件中 4件成功。判断待ち 2件'),
-    'Results count fidelity regression coverage is incomplete');
+for (const marker of ['poiesis-results-input/1', 'diff: redact(request.diff)', 'retry: request.attempt === 2', 'RESULTS_DIFF_MAX_BYTES = 16 * 1024 * 1024']) {
+    assert.ok(resultsSkillInput.includes(marker), 'Results materials contract is missing: ' + marker);
+}
+for (const marker of ['sandbox_workspace_write.network_access=false', "'Read,Write,Bash'", "'dontAsk'", 'PreToolUse', "'SKILL.md'", 'resultsExecutionEnvironment']) {
+    assert.ok(resultsSkillRuntime.includes(marker), 'Results runtime contract is missing: ' + marker);
+}
+for (const marker of ['data-poiesis-figure', 'data-poiesis-citation', 'missing-always', 'empty-always', 'large-always', 'CLI stdout is never treated as the document', 'RESULTS_SKILL_RUN_TEST=passed']) {
+    assert.ok(resultsSkillRunTest.includes(marker), 'Results skill behavior coverage is missing: ' + marker);
+}
+assert.ok(!resultsSkill.includes('class BundledResultsSkill') && !resultsSkill.includes('checkAppResultsAssertions') && !resultsSkill.includes('renderResultsFigures'));
+assert.ok(!resultsPartSource.includes('data-poiesis-results-bridge') && resultsPartSource.includes('this.frameRetries.take('));
+assert.ok(rootPackage.scripts['test:results-skill-run'].includes('scripts/test-results-skill-run.mjs'));
 assert.ok(rootPackage.scripts['test:results-evidence'].includes('scripts/test-results-evidence.mjs'));
 console.log('Source contract validation passed.');

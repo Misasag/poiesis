@@ -24,6 +24,10 @@ files:
   - product.json
   - "!**node_modules/**"
 extraResources:
+  - from: ../agent-window/skills/poiesis-results
+    to: poiesis-results
+  - from: lib/results-runtime
+    to: results-runtime
   - from: ../plugins
     to: app/plugins
 win:

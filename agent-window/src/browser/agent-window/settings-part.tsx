@@ -79,7 +79,7 @@ import { AgentWindowHost, AgentWindowPart, UiFontScale } from './agent-window-ho
 import { PoiesisThemePreference } from '../theme-preference-service';
 
 interface PersistedPoiesisSettings {
-    version: 7;
+    version: 8;
     uiFontScale: UiFontScale;
     agentCli: KnownCliId;
     agentModel: string;
@@ -91,6 +91,10 @@ interface PersistedPoiesisSettings {
     judgeCli: KnownCliId;
     judgeModel: string;
     judgeEffort: string;
+    questionSameAsResults: boolean;
+    questionCli: KnownCliId;
+    questionModel: string;
+    questionEffort: string;
     effortByModel: Record<AiRole, Record<string, string>>;
     allowExternalResultsResources: boolean;
     allowCodexAgentNetworkAccess: boolean;
@@ -98,7 +102,7 @@ interface PersistedPoiesisSettings {
 }
 
 interface LegacyPoiesisSettings {
-    version?: 1 | 2 | 3 | 4 | 5 | 6;
+    version?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
     agentEffort?: string;
     resultsEffort?: string;
     effortByModel?: unknown;
@@ -112,7 +116,12 @@ interface LegacyPoiesisSettings {
     judgeCli?: KnownCliId;
     judgeModel?: string;
     judgeEffort?: string;
+    questionSameAsResults?: boolean;
+    questionCli?: KnownCliId;
+    questionModel?: string;
+    questionEffort?: string;
     allowExternalResultsResources?: boolean;
+    allowCodexAgentNetworkAccess?: boolean;
     automaticRequirementClassification?: boolean;
 }
 
@@ -318,6 +327,7 @@ export class SettingsPart extends AgentWindowPart {
                     </div>
                     {this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)}
                     {this.renderCliRoleSelector('judge', '判定の AI', this.host.state.judgeCli)}
+                    {this.questionAiSelector()}
                 </div>
                 {this.renderCliDiagnostics()}
             </section>
@@ -331,7 +341,7 @@ export class SettingsPart extends AgentWindowPart {
                     <h2 id='poiesis-settings-results'>Results</h2>
                     <span>成果の整理と表示</span>
                 </div>
-                <p className='poiesis-settings-modal__section-copy'>成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。</p>
+                <p className='poiesis-settings-modal__section-copy'>成果文書は Results の AI が作成します。作成できない場合は理由を表示します。</p>
                 <div className='poiesis-settings-modal__row'>
                     <div>
                         <strong>成果を自動で分ける</strong>
@@ -468,13 +478,22 @@ export class SettingsPart extends AgentWindowPart {
         };
     }
 
-    protected renderCliRoleSelector(role: AiRole, label: string, selected: KnownCliId): React.ReactNode {
+    protected questionAiSelector(): React.ReactNode {
+        const same = this.host.state.questionSameAsResults;
+        const provider = same ? this.host.state.resultsCli : this.host.state.questionCli;
+        const model = same ? this.host.state.resultsModel : this.host.state.questionModel;
+        const effort = same ? this.host.state.resultsEffort : this.host.state.questionEffort;
+        return this.renderCliRoleSelector('results', '質問の AI', provider, 'question', same, model, effort);
+    }
+
+    protected renderCliRoleSelector(role: AiRole, label: string, selected: KnownCliId, selectionRole?: 'question', sameAsResults = false, selectedModel?: string, selectedEffort?: string): React.ReactNode {
         const report = this.host.state.cliDetectionReport;
         const detections = report?.detections ?? [];
         const selectedDetection = detections.find(detection => detection.id === selected);
         const purpose = role === 'agent'
             ? '依頼を理解し、コードやファイルを変更します。'
-            : role === 'judge' ? '成果文書の条件チェックと、要件の自動分類・タイトル付けに使います。'
+            : selectionRole === 'question' ? 'Results への質問に答えるときに使います。'
+                : role === 'judge' ? '成果文書の条件チェックと、要件の自動分類・タイトル付けに使います。'
                 : '完了した成果を読みやすい文書にまとめます。';
         return (
             <div className='poiesis-settings-modal__cli-role'>
@@ -483,9 +502,14 @@ export class SettingsPart extends AgentWindowPart {
                     <p>{purpose}</p>
                 </div>
                 <div className='poiesis-settings-modal__cli-list' role='radiogroup' aria-label={label}>
-                    {role === 'judge' && <label className='poiesis-settings-modal__cli-row'>
+                    {role === 'judge' && !selectionRole && <label className='poiesis-settings-modal__cli-row'>
                         <input type='radio' name='poiesis-judge-cli' checked={this.host.state.judgeSameAsResults}
                             onChange={() => { this.host.state.judgeSameAsResults = true; this.persistPoiesisSettings(); this.update(); }} />
+                        <span className='poiesis-settings-modal__cli-copy'><strong>Results の AI と同じ</strong></span>
+                    </label>}
+                    {selectionRole === 'question' && <label className='poiesis-settings-modal__cli-row'>
+                        <input type='radio' name='poiesis-question-cli' checked={sameAsResults}
+                            onChange={() => { this.host.state.questionSameAsResults = true; this.persistPoiesisSettings(); this.update(); }} />
                         <span className='poiesis-settings-modal__cli-copy'><strong>Results の AI と同じ</strong></span>
                     </label>}
                     {KNOWN_CLI_IDS.map(providerId => {
@@ -494,7 +518,8 @@ export class SettingsPart extends AgentWindowPart {
                             this.host.state.cliDetectionPhase,
                             report,
                             providerId,
-                            role
+                            role,
+                            selectionRole
                         );
                         const executable = availability === 'available';
                         const status = availability === 'available'
@@ -505,7 +530,7 @@ export class SettingsPart extends AgentWindowPart {
                         const guidance = availability === 'missing'
                             ? 'CLIを準備した後、AI情報を更新してください。'
                             : availability === 'unsupported'
-                                ? 'Poiesisからの実行には未対応です。'
+                                ? role === 'results' && selectionRole !== 'question' ? '成果文書の作成には未対応' : 'Poiesisからの実行には未対応です。'
                                 : availability === 'error'
                                     ? 'AI情報を更新して、もう一度お試しください。'
                                     : undefined;
@@ -515,11 +540,11 @@ export class SettingsPart extends AgentWindowPart {
                                 <label className={`poiesis-settings-modal__cli-row${executable ? '' : ' unavailable'}`}>
                                     <input
                                         type='radio'
-                                        name={`poiesis-${role}-cli`}
+                                        name={selectionRole === 'question' ? 'poiesis-question-cli' : `poiesis-${role}-cli`}
                                         value={providerId}
-                                        checked={selected === providerId && (role !== 'judge' || !this.host.state.judgeSameAsResults)}
+                                        checked={selected === providerId && (selectionRole === 'question' ? !sameAsResults : role !== 'judge' || !this.host.state.judgeSameAsResults)}
                                         disabled={!executable}
-                                        onChange={() => this.setRoleCli(role, providerId)}
+                                        onChange={() => selectionRole === 'question' ? this.setQuestionCli(providerId) : this.setRoleCli(role, providerId)}
                                     />
                                     <span className='poiesis-settings-modal__cli-copy'>
                                         <strong>{detection?.name ?? CLI_DISPLAY_NAMES[providerId]}</strong>
@@ -530,7 +555,9 @@ export class SettingsPart extends AgentWindowPart {
                                 {providerId === 'pi' && <div className='poiesis-settings-modal__cli-help'>
                                     <small>pi は操作前の確認を行いません。コマンドはワークスペースで直接実行されます。</small>
                                     {(() => {
-                                        const model = this.roleModel(role);
+                                        // Another CLI's model name says nothing about pi's provider, so only pi's own choice counts.
+                                        const piChosen = selected === 'pi' && (selectionRole === 'question' ? !sameAsResults : role !== 'judge' || !this.host.state.judgeSameAsResults);
+                                        const model = piChosen ? selectionRole === 'question' ? selectedModel ?? '' : this.roleModel(role) : '';
                                         const piProvider = model ? model.split('/')[0] : 'openrouter';
                                         const providerName = piProvider === 'openrouter' ? 'OpenRouter'
                                             : piProvider === 'openai-codex' ? 'ChatGPT' : piProvider;
@@ -550,10 +577,14 @@ export class SettingsPart extends AgentWindowPart {
                         );
                     })}
                 </div>
-                {selectedDetection && (role !== 'judge' || !this.host.state.judgeSameAsResults) && (
+                {selectedDetection && (selectionRole === 'question' ? !sameAsResults : role !== 'judge' || !this.host.state.judgeSameAsResults) && (
                     <div className='poiesis-settings-modal__model-field'>
                         <span>モデルと処理の深さ</span>
-                        {this.renderAiRolePill(role)}
+                        {selectionRole === 'question' ? <ModelPicker role='results' purpose='question' compact={false} detectionPhase={this.host.state.cliDetectionPhase}
+                            detectionReport={this.host.state.cliDetectionReport} catalogs={this.host.state.modelCatalogs} selectedProvider={selected}
+                            selectedModel={selectedModel ?? ''} selectedEffort={selectedEffort ?? ''}
+                            onSelect={(p, m) => this.setQuestionProviderModel(p, m)} onEffortChange={e => this.setQuestionEffort(e)}
+                            onOpenSettings={() => this.openAiSettings()} /> : this.renderAiRolePill(role)}
                         <small>{this.modelCatalogStatus(selected)}</small>
                     </div>
                 )}
@@ -821,6 +852,35 @@ export class SettingsPart extends AgentWindowPart {
         this.update();
     }
 
+    protected setQuestionCli(cli: KnownCliId): void {
+        this.host.state.questionSameAsResults = false;
+        this.host.state.questionCli = cli;
+        this.host.state.questionModel = '';
+        this.host.state.questionEffort = '';
+        this.persistPoiesisSettings();
+        this.update();
+    }
+
+    protected setQuestionProviderModel(provider: KnownCliId, model: string): void {
+        const detection = this.host.state.cliDetectionReport?.detections.find(item => item.id === provider);
+        const normalized = model.trim();
+        if (detection?.status !== 'found' || !detection.executableRoles.includes('results') || normalized.length > 160) { return; }
+        this.host.state.questionSameAsResults = false;
+        this.host.state.questionCli = provider;
+        this.host.state.questionModel = normalized;
+        this.host.state.questionEffort = this.effortFor('results', provider, normalized);
+        this.persistPoiesisSettings();
+        this.update();
+    }
+
+    protected setQuestionEffort(effort: string): void {
+        const provider = this.host.state.questionCli;
+        this.host.state.questionSameAsResults = false;
+        this.host.state.questionEffort = CLI_EFFORT_LEVELS[provider].includes(effort) ? effort : '';
+        this.persistPoiesisSettings();
+        this.update();
+    }
+
     protected roleModel(role: AiRole): string {
         return role === 'agent' ? this.host.state.agentModel : role === 'judge' ? this.host.state.judgeModel : this.host.state.resultsModel;
     }
@@ -1001,7 +1061,7 @@ export class SettingsPart extends AgentWindowPart {
     public async restorePoiesisSettings(): Promise<void> {
         try {
             const state = await this.storageService.getData<Partial<PersistedPoiesisSettings> | LegacyPoiesisSettings>(SETTINGS_STORAGE_KEY);
-            if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4 || state?.version === 5 || state?.version === 6 || state?.version === 7) {
+            if (state?.version === 1 || state?.version === 2 || state?.version === 3 || state?.version === 4 || state?.version === 5 || state?.version === 6 || state?.version === 7 || state?.version === 8) {
                 this.host.state.uiFontScale = state.uiFontScale === 'small' || state.uiFontScale === 'large'
                     ? state.uiFontScale
                     : 'standard';
@@ -1037,9 +1097,13 @@ export class SettingsPart extends AgentWindowPart {
                 this.host.state.judgeCli = state.version >= 6 && isKnownCliId(state.judgeCli) ? state.judgeCli : DEFAULT_CLI_ID;
                 this.host.state.judgeModel = state.version >= 6 && typeof state.judgeModel === 'string' ? state.judgeModel : '';
                 this.host.state.judgeEffort = state.version >= 6 ? this.normalizeEffort(this.host.state.judgeCli, state.judgeEffort) : '';
+                this.host.state.questionSameAsResults = state.version < 8 || state.questionSameAsResults !== false;
+                this.host.state.questionCli = state.version === 8 && isKnownCliId(state.questionCli) ? state.questionCli : DEFAULT_CLI_ID;
+                this.host.state.questionModel = state.version === 8 && typeof state.questionModel === 'string' ? state.questionModel : '';
+                this.host.state.questionEffort = state.version === 8 ? this.normalizeEffort(this.host.state.questionCli, state.questionEffort) : '';
                 this.host.state.effortByModel.judge[this.effortKey(this.host.state.judgeCli, this.host.state.judgeModel)] = this.host.state.judgeEffort;
                 this.host.state.allowExternalResultsResources = state.allowExternalResultsResources === true;
-                this.host.state.allowCodexAgentNetworkAccess = state.version === 7 && state.allowCodexAgentNetworkAccess === true;
+                this.host.state.allowCodexAgentNetworkAccess = state.version >= 7 && state.allowCodexAgentNetworkAccess === true;
                 this.host.state.automaticRequirementClassification = state.version >= 4
                     ? state.automaticRequirementClassification !== false
                     : true;
@@ -1064,7 +1128,7 @@ export class SettingsPart extends AgentWindowPart {
     protected persistPoiesisSettings(): void {
         this.syncJudgeSelection();
         void this.storageService.setData<PersistedPoiesisSettings>(SETTINGS_STORAGE_KEY, {
-            version: 7,
+            version: 8,
             uiFontScale: this.host.state.uiFontScale,
             agentCli: this.host.state.agentCli,
             agentModel: this.host.state.agentModel,
@@ -1076,6 +1140,10 @@ export class SettingsPart extends AgentWindowPart {
             judgeCli: this.host.state.judgeCli,
             judgeModel: this.host.state.judgeModel,
             judgeEffort: this.host.state.judgeEffort,
+            questionSameAsResults: this.host.state.questionSameAsResults,
+            questionCli: this.host.state.questionCli,
+            questionModel: this.host.state.questionModel,
+            questionEffort: this.host.state.questionEffort,
             effortByModel: this.host.state.effortByModel,
             allowExternalResultsResources: this.host.state.allowExternalResultsResources,
             allowCodexAgentNetworkAccess: this.host.state.allowCodexAgentNetworkAccess,

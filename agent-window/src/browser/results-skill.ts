@@ -1,15 +1,12 @@
 import { CliCallRecord } from '../common/cli-usage';
 import { hashChangeSet } from '../common/change-set-hash';
-import { buildVerificationTable, verificationPrompt } from './results-evidence';
-import { assertNoActiveResultsContent, checkResultsTopAnswer } from './results-document-normalizer';
-import { renderResultsFigures } from './results-figures';
+import { buildVerificationTable } from './results-evidence';
 import { Emitter, Event } from '@theia/core/lib/common';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import {
     ExecutionTask,
     summarizeTaskChangeSet,
     TaskChangeSet,
-    TaskChangedFileSummary,
     TaskResultDocument,
     TaskService
 } from './task-service';
@@ -25,15 +22,12 @@ import { ResultsAssertionServer } from '../common/results-assertion-protocol';
 import { AgentRuntimeServer } from '../common/agent-runtime-protocol';
 import { ResultsGenerationContext } from './results-generation-context';
 import { WorkspaceSkillService } from './workspace-skill-service';
-import { formatExecutionEvidence, normalizeAiResultsHtml } from './results-document-normalizer';
-import { prepareResultsContent } from './results-rich-content';
+import { formatExecutionEvidence } from './results-document-normalizer';
 import { Requirement } from './requirement-model';
 import { RequirementService } from './requirement-service';
 import { RequirementClassificationService } from './requirement-classification-service';
-import { POIESIS_FONT_SANS } from './typography';
 import {
     buildFailedAssertionPromptSection,
-    checkAppResultsAssertions,
     extractResultsAssertionText,
     parseResultsAssertionJudgement,
     ResultsAssertionDefinition,
@@ -85,154 +79,14 @@ export function formatRequirementExecutionEvidence(tasks: readonly ExecutionTask
     return `${combined.slice(0, Math.max(0, maxChars - marker.length))}${marker}`;
 }
 
-/** The built-in document generator for this slice. */
-@injectable()
-export class BundledResultsSkill implements ResultsSkill {
-    readonly manifest = {
-        id: 'builtin.results',
-        name: 'Bundled Results',
-        version: '1.0.0',
-        kind: 'results' as const,
-        entry: 'builtin:results'
-    };
-
-    async generate(
-        { task, changeSet, requirement }: ResultsSkillInput,
-        options: { fallback?: boolean } = {}
-    ): Promise<ResultsSkillDocument> {
-        const files = summarizeTaskChangeSet(changeSet).files;
-        const tasks = task.status === 'running' ? [] : [task];
-        const displayedTasks = task.status === 'running' ? [] : requirement?.tasks ?? tasks;
-        const taskRows = displayedTasks.map((candidate, index) => `
-        <li class="task-item">
-          <span>${index + 1}</span>
-          <strong>${this.escape(candidate.title)}</strong>
-          <small>${candidate.status === 'completed' ? '完了' : candidate.status === 'failed' ? '失敗' : 'キャンセル'}</small>
-        </li>`).join('');
-        const fallbackNotice = options.fallback ? `
-    <aside class="fallback" role="status">
-      <div><strong>AI 生成に失敗したため簡易表示</strong><span>変更内容から確認できる情報を表示しています。</span></div>
-      <button type="button" data-poiesis-action="retry-ai-results">AI で再生成</button>
-    </aside>` : '';
-        const fileRows = files.map(file => `
-        <li>
-          <span class="status ${file.status}">${this.statusLabel(file.status)}</span>
-          <a href="#" data-poiesis-citation="${this.escape(`${file.path}:1`)}">${this.escape(file.path)}</a>
-          <span class="lines"><b>+${file.additions}</b><i>−${file.deletions}</i></span>
-        </li>`).join('');
-        const changedFiles = files.length > 0
-            ? `<ul aria-label="変更ファイル一覧">${fileRows}
-      </ul>`
-            : `<p class="no-changes">${changeSet.error
-                ? '変更ファイルを確認できませんでした。'
-                : '変更ファイルはありません。'}</p>`;
-        const html = `<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>成果本文</title>
-  <style>
-    /* The bundled paper is always light, so pin the page and text tokens in every theme. */
-    :root, :root[data-theme] { --results-bg: #f1efe8; --results-fg: #262721; --results-scrollbar-opacity: 22%; --results-scrollbar-hover-opacity: 40%; font: 14px/1.55 ${POIESIS_FONT_SANS}; background: #f1efe8; color: #262721; }
-    * { box-sizing: border-box; }
-    html, body { min-height: 100%; }
-    body { margin: 0; min-height: 100vh; background: #f1efe8; }
-    .paper { width: 100%; max-width: none; min-height: 100vh; display: grid; align-content: start; gap: 22px; margin-inline: 0; padding: clamp(14px, 1.2vw, 20px) clamp(16px, 2vw, 28px); background: #f1efe8; }
-    .paper > :first-child { margin-top: 0; }
-    ::-webkit-scrollbar { width: 10px; height: 10px; }
-    ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
-    ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-    ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--results-fg) var(--results-scrollbar-opacity), transparent) padding-box; }
-    ::-webkit-scrollbar-thumb:hover { border-width: 2px; background: color-mix(in srgb, var(--results-fg) var(--results-scrollbar-hover-opacity), transparent) padding-box; }
-    .fallback { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; border: 1px solid #c6a56e; border-radius: 8px; background: #eee3cd; }
-    .fallback div { display: grid; gap: 2px; }
-    .fallback span { color: #665c4d; font-size: 12px; }
-    button { flex: 0 0 auto; padding: 7px 12px; border: 1px solid #79694f; border-radius: 5px; background: #f7f1e5; color: #3f372c; cursor: pointer; font: inherit; font-weight: 700; }
-    button:hover { background: #fffaf0; }
-    .overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
-    article { min-width: 0; padding: 19px 20px; border: 1px solid #d6d3c9; border-radius: 8px; background: #ebe8df; }
-    h2 { margin: 0 0 10px; color: #33352e; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
-    p { margin: 0; color: #53564e; overflow-wrap: anywhere; }
-    .changes { padding-top: 2px; }
-    .changes-heading { display: flex; align-items: baseline; gap: 20px; margin-bottom: 9px; }
-    .changes-heading h2 { margin: 0; color: #24261f; font-size: 18px; letter-spacing: 0; text-transform: none; }
-    .no-changes { padding: 14px 0; border-block: 1px solid #d6d3c9; }
-    ul { margin: 0; padding: 0; border-block: 1px solid #d6d3c9; list-style: none; }
-    li { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 48px; padding: 8px 4px; border-bottom: 1px solid #d6d3c9; }
-    li:last-child { border-bottom: 0; }
-    .status { width: max-content; padding: 2px 7px; border-radius: 999px; color: #55584f; background: #dfddd4; font-size: 11px; font-weight: 750; }
-    .status.added { color: #3f6148; background: #dce7dc; }
-    .status.deleted { color: #80524e; background: #eadbd7; }
-    a { min-width: 0; color: #405879; font-weight: 650; overflow-wrap: anywhere; text-decoration: underline; text-underline-offset: 3px; }
-    .lines { display: flex; gap: 9px; font-variant-numeric: tabular-nums; }
-    .lines b { color: #477351; }
-    .lines i { color: #98645e; font-style: normal; }
-    .task-list { display: grid; gap: 0; }
-    .task-item { grid-template-columns: 32px minmax(0, 1fr) auto; }
-    .task-item > span, .task-item small { color: #686b63; }
-    @media (max-width: 640px) {
-      .paper { gap: 16px; padding: 14px 16px; }
-      .overview { grid-template-columns: 1fr; }
-      .fallback { align-items: stretch; flex-direction: column; }
-      li { grid-template-columns: 64px minmax(0, 1fr); }
-      .lines { grid-column: 2; }
-    }
-  </style>
-</head>
-<body>
-  <main class="paper">
-    ${fallbackNotice}
-    <section class="overview">
-      <article><h2>${requirement ? '要件' : '依頼'}</h2><p>${this.escape(this.compact(requirement?.title ?? task.request, 420))}</p></article>
-      <article><h2>実行結果</h2><p>${this.escape(this.compact(this.executionSummary(displayedTasks.at(-1) ?? task), 720))}</p></article>
-    </section>
-    ${requirement ? `<section class="changes"><div class="changes-heading"><h2>含まれるタスク</h2></div><ul class="task-list">${taskRows}</ul></section>` : ''}
-    <section class="changes">
-      <div class="changes-heading"><h2>変更ファイル</h2></div>
-      ${changedFiles}
-    </section>
-  </main>
-</body>
-</html>`;
-        return { html, generator: options.fallback ? 'fallback' : 'template' };
-    }
-
-    protected statusLabel(status: TaskChangedFileSummary['status']): string {
-        return status === 'added' ? '追加' : status === 'deleted' ? '削除' : '変更';
-    }
-
-    protected executionSummary(task: ExecutionTask): string {
-        return task.status === 'completed'
-            ? task.implementerReport ?? task.completionSummary ?? 'タスクを完了しました。'
-            : task.status === 'failed'
-                ? task.failure?.summary ?? 'タスクを完了できませんでした。'
-                : 'タスクはキャンセルされました。';
-    }
-
-    protected compact(value: string, maxLength: number): string {
-        const compact = value.replace(/\s+/g, ' ').trim();
-        return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
-    }
-
-    protected escape(value: string): string {
-        return value
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-}
-
 class ResultsGenerationCancelledError extends Error { }
 
-/** Default Results bundle: asks the selected Results AI, then falls back to the built-in template. */
+/** Runs the bundled skill with the selected AI; the app never substitutes a document. */
 @injectable()
 export class AiResultsSkill implements ResultsSkill {
     readonly manifest = {
         id: 'builtin.ai-results',
-        name: 'AI Results',
+        name: "組み込みの成果作成",
         version: '1.0.0',
         kind: 'results' as const,
         entry: 'builtin:ai-results'
@@ -241,7 +95,6 @@ export class AiResultsSkill implements ResultsSkill {
 
     constructor(
         @inject(ResultsGenerationServer) protected readonly generationServer: ResultsGenerationServer,
-        @inject(BundledResultsSkill) protected readonly fallbackSkill: BundledResultsSkill,
         @inject(ResultsGenerationContext) protected readonly context: ResultsGenerationContext,
         @inject(WorkspaceSkillService) protected readonly workspaceSkillService: WorkspaceSkillService,
         @inject(TaskService) protected readonly taskService: TaskService,
@@ -249,9 +102,7 @@ export class AiResultsSkill implements ResultsSkill {
     ) { }
 
     async generate(input: ResultsSkillInput): Promise<ResultsSkillDocument> {
-        if (input.task.status === 'running') {
-            throw new Error('Results generation requires a finished Task.');
-        }
+        if (input.task.status === 'running') { throw new Error("作業の終了後に成果を作成できます。"); }
         const providerId = this.context.providerId;
         const model = this.context.model.trim() || undefined;
         const effort = this.context.effort || undefined;
@@ -260,130 +111,60 @@ export class AiResultsSkill implements ResultsSkill {
         const calls: CliCallRecord[] = [];
         const workspaceUri = input.task.workspaceUri;
         this.cancelledDocumentIds.delete(documentId);
-        if (!workspaceUri) {
-            this.taskService.setAppliedSkills(input.task.id, 'results', []);
-            console.warn('[Poiesis][Results diagnostics] AI generation skipped: the Task has no local Workspace.');
-            const fallback = await this.fallbackSkill.generate(input, { fallback: true });
-            return { ...fallback, fallbackReason: 'no-workspace' };
-        }
-
-        try {
-            const workspaceSkills = await this.workspaceSkillService.buildPrompt(workspaceUri, 'results');
-            this.taskService.setAppliedSkills(input.task.id, 'results', workspaceSkills.includedSkillIds);
-            for (const diagnostic of workspaceSkills.diagnostics) {
-                console.warn(`[Poiesis] ${diagnostic}`);
-            }
-            const generatedHooks = await this.taskService.runHooks('resultsGenerate', input.task, {
-                requirementId: input.task.requirementId, taskIds: input.requirement?.tasks.map(task => task.id) ?? [input.task.id]
-            });
-            const changeSetSummary = JSON.stringify({
-                files: summarizeTaskChangeSet(input.changeSet).files,
-                captureError: input.changeSet.error,
-                hookEvidence: (input.requirement?.tasks ?? [input.task]).flatMap(task => task.hookEvidence ?? [])
-            }, undefined, 2);
-            const request: ResultsGenerationRequest = {
-                taskId: documentId,
-                attempt: 1,
-                providerId,
-                model,
-                effort,
-                workspaceUri,
-                taskMetadata: {
-                    status: input.task.status,
-                    title: input.task.title,
-                    request: input.task.request,
-                    endedAt: input.task.endedAt,
-                    completionSummary: input.task.completionSummary,
-                    implementerReport: input.task.implementerReport,
-                    failureSummary: input.task.failure?.summary
-                },
-                requirement: input.requirement ? this.requirementMetadata(input.requirement) : undefined,
-                changeSetSummary,
-                diff: input.changeSet.diff,
-                hookMaterial: generatedHooks.material,
-                verificationEvidence: verificationPrompt(buildVerificationTable(input.requirement?.tasks ?? [input.task], input.changeSet)),
-                executionEvidence: input.requirement
-                    ? formatRequirementExecutionEvidence(input.requirement.tasks, 16_000) || undefined
-                    : formatExecutionEvidence(input.task.activities, 12_000) || undefined,
-                workspaceSkillGuidance: workspaceSkills.content || undefined
-            };
-            input.onProgress?.({ phase: 'generation', providerId, model, effort, attempt: 1, startedAt: new Date().toISOString() });
+        if (!workspaceUri) { throw new Error("成果を作成する作業場所がありません。"); }
+        if (providerId !== 'codex' && providerId !== 'claude') { throw new Error("成果文書の作成には未対応"); }
+        const workspaceSkills = await this.workspaceSkillService.buildPrompt(workspaceUri, 'results');
+        this.taskService.setAppliedSkills(input.task.id, 'results', workspaceSkills.includedSkillIds);
+        const generatedHooks = await this.taskService.runHooks('resultsGenerate', input.task, {
+            requirementId: input.task.requirementId, taskIds: input.requirement?.tasks.map(task => task.id) ?? [input.task.id]
+        });
+        this.throwIfCancelled(documentId);
+        const tasks = input.requirement?.tasks ?? [input.task];
+        const changedFiles = summarizeTaskChangeSet(input.changeSet).files;
+        const changeSetSummary = JSON.stringify({ files: changedFiles, captureError: input.changeSet.error, hookEvidence: tasks.flatMap(task => task.hookEvidence ?? []) });
+        const verification = buildVerificationTable(tasks, input.changeSet);
+        const request: ResultsGenerationRequest = {
+            taskId: documentId, attempt: 1, providerId, model, effort, workspaceUri,
+            taskMetadata: { status: input.task.status, title: input.task.title, request: input.task.request,
+                endedAt: input.task.endedAt, completionSummary: input.task.completionSummary,
+                implementerReport: input.task.implementerReport, failureSummary: input.task.failure?.summary },
+            requirement: input.requirement ? this.requirementMetadata(input.requirement) : undefined,
+            changeSetSummary, changedFiles, changeCaptureError: input.changeSet.error,
+            diff: input.changeSet.diff, hookMaterial: generatedHooks.material, verification,
+            images: verification.rows.flatMap(row => row.image ? [{ path: row.image, label: row.label }] : []),
+            executionEvidence: input.requirement ? formatRequirementExecutionEvidence(tasks, 256_000)
+                : formatExecutionEvidence(input.task.activities, 256_000),
+            workspaceSkillGuidance: workspaceSkills.content || undefined
+        };
+        let first: Awaited<ReturnType<AiResultsSkill['assertCandidate']>> | undefined;
+        for (const attempt of [1, 2] as const) {
+            this.throwIfCancelled(documentId);
+            request.attempt = attempt;
+            input.onProgress?.({ phase: attempt === 1 ? 'generation' : 'regeneration', providerId, model, effort, attempt,
+                failedAssertions: first?.assertions.filter(assertion => assertion.status === 'fail').length,
+                startedAt: new Date().toISOString() });
             const result = await this.generationServer.generate(request);
             if (result.call) { calls.push(result.call); input.onCall?.(result.call); }
-            if (result.status === 'cancelled') {
-                throw new ResultsGenerationCancelledError(result.error.message);
-            }
-            if (result.status === 'failed') {
-                console.warn('[Poiesis][Results diagnostics] AI generation failed; using bundled template.',
-                    `${result.error.code}: ${result.error.message}${result.error.stderr ? `\n${result.error.stderr}` : ''}`);
-                this.taskService.setAppliedSkills(input.task.id, 'results', []);
-                const fallback = await this.fallbackSkill.generate(input, { fallback: true });
-                return {
-                    ...fallback,
-                    calls,
-                    providerId,
-                    model,
-                    effort,
-                    fallbackReason: result.error.code === 'timeout' ? 'timeout' : 'generation-failed'
-                };
-            }
-            const first = await this.assertCandidate(
-                result.html,
-                input,
-                workspaceSkills.assertions,
-                request,
-                changeSetSummary,
-                calls,
-                judgeSelection
-            );
-            if (!first.assertions.some(assertion => assertion.status === 'fail')) {
-                return { ...first.document, calls, assertions: [...first.assertions], assertionAttempts: 1 };
-            }
-
-            const retryGuidance = buildFailedAssertionPromptSection(first.assertions);
             this.throwIfCancelled(documentId);
-            input.onProgress?.({ phase: 'regeneration', providerId, model, effort, attempt: 2,
-                failedAssertions: first.assertions.filter(assertion => assertion.status === 'fail').length,
-                startedAt: new Date().toISOString() });
-            request.attempt = 2;
-            const retryResult = await this.generationServer.generate({ ...request, assertionRetryGuidance: retryGuidance });
-            if (retryResult.call) { calls.push(retryResult.call); input.onCall?.(retryResult.call); }
-            if (retryResult.status === 'cancelled') {
-                throw new ResultsGenerationCancelledError(retryResult.error.message);
-            }
-            if (retryResult.status === 'failed') {
-                console.warn('[Poiesis][Results diagnostics] Assertion regeneration failed; keeping the first document.',
-                    `${retryResult.error.code}: ${retryResult.error.message}`);
-                return { ...first.document, calls, assertions: [...first.assertions], assertionAttempts: 2 };
-            }
-            try {
-                const second = await this.assertCandidate(
-                    retryResult.html,
-                    input,
-                    workspaceSkills.assertions,
-                    request,
-                    changeSetSummary,
-                    calls,
-                    judgeSelection
-                );
-                const selected = selectBetterResultsAssertionCandidate(first, second);
-                return { ...selected.document, calls, assertions: [...selected.assertions], assertionAttempts: 2 };
-            } catch (error) {
-                if (error instanceof ResultsGenerationCancelledError) {
-                    throw error;
+            if (result.status === 'cancelled') { throw new ResultsGenerationCancelledError(result.error.message); }
+            if (result.status === 'failed') {
+                if (attempt === 1 && result.error.retryable) {
+                    request.assertionRetryGuidance = result.error.message;
+                    continue;
                 }
-                console.warn('[Poiesis][Results diagnostics] Assertion regeneration was invalid; keeping the first document.', error);
-                return { ...first.document, calls, assertions: [...first.assertions], assertionAttempts: 2 };
+                throw new Error(result.error.message);
             }
-        } catch (error) {
-            if (error instanceof ResultsGenerationCancelledError) {
-                throw error;
+            const candidate = await this.assertCandidate(result.html, input, workspaceSkills.assertions, request,
+                changeSetSummary, calls, judgeSelection);
+            this.throwIfCancelled(documentId);
+            if (attempt === 2 || !candidate.assertions.some(assertion => assertion.status === 'fail')) {
+                const selected = first ? selectBetterResultsAssertionCandidate(first, candidate) : candidate;
+                return { ...selected.document, calls, assertions: [...selected.assertions], assertionAttempts: attempt };
             }
-            this.taskService.setAppliedSkills(input.task.id, 'results', []);
-            console.warn('[Poiesis][Results diagnostics] AI generation failed; using bundled template.', error);
-            const fallback = await this.fallbackSkill.generate(input, { fallback: true });
-            return { ...fallback, calls, providerId, model, effort, fallbackReason: 'generation-failed' };
+            first = candidate;
+            request.assertionRetryGuidance = buildFailedAssertionPromptSection(candidate.assertions);
         }
+        throw new Error("成果文書を作成できませんでした。");
     }
 
     async cancel(taskId: string): Promise<void> {
@@ -413,28 +194,10 @@ export class AiResultsSkill implements ResultsSkill {
         assertions: ResultsAssertionResult[];
     }> {
         const observedModel = calls.filter(call => call.purpose === 'results-generation').at(-1)?.model ?? request.model;
-        input.onProgress?.({ phase: 'judge', ...judgeSelection,
-            attempt: request.attempt ?? 1, startedAt: new Date().toISOString() });
-        const normalizedHtml = this.normalizeAndValidate(output, input.requirement?.title ?? input.task.title);
-        const figures = renderResultsFigures(normalizedHtml);
-        assertNoActiveResultsContent(figures.html);
-        const html = figures.html;
-        const appAssertions = checkAppResultsAssertions(html, input.changeSet.files);
-        appAssertions.push(...figures.assertions);
-        appAssertions.push(...checkResultsTopAnswer(html, buildVerificationTable(input.requirement?.tasks ?? [input.task], input.changeSet), {
-            changeSet: input.changeSet,
-            imageInputs: (input.requirement?.tasks ?? [input.task]).flatMap(task => task.hookEvidence ?? [])
-                .flatMap(report => report.evidence).flatMap(entry => entry.image ? [entry.image] : [])
-        }));
-        if (/<(?:img|svg)[\s>]/i.test(html)) {
-            const media = await prepareResultsContent(html, request.workspaceUri,
-                (workspace, paths) => this.generationServer.resolveImages(workspace, paths));
-            appAssertions.push(...media.assertions);
-            for (const note of media.diagnostics) { console.warn(`[Poiesis][Results diagnostics] ${note}`); }
-            this.throwIfCancelled(request.taskId);
-        }
+        const html = output;
         let skillAssertions: ResultsAssertionResult[] = [];
         if (definitions.length > 0) {
+            input.onProgress?.({ phase: 'judge', ...judgeSelection, attempt: request.attempt ?? 1, startedAt: new Date().toISOString() });
             try {
                 const judged = await this.assertionServer.judge({
                     taskId: request.taskId,
@@ -473,76 +236,19 @@ export class AiResultsSkill implements ResultsSkill {
                 model: observedModel,
                 effort: request.effort
             },
-            assertions: [...appAssertions, ...skillAssertions]
+            assertions: skillAssertions
         };
-    }
-
-    protected normalizeAndValidate(output: string, taskTitle: string): string {
-        const normalized = normalizeAiResultsHtml(output, { taskTitle });
-        for (const note of normalized.notes) {
-            console.warn(`[Poiesis][Results diagnostics] ${note}`);
-        }
-        return normalized.html;
-    }
-
-    protected compact(value: string, maxChars: number): string {
-        return value.length <= maxChars ? value : `${value.slice(0, maxChars - 1)}…`;
-    }
-
-    protected compactOptional(value: string | undefined, maxChars: number): string | undefined {
-        return value ? this.compact(value, maxChars) : undefined;
     }
 
     protected requirementMetadata(
         requirement: NonNullable<ResultsSkillInput['requirement']>
     ): ResultsGenerationRequirementMetadata {
-        const metadata: ResultsGenerationRequirementMetadata = {
-            title: this.compact(requirement.title, 1_000),
-            tasks: requirement.tasks.map(task => ({
-                status: task.status === 'running' ? 'cancelled' : task.status,
-                title: this.compact(task.title, 500),
-                request: this.compact(task.request, 4_000),
-                endedAt: this.compactOptional(task.endedAt, 80),
-                completionSummary: this.compactOptional(task.completionSummary, 2_000),
-                implementerReport: this.compactOptional(task.implementerReport, 4_000),
-                failureSummary: this.compactOptional(task.failure?.summary, 1_000),
-                changeSetSummary: this.compact(JSON.stringify({
-                    files: summarizeTaskChangeSet(task.changeSet).files,
-                    captureError: task.changeSet?.error
-                }), 4_000)
-            }))
-        };
-        const maxChars = 30_000;
-        let serializedLength = JSON.stringify(metadata).length;
-        while (serializedLength > maxChars) {
-            type CompactableKey = 'request' | 'implementerReport' | 'changeSetSummary'
-                | 'completionSummary' | 'failureSummary' | 'title';
-            const keys: CompactableKey[] = [
-                'request', 'implementerReport', 'changeSetSummary',
-                'completionSummary', 'failureSummary', 'title'
-            ];
-            const strings: Array<{
-                task: ResultsGenerationRequirementMetadata['tasks'][number];
-                key: CompactableKey;
-                value: string;
-            }> = [];
-            for (const task of metadata.tasks) {
-                for (const key of keys) {
-                    const value = task[key];
-                    if (typeof value === 'string' && value.length > 1) {
-                        strings.push({ task, key, value });
-                    }
-                }
-            }
-            const longest = strings.sort((left, right) => right.value.length - left.value.length)[0];
-            if (!longest) {
-                break;
-            }
-            const nextLength = Math.max(1, longest.value.length - (serializedLength - maxChars));
-            longest.task[longest.key] = this.compact(longest.value, nextLength);
-            serializedLength = JSON.stringify(metadata).length;
-        }
-        return metadata;
+        return { title: requirement.title, tasks: requirement.tasks.map(task => ({
+            status: task.status === 'running' ? 'cancelled' : task.status,
+            title: task.title, request: task.request, endedAt: task.endedAt,
+            completionSummary: task.completionSummary, implementerReport: task.implementerReport,
+            failureSummary: task.failure?.summary, changedFiles: summarizeTaskChangeSet(task.changeSet).files
+        })) };
     }
 
 }
@@ -550,6 +256,8 @@ export class AiResultsSkill implements ResultsSkill {
 /** App-owned trigger: skills run only after a Task ends or is cancelled. */
 @injectable()
 export class ResultsService {
+    public isGenerating(documentId: string): boolean { return this.generationTokens.has(documentId); }
+
     protected static readonly UPDATE_ERROR = '成果の更新に失敗しました。';
     protected readonly documents = new Map<string, TaskResultDocument>();
     protected readonly requirementChangeSets = new Map<string, TaskChangeSet>();
@@ -827,9 +535,6 @@ export class ResultsService {
             if (this.generationTokens.get(task.id) !== generationToken) {
                 return;
             }
-            if (!/^(?:<!doctype\s+html[^>]*>\s*)?<html[\s>]/i.test(generated.html.trim())) {
-                throw new Error('Results skill did not return one complete HTML document.');
-            }
             this.set({
                 taskId: task.id,
                 status: 'ready',
@@ -845,7 +550,7 @@ export class ResultsService {
                 this.set({
                     ...previousDocument!,
                     status: 'ready',
-                    updateError: ResultsService.UPDATE_ERROR
+                    updateError: error instanceof Error ? error.message : ResultsService.UPDATE_ERROR
                 }, task);
             } else {
                 this.set({
@@ -978,9 +683,6 @@ export class ResultsService {
                 || !this.requirementGenerationIsCurrent(requirement, requestedVersion)) {
                 return false;
             }
-            if (!/^(?:<!doctype\s+html[^>]*>\s*)?<html[\s>]/i.test(generated.html.trim())) {
-                throw new Error('Results skill did not return one complete HTML document.');
-            }
             this.setRequirementDocument(requirement, {
                 taskId: documentId,
                 status: 'ready',
@@ -999,7 +701,7 @@ export class ResultsService {
                 this.setRequirementDocument(requirement, {
                     ...previousDocument!,
                     status: 'ready',
-                    updateError: ResultsService.UPDATE_ERROR
+                    updateError: error instanceof Error ? error.message : ResultsService.UPDATE_ERROR
                 });
             } else {
                 this.setRequirementDocument(requirement, {

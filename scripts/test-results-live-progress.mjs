@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Loaded by test-results-generation-events after its browser environment setup.
@@ -22,6 +22,8 @@ const { PoiesisResultsElapsed } = require('../agent-window/lib/browser/component
 for (const key of ['POIESIS_RESULTS_GENERATION_TEST_DELAY_MS', 'POIESIS_RESULTS_GENERATION_TEST_HTML', 'POIESIS_RESULTS_GENERATION_FORCE_FAILURE']) {
     assert(!process.env[key], `Real-path regression must not use ${key}.`);
 }
+const previousSkillDirectory = process.env.POIESIS_RESULTS_SKILL_DIR;
+process.env.POIESIS_RESULTS_SKILL_DIR = resolve('scripts/fixtures/results-stub-skill');
 const workspace = mkdtempSync(join(tmpdir(), 'poiesis-live-results-'));
 const children = [];
 const html = '<html><body><h2>検証の証跡</h2><p>タイマーの通知を追加しました。実際の動作は未確認です。</p><table><tr><th>コマンド</th><th>結果</th></tr><tr><td>npm test</td><td>成功</td></tr></table><a data-poiesis-citation="src/timer.ts:1">根拠</a></body></html>';
@@ -44,7 +46,10 @@ try {
         for (const [server, purpose] of [[generation, 'generation'], [assertion, 'judge']]) {
             // Only replace process creation: prompt, transport, decoding, parsing and call capture are real.
             server.spawnCli = (_id, _command, args, cwd, input) => {
-                assert.equal(cwd, workspace);
+                if (purpose === 'generation') {
+                    assert.notEqual(cwd, workspace);
+                    writeFileSync(join(cwd, 'results.html'), html, 'utf8');
+                } else assert.equal(cwd, workspace);
                 assert(args.includes('--json') && args.at(-1) === '-');
                 assert.equal(typeof input, 'string');
                 const child = new EventEmitter();
@@ -56,7 +61,7 @@ try {
                 return child;
             };
         }
-        const skill = new AiResultsSkill(generation, { async generate() { throw new Error('Unexpected fallback'); } },
+        const skill = new AiResultsSkill(generation,
             { providerId: 'codex', model: 'gpt-6-luna', effort: 'medium',
                 judge: { providerId: 'codex', model: 'gpt-6-luna', effort: 'medium' } },
             { async buildPrompt() { return { includedSkillIds: ['verification'], content: '', diagnostics: [],
@@ -146,6 +151,8 @@ try {
     }
     console.log('RESULTS_LIVE_UI_PROGRESS_TEST=passed (before-task-end, during-generation, four CLI calls, summed cache)');
 } finally {
+    if (previousSkillDirectory === undefined) delete process.env.POIESIS_RESULTS_SKILL_DIR;
+    else process.env.POIESIS_RESULTS_SKILL_DIR = previousSkillDirectory;
     children.forEach(child => child.emit('close', null, 'SIGTERM'));
     rmSync(workspace, { recursive: true, force: true });
 }

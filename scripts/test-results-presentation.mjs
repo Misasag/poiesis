@@ -38,7 +38,8 @@ assert.ok(verification.includes("<section className='poiesis-results__verificati
     && verification.includes("<h3 className='poiesis-results__verification-heading'>")
     && verification.includes('<tbody>{table.rows.map((row, index) => <tr key={index} data-status={row.status}>')
     && !verification.includes('<details'), 'The detail table must be a noncollapsible section with status rows');
-assert.ok(resultsPart.includes('詳細の確認記録を参照してください。'));
+// The app no longer reads the document's opening (R9), so it shows no opening-count warning.
+assert.ok(!resultsPart.includes('本文の確認状況を見直してください'));
 assert.ok(canvas.includes('this.renderEncodingDamageNotice(encodingTask, Boolean(session?.archived))'),
     'The app-owned Results notice must appear in the Results canvas.');
 assert.ok(resultsPart.includes('作業前の内容に戻す') && resultsPart.includes('作業の後に変更されているため戻せませんでした'));
@@ -63,7 +64,28 @@ assert(toolbar.includes("['fail', 'unknown', 'outdated']") && toolbar.includes('
 assert(!toolbar.includes('onClick={event => this.toggleResultsAuxiliary') || toolbar.indexOf('counts[status]') < toolbar.indexOf('onClick={event => this.toggleResultsAuxiliary'),
     'Verification badges must not be clickable controls.');
 const documentHtml = resultsPart.slice(resultsPart.indexOf('protected resultsDocumentHtml('), resultsPart.indexOf('public handleResultsFrameMessage('));
-assert(documentHtml.includes('sanitized.replace(headOpen, match => policy ? `${match}\\n  ${policy}` : match)')
-    && documentHtml.includes('.replace(headClose, match => `  ${baseStyle}\\n${match}`)'),
-    'The CSP must open <head> before any AI head content while the base style closes <head> to win the cascade.');
+assert(documentHtml.includes('resultsFrameHtml(html, this.host.themePreferenceService.effectiveMode, this.host.state.allowExternalResultsResources)'),
+    'The Results panel must hand the skill document to the shared frame builder with the theme and the owner external-resource setting.');
+// Regenerating keeps the previous document on screen, so the app must say that work is running.
+const regenerating = canvas.slice(canvas.indexOf("className='poiesis-results__regenerating'") - 400, canvas.indexOf('終わるまで前の成果を表示しています。'));
+assert(regenerating.includes('document.progress && this.resultsService.isGenerating(document.taskId)')
+    && regenerating.includes("role='status'") && regenerating.includes('<PoiesisResultsElapsed'),
+    'A running regeneration over a readable document must show its elapsed status.');
+// The app owns when a document is rebuilt, so a readable document offers a rebuild in Details.
+assert(details.includes("onClick={() => this.regenerateResults(requirement, selectedTask)}>作り直す</button>")
+    && details.includes("document.status === 'ready' && !this.resultsService.isGenerating(document.taskId)"),
+    'Details must offer a rebuild for a readable document while no generation runs.');
+const regenerate = resultsPart.slice(resultsPart.indexOf('protected regenerateResults('), resultsPart.indexOf('protected async retryResults('));
+assert(regenerate.includes('this.closeResultsAuxiliary();')
+    && regenerate.includes('void (task ? this.retryResults(task.id) : this.retryRequirementResults(requirement.id));'));
+// R9: the frame adds only policy, theme tokens and scrollbar styling; the document owns its own layout.
+const richContent = await readFile('agent-window/src/browser/results-rich-content.ts', 'utf8');
+const frame = richContent.slice(richContent.indexOf('export function resultsFrameHtml('), richContent.indexOf('export class ResultsFrameRetryGate'));
+assert(frame.includes('if (!allowExternalResources) {') && frame.includes('doc.head.prepend(policy);')
+    && frame.includes('doc.head.append(style);') && frame.indexOf('doc.head.prepend(policy);') < frame.indexOf('doc.head.append(style);'),
+    'The CSP must open <head> only when external resources are off, and the base style must close <head>.');
+const baseStyle = richContent.slice(richContent.indexOf('export const RESULTS_RICH_STYLE = `'), richContent.indexOf('/** Add only frame policy'));
+const selectors = [...baseStyle.matchAll(/^([^\n{}]+)\{/gm)].map(match => match[1].trim());
+assert(selectors.length > 0 && selectors.every(selector => selector.split(',').every(part => /^(?::root(?:\[data-theme="dark"\])?|::-webkit-scrollbar(?:-[a-z]+)?(?::hover)?)$/.test(part.trim()))),
+    `The base style may only set theme tokens and scrollbars, not document elements: ${selectors.join(' | ')}`);
 console.log('results-presentation tests passed');

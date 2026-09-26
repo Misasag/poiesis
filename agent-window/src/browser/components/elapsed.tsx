@@ -47,7 +47,9 @@ export const PoiesisResultsElapsed = ({ progress, generationStartedAt }: {
         return () => window.clearInterval(interval);
     }, []);
     const status = progress?.phase === 'regeneration'
-        ? `条件を満たさなかった ${progress.failedAssertions ?? 0} 件を直して作り直しています（${progress.attempt}回目）`
+        ? progress.failedAssertions
+            ? `条件を満たさなかった ${progress.failedAssertions} 件を直して作り直しています（${progress.attempt}回目）`
+            : `成果文書を作り直しています（${progress.attempt}回目）`
         : progress?.phase === 'judge' ? '成果文書の条件を確認しています'
             : progress ? '成果文書を作成しています' : '成果文書の作成を準備しています';
     const model = progress ? cliModelLabel(progress.model, progress.providerId) : '';

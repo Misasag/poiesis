@@ -37,7 +37,7 @@ Object.defineProperty(globalThis, 'navigator', {
 require('@theia/core/lib/browser/frontend-application-config-provider').FrontendApplicationConfigProvider.set({});
 
 const { CliAgentProvider } = require('../agent-window/lib/browser/cli-agent-provider.js');
-const { AiResultsSkill, BundledResultsSkill, ResultsService } = require('../agent-window/lib/browser/results-skill.js');
+const { AiResultsSkill, ResultsService } = require('../agent-window/lib/browser/results-skill.js');
 const { TaskService } = require('../agent-window/lib/browser/task-service.js');
 
 function deferred() {
@@ -187,17 +187,9 @@ const generationServer = {
     },
     async cancel() {}
 };
-let rejectFallback = false;
-const fallbackSkill = {
-    async generate() {
-        if (rejectFallback) throw new Error('injected fallback failure');
-        return { html: generatedHtml, generator: 'fallback' };
-    }
-};
 const assertionServer = { async judge() { throw new Error('No Skill assertions are expected.'); }, async cancel() {} };
 const resultsSkill = new AiResultsSkill(
     generationServer,
-    fallbackSkill,
     { providerId: 'codex', model: '', effort: '' },
     workspaceSkillService,
     taskService,
@@ -322,11 +314,10 @@ emitAnswer(rejectedTaskId, '設計を確定しました。\n<!-- poiesis-outcome
 runtimeClient.emit({ type: 'exit', executionId: rejectedTaskId, code: 0, signal: null });
 await waitFor(() => hasAgentEvent('task-completed', rejectedTaskId));
 await waitFor(() => generationRequests.length === 2);
-rejectFallback = true;
 rejectedGenerationGate.reject(new Error('injected Results rejection'));
 const rejectedDocument = await resultsService.whenFinished(rejectedTaskId);
 assert.equal(rejectedDocument?.status, 'failed');
-assert.equal(rejectedDocument?.error, 'injected fallback failure');
+assert.equal(rejectedDocument?.error, 'injected Results rejection');
 assert(hasAgentEvent('message-completed', rejectedTaskId),
     'A rejected background Results update must not retract the completed Agent response.');
 
@@ -339,20 +330,15 @@ const unavailableAggregate = await resultsService.cumulativeChangeSet({
 });
 assert.equal(unavailableAggregate.error, unavailableReason,
     'Requirement Results aggregation must preserve the unavailable capture reason.');
-const bundledResults = new BundledResultsSkill();
-const unavailableDocument = await bundledResults.generate({
-    task: taskService.get(rejectedTaskId),
-    changeSet: unavailableAggregate
-});
-assert.match(unavailableDocument.html, /変更ファイルを確認できませんでした。/);
-assert.doesNotMatch(unavailableDocument.html, /変更ファイルはありません。/,
-    'Unavailable capture must not be presented as a verified zero-change result.');
-const verifiedZeroDocument = await bundledResults.generate({
-    task: taskService.get(rejectedTaskId),
-    changeSet: { source: 'empty', diff: '', files: [], capturedAt: new Date().toISOString() }
-});
-assert.match(verifiedZeroDocument.html, /変更ファイルはありません。/,
-    'A successfully captured zero-change result must retain its existing presentation.');
+const captureRequests = [];
+const captureSkill = new AiResultsSkill({ async generate(request) {
+    captureRequests.push(request); return { status: 'generated', html: generatedHtml };
+} }, { providerId: 'codex', model: '' }, workspaceSkillService, taskService, assertionServer);
+await captureSkill.generate({ task: taskService.get(rejectedTaskId), changeSet: unavailableAggregate });
+assert.equal(captureRequests[0].changeCaptureError, unavailableReason, 'An unavailable capture must be passed intact to the skill.');
+await captureSkill.generate({ task: taskService.get(rejectedTaskId), changeSet: { source: 'empty', diff: '', files: [], capturedAt: new Date().toISOString() } });
+assert.equal(captureRequests[1].changeCaptureError, undefined);
+assert.deepEqual(captureRequests[1].changedFiles, [], 'A verified empty capture remains distinct from an unavailable capture.');
 
 const preparationBehavior = await verifyPreparationCancellationAndFailure();
 

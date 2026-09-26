@@ -1,5 +1,5 @@
 import { CliUsageLine } from '../components/cli-usage';
-import { PreparedResults, prepareResultsContent, RESULTS_RICH_STYLE, sanitizeResultsHtml, wrapFlatResultsBody } from '../results-rich-content';
+import { resultsFrameHtml, ResultsFrameRetryGate } from '../results-rich-content';
 import { cliModelLabel, formatCliDuration } from '../cli-usage-display';
 import { sumCliUsage } from '../../common/cli-usage';
 import * as React from '@theia/core/shared/react';
@@ -49,7 +49,7 @@ import { getDesignVariant } from '../design-variant';
 import { FolderExplorerService } from '../folder-explorer-service';
 import { ResultsQuestionService } from '../results-question-service';
 import { GlobalStorageService } from '../global-storage-service';
-import { ResultsGenerationContext } from '../results-generation-context';
+import { resolveResultsQuestionSelection, ResultsGenerationContext } from '../results-generation-context';
 import { SkillBundleKind } from '../../common/skill-bundle';
 import {
     collectWorkspaceRichContentReferences,
@@ -67,7 +67,7 @@ import {
 } from '../workspace-skill-service';
 import { formatTaskElapsedTime, shouldSubmitComposer } from '../composer-behavior';
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from '../typography';
-import { formatExecutionEvidence, checkResultsTopAnswer } from '../results-document-normalizer';
+import { formatExecutionEvidence } from '../results-document-normalizer';
 import { buildVerificationTable, VerificationTable, VERIFICATION_LABELS } from '../results-evidence';
 import { resultsHeaderText, taskDisplayTitle } from '../results-presentation';
 import { Requirement } from '../requirement-model';
@@ -79,13 +79,6 @@ import { PoiesisComposer } from '../components/poiesis-composer';
 import { PoiesisResultsElapsed, PoiesisTaskElapsed } from '../components/elapsed';
 import { AgentWindowTab, ChatMessage, ResultsNotice, SessionStore, WindowAgentSession } from '../agent-window/session-store';
 import { AgentWindowHost, AgentWindowPart } from './agent-window-host';
-
-/** Reader-facing wording for failed top-answer checks; the check texts describe the expected state. */
-const TOP_ANSWER_WARNINGS: Readonly<Record<string, string>> = {
-    '冒頭に1〜2文の短い回答がある': '冒頭に短い回答がありません',
-    '確認状況がアプリの記録と一致する': '本文の確認状況がアプリの記録と一致しません',
-    '冒頭の確認件数がアプリの記録と一致する': '冒頭の確認件数がアプリの記録と一致しません'
-};
 
 interface ResultsFrameMessage {
     type: 'poiesis:open-citation' | 'poiesis:retry-ai-results' | 'poiesis:open-image';
@@ -102,7 +95,11 @@ export class ResultsPart extends AgentWindowPart {
     protected readonly encodingRestorePending = new Set<string>();
     protected readonly encodingRestoreErrors = new Map<string, string>();
     protected richSignature = '';
-    protected richContent?: PreparedResults;
+    protected richContent?: { html: string; images: Map<string, string> };
+    protected readonly frameRetries = new ResultsFrameRetryGate();
+    protected frameDocument?: TaskResultDocument;
+    protected frameWorkspace = '';
+    protected frameScope?: string;
     protected imageViewer?: { source: string; label: string; trigger?: HTMLElement };
     protected readonly resultsSkillNames = new Map<string, string>();
 
@@ -158,9 +155,9 @@ export class ResultsPart extends AgentWindowPart {
         this.ensureRichResults(document?.html ?? '', selectedTask?.workspaceUri ?? latestTask?.workspaceUri ?? '', evidencePaths, scopeKey);
         const verification = buildVerificationTable(selectedTask ? [selectedTask]
             : selectedRequirement ? this.host.sessions.finishedTasksForRequirement(selectedRequirement) : [], visibleChangeSet);
-        const answerWarnings = document?.html && document.generator === 'ai'
-            ? checkResultsTopAnswer(document.html, verification, { changeSet: visibleChangeSet, imageInputs: evidencePaths })
-                .filter(result => result.status === 'fail' && TOP_ANSWER_WARNINGS[result.text]) : [];
+        this.frameDocument = document;
+        this.frameWorkspace = selectedTask?.workspaceUri ?? latestTask?.workspaceUri ?? '';
+        this.frameScope = scopeKey;
 
         return (
             <section
@@ -205,10 +202,6 @@ export class ResultsPart extends AgentWindowPart {
                                 verification.humanCount,
                                 verification.counts
                             )}
-                        {answerWarnings.length > 0 && <div className='poiesis-results__answer-warning' role='alert'>
-                            <strong>本文の確認状況を見直してください</strong>
-                            <span>{answerWarnings.map(result => TOP_ANSWER_WARNINGS[result.text] ?? result.text).join('。')}。詳細の確認記録を参照してください。</span>
-                        </div>}
                         {latestTask?.status === 'failed' && !document && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>タスクに失敗しました</strong>
@@ -245,10 +238,10 @@ export class ResultsPart extends AgentWindowPart {
                         {selectedRequirement && document?.status === 'failed' && (
                             <div className='poiesis-results__state error' role='alert'>
                                 <strong>成果を作成できませんでした</strong>
-                                <p>成果の作成中に問題が発生しました。再試行してください。</p>
+                                <p>{document.error ?? '成果の作成中に問題が発生しました。'}</p>
                                 {!session?.archived && <button type='button' onClick={() => selectedTask
                                     ? void this.retryResults(selectedTask.id)
-                                    : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>}
+                                    : void this.retryRequirementResults(selectedRequirement.id)}>作り直す</button>}
                             </div>
                         )}
                         {selectedRequirement && document?.html && document.updateError && (
@@ -257,10 +250,17 @@ export class ResultsPart extends AgentWindowPart {
                                 <p>前回の内容を表示しています。</p>
                                 {!session?.archived && <button type='button' onClick={() => selectedTask
                                     ? void this.retryResults(selectedTask.id)
-                                    : void this.retryRequirementResults(selectedRequirement.id)}>再試行</button>}
+                                    : void this.retryRequirementResults(selectedRequirement.id)}>作り直す</button>}
                             </div>
                         )}
                         {selectedRequirement && document?.html && !this.richContent && <p role='status'>成果を読み込んでいます…</p>}
+                        {selectedRequirement && document?.html && document.progress && this.resultsService.isGenerating(document.taskId) && (
+                            // Regenerating keeps the previous document readable; say so instead of looking idle.
+                            <div className='poiesis-results__regenerating' role='status'>
+                                <PoiesisResultsElapsed key={`${scopeKey}-regenerating`} progress={document.progress} generationStartedAt={document.generationStartedAt} />
+                                <span>終わるまで前の成果を表示しています。</span>
+                            </div>
+                        )}
                         {selectedRequirement && document?.html && this.richContent && (document.status === 'ready' || document.status === 'generating') && (
                             <iframe
                                 key={`${scopeKey}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}
@@ -272,10 +272,6 @@ export class ResultsPart extends AgentWindowPart {
                         )}
                     </div>
                 </div>
-                {this.richContent?.diagnostics.length ? <details className='poiesis-results__media-diagnostics'>
-                    <summary>画像・図の確認: {this.richContent.diagnostics.length}件</summary>
-                    <ul>{this.richContent.diagnostics.map((note, index) => <li key={index}>{note}</li>)}</ul>
-                </details> : null}
                 {this.renderImageViewer()}
                 {auxiliaryPanel === 'navigator' && this.renderResultsNavigator(
                     requirements,
@@ -347,31 +343,31 @@ export class ResultsPart extends AgentWindowPart {
         const signature = JSON.stringify([scope, workspace, html, paths]);
         if (signature === this.richSignature) { return; }
         this.richSignature = signature;
-        this.richContent = undefined;
+        this.richContent = { html, images: new Map() };
         this.imageViewer = undefined;
-        if (!/<(?:img|svg)[\s>]/i.test(html) && !paths.length) {
-            this.richContent = { html: sanitizeResultsHtml(html), images: new Map(), diagnostics: [], assertions: [] };
-            return;
-        }
-        void prepareResultsContent(html, workspace,
-            (root, images) => this.host.resultsGenerationServer.resolveImages(root, images), paths).then(content => {
-            if (this.richSignature !== signature || this.host.isDisposed) { return; }
-            this.richContent = content;
-            for (const note of content.diagnostics) { console.warn(`[Poiesis][Results diagnostics] ${note}`); }
+        if (!workspace || !paths.length) { return; }
+        // These are the application's verification attachments, never paths discovered in the document.
+        void this.host.resultsGenerationServer.resolveImages(workspace, paths).then(content => {
+            if (this.richSignature !== signature || this.host.isDisposed || !this.richContent) { return; }
+            this.richContent.images = new Map(content.images.map(image => [image.path, image.dataUrl]));
             this.update();
-        }).catch(() => {
-            if (this.richSignature !== signature) { return; }
-            this.richContent = { html: '<html><body><p>成果を表示できませんでした。</p></body></html>', images: new Map(),
-                diagnostics: ['画像・図を確認できませんでした。'], assertions: [] };
-            this.update();
-        });
+        }).catch(() => undefined);
     }
 
     protected openImage(path: string, trigger?: HTMLElement): void {
+        if (!path || path.length > 4096 || !this.frameWorkspace) { return; }
+        const signature = this.richSignature;
+        const show = (source: string): void => {
+            if (signature !== this.richSignature || this.host.isDisposed) { return; }
+            this.imageViewer = { source, label: path, trigger };
+            this.update();
+        };
         const source = this.richContent?.images.get(path);
-        if (!source) { return; }
-        this.imageViewer = { source, label: path, trigger };
-        this.update();
+        if (source) { show(source); return; }
+        void this.host.resultsGenerationServer.resolveImages(this.frameWorkspace, [path]).then(result => {
+            const image = result.images.find(image => image.path === path);
+            if (image) { show(image.dataUrl); }
+        }).catch(() => undefined);
     }
 
     protected closeImage(): void {
@@ -864,6 +860,11 @@ export class ResultsPart extends AgentWindowPart {
                             {generation?.accessibleLabel ?? (document?.status === 'generating' ? '作成中' : document?.status === 'failed' ? '作成失敗' : '未作成')}
                             {document?.calls?.length ? <CliUsageLine usage={sumCliUsage(document.calls.map(call => call.usage))}
                                 partial={document.calls.some(call => !call.usage)} /> : null}
+                            {document?.html && document.status === 'ready' && !this.resultsService.isGenerating(document.taskId)
+                                && !this.host.sessions.selectedSession()?.archived && (
+                                <button type='button' className='poiesis-results__details-action'
+                                    onClick={() => this.regenerateResults(requirement, selectedTask)}>作り直す</button>
+                            )}
                         </dd>
                     </div>
                     {assertions.length > 0 && (
@@ -1219,78 +1220,7 @@ export class ResultsPart extends AgentWindowPart {
     }
 
     protected resultsDocumentHtml(html: string): string {
-        const sanitized = wrapFlatResultsBody(sanitizeResultsHtml(html)).replace(/<html\b[^>]*>/i,
-            `<html data-theme="${this.host.themePreferenceService.effectiveMode}">`);
-        const policy = this.host.state.allowExternalResultsResources
-            ? ''
-            : `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">`;
-        const baseStyle = `<style data-poiesis-base>
-${RESULTS_RICH_STYLE}
-* { box-sizing: border-box; }
-html, body { font-family: ${POIESIS_FONT_SANS}; font-size: 16px; }
-body *:not(code):not(pre):not(kbd):not(samp):not(svg):not(svg *) { font-family: inherit !important; }
-code, pre, kbd, samp { font-family: ${POIESIS_FONT_MONO} !important; }
-body { font-size: 15px !important; line-height: 1.65; margin: 0 !important; padding: 0 0 40px !important; }
-body > :not(script):not(style) { margin-inline: auto !important; max-width: 980px !important; min-width: 0; padding-top: clamp(22px, 3vw, 42px) !important; padding-inline: clamp(20px, 4vw, 48px) !important; width: 100% !important; }
-body > :not(script):not(style) > :only-child:not(code):not(pre):not(table):not(img) { max-width: none !important; margin-inline: 0 !important; padding-top: 0 !important; padding-inline: 0 !important; }
-body > :first-child, body > * > :first-child, body > * > * > :first-child { margin-top: 0 !important; }
-p, li, td, th { font-size: max(15px, .9375rem) !important; }
-table, pre { max-width: 100%; overflow-x: auto; }
-table { display: block; }
-img, svg, figure { max-width: 100%; }
-</style>`;
-        const bridge = `<script data-poiesis-results-bridge="v1">
-(function () {
-  function send(message) { window.parent.postMessage(message, '*'); }
-  function openImage(target, event) {
-    var image = target && target.closest('img[data-poiesis-image]');
-    if (!image) return false;
-    event.preventDefault();
-    send({ type: 'poiesis:open-image', path: image.getAttribute('data-poiesis-image') });
-    return true;
-  }
-  document.addEventListener('keydown', function(event) {
-    if (event.key === 'Enter' || event.key === ' ') openImage(event.target, event);
-  });
-  document.addEventListener('click', function (event) {
-    var target = event.target instanceof Element ? event.target : null;
-    if (!target) return;
-    if (openImage(target, event)) return;
-    var action = target.closest('[data-poiesis-action="retry-ai-results"]');
-    if (action) {
-      event.preventDefault();
-      send({ type: 'poiesis:retry-ai-results' });
-      return;
-    }
-    var citationNode = target.closest('[data-poiesis-citation]');
-    var citation = citationNode && citationNode.getAttribute('data-poiesis-citation');
-    if (!citation) {
-      var plainNode = target.closest('a, cite, code');
-      var match = plainNode && (plainNode.textContent || '').match(/((?:[^\\s:()]+[\\\\/])*[^\\s:()]+\\.[A-Za-z0-9_-]+):(\\d+)(?:\\s*[-–—]\\s*(\\d+))?/);
-      if (match) citation = match[1] + ':' + match[2] + (match[3] ? '-' + match[3] : '');
-    }
-    if (!citation) return;
-    event.preventDefault();
-    send({ type: 'poiesis:open-citation', citation: citation });
-  }, true);
-})();
-</script>`;
-        const headContent = [policy, baseStyle].filter(Boolean).join('\n  ');
-        const headOpen = /<head(?:\s[^>]*)?>/i;
-        const headClose = /<\/head\s*>/i;
-        // The CSP must come first so it governs everything the AI put in <head>;
-        // the base style goes last so it wins the cascade over AI head styles.
-        const withHead = headOpen.test(sanitized) && headClose.test(sanitized)
-            ? sanitized.replace(headOpen, match => policy ? `${match}\n  ${policy}` : match)
-                .replace(headClose, match => `  ${baseStyle}\n${match}`)
-            : headOpen.test(sanitized)
-                ? sanitized.replace(headOpen, match => `${match}\n  ${headContent}`)
-            : /<html(?:\s[^>]*)?>/i.test(sanitized)
-                ? sanitized.replace(/<html(?:\s[^>]*)?>/i, match => `${match}\n<head>\n  ${headContent}\n</head>`)
-                : `<head>\n  ${headContent}\n</head>\n${sanitized}`;
-        return /<\/body\s*>/i.test(withHead)
-            ? withHead.replace(/<\/body\s*>/i, `${bridge}\n</body>`)
-            : `${withHead}\n${bridge}`;
+        return resultsFrameHtml(html, this.host.themePreferenceService.effectiveMode, this.host.state.allowExternalResultsResources);
     }
 
     public handleResultsFrameMessage(event: MessageEvent): void {
@@ -1305,6 +1235,10 @@ img, svg, figure { max-width: 100%; }
         }
         if (message.type === 'poiesis:retry-ai-results') {
             const session = this.host.sessions.selectedSession();
+            const document = this.frameDocument;
+            if (session?.archived || !document?.html || !this.frameRetries.take(
+                this.frameScope + ':' + document.generatedAt,
+                document.status === 'generating' || this.resultsService.isGenerating(document.taskId))) { return; }
             if (session?.selectedResultsTaskId) {
                 void this.retryResults(session.selectedResultsTaskId);
             } else if (session?.selectedResultsRequirementId) {
@@ -1318,7 +1252,7 @@ img, svg, figure { max-width: 100%; }
                     void this.retryRequirementResults(session.selectedResultsRequirementId);
                 }
             }
-        } else if (message.type === 'poiesis:open-citation' && typeof message.citation === 'string') {
+        } else if (message.type === 'poiesis:open-citation' && typeof message.citation === 'string' && message.citation.length <= 4096) {
             void this.openResultsCitation(message.citation);
         }
     }
@@ -1639,12 +1573,13 @@ img, svg, figure { max-width: 100%; }
             }
         });
         try {
+            const questionAi = resolveResultsQuestionSelection(this.host.state);
             const result = await this.resultsQuestionService.ask(question, {
                 taskId: scopeKey,
                 requirementTitle: requirement?.title,
-                providerId: this.host.state.resultsCli,
-                model: this.host.state.resultsModel.trim() || undefined,
-                effort: this.host.state.resultsEffort || undefined,
+                providerId: questionAi.providerId,
+                model: questionAi.model || undefined,
+                effort: questionAi.effort || undefined,
                 workspaceUri: session.workspaceUri,
                 taskMetadata: {
                     title: task.title,
@@ -1726,6 +1661,14 @@ img, svg, figure { max-width: 100%; }
                 history.scrollTop = history.scrollHeight;
             }
         });
+    }
+
+    /** A readable document can be rebuilt on request; a single-task requirement regenerates its task document. */
+    protected regenerateResults(requirement: Requirement, selectedTask: ExecutionTask | undefined): void {
+        const finished = this.host.sessions.finishedTasksForRequirement(requirement);
+        const task = selectedTask ?? (finished.length === 1 ? finished[0] : undefined);
+        this.closeResultsAuxiliary();
+        void (task ? this.retryResults(task.id) : this.retryRequirementResults(requirement.id));
     }
 
     protected async retryResults(taskId: string): Promise<void> {

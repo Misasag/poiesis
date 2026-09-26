@@ -12,13 +12,12 @@ const classifier = require('../agent-window/lib/browser/requirement-classifier.j
 const assertions = require('../agent-window/lib/browser/results-assertions.js');
 const evidence = require('../agent-window/lib/browser/results-evidence.js');
 const normalizer = require('../agent-window/lib/browser/results-document-normalizer.js');
-const figures = require('../agent-window/lib/browser/results-figures.js');
 const protocol = require('../agent-window/lib/common/agent-runtime-protocol.js');
 const { taskProducesResult } = require('../agent-window/lib/common/task-outcome.js');
 
 const context = new ResultsGenerationContext();
 Object.assign(context, { providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh' });
-for (const version of [1, 2, 3, 4, 5, 6, 7]) {
+for (const version of [1, 2, 3, 4, 5, 6, 7, 8]) {
     for (const same of [true, false]) {
         let saved;
         const old = { version, preferredCli: 'claude', agentCli: 'grok', agentModel: 'grok-4.5',
@@ -38,16 +37,16 @@ for (const version of [1, 2, 3, 4, 5, 6, 7]) {
         assert.equal(settings.host.state.judgeSameAsResults, version < 6 || same);
         assert.equal(context.judge.providerId, version >= 6 && !same ? 'claude' : version === 1 ? 'claude' : 'codex');
         assert.equal(settings.host.state.resultsEffort, version >= 5 ? 'xhigh' : '');
-        assert.equal(settings.host.state.allowCodexAgentNetworkAccess, version === 7 && same);
+        assert.equal(settings.host.state.allowCodexAgentNetworkAccess, version >= 7 && same);
         settings.persistPoiesisSettings();
-        assert.equal(saved.version, 7);
-        assert.equal(saved.allowCodexAgentNetworkAccess, version === 7 && same);
+        assert.equal(saved.version, 8);
+        assert.equal(saved.allowCodexAgentNetworkAccess, version >= 7 && same);
         assert.equal(saved.judgeSameAsResults, version < 6 || same);
         const roundTrip = JSON.parse(JSON.stringify(saved));
         settings.storageService.getData = async () => roundTrip;
         await settings.restorePoiesisSettings();
         assert.equal(context.judge.providerId, version >= 6 && !same ? 'claude' : version === 1 ? 'claude' : 'codex');
-        assert.equal(settings.host.state.allowCodexAgentNetworkAccess, version === 7 && same);
+        assert.equal(settings.host.state.allowCodexAgentNetworkAccess, version >= 7 && same);
         settings.setRoleCli('judge', 'grok');
         assert.equal(context.judge.providerId, 'grok');
         assert.equal(saved.judgeSameAsResults, false);
@@ -68,7 +67,7 @@ for (const explicit of [false, true]) {
     const assertionServer = new ResultsAssertionServerImpl(registry);
     const requirementServer = new RequirementClassificationServerImpl(registry);
     const skill = productionMethods('../agent-window/src/browser/results-skill.ts', 'AiResultsSkill', ['assertCandidate'], {
-        ...assertions, ...evidence, ...normalizer, ...figures, ResultsGenerationCancelledError: class extends Error {}
+        ...assertions, ...evidence, ...normalizer, ResultsGenerationCancelledError: class extends Error {}
     });
     Object.assign(skill, { context, assertionServer, normalizeAndValidate: html => html, throwIfCancelled() {} });
     await skill.assertCandidate('<html><body><h2>成果</h2></body></html>', { task: { title: 'Task' }, changeSet: { files: [] } },

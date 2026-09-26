@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
@@ -80,11 +80,7 @@ const scope = {
     documentText: '文書', assertions: ['説明がある'], currentRequirementTitle: '要件', previousTasks: [],
     task: { request: '確認', changedFiles: [] }, request: '確認', changedFiles: []
 };
-const verificationPrompt = new ResultsGenerationServerImpl(registry).buildPrompt({
-    ...scope,
-    verificationEvidence: JSON.stringify({ summary: '確認 4件中 4件成功', humanCount: 2, total: 4 })
-});
-assert(verificationPrompt.includes('冒頭で件数に触れる場合は「確認 4件中 4件成功。判断待ち 2件」をそのまま使ってください。'));
+process.env.POIESIS_RESULTS_SKILL_DIR = resolve('scripts/fixtures/results-stub-skill');
 
 function instrument(server, providerId, output = wireOutput(providerId), stall = false) {
     server.resolveWorkspace = async () => workspace;
@@ -92,7 +88,14 @@ function instrument(server, providerId, output = wireOutput(providerId), stall =
     const children = [];
     server.spawnCli = (id, _command, args, cwd, stdin) => {
         assert.equal(id, providerId);
-        assert.equal(cwd, workspace);
+        const generation = server instanceof ResultsGenerationServerImpl;
+        if (generation) {
+            assert.notEqual(cwd, workspace);
+            const data = JSON.parse(readFileSync(join(cwd, 'input.json'), 'utf8'));
+            assert.equal(data.schema, 'poiesis-results-input/1');
+            assert.equal(data.workspace, workspace.replaceAll('\\', '/'));
+            writeFileSync(join(cwd, 'results.html'), body, 'utf8');
+        } else assert.equal(cwd, workspace);
         assert(args.every(argument => argument.length <= 1_000), 'Agent and one-shot argv must stay bounded.');
         if (id === 'grok') {
             assert.equal(stdin, undefined);
@@ -126,6 +129,7 @@ try {
             [RequirementClassificationServerImpl, 'suggestTitle', 'requirement-title', 'suggested', 'output'],
             [ResultsQuestionServerImpl, 'ask', 'results-question', 'answered', 'answer']
         ]) {
+            if (Server === ResultsGenerationServerImpl && providerId === 'grok') continue;
             const server = new Server(registry);
             const probe = instrument(server, providerId);
             const request = { ...scope, providerId };

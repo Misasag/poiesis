@@ -147,20 +147,7 @@ try {
         console.log('RESULTS_CITATION_SMOKE_RESULT={"mode":"code","file":"citation-target.txt","line":4}');
     } else if (mode === 'fallback') {
         const responsiveResults = await smokeFallback(page, diagnostics);
-        console.log(`RESULTS_FALLBACK_SMOKE_RESULT=${JSON.stringify({
-            annotation: true,
-            retry: true,
-            diagnosticAttempts: diagnostics.length,
-            completionSummary: true,
-            fileStats: true,
-            fixedHeader: true,
-            generatedBeforeOpen: true,
-            fullConversationReport: true,
-            compactResultsCanvas: true,
-            denseAiHeader: true,
-            aiDocumentMargins: true,
-            responsiveResults
-        })}`);
+        console.log(`RESULTS_FALLBACK_SMOKE_RESULT=${JSON.stringify(responsiveResults)}`);
     } else {
         const lifecycle = await smokeCliDetectionUi(page);
         console.log(`CLI_DETECTION_UI_SMOKE_RESULT=${JSON.stringify(lifecycle)}`);
@@ -563,10 +550,10 @@ function seedCitationDurableState(workspacePath) {
                 taskId,
                 status: 'ready',
                 generator: 'ai',
-                html: '<!doctype html><html><head><title>Citation</title></head><body><h2 style="font-family: Georgia, serif">引用先</h2><p>引用先を開けるようにしました。</p><p>確認は未確認です。</p><details open><summary>引用先の記録</summary><a href="#" data-poiesis-citation="citation-target.txt:4">citation-target.txt:4</a></details></body></html>',
+                html: `<!doctype html><html><head><title>Citation</title><style>body {font-family:var(--results-font-sans)}</style></head><body><h2 style="font-family: Georgia, serif">引用先</h2><p>引用先を開けるようにしました。</p><a href="#" id="fixture-citation">citation-target.txt:4</a><script>document.getElementById('fixture-citation').addEventListener('click', event => { event.preventDefault(); window.parent.postMessage({type:'poiesis:open-citation',citation:'citation-target.txt:4'}, '*'); });</script></body></html>`,
                 assertions: [
-                    { text: '変更ファイルがある場合、本文に根拠引用がある', source: 'app', status: 'pass' },
-                    { text: '空の見出しがない', source: 'app', status: 'pass' }
+                    { text: '変更ファイルがある場合、本文に根拠引用がある', source: 'skill', status: 'pass' },
+                    { text: '空の見出しがない', source: 'skill', status: 'pass' }
                 ],
                 assertionAttempts: 1
             }]
@@ -577,6 +564,25 @@ function seedCitationDurableState(workspacePath) {
 async function smokeCitation(page) {
     const taskId = 'results-citation-smoke-task';
     await page.waitForSelector('.poiesis-results__document');
+    assert(await page.$eval('.poiesis-results__document', frame => frame.srcdoc.includes('Content-Security-Policy')),
+        'Results must start with external resources disabled');
+    for (const allow of [true, false]) {
+        await openSettings(page);
+        await page.$$eval('.poiesis-settings-modal__nav button', buttons => buttons.find(button => button.textContent.trim() === 'Results').click());
+        const setting = '[aria-label="成果文書の外部リソースを読み込む"]';
+        await page.waitForSelector(setting);
+        assert(await page.$eval(setting, input => input.checked) === !allow, 'The external-resource toggle must reflect the current setting');
+        await page.evaluate(() => { window.resultsFrameBeforeToggle = document.querySelector('.poiesis-results__document'); });
+        await page.$eval(setting, input => input.click());
+        await page.waitForFunction(allow => {
+            const frame = document.querySelector('.poiesis-results__document');
+            return frame && frame !== window.resultsFrameBeforeToggle
+                && frame.srcdoc.includes('Content-Security-Policy') === !allow;
+        }, {}, allow);
+        assert(await page.$eval(setting, input => input.checked) === allow, 'The external-resource toggle must retain the new setting');
+        await closeSettings(page);
+    }
+    console.log('RESULTS_EXTERNAL_RESOURCES_SMOKE_RESULT={"default":false,"toggle":true,"frameRemount":true}');
     const persisted = await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
         const session = state?.sessions?.find(candidate => (candidate.tasks ?? []).some(task => task.id === taskId));
         const task = session?.tasks?.find(candidate => candidate.id === taskId);
@@ -600,27 +606,27 @@ async function smokeCitation(page) {
         assertions: resultDocument?.assertions,
         attempts: resultDocument?.assertionAttempts
     };
-    // The seeded document carries the two application checks that remain after the always-passing heading check was removed.
+    // The seeded document carries two user-skill conditions.
     assert(assertionState.summary === '2/2 通過'
         && assertionState.conditions.length === 2
         && assertionState.conditions.every((condition, index) => condition.status === 'pass'
             && condition.text === assertionState.assertions[index]?.text)
         && assertionState.assertions?.length === 2
-        && assertionState.assertions.every(result => result.source === 'app' && result.status === 'pass')
+        && assertionState.assertions.every(result => result.source === 'skill' && result.status === 'pass')
         && assertionState.attempts === 1,
     `AI assertion results were not persisted and rendered: ${JSON.stringify(assertionState)}`);
     await page.click('[aria-label="詳細を閉じる"]');
     await page.waitForFunction(() => !document.querySelector('#poiesis-results-details-panel'));
     const frame = await resultsFrame(page);
-    await frame.waitForSelector('[data-poiesis-citation="citation-target.txt:4"]');
+    await frame.waitForSelector('#fixture-citation');
     const typography = await frame.evaluate(() => ({
         bodyFontFamily: getComputedStyle(document.body).fontFamily,
         headingFontFamily: getComputedStyle(document.querySelector('h2')).fontFamily
     }));
     assert(typography.bodyFontFamily.trim().startsWith('Inter')
-        && typography.headingFontFamily.trim().startsWith('Inter'),
-    `The Application sans stack did not override the AI document serif style: ${JSON.stringify(typography)}`);
-    await frame.click('[data-poiesis-citation="citation-target.txt:4"]');
+        && typography.headingFontFamily.trim().startsWith('Georgia'),
+    `The skill typography must survive while theme font variables are available: ${JSON.stringify(typography)}`);
+    await frame.click('#fixture-citation');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__content')?.getAttribute('data-mode') === 'code');
     await page.waitForFunction(() => document.querySelector('.poiesis-agent-window__code-editor-tab.active .poiesis-agent-window__code-editor-tab-name')?.textContent?.trim() === 'citation-target.txt');
     await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-agent-window__code-editor-host .line-numbers.active-line-number')]
@@ -629,294 +635,59 @@ async function smokeCitation(page) {
 
 async function smokeFallback(page, diagnostics) {
     await page.focus('[aria-label="Agent へのメッセージ"]');
-    await page.keyboard.type('Create fallback-new.html for the fallback smoke.', { delay: 1 });
+    await page.keyboard.type('Create fallback-new.html for the results failure smoke.', { delay: 1 });
     await page.waitForFunction(() => !document.querySelector('[aria-label="Agent へ送信"]')?.disabled);
     await page.click('[aria-label="Agent へ送信"]');
     await page.waitForSelector('.poiesis-agent-window__message-state');
-    await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
-    writeFileSync(resolve(workspace, 'fallback-new.html'), '<!doctype html>\n<title>Fallback smoke</title>\n', 'utf8');
+    await new Promise(done => setTimeout(done, 1000));
+    writeFileSync(resolve(workspace, 'fallback-new.html'), '<!doctype html>\n<title>Failure smoke</title>\n', 'utf8');
     await page.waitForFunction(() => !document.querySelector('.poiesis-agent-window__message-state'));
-    const persistedBeforeOpen = await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
+    const persisted = await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
         const task = state?.sessions?.[0]?.tasks?.at(-1);
-        return task?.status === 'completed' && task.resultsDocument?.status === 'ready';
+        return task?.status === 'completed' && task.resultsDocument?.status === 'failed';
     }, timeout);
-    const beforeOpen = {
-        ...await page.evaluate(() => {
-            const agentMessages = [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')];
-            return {
-                activeResults: document.querySelector('#poiesis-results-tab')?.getAttribute('aria-selected') === 'true',
-                iframeCount: document.querySelectorAll('.poiesis-results__document').length,
-                conversation: agentMessages.at(-1)?.querySelector('.poiesis-markdown')?.textContent?.trim() ?? ''
-            };
-        }),
-        task: persistedBeforeOpen?.sessions?.[0]?.tasks?.at(-1)
-    };
-    assert(!beforeOpen.activeResults && beforeOpen.iframeCount === 0,
-        `Results opened before the explicit tab action: ${JSON.stringify(beforeOpen)}`);
-    assert(beforeOpen.task?.resultsDocument?.status === 'ready',
-        `The completed document was not stored on its Task before Results opened: ${JSON.stringify(beforeOpen)}`);
-    assert(beforeOpen.task?.resultsDocument?.generator === 'fallback'
-        && beforeOpen.task.resultsDocument.fallbackReason === 'generation-failed'
-        && typeof beforeOpen.task.resultsDocument.generatedAt === 'string'
-        && Number.isFinite(beforeOpen.task.resultsDocument.durationMs),
-    `Results generation metadata was not persisted: ${JSON.stringify(beforeOpen.task?.resultsDocument)}`);
-    assert(beforeOpen.conversation === longCompletionReply
-        && !beforeOpen.conversation.includes('詳細は Results を確認してください')
-        && !beforeOpen.conversation.includes('変更ファイル: なし'),
-    `The Agent completion report was not preserved verbatim: ${JSON.stringify(beforeOpen.conversation)}`);
+    const task = persisted.sessions[0].tasks.at(-1);
+    assert(!task.resultsDocument.html, 'A generation failure must never create a substitute document.');
+    assert(task.resultsDocument.error.includes('テスト用失敗'), 'The failure reason must be persisted.');
+    const conversation = await page.evaluate(() => [...document.querySelectorAll('[aria-label="Agent のメッセージ"]')].at(-1)?.querySelector('.poiesis-markdown')?.textContent?.trim());
+    assert(conversation === longCompletionReply, 'The completed Agent report must survive a failed Results generation.');
     await page.click('#poiesis-results-tab');
-    await page.waitForSelector('.poiesis-results__document');
-    const requirementState = await waitForDurableValue(theiaConfig, DURABLE_REQUIREMENTS_KEY, state =>
-        Object.values(state?.sessions ?? {}).flat().some(requirement => requirement.taskIds?.includes(beforeOpen.task.id)), timeout);
-    const selectedRequirement = Object.values(requirementState.sessions).flat()
-        .find(requirement => requirement.taskIds?.includes(beforeOpen.task.id));
-    const fixedHeader = await page.evaluate(() => {
-        const header = document.querySelector('.poiesis-results__fixed-header');
-        return {
-            title: header?.querySelector('h1')?.textContent?.trim(),
-            hasPermanentMetadata: Boolean(header?.querySelector('.poiesis-results__status, time, .poiesis-results__diffstat, .poiesis-results__badges')),
-            outcomeTrigger: header?.querySelector('.poiesis-results__outcome-trigger')?.textContent?.replace(/\s+/g, ' ').trim(),
-            questionTrigger: Boolean(header?.querySelector('#poiesis-results-question-trigger')),
-            detailsTrigger: Boolean(header?.querySelector('.poiesis-results__details-trigger'))
-        };
-    });
-    assert(fixedHeader.title === selectedRequirement.title
-        && !fixedHeader.hasPermanentMetadata
-        && fixedHeader.outcomeTrigger === '成果 1'
-        && fixedHeader.questionTrigger
-        && fixedHeader.detailsTrigger,
-    `The Results reading toolbar is incomplete: ${JSON.stringify(fixedHeader)}`);
+    await page.waitForSelector('.poiesis-results__state.error');
+    assert(await page.$('.poiesis-results__document') === null, 'Failed generation must show app chrome, without an iframe.');
+    const message = await page.$eval('.poiesis-results__state.error', node => node.textContent);
+    assert(message.includes(task.resultsDocument.error) && message.includes('作り直す'), 'The app must show the reason and a working retry control.');
+    assert(await page.$('.poiesis-results__fixed-header'), 'The fixed header must remain visible after failure.');
     await page.click('.poiesis-results__details-trigger');
     await page.waitForSelector('#poiesis-results-details-panel');
-    const details = await page.evaluate(() => Object.fromEntries(
-        [...document.querySelectorAll('.poiesis-results__details-list > div')].map(row => [
-            row.querySelector('dt')?.textContent?.trim(),
-            row.querySelector('dd')?.textContent?.replace(/\s+/g, ' ').trim()
-        ])
-    ));
-    assert(details['状態'] === '完了'
-        && details['完了日時'] === formatJst(beforeOpen.task.endedAt)
-        && details['変更']?.includes('1ファイル · +2 −0')
-        && details['成果の作成'] === 'テンプレート表示 · AI 生成に失敗'
-        && details['タスク履歴'] === '1件'
-        && !details['成果の生成条件'],
-    `The disclosed Results metadata is incomplete: ${JSON.stringify(details)}`);
-    assert(await page.$('.poiesis-results__canvas .poiesis-results__verification') === null,
-        'The verification table must not sit above the Results body.');
-    assert(await page.$eval('#poiesis-results-details-panel .poiesis-results__verification', section =>
-        Boolean(section.querySelector('.poiesis-results__verification-heading')?.textContent?.startsWith('確認 '))
-        && section.querySelectorAll('tbody tr[data-status]').length > 0) === true,
-        'The verification table must open as the first section of the Details panel.');
+    assert(await page.$eval('.poiesis-results__verification', node => node.querySelectorAll('tbody tr').length > 0), 'Verification rows must remain in Details.');
     await page.click('[aria-label="詳細を閉じる"]');
-    const canvasLayout = await page.evaluate(() => {
-        const bounds = selector => {
-            const element = document.querySelector(selector);
-            if (!element) return undefined;
-            const rect = element.getBoundingClientRect();
-            return { top: rect.top, width: rect.width, height: rect.height };
-        };
-        return {
-            panel: bounds('#poiesis-results-panel'),
-            canvas: bounds('.poiesis-results__canvas'),
-            header: bounds('.poiesis-results__fixed-header'),
-            hasCanvasVerification: Boolean(document.querySelector('.poiesis-results__canvas .poiesis-results__verification')),
-            frame: bounds('.poiesis-results__document')
-        };
-    });
-    assert(canvasLayout.header?.height <= 52,
-        `The Results fixed header is taller than 52px at 1280x720: ${JSON.stringify(canvasLayout)}`);
-    assert(!canvasLayout.hasCanvasVerification,
-        `The verification table must stay in Details: ${JSON.stringify(canvasLayout)}`);
-    assert(canvasLayout.frame && canvasLayout.header && canvasLayout.frame.top - canvasLayout.header.top - canvasLayout.header.height <= 22,
-        `The Results document starts too far below the panel top: ${JSON.stringify(canvasLayout)}`);
-    assert(canvasLayout.frame && canvasLayout.canvas && canvasLayout.frame.width >= canvasLayout.canvas.width - 2,
-        `The Results document does not use the canvas width: ${JSON.stringify(canvasLayout)}`);
-    let frame = await resultsFrame(page);
-    await frame.waitForSelector('[data-poiesis-action="retry-ai-results"]');
-    const fallback = await frame.evaluate(() => {
-        const baseStyle = document.head.querySelector('style[data-poiesis-base]');
-        return {
-            text: document.body.textContent ?? '',
-            citations: document.querySelectorAll('a[data-poiesis-citation]').length,
-            rawError: (document.body.textContent ?? '').includes('テスト用失敗'),
-            baseStyle: Boolean(baseStyle),
-            baseStyleText: baseStyle?.textContent ?? '',
-            bodyFontFamily: getComputedStyle(document.body).fontFamily,
-            cardPaddingTop: parseFloat(getComputedStyle(document.querySelector('.paper article')).paddingTop)
-        };
-    });
-    assert(fallback.text.includes('AI 生成に失敗したため簡易表示'), `Fallback annotation is missing: ${JSON.stringify(fallback)}`);
-    assert(fallback.text.includes('Fallback smoke completed.'), `Completion summary is missing: ${JSON.stringify(fallback)}`);
-    assert(fallback.text.includes('fallback-new.html') && fallback.text.includes('追加')
-        && fallback.text.includes('+2') && fallback.citations === 1,
-        `Fallback file statistics are incomplete: ${JSON.stringify(fallback)}`);
-    assert(!fallback.rawError, 'The internal generation error leaked into the fallback document.');
-    assert(fallback.baseStyle, 'The Application-owned Results base style was not injected.');
-    assert(fallback.baseStyleText.includes('font-family: inherit !important'),
-        `The Application-owned Results typography override was not injected: ${JSON.stringify(fallback)}`);
-    assert(fallback.bodyFontFamily.trim().startsWith('Inter'),
-        `The fallback document did not compute the Application sans stack: ${JSON.stringify(fallback)}`);
-    assert(fallback.cardPaddingTop >= 16,
-        `The bundled template card lost its own top padding: ${JSON.stringify(fallback)}`);
-    await page.waitForFunction(() => document.querySelector('.poiesis-results__document') !== null);
-    const attemptsBefore = diagnostics.length;
-    await frame.click('[data-poiesis-action="retry-ai-results"]');
-    const deadline = Date.now() + timeout;
-    while (diagnostics.length <= attemptsBefore && Date.now() < deadline) {
-        await new Promise(resolveDelay => setTimeout(resolveDelay, 100));
-    }
-    assert(diagnostics.length > attemptsBefore, 'The fallback retry button did not start another AI generation attempt.');
-    await page.waitForSelector('.poiesis-results__document');
-    frame = await resultsFrame(page);
-    await frame.waitForSelector('[data-poiesis-action="retry-ai-results"]');
+    const before = task.resultsDocument.generatedAt;
+    await page.$eval('.poiesis-results__state.error button', button => button.click());
+    await page.waitForSelector('.poiesis-results__generating');
     await waitForDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
-        return state?.sessions?.[0]?.tasks?.at(-1)?.resultsDocument?.status === 'ready';
+        const result = state?.sessions?.[0]?.tasks?.at(-1)?.resultsDocument;
+        return result?.status === 'failed' && result.generatedAt !== before;
     }, timeout);
-    await replaceDurableFixtures(page, () => {
-        const fixture = { html: nestedAiDocument, skills: denseHeaderSkills, title: denseHeaderTitle };
-        updateDurableValue(theiaConfig, DURABLE_SESSION_KEY, state => {
-            const session = state?.sessions?.[0];
-            const task = session?.tasks?.at(-1);
-            if (!session || !task) throw new Error('Fallback Task state was not available for the dense header fixture.');
-            task.title = fixture.title;
-            task.appliedSkills = { agent: fixture.skills, results: [] };
-            task.resultsDocument = {
-                ...task.resultsDocument,
-                status: 'ready',
-                generator: 'ai',
-                providerId: 'codex',
-                fallbackReason: undefined,
-                calls: undefined,
-                durationMs: undefined,
-                html: fixture.html,
-                assertions: Array.from({ length: 7 }, (_, index) => ({
-                    text: `Dense header assertion ${index + 1}`,
-                    source: 'app',
-                    status: 'pass'
-                })),
-                assertionAttempts: 1
-            };
-            const originalStartedAt = new Date(task.startedAt).getTime();
-            const history = Array.from({ length: 9 }, (_, index) => {
-                const sequence = index + 1;
-                const startedAt = new Date(originalStartedAt - (10 - sequence) * 60_000).toISOString();
-                return {
-                    ...task,
-                    id: `${task.id}-history-${sequence}`,
-                    title: `${fixture.title} ${sequence}`,
-                    startedAt,
-                    endedAt: startedAt,
-                    resultsDocument: {
-                        ...task.resultsDocument,
-                        taskId: `${task.id}-history-${sequence}`
-                    }
-                };
+    await page.waitForSelector('.poiesis-results__state.error');
+    assert(await page.$('.poiesis-results__document') === null, 'Retry failure must not introduce a template.');
+    const contrast = await page.evaluate(() => {
+        const luminance = color => {
+            const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => {
+                const s = value / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
             });
-            session.tasks = [...history, task];
-            session.selectedResultsTaskId = task.id;
-            session.activeTab = 'results';
-            return state;
-        });
-        updateDurableValue(theiaConfig, DURABLE_REQUIREMENTS_KEY, stored => {
-            if (!stored?.sessions) return stored;
-            const sessionState = readDurableValue(theiaConfig, DURABLE_SESSION_KEY);
-            const session = sessionState?.sessions?.[0];
-            const task = session?.tasks?.at(-1);
-            if (!session || !task) return stored;
-            for (const requirements of Object.values(stored.sessions ?? {})) {
-                for (const requirement of Array.isArray(requirements) ? requirements : []) {
-                    if (requirement.taskIds?.includes(task.id)) {
-                        requirement.title = fixture.title;
-                        requirement.taskIds = session.tasks.map(candidate => candidate.id);
-                    }
-                }
-            }
-            return stored;
+            return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+        };
+        const background = luminance(getComputedStyle(document.querySelector('.poiesis-results__canvas')).backgroundColor);
+        return ['strong', 'p', 'button'].map(selector => {
+            const foreground = luminance(getComputedStyle(document.querySelector('.poiesis-results__state.error ' + selector)).color);
+            return (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05);
         });
     });
-    await page.waitForSelector('.poiesis-results__document');
-    await waitForFinishedResultsContent(page, '[data-live-check-heading]');
-    const denseHeader = await page.evaluate(expectedTitle => {
-        const header = document.querySelector('.poiesis-results__fixed-header');
-        const title = header?.querySelector('h1');
-        return {
-            height: header?.getBoundingClientRect().height,
-            title: title?.textContent?.trim(),
-            titleAttribute: title?.getAttribute('title'),
-            titleWidth: title?.getBoundingClientRect().width,
-            actionCount: header?.querySelectorAll('.poiesis-results__toolbar-actions button').length,
-            permanentMetadata: Boolean(header?.querySelector('.poiesis-results__badges, .poiesis-results__diffstat')),
-            matchesExpectedTitle: title?.textContent?.trim() === expectedTitle
-        };
-    }, denseHeaderTitle);
-    assert(denseHeader.height <= 52 && denseHeader.titleWidth >= 120 && denseHeader.actionCount === 3,
-        `The dense AI Results toolbar is not one compact row at 1280x720: ${JSON.stringify(denseHeader)}`);
-    assert(denseHeader.matchesExpectedTitle && denseHeader.titleAttribute === denseHeaderTitle
-        && !denseHeader.permanentMetadata,
-    `Metadata leaked back into the Results title row: ${JSON.stringify(denseHeader)}`);
-    await page.click('.poiesis-results__details-trigger');
-    await page.waitForSelector('#poiesis-results-details-panel');
-    const denseDetails = await page.evaluate(() => ({
-        values: Object.fromEntries([...document.querySelectorAll('.poiesis-results__details-list > div')].map(row => [
-            row.querySelector('dt')?.textContent?.trim(),
-            row.querySelector('dd')?.textContent?.replace(/\s+/g, ' ').trim()
-        ])),
-        assertionCount: document.querySelectorAll('.poiesis-results__assertion-list li').length
-    }));
-    assert(denseDetails.values['成果の作成'] === 'AI 生成 · Codex（モデルはCLI設定）'
-        && denseDetails.values['成果の生成条件'] === '7/7 通過'
-        && denseHeaderSkills.every(skill => denseDetails.values['適用 Skills']?.includes(skill))
-        && denseDetails.values['タスク履歴'] === '10件'
-        && denseDetails.assertionCount === 7,
-    `The Results details disclosure is incomplete: ${JSON.stringify(denseDetails)}`);
-    await page.click('[aria-label="詳細を閉じる"]');
-    const standardLayout = await measureResultsLayout(page);
-    assertResultsLayout(standardLayout, { label: '1280x720 standard', minimumFrameHeight: 540 });
+    assert(contrast.every(ratio => ratio >= 4.5), 'Failure text must remain readable: ' + contrast.join(', '));
     await page.screenshot({ path: standardScreenshotPath });
-
-    await setUiFontScale(page, 'large');
-    await page.setViewport({ width: 1024, height: 720, deviceScaleFactor: 1 });
-    const aiFrame = await waitForFinishedResultsContent(page, '[data-live-check-heading]');
-    const largeLayout = await measureResultsLayout(page);
-    assertResultsLayout(largeLayout, { label: '1024x720 large', minimumFrameHeight: 500 });
-    assert(largeLayout.header.height <= 64,
-        `The deliberate narrow Results toolbar grew unexpectedly: ${JSON.stringify(largeLayout)}`);
+    await page.setViewport({ width: 1024, height: 720 });
     await page.screenshot({ path: largeScreenshotPath });
-    const aiLayout = await aiFrame.evaluate(() => {
-        const outer = document.querySelector('body > main');
-        const inner = document.querySelector('body > main > article');
-        const heading = document.querySelector('[data-live-check-heading]');
-        const outerStyle = getComputedStyle(outer);
-        const innerStyle = getComputedStyle(inner);
-        const headingStyle = getComputedStyle(heading);
-        return {
-            outerPaddingTop: parseFloat(outerStyle.paddingTop),
-            outerPaddingInline: parseFloat(outerStyle.paddingLeft),
-            outerMaxWidth: outerStyle.maxWidth,
-            outerMarginInline: outerStyle.marginLeft,
-            innerPaddingTop: parseFloat(innerStyle.paddingTop),
-            innerPaddingInline: parseFloat(innerStyle.paddingLeft),
-            innerMaxWidth: innerStyle.maxWidth,
-            innerMarginInline: innerStyle.marginLeft,
-            headingMarginTop: parseFloat(headingStyle.marginTop),
-            headingTop: heading.getBoundingClientRect().top,
-            bodyFontSize: parseFloat(getComputedStyle(document.body).fontSize),
-            contentWidth: outer.getBoundingClientRect().width
-        };
-    });
-    assert(aiLayout.outerPaddingTop >= 22 && aiLayout.outerPaddingTop <= 42
-        && aiLayout.outerPaddingInline >= 20 && aiLayout.outerPaddingInline <= 48
-        && aiLayout.outerMaxWidth === '980px'
-        && aiLayout.innerPaddingTop === 0 && aiLayout.innerPaddingInline === 0
-        && aiLayout.innerMaxWidth === 'none' && aiLayout.innerMarginInline === '0px'
-        && aiLayout.headingMarginTop === 0 && aiLayout.headingTop <= 48
-        && aiLayout.bodyFontSize >= 15 && aiLayout.contentWidth <= 980,
-    `The Application-owned AI document margins were not enforced: ${JSON.stringify(aiLayout)}`);
-    return {
-        standard: standardLayout,
-        large: largeLayout,
-        screenshots: [standardScreenshotPath, largeScreenshotPath]
-    };
+    return { reason: true, retry: true, verification: true, contrast, screenshots: [standardScreenshotPath, largeScreenshotPath] };
 }
 
 async function setUiFontScale(page, scale) {

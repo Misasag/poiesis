@@ -13,7 +13,7 @@ import { ThemePreferenceService } from './theme-preference-service';
 import { AgentProvider } from '../common/agent-provider';
 import { AgentRuntimeServer, agentRuntimeServerPath } from '../common/agent-runtime-protocol';
 import { MockAgentProvider } from './mock-agent-provider';
-import { AiResultsSkill, BundledResultsSkill, ResultsService, ResultsSkill } from './results-skill';
+import { AiResultsSkill, ResultsService, ResultsSkill } from './results-skill';
 import { TaskService } from './task-service';
 import { PoiesisFrontendApplication } from './poiesis-frontend-application';
 import { FolderExplorerService } from './folder-explorer-service';
@@ -86,7 +86,6 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     bind(MockAgentProvider).toSelf().inSingletonScope();
     bind(CliAgentProvider).toSelf().inSingletonScope();
     bind(AgentProvider).toService(CliAgentProvider);
-    bind(BundledResultsSkill).toSelf().inSingletonScope();
     bind(AiResultsSkill).toSelf().inSingletonScope();
     bind(ResultsSkill).toService(AiResultsSkill);
     bind(ResultsService).toSelf().inSingletonScope();

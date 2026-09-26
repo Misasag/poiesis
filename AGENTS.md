@@ -24,8 +24,10 @@
 - `npm run test:model-selection`
 - `npm run test:hidden-process-env`
 - `npm run test:cli-detection`
-- `npm run test:results-normalizer`
-- `npm run test:results-assertions`
+- `npm run test:results-skill-run`: skill file transport, permissions, retry, isolation, and app/skill boundary.
+- `npm run test:results-rich-content`: document sanitization and isolated frame; image viewer validation.
+- `npm run test:results-normalizer`: execution-evidence formatting only.
+- `npm run test:results-assertions`: user-skill assertion judging and evidence extraction only.
 - `npm run test:results-prompt-transport`
 - `npm run test:requirements`
 - `npm run test:requirement-classifier`

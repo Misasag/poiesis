@@ -7,24 +7,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const {
     buildFailedAssertionPromptSection,
-    checkAppResultsAssertions,
     extractResultsAssertionText,
     parseResultsAssertionJudgement,
     selectBetterResultsAssertionCandidate,
     shortRequirementTitleFallback
 } = require(resolve(root, 'agent-window/lib/browser/results-assertions.js'));
-
-const completeHtml = '<!doctype html><html><body><h2>開始ボタン</h2><p>説明</p><a data-poiesis-citation="src/a.ts:2">src/a.ts:2</a></body></html>';
-const complete = checkAppResultsAssertions(completeHtml, ['src/a.ts']);
-assert.deepEqual(complete.map(result => result.status), ['pass', 'pass']);
-
-const citationRequired = checkAppResultsAssertions('<html><body><h2>変更内容</h2></body></html>', ['src/a.ts']);
-assert.equal(citationRequired[0].status, 'fail', 'A changed-file document must include a citation.');
-const citationNotRequired = checkAppResultsAssertions('<html><body><h2>変更内容</h2></body></html>', []);
-assert.equal(citationNotRequired[0].status, 'pass', 'A no-change document does not require a citation.');
-assert.equal(checkAppResultsAssertions('<html><body><p>見出しなし</p></body></html>', []).length, 2,
-    'A document without headings records no always-passing heading check.');
-assert.equal(checkAppResultsAssertions('<html><body><h3><span> </span></h3></body></html>', [])[1].status, 'fail');
 
 const extracted = extractResultsAssertionText('<html><head><style>hidden</style></head><body><h2>概要</h2><p>本文 <b>です</b></p></body></html>');
 assert(extracted.includes('## 概要'));
