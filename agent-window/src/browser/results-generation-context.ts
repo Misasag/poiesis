@@ -7,6 +7,21 @@ export interface AiSelection {
     effort: string;
 }
 
+export function resolveResultsQuestionSelection(state: {
+    questionSameAsResults: boolean;
+    questionCli: KnownCliId;
+    questionModel: string;
+    questionEffort: string;
+    resultsCli: KnownCliId;
+    resultsModel: string;
+    resultsEffort: string;
+}): AiSelection {
+    const selection = state.questionSameAsResults
+        ? { providerId: state.resultsCli, model: state.resultsModel, effort: state.resultsEffort }
+        : { providerId: state.questionCli, model: state.questionModel, effort: state.questionEffort };
+    return { ...selection, model: selection.model.trim() };
+}
+
 /** Runtime selection only; orchestration remains a Results Skill concern. */
 @injectable()
 export class ResultsGenerationContext {

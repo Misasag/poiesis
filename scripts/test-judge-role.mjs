@@ -18,7 +18,7 @@ const { taskProducesResult } = require('../agent-window/lib/common/task-outcome.
 
 const context = new ResultsGenerationContext();
 Object.assign(context, { providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh' });
-for (const version of [1, 2, 3, 4, 5, 6, 7]) {
+for (const version of [1, 2, 3, 4, 5, 6, 7, 8]) {
     for (const same of [true, false]) {
         let saved;
         const old = { version, preferredCli: 'claude', agentCli: 'grok', agentModel: 'grok-4.5',
@@ -38,16 +38,16 @@ for (const version of [1, 2, 3, 4, 5, 6, 7]) {
         assert.equal(settings.host.state.judgeSameAsResults, version < 6 || same);
         assert.equal(context.judge.providerId, version >= 6 && !same ? 'claude' : version === 1 ? 'claude' : 'codex');
         assert.equal(settings.host.state.resultsEffort, version >= 5 ? 'xhigh' : '');
-        assert.equal(settings.host.state.allowCodexAgentNetworkAccess, version === 7 && same);
+        assert.equal(settings.host.state.allowCodexAgentNetworkAccess, version >= 7 && same);
         settings.persistPoiesisSettings();
-        assert.equal(saved.version, 7);
-        assert.equal(saved.allowCodexAgentNetworkAccess, version === 7 && same);
+        assert.equal(saved.version, 8);
+        assert.equal(saved.allowCodexAgentNetworkAccess, version >= 7 && same);
         assert.equal(saved.judgeSameAsResults, version < 6 || same);
         const roundTrip = JSON.parse(JSON.stringify(saved));
         settings.storageService.getData = async () => roundTrip;
         await settings.restorePoiesisSettings();
         assert.equal(context.judge.providerId, version >= 6 && !same ? 'claude' : version === 1 ? 'claude' : 'codex');
-        assert.equal(settings.host.state.allowCodexAgentNetworkAccess, version === 7 && same);
+        assert.equal(settings.host.state.allowCodexAgentNetworkAccess, version >= 7 && same);
         settings.setRoleCli('judge', 'grok');
         assert.equal(context.judge.providerId, 'grok');
         assert.equal(saved.judgeSameAsResults, false);

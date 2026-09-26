@@ -56,6 +56,10 @@ export interface AgentWindowState {
     judgeCli: KnownCliId;
     judgeModel: string;
     judgeEffort: string;
+    questionSameAsResults: boolean;
+    questionCli: KnownCliId;
+    questionModel: string;
+    questionEffort: string;
     effortByModel: Record<AiRole, Record<string, string>>;
     allowExternalResultsResources: boolean;
     allowCodexAgentNetworkAccess: boolean;

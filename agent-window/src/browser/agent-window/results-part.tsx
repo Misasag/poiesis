@@ -49,7 +49,7 @@ import { getDesignVariant } from '../design-variant';
 import { FolderExplorerService } from '../folder-explorer-service';
 import { ResultsQuestionService } from '../results-question-service';
 import { GlobalStorageService } from '../global-storage-service';
-import { ResultsGenerationContext } from '../results-generation-context';
+import { resolveResultsQuestionSelection, ResultsGenerationContext } from '../results-generation-context';
 import { SkillBundleKind } from '../../common/skill-bundle';
 import {
     collectWorkspaceRichContentReferences,
@@ -1639,12 +1639,13 @@ img, svg, figure { max-width: 100%; }
             }
         });
         try {
+            const questionAi = resolveResultsQuestionSelection(this.host.state);
             const result = await this.resultsQuestionService.ask(question, {
                 taskId: scopeKey,
                 requirementTitle: requirement?.title,
-                providerId: this.host.state.resultsCli,
-                model: this.host.state.resultsModel.trim() || undefined,
-                effort: this.host.state.resultsEffort || undefined,
+                providerId: questionAi.providerId,
+                model: questionAi.model || undefined,
+                effort: questionAi.effort || undefined,
                 workspaceUri: session.workspaceUri,
                 taskMetadata: {
                     title: task.title,

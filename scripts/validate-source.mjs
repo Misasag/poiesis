@@ -353,9 +353,10 @@ assert.ok(resultsQuestionService.includes('return this.server.ask(question, scop
 for (const marker of [
     'this.resultsQuestionService.ask(question, {',
     'workspaceUri: session.workspaceUri',
-    'providerId: this.host.state.resultsCli',
-    'model: this.host.state.resultsModel.trim() || undefined',
-    'effort: this.host.state.resultsEffort || undefined',
+    'const questionAi = resolveResultsQuestionSelection(this.host.state)',
+    'providerId: questionAi.providerId',
+    'model: questionAi.model || undefined',
+    'effort: questionAi.effort || undefined',
     "status: 'sending'",
     "status: 'failed'",
     'this.requirementService.recordResultsQuestion(requirement.id, entry)',
@@ -1733,7 +1734,8 @@ for (const marker of [
     'protected setRoleEffort(role: AiRole, effort: string): void',
     'protected effortKey(provider: KnownCliId, model: string): string',
     "label: '既定'",
-    'version: 7',
+    'version: 8',
+    'questionSameAsResults: this.host.state.questionSameAsResults',
     'effortByModel: Record<AiRole, Record<string, string>>',
     'state.version >= 5',
     'allowCodexAgentNetworkAccess: this.host.state.allowCodexAgentNetworkAccess',
@@ -1879,7 +1881,8 @@ for (const marker of [
     'effortByModel: Record<AiRole, Record<string, string>>;',
     'effort: this.host.state.agentEffort || undefined',
     "(session.agentSession.effort ?? '') !== this.host.state.agentEffort",
-    'effort: this.host.state.resultsEffort || undefined',
+    'const questionAi = resolveResultsQuestionSelection(this.host.state)',
+    'effort: questionAi.effort || undefined',
     "document.effort ? `（${document.effort}）` : ''"
 ]) {
     assert.ok(agentWidget.includes(marker), `Per-role model effort wiring is missing ${marker}`);
