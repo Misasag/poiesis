@@ -49,8 +49,6 @@ function normalizedEncodingFields(task: ExecutionTask): ExecutionTask {
     return { ...task, changeSet, encodingRestore };
 }
 
-export const MAX_PERSISTED_RESULTS_HTML_CHARS = 300_000;
-
 export interface DraftSessionLike {
     archived: boolean;
     hasUserMessage: boolean;
@@ -95,12 +93,6 @@ export function tasksForDurableSession(
                 endedAt: interruptedAt,
                 failure: { summary: 'アプリ終了により中断されました' }
             } : task;
-            return persistedTask.resultsDocument ? {
-                ...persistedTask,
-                resultsDocument: {
-                    ...persistedTask.resultsDocument,
-                    html: persistedTask.resultsDocument.html?.slice(0, MAX_PERSISTED_RESULTS_HTML_CHARS)
-                }
-            } : persistedTask;
+            return persistedTask;
         });
 }

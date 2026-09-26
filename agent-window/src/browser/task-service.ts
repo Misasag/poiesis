@@ -124,6 +124,8 @@ export interface TaskResultDocument {
     taskId: string;
     status: 'generating' | 'ready' | 'failed';
     html?: string;
+    /** Durable HTML is stored under the owning task or requirement key. */
+    htmlStored?: { version: 1; length: number; hash: string };
     error?: string;
     /** A newer generation failed while the readable document remains current. */
     updateError?: string;

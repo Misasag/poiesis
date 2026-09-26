@@ -46,11 +46,21 @@ const imagePath = (workspace, path, budget) => {
   return { src: `data:${mime};base64,${data.toString('base64')}`, path: rel.replace(/\\/g, '/') };
 };
 
-function validate(prepared, draft, imagePaths = []) {
+function validate(prepared, draft, imagePaths = [], workspace = prepared?.workspace) {
   const reasons = [];
   if (!prepared?.ok || !Array.isArray(prepared?.map?.nodes) || !Array.isArray(prepared?.map?.edges) || !Array.isArray(prepared?.hunks)) return ['準備の出力がありません。準備をやり直してください。'];
   if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return ['JSON の本文をオブジェクトとして書き直してください。'];
-  onlyKeys(draft, ['lead', 'mapCaption', 'nodes', 'edges', 'offMap', 'screenImage', 'interpretations', 'concerns', 'unverified'], 'JSON の本文', reasons);
+  onlyKeys(draft, ['lead', 'mapCaption', 'nodes', 'edges', 'offMap', 'images', 'screenImage', 'interpretations', 'concerns', 'unverified'], 'JSON の本文', reasons);
+  // Screenshots a hook or the agent left in the workspace are chosen here; the app only lists verification images.
+  const chosenImages = [];
+  if (draft.images !== undefined && (!Array.isArray(draft.images) || draft.images.length > 6)) reasons.push('images は作業場所の画像を最大6件の配列で書いてください。');
+  for (const item of list(draft.images)) {
+    onlyKeys(item, ['path', 'caption'], '載せる画像', reasons);
+    oneSentence(item?.caption, `画像 ${item?.path ?? '(path なし)'} の説明`, reasons);
+    const image = typeof item?.path === 'string' && workspace ? imagePath(workspace, item.path, { used: 0 }) : null;
+    if (!image?.src) reasons.push(`画像 ${item?.path ?? '(path なし)'} を載せられません。${image?.reason ?? '作業場所からの相対パスで書いてください。'}作業場所にある PNG・JPEG・GIF・WebP の画像を選び直してください。`);
+    else chosenImages.push(image.path);
+  }
   oneSentence(draft.lead, '冒頭', reasons);
   if (prepared.map.nodes.length && list(draft.nodes).length) oneSentence(draft.mapCaption, '地図の説明', reasons);
   const nodes = new Map(prepared.map.nodes.map(n => [n.id, n]));
@@ -78,8 +88,8 @@ function validate(prepared, draft, imagePaths = []) {
     assign(item?.hunkIds, `部品 ${item?.id ?? '(ID なし)'}`);
   }
   if (draft.screenImage !== undefined) {
-    if (typeof draft.screenImage !== 'string' || !imagePaths.includes(draft.screenImage.replaceAll('\\', '/')))
-      reasons.push('screenImage は input.json の images か確認の表の画像の path から1つ選んでください。画像がなければこの項目を書きません。');
+    if (typeof draft.screenImage !== 'string' || ![...imagePaths, ...chosenImages].includes(draft.screenImage.replaceAll('\\', '/')))
+      reasons.push('screenImage は images に選んだ画像か、input.json の images、確認の表の画像の path から1つ選んでください。画像がなければこの項目を書きません。');
     else if (!list(draft.nodes).some(item => nodes.get(item?.id)?.kind === 'screen'))
       reasons.push('screenImage を使うときは、画面の部品を nodes に選んでください。');
   }
@@ -124,7 +134,7 @@ function render(prepared, draft, evidence, request, input) {
   const hunks = new Map(prepared.hunks.map(h => [h.id, h]));
   const selected = draft.nodes.map(item => ({ ...nodes.get(item.id), title: item.title, caption: item.caption, hunkIds: item.hunkIds }));
   const budget = { used: 0 };
-  const shotEntry = draft.screenImage ? evidenceImages(evidence).find(item => item.path.replaceAll('\\', '/') === draft.screenImage.replaceAll('\\', '/')) : null;
+  const shotEntry = draft.screenImage ? documentImages(draft, evidence).find(item => item.path.replaceAll('\\', '/') === draft.screenImage.replaceAll('\\', '/')) : null;
   const mapShotImage = shotEntry && selected.some(n => n.kind === 'screen') ? imagePath(prepared.workspace, shotEntry.path, budget) : null;
   const graph = layoutGraph(selected, draft.edges.map(id => edges.get(id)), { screenImage: Boolean(mapShotImage?.src) });
   const { width, height } = graph;
@@ -194,7 +204,7 @@ function render(prepared, draft, evidence, request, input) {
     return `<details class="ex-hit-inline" name="ex-panel"><summary>${esc(item.title)} ${count}行</summary>${offMapPanel(item)}</details>`;
   }).join('・');
   const concerns = draft.concerns.map(c => `<li><details class="ex-hit-inline" name="ex-panel"><summary>${esc(c.text)}</summary>${concernPanel(c)}</details></li>`).join('');
-  const imageEntries = evidenceImages(evidence);
+  const imageEntries = documentImages(draft, evidence);
   const pictures = imageEntries.map(item => ({ ...item, data: imagePath(prepared.workspace, item.path, budget) }));
   const picture = item => item.data.src
     ? `<figure><button type="button" class="ex-image-button" data-poiesis-image="${esc(item.data.path)}"><img src="${esc(item.data.src)}" alt="${esc(item.label ?? item.path)}"></button><figcaption>${esc(item.label ?? item.path)}</figcaption></figure>`
@@ -229,6 +239,8 @@ ${verificationHtml}<details><summary>まだ確かめていないこと ${draft.u
 const uniqueImages = items => [...new Map(items.filter(item => typeof item?.path === 'string')
   .map(item => [item.path.replaceAll('\\', '/'), item])).values()];
 const evidenceImages = evidence => uniqueImages([...(evidence.images ?? []), ...(evidence.verification?.rows ?? []).filter(row => row.image).map(row => ({ path: row.image, label: row.label }))]);
+// The images the AI chose come first, captioned in its words; listed evidence follows once.
+const documentImages = (draft, evidence) => uniqueImages([...list(draft.images).map(item => ({ path: item.path, label: item.caption })), ...evidenceImages(evidence)]);
 
 const readJson = (name) => {
   const bytes = readFileSync(resolve(process.cwd(), name));
@@ -244,7 +256,7 @@ const readJson = (name) => {
 try {
   rmSync(resolve(process.cwd(), 'results.html'), { force: true });
   const input = readJson('input.json'), prepared = readJson('prepared.json'), draft = readJson('draft.json');
-  const reasons = validate(prepared, draft, evidenceImages({ images: input.images, verification: input.verification }).map(item => item.path.replaceAll('\\', '/')));
+  const reasons = validate(prepared, draft, evidenceImages({ images: input.images, verification: input.verification }).map(item => item.path.replaceAll('\\', '/')), input.workspace ?? prepared?.workspace);
   if (input.schema !== 'poiesis-results-input/1') reasons.push('入力の形式が違います。');
   if (reasons.length) emit({ ok: false, reasons });
   else {
@@ -262,7 +274,7 @@ try {
         return `<details class="ex-hit-inline"><summary>${esc(item.title)}</summary><div class="ex-panel" role="region"><div class="ex-panel-grip" role="separator" tabindex="0" aria-label="説明欄の幅"></div><h3>${esc(item.title)}</h3><p>${esc(item.caption)}</p>${parts}<p><a href="#" data-poiesis-citation="${esc(source)}">Code で開く</a></p><details class="ex-close"><summary>閉じる</summary></details></div></details>`;
       }).join('・');
       const budget = { used: 0 };
-      const images = uniqueImages([...(input.images ?? []), ...(input.verification?.rows ?? []).filter(row => row.image).map(row => ({ path: row.image, label: row.label }))]).map(item => {
+      const images = documentImages(draft, { images: input.images, verification: input.verification }).map(item => {
         const image = imagePath(input.workspace, item.path, budget);
         return image.src ? `<figure><button type="button" data-poiesis-image="${esc(image.path)}"><img src="${esc(image.src)}" alt="${esc(item.label ?? item.path)}"></button><figcaption>${esc(item.label ?? item.path)}</figcaption></figure>`
           : `<p>${esc(image.reason)} ${image.path ? `<button type="button" data-poiesis-image="${esc(image.path)}">${esc(image.path)}</button>` : esc(item.path)}</p>`;

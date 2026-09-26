@@ -111,6 +111,18 @@ expectReason(Buffer.from(JSON.stringify({ ...withShot, screenImage: 'missing.png
 input.images = [];
 writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
 expectReason(Buffer.from(JSON.stringify(withShot), 'utf8'), /screenImage/);
+// A hook screenshot left in the workspace reaches the document only when the AI chooses it, with its own caption.
+const chosen = { ...structuredClone(draft), images: [{ path: 'sample.png', caption: '変更後のタイマー画面を幅1280で撮った画像です。' }], screenImage: 'sample.png' };
+writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(chosen), 'utf8');
+const chosenResult = render();
+assert.equal(chosenResult.body.ok, true, JSON.stringify(chosenResult.body.reasons));
+const chosenHtml = readFileSync(htmlPath, 'utf8');
+assert.match(chosenHtml, /<figcaption>変更後のタイマー画面を幅1280で撮った画像です。<\/figcaption>/);
+assert.match(chosenHtml, /<img class="ex-mapshot" src="data:image\/png;base64,/);
+assert.equal(screenHeight(chosenResult.body), screenHeight(plain.body) + 90);
+expectReason(Buffer.from(JSON.stringify({ ...chosen, images: [{ path: 'missing.png', caption: '無い画像です。' }], screenImage: undefined }), 'utf8'), /missing\.png を載せられません/);
+expectReason(Buffer.from(JSON.stringify({ ...chosen, images: [{ path: '../outside.png', caption: '外の画像です。' }], screenImage: undefined }), 'utf8'), /載せられません/);
+expectReason(Buffer.from(JSON.stringify({ ...chosen, images: [{ path: 'README.md', caption: '画像ではありません。' }], screenImage: undefined }), 'utf8'), /載せられません/);
 copyFixtureDraft();
 
 const invalid = structuredClone(draft);

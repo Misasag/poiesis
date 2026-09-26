@@ -74,6 +74,7 @@
     "test:outcome-semantics": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-outcome-semantics.mjs",
     "test:conversation-transport": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-conversation-transport.mjs",
     "test:session-durability": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-session-durability.mjs",
+    "test:results-document-persistence": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-document-persistence.mjs",
     "test:durable-storage": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-durable-storage.mjs",
     "test:results-generation-events": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-generation-events.mjs",
     "test:deferred-results-completion": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-deferred-results-completion.mjs",

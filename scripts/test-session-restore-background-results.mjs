@@ -39,6 +39,7 @@ require('@theia/core/lib/browser/frontend-application-config-provider').Frontend
 const URI = require('@theia/core/lib/common/uri').default;
 const { SessionStore, GLOBAL_SESSION_STORAGE_KEY, SESSION_MIGRATION_MARKER_KEY } =
     require('../agent-window/lib/browser/agent-window/session-store.js');
+const { resultsDocumentHtmlKey } = require('../agent-window/lib/browser/results-document-storage.js');
 const { ResultsService } = require('../agent-window/lib/browser/results-skill.js');
 const { TaskService } = require('../agent-window/lib/browser/task-service.js');
 
@@ -415,7 +416,11 @@ try {
     const persistedB = latest.sessions.find(session => session.id === 'session-b').tasks
         .find(candidate => candidate.id === taskB.id);
     assert.equal(persistedA.resultsDocument.status, 'ready');
-    assert.equal(persistedA.resultsDocument.html, '<html><body><h2>復元後の成果</h2></body></html>');
+    assert.equal(persistedA.resultsDocument.html, undefined,
+        'A background Result must leave only a durable HTML marker in session state.');
+    assert.equal(persistedA.resultsDocument.htmlStored.version, 1);
+    assert.equal(stored.get(resultsDocumentHtmlKey('task', taskA.id)),
+        '<html><body><h2>復元後の成果</h2></body></html>');
     assert.equal(persistedB.resultsDocument.status, 'failed',
         'A rejected restored generation must persist a retryable Result error.');
     await new Promise(resolve => setTimeout(resolve, 0));
