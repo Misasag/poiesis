@@ -460,7 +460,8 @@ async function assertTemporaryIndexesRemoved(temporaryDirectory) {
 }
 
 async function waitForFile(path) {
-    const deadline = Date.now() + 2_000;
+    // Waits for a spawned child to start; 2 s was too short on a loaded Windows host.
+    const deadline = Date.now() + 10_000;
     while (true) {
         try {
             await readFile(path);
