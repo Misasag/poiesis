@@ -31,6 +31,9 @@ interface WorkspaceSkillEditor {
 }
 
 export class CustomizePart extends AgentWindowPart {
+    protected bundledResultsInfo?: { name: string; description: string };
+    protected bundledResultsInfoRequested = false;
+    protected bundledResultsInfoError = '';
     protected workspaceSkills: WorkspaceSkillDefinition[] = [];
     protected workspaceSkillsLoading = false;
     protected workspaceSkillsError?: string;
@@ -540,13 +543,23 @@ export class CustomizePart extends AgentWindowPart {
     }
 
     protected renderGenerationDetails(): React.ReactNode {
+        if (!this.bundledResultsInfoRequested) {
+            this.bundledResultsInfoRequested = true;
+            void this.host.resultsGenerationServer.bundledSkillInfo().then(info => {
+                this.bundledResultsInfo = info;
+                this.update();
+            }).catch(() => {
+                this.bundledResultsInfoError = '組み込みの成果作成機能を読み込めませんでした。';
+                this.update();
+            });
+        }
         return (
             <details className='poiesis-customize-view__generation-details poiesis-agent-window__customize-card'>
                 <PoiesisDisclosureSummary><span>生成の詳細</span><small>ResultsとAIへの反映</small></PoiesisDisclosureSummary>
                 <div className='poiesis-customize-view__generation-content'>
                     <div className='poiesis-customize-view__generation-list'>
-                        <article><strong>AI Results</strong><p>ResultsのAIが成果文書を生成します。実行できない場合はBundled Resultsに切り替わります。</p></article>
-                        <article><strong>Bundled Results</strong><p>組み込みの形式で成果文書を生成します。選択するモードではなく、自動的に使われる処理です。</p></article>
+                        <article><small>組み込み</small><strong>{this.bundledResultsInfo?.name ?? '成果の作成'}</strong>
+                            <p>{this.bundledResultsInfo?.description ?? (this.bundledResultsInfoError || '読み込んでいます…')}</p></article>
                     </div>
                     {this.renderSkillPromptTransparency()}
                 </div>

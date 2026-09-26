@@ -14,6 +14,7 @@ export function cliRoleAvailability(
     providerId: KnownCliId,
     role: AiRole
 ): CliRoleAvailability {
+    if (role === 'results' && (providerId === 'grok' || providerId === 'pi')) { return 'unsupported'; }
     if (phase === 'pending') {
         return 'pending';
     }

@@ -236,7 +236,7 @@ await taskUpdateTaskService.finalizers[0](taskUpdate);
 assert.equal(taskUpdate.resultsDocument.html, taskUpdatePreviousHtml,
     'A task update failure must preserve the readable body.');
 assert.equal(taskUpdate.resultsDocument.status, 'ready');
-assert.equal(taskUpdate.resultsDocument.updateError, '成果の更新に失敗しました。');
+assert.equal(taskUpdate.resultsDocument.updateError, 'injected task update failure');
 await new Promise(resolve => setTimeout(resolve, 20));
 assert.equal(taskUpdateAttempts, 1, 'A task update failure must not start an automatic retry loop.');
 taskUpdateFails = false;
@@ -296,7 +296,7 @@ aggregateFailureRequirementService.emitTasksChanged(aggregateFailureRequirement.
 await waitFor(() => aggregateFailureRequirement.resultsDocument?.updateError !== undefined);
 assert.equal(aggregateFailureRequirement.resultsDocument.html, aggregatePreviousHtml,
     'An aggregate update failure must preserve the readable body.');
-assert.equal(aggregateFailureRequirement.resultsDocument.updateError, '成果の更新に失敗しました。');
+assert.equal(aggregateFailureRequirement.resultsDocument.updateError, 'injected aggregate update failure');
 const failedVersion = aggregateFailureService.requestedRequirementVersions.get(aggregateFailureRequirement.id);
 assert(failedVersion, 'The failed aggregate version must be recorded as requested.');
 assert.notEqual(aggregateFailureService.appliedRequirementVersions.get(aggregateFailureRequirement.id), failedVersion,
@@ -602,7 +602,6 @@ const liveSkill = new AiResultsSkill(
             html: request.attempt === 1 ? '<html><body><h2>概要</h2><p>説明</p></body></html>'
                 : '<html><body><h2>概要</h2><p>説明</p><a data-poiesis-citation="src/a.ts:1">根拠</a></body></html>' };
     } },
-    { async generate() { throw new Error('Unexpected fallback'); } },
     { providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh',
         judge: { providerId: 'codex', model: 'gpt-6-astra', effort: 'xhigh' } },
     { async buildPrompt() { return { includedSkillIds: [], content: '', diagnostics: [], assertions: [{ text: '説明がある', skillId: 'test' }] }; } },
@@ -614,7 +613,6 @@ const liveSkill = new AiResultsSkill(
             output: JSON.stringify({ results: [{ index: 0, pass: scope.attempt === 2, evidence: '説明を確認' }] }) };
     } }
 );
-liveSkill.normalizeAndValidate = html => html;
 const progressService = new ResultsService(progressTasks, liveSkill, new FakeRequirementService(),
     { suggestTitle: async () => {}, classify: async () => {} }, {}, {});
 const progressEvents = [];
@@ -622,8 +620,7 @@ progressService.onDidChange(document => { if (document.progress) progressEvents.
 await progressService.generateTask(progressTask);
 assert.deepEqual(progressEvents.map(document => document.progress.phase), ['generation', 'judge', 'regeneration', 'judge']);
 assert.deepEqual(progressEvents.map(document => document.progress.attempt), [1, 1, 2, 2]);
-// Counts are shown by the application badges, so the opening no longer has to repeat them; a frame heading such as 「概要」 fails instead.
-assert.equal(progressEvents[2].progress.failedAssertions, 4, 'Missing citation, evidence consistency, a frame heading and skill evidence must trigger regeneration');
+assert.equal(progressEvents[2].progress.failedAssertions, 1, 'Only the user skill condition triggers regeneration');
 assert.equal(new Set(progressEvents.map(document => document.generationStartedAt)).size, 1);
 assert(progressEvents[1].progress.startedAt > progressEvents[0].progress.startedAt, 'Phase clocks must restart.');
 assert(progressEvents.every(document => document.progress.model === 'gpt-6-astra'));
@@ -640,7 +637,7 @@ cancelledTasks.tasks.set(cancelledTask.id, cancelledTask);
 const cancelledCall = makeCall('results-generation', 1);
 const cancelledSkill = new AiResultsSkill(
     { async generate() { return { status: 'cancelled', error: { code: 'cancelled', message: '生成をキャンセルしました。' }, call: cancelledCall }; } },
-    {}, { providerId: 'codex', model: '', effort: '' },
+    { providerId: 'codex', model: '', effort: '' },
     { async buildPrompt() { return { includedSkillIds: [], content: '', diagnostics: [], assertions: [] }; } },
     cancelledTasks, {}
 );

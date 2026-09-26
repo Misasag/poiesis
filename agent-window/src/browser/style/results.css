@@ -341,7 +341,7 @@
 }
 
 .poiesis-results__state.error {
-    color: #d8aaa4;
+    color: var(--theia-errorForeground);
 }
 
 .poiesis-agent-window__requirement-classification button,
@@ -1292,7 +1292,7 @@
 }
 
 .poiesis-results__canvas {
-    background: #f4f2ec;
+    background: var(--poiesis-chrome-bg);
     border: 0;
     border-radius: 0;
     margin: 0;

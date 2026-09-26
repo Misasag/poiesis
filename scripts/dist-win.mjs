@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import './prepare-results-runtime.mjs';
 import {
     builderCacheDir,
     distributionEnvironment,

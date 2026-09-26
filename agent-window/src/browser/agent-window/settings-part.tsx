@@ -331,7 +331,7 @@ export class SettingsPart extends AgentWindowPart {
                     <h2 id='poiesis-settings-results'>Results</h2>
                     <span>成果の整理と表示</span>
                 </div>
-                <p className='poiesis-settings-modal__section-copy'>成果文書は Results の AI が生成します（未検出時は組み込みテンプレート）。</p>
+                <p className='poiesis-settings-modal__section-copy'>成果文書は Results の AI が作成します。作成できない場合は理由を表示します。</p>
                 <div className='poiesis-settings-modal__row'>
                     <div>
                         <strong>成果を自動で分ける</strong>
@@ -505,7 +505,7 @@ export class SettingsPart extends AgentWindowPart {
                         const guidance = availability === 'missing'
                             ? 'CLIを準備した後、AI情報を更新してください。'
                             : availability === 'unsupported'
-                                ? 'Poiesisからの実行には未対応です。'
+                                ? role === 'results' ? '成果文書の作成には未対応' : 'Poiesisからの実行には未対応です。'
                                 : availability === 'error'
                                     ? 'AI情報を更新して、もう一度お試しください。'
                                     : undefined;

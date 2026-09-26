@@ -303,7 +303,7 @@ export const ModelPicker = ({
         : availability === 'missing'
             ? '未検出'
             : availability === 'unsupported'
-                ? '実行未対応'
+                ? role === 'results' ? '成果文書の作成には未対応' : '実行未対応'
                 : availability === 'error'
                     ? '検出失敗'
                     : CLI_DISPLAY_NAMES[selectedProvider];
@@ -341,6 +341,7 @@ export const ModelPicker = ({
                 </span>
                 <span className={`codicon codicon-chevron-${open ? 'up' : 'down'}`} aria-hidden='true' />
             </button>
+            {role === 'results' && !compact && <small>Grok・pi: 成果文書の作成には未対応</small>}
             {open && position && ReactDOM.createPortal(
                 <div
                     ref={popoverRef}
