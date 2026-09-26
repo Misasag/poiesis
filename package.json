@@ -83,6 +83,7 @@
     "validate:source": "node scripts/validate-source.mjs",
     "test:cli-usage": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-cli-usage.mjs",
     "test:judge-role": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-judge-role.mjs",
+    "test:results-question-selection": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-question-selection.mjs",
     "test:skill-injection": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-skill-injection.mjs",
     "test:agent-live-status": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-agent-live-status.mjs",
     "test:hooks": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-hooks.mjs",
