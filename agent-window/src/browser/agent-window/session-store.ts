@@ -47,6 +47,7 @@ import { getDesignVariant } from '../design-variant';
 import { FolderExplorerService } from '../folder-explorer-service';
 import { ResultsQuestionService } from '../results-question-service';
 import { GlobalStorageService } from '../global-storage-service';
+import { ResultsDocumentStorage } from '../results-document-storage';
 import { ResultsGenerationContext } from '../results-generation-context';
 import { SkillBundleKind } from '../../common/skill-bundle';
 import {
@@ -87,8 +88,6 @@ export const GLOBAL_SESSION_STORAGE_KEY = 'poiesis.agent-window.sessions.global.
 export const SESSION_MIGRATION_MARKER_KEY = 'poiesis.agent-window.sessions.migrated.v1';
 
 export const RESULTS_QA_PANEL_STORAGE_KEY = 'poiesis.results-qa-panel.sessions.v1';
-
-export { MAX_PERSISTED_RESULTS_HTML_CHARS } from '../../common/session-persistence';
 
 export const DEFAULT_RAIL_WIDTH = 232;
 
@@ -166,6 +165,12 @@ export interface PersistedResultsQaPanelState {
 }
 
 export class SessionStore extends AgentWindowPartBase {
+    protected get documentStorage(): ResultsDocumentStorage {
+        return this._documentStorage ??= new ResultsDocumentStorage(this.globalStorageService);
+    }
+
+    private _documentStorage?: ResultsDocumentStorage;
+    protected readonly storedTaskDocumentIds = new Set<string>();
     public readonly sessions: WindowAgentSession[] = [];
 
     public sessionsInitialized = false;
@@ -594,7 +599,7 @@ export class SessionStore extends AgentWindowPartBase {
         const globalState = await this.globalStorageService.getData<Partial<PersistedAgentWindowState>>(GLOBAL_SESSION_STORAGE_KEY);
         const migrated = await this.globalStorageService.getData<boolean>(SESSION_MIGRATION_MARKER_KEY);
         if (migrated) {
-            return globalState;
+            return this.restoreDocumentHtml(globalState);
         }
         const legacyStates = await this.globalStorageService.getWorkspaceData<Partial<PersistedAgentWindowState>>(SESSION_STORAGE_KEY);
         const currentLegacyState = await this.storageService.getData<Partial<PersistedAgentWindowState>>(SESSION_STORAGE_KEY);
@@ -606,7 +611,27 @@ export class SessionStore extends AgentWindowPartBase {
             await this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, merged);
         }
         await this.globalStorageService.setData(SESSION_MIGRATION_MARKER_KEY, true);
-        return merged;
+        return this.restoreDocumentHtml(merged);
+    }
+
+    protected async restoreDocumentHtml(state: Partial<PersistedAgentWindowState> | undefined): Promise<Partial<PersistedAgentWindowState> | undefined> {
+        if (!Array.isArray(state?.sessions)) {
+            return state;
+        }
+        for (const session of state.sessions) {
+            if (!session || !Array.isArray(session.tasks)) {
+                continue;
+            }
+            for (const task of session.tasks ?? []) {
+                if (task?.resultsDocument) {
+                    if (task.resultsDocument.htmlStored) {
+                        this.storedTaskDocumentIds.add(task.id);
+                    }
+                    task.resultsDocument = await this.documentStorage.restore('task', task.id, task.resultsDocument);
+                }
+            }
+        }
+        return state;
     }
 
     public mergePersistedWindowStates(
@@ -753,7 +778,29 @@ export class SessionStore extends AgentWindowPartBase {
             };
             const write = this.windowStatePersistence
                 .catch(() => undefined)
-                .then(() => this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, state));
+                .then(async () => {
+                    const currentIds = new Set<string>();
+                    for (const session of state.sessions) {
+                        for (const task of session.tasks ?? []) {
+                            if (task.resultsDocument) {
+                                task.resultsDocument = await this.documentStorage.persist('task', task.id, task.resultsDocument);
+                                if (task.resultsDocument.htmlStored) {
+                                    currentIds.add(task.id);
+                                }
+                            }
+                        }
+                    }
+                    await this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, state);
+                    for (const id of this.storedTaskDocumentIds) {
+                        if (!currentIds.has(id)) {
+                            await this.documentStorage.remove('task', id);
+                        }
+                    }
+                    this.storedTaskDocumentIds.clear();
+                    for (const id of currentIds) {
+                        this.storedTaskDocumentIds.add(id);
+                    }
+                });
             this.windowStatePersistence = write;
             void write.catch(error => {
                 console.warn('[Poiesis] Could not persist Agent Window sessions.', error);
@@ -835,7 +882,8 @@ export class SessionStore extends AgentWindowPartBase {
     public persistedTasks(session: WindowAgentSession): ExecutionTask[] {
         return tasksForDurableSession(session.taskIds
             .map(taskId => this.taskService.get(taskId))
-            .filter((task): task is ExecutionTask => Boolean(task)));
+            .filter((task): task is ExecutionTask => Boolean(task)))
+            .map(task => ({ ...task }));
     }
 
     public async initializeSessions(): Promise<void> {

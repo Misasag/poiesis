@@ -14,6 +14,7 @@ import { ExecutionTask, TaskResultDocument, TaskResultsQuestion, TaskService } f
 import { taskProducesResult } from '../common/task-outcome';
 import { shortenLegacyRequirementTitle } from './requirement-title-migration';
 import { GlobalStorageService } from './global-storage-service';
+import { ResultsDocumentStorage } from './results-document-storage';
 
 const REQUIREMENTS_STORAGE_KEY = 'poiesis.requirements.sessions.v1';
 const REQUIREMENTS_MIGRATION_MARKER_KEY = 'poiesis.requirements.migrated.v1';
@@ -37,17 +38,21 @@ export class RequirementService {
     protected sequence = 0;
     protected loading: Promise<void> = Promise.resolve();
     protected persistence: Promise<void> = Promise.resolve();
+    protected readonly documentStorage: ResultsDocumentStorage;
+    protected readonly storedDocumentIds = new Set<string>();
 
     constructor(
         @inject(TaskService) protected readonly taskService: TaskService,
         @inject(GlobalStorageService) protected readonly globalStorageService: GlobalStorageService,
         @inject(StorageService) protected readonly legacyStorageService: StorageService
-    ) { }
+    ) {
+        this.documentStorage = new ResultsDocumentStorage(globalStorageService);
+    }
 
     @postConstruct()
     protected init(): void {
         this.loading = this.loadPersistedRequirements()
-            .then(state => {
+            .then(async state => {
                 if (state?.version !== 1 || !state.sessions || typeof state.sessions !== 'object') {
                     return;
                 }
@@ -57,6 +62,11 @@ export class RequirementService {
                     }
                     for (const requirement of candidates) {
                         if (requirement && typeof requirement.id === 'string') {
+                            if (requirement.resultsDocument?.htmlStored) {
+                                this.storedDocumentIds.add(requirement.id);
+                                requirement.resultsDocument = await this.documentStorage.restore(
+                                    'requirement', requirement.id, requirement.resultsDocument);
+                            }
                             this.requirements.set(requirement.id, this.normalize(requirement));
                         }
                     }
@@ -363,11 +373,34 @@ export class RequirementService {
                 && requirement.resultsDocument?.taskId === resultTaskIds[0];
             (sessions[requirement.sessionId] ??= []).push(singleTaskDocumentIsOwnedByTask
                 ? { ...requirement, resultsDocument: undefined }
-                : requirement);
+                : { ...requirement });
         }
         const state: PersistedRequirements = { version: 1, sessions };
         const write = this.persistence.catch(() => undefined)
-            .then(() => this.globalStorageService.setData(REQUIREMENTS_STORAGE_KEY, state));
+            .then(async () => {
+                const currentIds = new Set<string>();
+                for (const requirements of Object.values(state.sessions)) {
+                    for (const requirement of requirements) {
+                        if (requirement.resultsDocument) {
+                            requirement.resultsDocument = await this.documentStorage.persist(
+                                'requirement', requirement.id, requirement.resultsDocument);
+                            if (requirement.resultsDocument.htmlStored) {
+                                currentIds.add(requirement.id);
+                            }
+                        }
+                    }
+                }
+                await this.globalStorageService.setData(REQUIREMENTS_STORAGE_KEY, state);
+                for (const id of this.storedDocumentIds) {
+                    if (!currentIds.has(id)) {
+                        await this.documentStorage.remove('requirement', id);
+                    }
+                }
+                this.storedDocumentIds.clear();
+                for (const id of currentIds) {
+                    this.storedDocumentIds.add(id);
+                }
+            });
         this.persistence = write;
         void write.catch(error => console.warn('[Poiesis] Could not persist Requirements.', error));
         return write;
