@@ -74,6 +74,19 @@ assert.equal(parsedNew.decision, 'new');
 assert.equal(parsedNew.title, longTitle.slice(0, 24));
 assert.equal(parsedNew.title?.length, 24);
 
+const approvalContinue = parseClassification(
+    '{"decision":"continue","confidence":0.9,"title":"","taskTitle":" 作業回数表示の実装。","reason":"提案の承認による実装"}'
+);
+assert.equal(approvalContinue.decision, 'continue');
+assert.equal(approvalContinue.taskTitle, '作業回数表示の実装', 'The task title is trimmed and loses the closing period');
+assert.equal(parseClassification('{"decision":"continue","confidence":0.9,"title":"","reason":"続き"}').taskTitle, undefined);
+const malformedTaskTitle = parseClassification('{"decision":"continue","confidence":0.9,"title":"","taskTitle":3,"reason":"続き"}');
+assert.equal(malformedTaskTitle.reason, '続き', 'A malformed task title must not invalidate the decision');
+assert.equal(malformedTaskTitle.taskTitle, undefined);
+assert.equal(parseClassification(
+    '{"decision":"continue","confidence":0.9,"title":"","taskTitle":"これは二十四文字を超える作業名の候補なので切り詰められます","reason":"続き"}'
+).taskTitle?.length, 24);
+
 assert.equal(parseSuggestedRequirementTitle('{"title":"成果文書の条件検証"}'), '成果文書の条件検証');
 assert.equal(parseSuggestedRequirementTitle('prefix {"title":"不正"}'), undefined);
 assert.equal(parseSuggestedRequirementTitle('{"title":"これは二十四文字を超える要件名の候補なので切り詰められます"}')?.length, 24);

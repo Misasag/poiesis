@@ -69,7 +69,7 @@ import { formatTaskElapsedTime, shouldSubmitComposer } from '../composer-behavio
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from '../typography';
 import { formatExecutionEvidence, checkResultsTopAnswer } from '../results-document-normalizer';
 import { buildVerificationTable, VerificationTable, VERIFICATION_LABELS } from '../results-evidence';
-import { resultsHeaderText } from '../results-presentation';
+import { resultsHeaderText, taskDisplayTitle } from '../results-presentation';
 import { Requirement } from '../requirement-model';
 import { RequirementService } from '../requirement-service';
 import { RequirementClassificationService } from '../requirement-classification-service';
@@ -496,6 +496,7 @@ export class ResultsPart extends AgentWindowPart {
         const questionState = session?.resultsNotices.get(task.id)?.status === 'sending'
             ? '回答中'
             : session?.resultsDrafts.get(task.id)?.trim() ? '下書き' : undefined;
+        const taskLabel = taskDisplayTitle(task);
         return (
             <div className={`poiesis-results__history-row${selected ? ' active' : ''}`} key={task.id}>
                 <button
@@ -507,7 +508,7 @@ export class ResultsPart extends AgentWindowPart {
                     disabled={task.status === 'running'}
                     onClick={() => this.selectResultsTask(task.id)}
                 >
-                    <span title={task.title}>{task.title}</span>
+                    <span title={taskLabel}>{taskLabel}</span>
                     <small>
                         {task.status === 'completed' ? this.compactResultsDate(task.endedAt) : this.host.sessions.taskStatusLabel(task)}
                         {questionState ? ` · ${questionState}` : ''}
@@ -518,7 +519,7 @@ export class ResultsPart extends AgentWindowPart {
                         <button
                             type='button'
                             className='poiesis-results__more'
-                            aria-label={`${task.title}のメニュー`}
+                            aria-label={`${taskLabel}のメニュー`}
                             aria-expanded={this.host.state.openResultsMenuKey === menuKey}
                             onClick={() => {
                                 this.host.state.openResultsMenuKey = this.host.state.openResultsMenuKey === menuKey ? undefined : menuKey;
@@ -552,7 +553,7 @@ export class ResultsPart extends AgentWindowPart {
                     </div>
                 )}
                 {confirmingDelete && (
-                    <div className='poiesis-results__task-delete-confirm' role='group' aria-label={`${task.title}の削除を確認`}>
+                    <div className='poiesis-results__task-delete-confirm' role='group' aria-label={`${taskLabel}の削除を確認`}>
                         <span>削除しますか？</span>
                         <button type='button' className='danger' onClick={() => void this.deleteResultsTask(task.id)}>削除</button>
                         <button type='button' onClick={() => this.cancelDeleteResultsTask()}>戻る</button>
@@ -575,7 +576,7 @@ export class ResultsPart extends AgentWindowPart {
         counts?: VerificationTable['counts']
     ): React.ReactNode {
         const document = this.resultsService.get(task.id);
-        const heading = resultsHeaderText(requirement.title, task.title);
+        const heading = resultsHeaderText(requirement.title, taskDisplayTitle(task));
         return this.renderResultsToolbar(
             heading.title,
             resultsCount,

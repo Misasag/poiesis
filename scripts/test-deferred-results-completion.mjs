@@ -137,6 +137,24 @@ const globalStorageService = { getData: async () => undefined, setData: async ()
 const legacyStorageService = { getData: async () => undefined, setData: async () => undefined };
 const taskService = new TaskService(runtimeServer, workspaceService, globalStorageService, legacyStorageService);
 
+// The classifier's task title survives the durable restore that reloads tasks after a restart.
+{
+    const probe = new TaskService(runtimeServer, workspaceService, globalStorageService, legacyStorageService);
+    const approval = '承認します。実装してください。';
+    const [restored] = probe.restore([{
+        id: 'task-title-probe', sessionId: 'session-title-probe', requirementId: 'requirement-title-probe',
+        title: approval, request: approval, status: 'completed',
+        startedAt: '2026-09-26T00:00:00.000Z', endedAt: '2026-09-26T00:01:00.000Z',
+        baseline: { kind: 'workspace-snapshot', capturedAt: '2026-09-26T00:00:00.000Z' },
+        changeSet: { source: 'empty', diff: '', files: [] },
+        requirementClassification: {
+            decision: 'continue', source: 'ai', confidence: 0.9, reason: '提案の承認',
+            decidedAt: '2026-09-26T00:01:00.000Z', taskTitle: '作業回数表示の実装'
+        }
+    }]);
+    assert.equal(restored?.requirementClassification?.taskTitle, '作業回数表示の実装');
+}
+
 const firstPromptGate = deferred();
 const firstGenerationGate = deferred();
 const rejectedGenerationGate = deferred();

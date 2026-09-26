@@ -141,6 +141,8 @@ export interface TaskRequirementClassification {
     confidence?: number;
     reason: string;
     decidedAt: string;
+    /** The classifier's noun phrase for what this task did; Results labels the task with it. */
+    taskTitle?: string;
     appliedNewRequirementId?: string;
     previousRequirementId?: string;
     undone?: boolean;
@@ -833,6 +835,9 @@ export class TaskService {
             confidence: classification.confidence,
             reason: classification.reason.slice(0, 300),
             decidedAt: classification.decidedAt,
+            taskTitle: typeof classification.taskTitle === 'string' && classification.taskTitle.trim()
+                ? classification.taskTitle.trim().slice(0, 24)
+                : undefined,
             appliedNewRequirementId: typeof classification.appliedNewRequirementId === 'string'
                 ? classification.appliedNewRequirementId
                 : undefined,
