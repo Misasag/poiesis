@@ -1438,6 +1438,10 @@
     padding: 14px 18px;
 }
 
+.poiesis-results__encoding-damage strong {
+    color: #4a2723;
+}
+
 .poiesis-results__encoding-damage ul {
     margin: 0;
     padding-left: 22px;

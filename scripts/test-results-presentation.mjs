@@ -22,6 +22,9 @@ assert.deepEqual(resultsHeaderText(requirement), { title: requirement });
 
 const resultsPart = await readFile('agent-window/src/browser/agent-window/results-part.tsx', 'utf8');
 const agentPart = await readFile('agent-window/src/browser/agent-window/agent-part.tsx', 'utf8');
+const resultsCss = await readFile('agent-window/src/browser/style/results.css', 'utf8');
+assert.match(resultsCss, /\.poiesis-results__encoding-damage strong \{\s*color: #[0-9a-f]{6};/,
+    'The damaged-file heading sits on a light notice and must not inherit the light chrome text color.');
 const canvas = resultsPart.slice(resultsPart.indexOf("className='poiesis-results__canvas'"), resultsPart.indexOf('this.renderImageViewer()'));
 const details = resultsPart.slice(resultsPart.indexOf('protected renderResultsDetails('), resultsPart.indexOf('protected renderResultsAuxiliaryHeader('));
 const verification = resultsPart.slice(resultsPart.indexOf('protected renderVerificationTable('), resultsPart.indexOf('protected resultsActionStatus('));
