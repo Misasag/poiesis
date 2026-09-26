@@ -528,16 +528,21 @@ export class AgentPart extends AgentWindowPart {
                     : null}
                 {current?.htmlPreviews.map((preview, index) =>
                     this.renderAgentHtmlPreview(messageKey, preview, index, isMostRecentAgentMessage))}
-                {showChangeSummary && (
+                {(showChangeSummary || Boolean(task?.changeSet?.encodingDamage?.length)) && (
                     <div className='poiesis-agent-window__message-actions'>
-                        <button
+                        {showChangeSummary && <button
                             type='button'
                             className='poiesis-agent-window__diffstat-chip'
                             aria-label={`このタスクの変更を開く: ${diffstat!.fileCount} ファイル、追加 ${diffstat!.additions} 行、削除 ${diffstat!.deletions} 行`}
                             onClick={() => void this.host.openCodeTaskChanges(task!.id)}
                         >
                             変更 {diffstat!.fileCount} ファイル · +{diffstat!.additions} −{diffstat!.deletions}
-                        </button>
+                        </button>}
+                        {Boolean(task?.changeSet?.encodingDamage?.length) && <button
+                            type='button'
+                            className='poiesis-agent-window__diffstat-chip poiesis-agent-window__encoding-damage-chip'
+                            onClick={() => { this.host.selectResultsTask(task!.id); this.host.selectTab('results'); }}
+                        >文字が壊れたファイル {task!.changeSet!.encodingDamage!.length}件</button>}
                     </div>
                 )}
                 {message.complete && task && task.status !== 'running' && (

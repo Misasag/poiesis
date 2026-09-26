@@ -12,6 +12,8 @@ import {
     AgentRuntimeServer,
     GitChangeSetCapture,
     GitSnapshotCapture,
+    EncodingDamage,
+    RestoreEncodingDamageResult,
     KnownCliId
 } from '../common/agent-runtime-protocol';
 import type { AgentActivity, AgentActivityKind } from '../common/agent-provider';
@@ -34,6 +36,12 @@ export interface TaskChangeSet {
     files: string[];
     capturedAt: string;
     error?: string;
+    encodingDamage?: EncodingDamage[];
+    encodingDamageErrors?: string[];
+}
+
+export interface TaskEncodingRestore extends RestoreEncodingDamageResult {
+    restoredAt: string;
 }
 
 export interface TaskChangedFileSummary {
@@ -173,6 +181,7 @@ export interface ExecutionTask {
     baselineSnapshotId?: string;
     endSnapshotId?: string;
     changeSet?: TaskChangeSet;
+    encodingRestore?: TaskEncodingRestore;
     failure?: TaskFailure;
     activities?: AgentActivity[];
     usage?: CliUsage;
@@ -188,7 +197,7 @@ export interface ExecutionTask {
 }
 
 export interface TaskEvent {
-    type: 'started' | 'ended' | 'failed' | 'cancelled';
+    type: 'started' | 'ended' | 'failed' | 'cancelled' | 'updated';
     task: ExecutionTask;
 }
 
@@ -486,6 +495,25 @@ export class TaskService {
 
     get(taskId: string): ExecutionTask | undefined {
         return this.tasks.get(taskId);
+    }
+
+    async restoreEncodingDamage(taskId: string): Promise<TaskEncodingRestore> {
+        const task = this.tasks.get(taskId);
+        const paths = task?.changeSet?.encodingDamage?.map(item => item.path) ?? [];
+        if (!task || task.status === 'running' || task.encodingRestore || !task.workspaceUri
+            || !task.baselineSnapshotId || !task.endSnapshotId || paths.length === 0) {
+            throw new Error('作業前の内容を戻せません。');
+        }
+        const workspacePath = new URI(task.workspaceUri).path.fsPath();
+        const result = await this.runtimeServer.restoreEncodingDamage({
+            workspacePath, baselineSnapshotId: task.baselineSnapshotId,
+            endSnapshotId: task.endSnapshotId, paths
+        });
+        const encodingRestore = { ...result, restoredAt: new Date().toISOString() };
+        const updated = { ...task, encodingRestore };
+        this.tasks.set(taskId, updated);
+        this.onDidChangeEmitter.fire({ type: 'updated', task: updated });
+        return encodingRestore;
     }
 
     list(sessionId?: string): ExecutionTask[] {

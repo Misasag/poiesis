@@ -1,15 +1,18 @@
 import { ChildProcess, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, open, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import {
     GitChangeSetBetweenRequest,
     GitChangeSetCapture,
+    EncodingDamage,
     GitSnapshotCapture,
     GitSnapshotFileCapture,
     GitSnapshotFileContent,
-    GitSnapshotFileRequest
+    GitSnapshotFileRequest,
+    RestoreEncodingDamageRequest,
+    RestoreEncodingDamageResult
 } from '../common/agent-runtime-protocol';
 import { killHiddenProcessTree } from './hidden-process';
 
@@ -19,6 +22,7 @@ const SNAPSHOT_CANCELLED_ERROR = '変更の記録をキャンセルしました�
 const SNAPSHOT_FAILED_ERROR = '変更の記録中に問題が発生しました。';
 const SNAPSHOT_CLEANUP_ERROR = '変更の記録を安全に停止できなかったため、Agent を開始しませんでした。';
 const GIT_OUTPUT_MAX_BYTES = 100 * 1024 * 1024;
+const ENCODING_DAMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const DEFAULT_CAPTURE_TIMEOUT_MS = 10_000;
 const DEFAULT_PROCESS_CLEANUP_TIMEOUT_MS = 2_000;
 const TEMPORARY_INDEX_PREFIX = 'poiesis-snapshot-index-';
@@ -44,6 +48,7 @@ interface SnapshotRepository {
 
 export interface SnapshotStoreOptions {
     captureTimeoutMs?: number;
+    encodingDetectionTimeoutMs?: number;
     processCleanupTimeoutMs?: number;
     homePath?: string;
     temporaryDirectory?: string;
@@ -85,6 +90,7 @@ export class SnapshotStore {
     protected readonly activeCaptures = new Map<string, Set<SnapshotCaptureContext>>();
     protected readonly workspaceLocks = new Map<string, SnapshotCaptureLock>();
     protected readonly captureTimeoutMs: number;
+    protected readonly encodingDetectionTimeoutMs: number;
     protected readonly processCleanupTimeoutMs: number;
     protected readonly homePath: string;
     protected readonly temporaryDirectory: string;
@@ -101,6 +107,7 @@ export class SnapshotStore {
         options: SnapshotStoreOptions = {}
     ) {
         this.captureTimeoutMs = Math.max(50, options.captureTimeoutMs ?? DEFAULT_CAPTURE_TIMEOUT_MS);
+        this.encodingDetectionTimeoutMs = Math.max(50, options.encodingDetectionTimeoutMs ?? 5_000);
         this.processCleanupTimeoutMs = Math.max(
             100,
             options.processCleanupTimeoutMs ?? DEFAULT_PROCESS_CLEANUP_TIMEOUT_MS
@@ -138,37 +145,41 @@ export class SnapshotStore {
 
     async captureChangeSet(baselineSnapshotId: string, captureId?: string): Promise<GitChangeSetCapture> {
         const context = this.beginCapture(captureId);
+        let repository: SnapshotRepository | undefined;
+        let capture: GitChangeSetCapture;
         try {
             const capturedWorkspace = this.capturedWorkspaces.get(baselineSnapshotId);
             if (capturedWorkspace) {
                 const guardedWorkspace = await this.guardWorkspace(capturedWorkspace, context);
-                return await this.withWorkspaceLock(guardedWorkspace, context, async () => {
-                    const repository = await this.repositoryForWorkspace(guardedWorkspace, context);
+                capture = await this.withWorkspaceLock(guardedWorkspace, context, async () => {
+                    repository = await this.repositoryForWorkspace(guardedWorkspace, context);
                     const endSnapshotId = await this.writeWorkspaceTree(repository, context);
                     return this.diff(repository, baselineSnapshotId, endSnapshotId, undefined, endSnapshotId, context);
                 });
+            } else {
+                repository = await this.findRepository([baselineSnapshotId], undefined, context);
+                if (!repository) { return this.missing(); }
+                const guardedWorkspace = await this.guardWorkspace(repository.workspacePath, context);
+                capture = await this.withWorkspaceLock(guardedWorkspace, context, async () => {
+                    const endSnapshotId = await this.writeWorkspaceTree(repository!, context);
+                    return this.diff(repository!, baselineSnapshotId, endSnapshotId, undefined, endSnapshotId, context);
+                });
             }
-            const repository = await this.findRepository([baselineSnapshotId], undefined, context);
-            if (!repository) {
-                return this.missing();
-            }
-            const guardedWorkspace = await this.guardWorkspace(repository.workspacePath, context);
-            return await this.withWorkspaceLock(guardedWorkspace, context, async () => {
-                const endSnapshotId = await this.writeWorkspaceTree(repository, context);
-                return this.diff(repository, baselineSnapshotId, endSnapshotId, undefined, endSnapshotId, context);
-            });
         } catch (error) {
             return { source: 'empty', diff: '', files: [], error: this.captureErrorMessage(error, context) };
         } finally {
             await this.finishCapture(context);
         }
+        return this.withEncodingDamage(capture, repository!, baselineSnapshotId, capture.endSnapshotId!);
     }
 
     async captureBetween(request: GitChangeSetBetweenRequest): Promise<GitChangeSetCapture> {
         const context = this.beginCapture();
+        let repository: SnapshotRepository | undefined;
+        let capture: GitChangeSetCapture;
         try {
             const { fromSnapshotId, toSnapshotId, paths } = request;
-            const repository = await this.findRepository([fromSnapshotId, toSnapshotId], undefined, context);
+            repository = await this.findRepository([fromSnapshotId, toSnapshotId], undefined, context);
             if (!repository) {
                 return this.missing();
             }
@@ -176,14 +187,16 @@ export class SnapshotStore {
             if (normalizedPaths?.length === 0) {
                 return { source: 'empty', diff: '', files: [], endSnapshotId: toSnapshotId };
             }
-            return await this.withWorkspaceLock(repository.workspacePath, context, () =>
-                this.diff(repository, fromSnapshotId, toSnapshotId, normalizedPaths, toSnapshotId, context)
+            const foundRepository = repository;
+            capture = await this.withWorkspaceLock(repository.workspacePath, context, () =>
+                this.diff(foundRepository, fromSnapshotId, toSnapshotId, normalizedPaths, toSnapshotId, context)
             );
         } catch (error) {
             return { source: 'empty', diff: '', files: [], error: this.captureErrorMessage(error, context) };
         } finally {
             await this.finishCapture(context);
         }
+        return this.withEncodingDamage(capture, repository!, request.fromSnapshotId, request.toSnapshotId);
     }
 
     async cancel(captureId: string): Promise<void> {
@@ -242,6 +255,81 @@ export class SnapshotStore {
                     ? error.message
                     : '保存された変更を読み込めませんでした。'
             };
+        }
+    }
+
+    async restoreEncodingDamage(request: RestoreEncodingDamageRequest): Promise<RestoreEncodingDamageResult> {
+        const requested = this.normalizePaths(request.paths);
+        if (requested.length !== request.paths.length) {
+            throw new Error('ファイルを特定できません。');
+        }
+        const repository = await this.findRepository(
+            [request.baselineSnapshotId, request.endSnapshotId], request.workspacePath
+        );
+        if (!repository || !request.workspacePath || this.normalizeWorkspacePath(repository.workspacePath)
+            !== this.normalizeWorkspacePath(request.workspacePath)) {
+            throw new Error('保存された変更を利用できません。');
+        }
+        const context = this.beginCapture();
+        try {
+            const workspacePath = await this.guardWorkspace(repository.workspacePath, context);
+            return await this.withWorkspaceLock(workspacePath, context, async () => {
+                const result: RestoreEncodingDamageResult = {
+                    restoredPaths: [], skippedPaths: [], skippedReasons: {}
+                };
+                const skip = (path: string, reason: 'changed-after-task' | 'unavailable'): void => {
+                    result.skippedPaths.push(path);
+                    result.skippedReasons[path] = reason;
+                };
+                const canonicalWorkspace = await realpath(workspacePath);
+                for (const path of requested) {
+                    try {
+                        const [before, after] = await Promise.all([
+                            this.readEncodingSnapshotBytes(repository, request.baselineSnapshotId, path, context),
+                            this.readEncodingSnapshotBytes(repository, request.endSnapshotId, path, context)
+                        ]);
+                        if (!before || !after || !detectEncodingDamage(before, after)) {
+                            skip(path, 'unavailable');
+                            continue;
+                        }
+                        const target = resolve(workspacePath, ...path.split('/'));
+                        if (!pathIsWithin(workspacePath, target) || !(await lstat(target)).isFile()
+                            || !pathIsWithin(canonicalWorkspace, await realpath(target))) {
+                            skip(path, 'unavailable');
+                            continue;
+                        }
+                        const handle = await open(target, 'r+');
+                        try {
+                            const currentStat = await handle.stat();
+                            if (!currentStat.isFile() || currentStat.size !== after.length) {
+                                skip(path, currentStat.isFile() ? 'changed-after-task' : 'unavailable');
+                                continue;
+                            }
+                            const current = await handle.readFile();
+                            if (!current.equals(after)) {
+                                skip(path, 'changed-after-task');
+                                continue;
+                            }
+                            let written = 0;
+                            while (written < before.length) {
+                                const result = await handle.write(before, written, before.length - written, written);
+                                if (result.bytesWritten === 0) { throw new Error('The file could not be written.'); }
+                                written += result.bytesWritten;
+                            }
+                            await handle.truncate(before.length);
+                            await handle.sync();
+                            result.restoredPaths.push(path);
+                        } finally {
+                            await handle.close();
+                        }
+                    } catch {
+                        skip(path, 'unavailable');
+                    }
+                }
+                return result;
+            });
+        } finally {
+            await this.finishCapture(context);
         }
     }
 
@@ -384,6 +472,87 @@ export class SnapshotStore {
         return diff
             ? { source: 'task-diff', diff, files: filteredFiles, endSnapshotId }
             : { source: 'empty', diff: '', files: [], endSnapshotId };
+    }
+
+    protected async withEncodingDamage(
+        capture: GitChangeSetCapture, repository: SnapshotRepository,
+        fromSnapshotId: string, toSnapshotId: string
+    ): Promise<GitChangeSetCapture> {
+        if (capture.files.length === 0) { return capture; }
+        // The change set is complete before this context starts. A failed or timed-out scan cannot erase it.
+        const context = this.beginCapture(undefined, this.encodingDetectionTimeoutMs);
+        let onAbort: (() => void) | undefined;
+        try {
+            const aborted = new Promise<never>((_resolve, reject) => {
+                onAbort = () => reject(context.error);
+                if (context.signal.aborted) { onAbort(); }
+                else { context.signal.addEventListener('abort', onAbort, { once: true }); }
+            });
+            const result = await Promise.race([
+                this.detectEncodingDamageBatch(repository, fromSnapshotId, toSnapshotId, capture.files, context),
+                aborted
+            ]);
+            if (result.damage.length) { capture.encodingDamage = result.damage; }
+            if (result.errors.length) { capture.encodingDamageErrors = result.errors; }
+        } catch {
+            capture.encodingDamageErrors = [...capture.files];
+        } finally {
+            if (onAbort) { context.signal.removeEventListener('abort', onAbort); }
+            await this.finishCapture(context);
+        }
+        return capture;
+    }
+
+    protected async detectEncodingDamageBatch(
+        repository: SnapshotRepository, fromSnapshotId: string, toSnapshotId: string,
+        paths: readonly string[], context: SnapshotCaptureContext
+    ): Promise<{ damage: EncodingDamage[]; errors: string[] }> {
+        const specs = paths.flatMap(path => [`${fromSnapshotId}:${path}`, `${toSnapshotId}:${path}`]);
+        const input = Buffer.from(`${specs.join('\n')}\n`, 'utf8');
+        const check = await this.runGitBuffer([
+            '--git-dir', repository.gitDir, 'cat-file', '--batch-check=%(objectname) %(objecttype) %(objectsize)'
+        ], repository.workspacePath, context, this.gitEnvironment, input);
+        const lines = check.toString('utf8').trimEnd().split('\n');
+        if (lines.length !== specs.length) { throw new Error('Incomplete snapshot metadata.'); }
+        const candidates: Array<{ path: string; sizes: [number, number] }> = [];
+        const errors: string[] = [];
+        for (let index = 0; index < paths.length; index++) {
+            const pair = lines.slice(index * 2, index * 2 + 2);
+            if (pair.some(line => line.endsWith(' missing'))) { continue; }
+            const sizes = pair.map(line => {
+                const match = line.match(/^[0-9a-f]{40,64} blob (\d+)$/);
+                return match ? Number(match[1]) : NaN;
+            }) as [number, number];
+            if (sizes.some(size => !Number.isSafeInteger(size))) { errors.push(paths[index]); continue; }
+            if (sizes.some(size => size > ENCODING_DAMAGE_MAX_BYTES)) { continue; }
+            candidates.push({ path: paths[index], sizes });
+        }
+        if (candidates.length === 0) { return { damage: [], errors }; }
+        const selected = candidates.flatMap(({ path }) => [`${fromSnapshotId}:${path}`, `${toSnapshotId}:${path}`]);
+        const parser = new GitBatchBlobParser(candidates);
+        await this.runGitBuffer([
+            '--git-dir', repository.gitDir, 'cat-file', '--batch'
+        ], repository.workspacePath, context, this.gitEnvironment,
+            Buffer.from(`${selected.join('\n')}\n`, 'utf8'), chunk => parser.feed(chunk));
+        return { damage: parser.finish(), errors };
+    }
+
+    protected async readEncodingSnapshotBytes(
+        repository: SnapshotRepository, snapshotId: string, path: string, context?: SnapshotCaptureContext
+    ): Promise<Buffer | undefined> {
+        const object = `${snapshotId}:${path}`;
+        const exists = await this.runGit([
+            '--git-dir', repository.gitDir, 'cat-file', '-e', object
+        ], repository.workspacePath, context).then(() => true, () => false);
+        if (!exists) { return undefined; }
+        const sizeOutput = await this.runGit([
+            '--git-dir', repository.gitDir, 'cat-file', '-s', object
+        ], repository.workspacePath, context);
+        const size = Number(sizeOutput.trim());
+        if (!Number.isSafeInteger(size) || size < 0 || size > ENCODING_DAMAGE_MAX_BYTES) { return undefined; }
+        return this.runGitBuffer([
+            '--git-dir', repository.gitDir, 'cat-file', 'blob', object
+        ], repository.workspacePath, context);
     }
 
     protected async trackedRuntimeArtifactPaths(
@@ -629,10 +798,13 @@ export class SnapshotStore {
         }
     }
 
-    protected beginCapture(captureId = `snapshot-${Date.now()}-${++this.captureSequence}`): SnapshotCaptureContext {
+    protected beginCapture(
+        captureId = `snapshot-${Date.now()}-${++this.captureSequence}`,
+        timeoutMs = this.captureTimeoutMs
+    ): SnapshotCaptureContext {
         const context = new SnapshotCaptureContext(
             captureId,
-            this.captureTimeoutMs,
+            timeoutMs,
             this.processCleanupTimeoutMs,
             cleanupError => {
                 if (this.unsafeCleanupError) {
@@ -707,7 +879,9 @@ export class SnapshotStore {
         args: string[],
         cwd: string,
         context?: SnapshotCaptureContext,
-        env: NodeJS.ProcessEnv = this.gitEnvironment
+        env: NodeJS.ProcessEnv = this.gitEnvironment,
+        input?: Buffer,
+        onStdout?: (chunk: Buffer) => void
     ): Promise<Buffer> {
         return executeGitBuffer(
             args,
@@ -716,7 +890,9 @@ export class SnapshotStore {
             context,
             this.gitInvocation,
             this.processCleanupTimeoutMs,
-            this.processTreeTerminator
+            this.processTreeTerminator,
+            input,
+            onStdout
         );
     }
 
@@ -937,7 +1113,9 @@ function executeGitBuffer(
     context?: SnapshotCaptureContext,
     invocation: GitInvocation = { executable: 'git', argsPrefix: [] },
     processCleanupTimeoutMs = DEFAULT_PROCESS_CLEANUP_TIMEOUT_MS,
-    processTreeTerminator: SnapshotProcessTreeTerminator = terminateGitProcess
+    processTreeTerminator: SnapshotProcessTreeTerminator = terminateGitProcess,
+    input?: Buffer,
+    onStdout?: (chunk: Buffer) => void
 ): Promise<Buffer> {
     context?.throwIfAborted();
     return new Promise((resolvePromise, reject) => {
@@ -951,7 +1129,7 @@ function executeGitBuffer(
             env,
             windowsHide: true,
             shell: false,
-            stdio: ['ignore', 'pipe', 'pipe']
+            stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe']
         });
         const finish = (error?: unknown): void => {
             if (settled) {
@@ -979,11 +1157,15 @@ function executeGitBuffer(
             );
         };
         const onAbort = (): void => terminate(context?.error ?? new SnapshotCaptureError(SNAPSHOT_CANCELLED_ERROR));
-        const collect = (target: Buffer[], chunk: Buffer | string): void => {
+        const collect = (target: Buffer[], chunk: Buffer | string, stream: 'stdout' | 'stderr'): void => {
             if (terminating) {
                 return;
             }
             const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            if (stream === 'stdout' && onStdout) {
+                try { onStdout(buffer); } catch (error) { terminate(error); }
+                return;
+            }
             outputBytes += buffer.length;
             if (outputBytes > GIT_OUTPUT_MAX_BYTES) {
                 terminate(new SnapshotCaptureError(SNAPSHOT_FAILED_ERROR));
@@ -991,8 +1173,12 @@ function executeGitBuffer(
             }
             target.push(buffer);
         };
-        child.stdout?.on('data', chunk => collect(stdout, chunk));
-        child.stderr?.on('data', chunk => collect(stderr, chunk));
+        child.stdout?.on('data', chunk => collect(stdout, chunk, 'stdout'));
+        child.stderr?.on('data', chunk => collect(stderr, chunk, 'stderr'));
+        if (input) {
+            child.stdin?.on('error', () => undefined);
+            child.stdin?.end(input);
+        }
         child.once('error', error => terminate(error));
         child.once('close', code => {
             if (terminating) {
@@ -1040,4 +1226,84 @@ function escapeGitGlob(candidate: string): string {
     const [first, ...rest] = candidate;
     const leading = first === '!' || first === '^' ? `\\${first}` : first;
     return `[${leading}]${rest.join('').replace(/\[/g, '[[]').replace(/\*/g, '[*]').replace(/\?/g, '[?]')}`;
+}
+
+export function detectEncodingDamage(before: Buffer, after: Buffer): EncodingDamage['reason'] | undefined {
+    if (before.length > ENCODING_DAMAGE_MAX_BYTES || after.length > ENCODING_DAMAGE_MAX_BYTES
+        || before.includes(0) || after.includes(0)) {
+        return undefined;
+    }
+    const strict = new TextDecoder('utf-8', { fatal: true });
+    let beforeIsUtf8 = true;
+    try { strict.decode(before); } catch { beforeIsUtf8 = false; }
+    let afterIsUtf8 = true;
+    try { strict.decode(after); } catch { afterIsUtf8 = false; }
+    if (beforeIsUtf8 && !afterIsUtf8) { return 'invalid-utf8'; }
+    const tolerant = new TextDecoder('utf-8');
+    const replacements = (buffer: Buffer): number => tolerant.decode(buffer).split('\uFFFD').length - 1;
+    return replacements(after) > replacements(before) ? 'replacement-characters' : undefined;
+}
+
+class GitBatchBlobParser {
+    protected index = 0;
+    protected part = 0;
+    protected phase: 'header' | 'body' | 'newline' = 'header';
+    protected header = Buffer.alloc(0);
+    protected bodyParts: Buffer[] = [];
+    protected bodyRemaining = 0;
+    protected pair: Buffer[] = [];
+    protected readonly damage: EncodingDamage[] = [];
+
+    constructor(protected readonly candidates: readonly { path: string; sizes: [number, number] }[]) { }
+
+    feed(chunk: Buffer): void {
+        let offset = 0;
+        while (offset < chunk.length) {
+            const candidate = this.candidates[this.index];
+            if (!candidate) { throw new Error('Unexpected snapshot blob output.'); }
+            if (this.phase === 'header') {
+                const lineEnd = chunk.indexOf(10, offset);
+                const end = lineEnd < 0 ? chunk.length : lineEnd;
+                this.header = Buffer.concat([this.header, chunk.subarray(offset, end)]);
+                if (this.header.length > 200) { throw new Error('Invalid snapshot blob header.'); }
+                offset = lineEnd < 0 ? end : end + 1;
+                if (lineEnd < 0) { continue; }
+                const match = this.header.toString('utf8').match(/^[0-9a-f]{40,64} blob (\d+)$/);
+                const expected = candidate.sizes[this.part];
+                if (!match || Number(match[1]) !== expected) {
+                    throw new Error('Invalid snapshot blob header.');
+                }
+                this.header = Buffer.alloc(0);
+                this.bodyRemaining = expected;
+                this.phase = expected === 0 ? 'newline' : 'body';
+            } else if (this.phase === 'body') {
+                const length = Math.min(this.bodyRemaining, chunk.length - offset);
+                this.bodyParts.push(chunk.subarray(offset, offset + length));
+                offset += length;
+                this.bodyRemaining -= length;
+                if (this.bodyRemaining === 0) { this.phase = 'newline'; }
+            } else {
+                if (chunk[offset++] !== 10) { throw new Error('Invalid snapshot blob terminator.'); }
+                this.pair.push(Buffer.concat(this.bodyParts, candidate.sizes[this.part]));
+                this.bodyParts = [];
+                if (this.part === 0) {
+                    this.part = 1;
+                } else {
+                    const reason = detectEncodingDamage(this.pair[0], this.pair[1]);
+                    if (reason) { this.damage.push({ path: candidate.path, reason }); }
+                    this.pair = [];
+                    this.part = 0;
+                    this.index++;
+                }
+                this.phase = 'header';
+            }
+        }
+    }
+
+    finish(): EncodingDamage[] {
+        if (this.index !== this.candidates.length || this.phase !== 'header' || this.header.length > 0) {
+            throw new Error('Incomplete snapshot blob output.');
+        }
+        return this.damage;
+    }
 }

@@ -78,6 +78,8 @@ const backendModule = await read('agent-window/src/node/agent-window-backend-mod
 const agentContribution = await read('agent-window/src/browser/agent-window-contribution.ts');
 const providerSource = await read('agent-window/src/common/agent-provider.ts');
 const agentPrompt = await read('agent-window/src/common/agent-prompt.ts');
+const hooksTest = await read('scripts/test-hooks.mjs');
+const encodingDamageTest = await read('scripts/test-encoding-damage.mjs');
 const taskOutcome = await read('agent-window/src/common/task-outcome.ts');
 const sessionPersistence = await read('agent-window/src/common/session-persistence.ts');
 const runtimeProtocol = await read('agent-window/src/common/agent-runtime-protocol.ts');
@@ -738,6 +740,31 @@ for (const marker of [
     '<!-- poiesis-outcome: conversation -->'
 ]) {
     assert.ok(agentPrompt.includes(marker), `Agent prompt continuity is missing ${marker}`);
+}
+for (const marker of [
+    'Edit files with your file-editing tool (for example apply_patch).',
+    'Windows PowerShell 5.1 Get-Content, Set-Content or Out-File without explicit UTF-8 encoding',
+    'git checkout, git restore, git reset, git stash or git show',
+    'Never revert changes you did not make.'
+]) {
+    assert.ok(agentPrompt.includes(marker), `Agent encoding and restore guidance is missing ${marker}`);
+    assert.ok(conversationTransportTest.includes(marker) || hooksTest.includes(marker),
+        `Agent prompt test is missing ${marker}`);
+}
+assert.equal(rootPackage.scripts['test:encoding-damage'],
+    'npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-encoding-damage.mjs');
+for (const marker of [
+    'detectEncodingDamage(before, damaged)',
+    "restoredPaths: ['index.html']",
+    "skippedPaths: ['later.html']",
+    'encodingDamageErrors',
+    'DurableDataStore',
+    'detectionGitProcesses, 2',
+    'HangingDetectionStore',
+    'onDidChangeTask',
+    'skippedReasons'
+]) {
+    assert.ok(encodingDamageTest.includes(marker), `Encoding damage regression coverage is missing ${marker}`);
 }
 assert.ok(conversationTransportTest.includes('turnsAfterName\":24')
     && conversationTransportTest.includes('The latest correction must survive bounding.')
@@ -2587,9 +2614,11 @@ assert.ok(!agentWidget.includes('protected activeTab:'), 'Agent / Results select
 assert.ok(!agentWidget.includes('Widget.ResizeMessage.UnknownSize'), 'Code widgets must receive measured pixel resize messages');
 assert.equal(
     agentWidget.match(/this\.host\.selectTab\('results'\)/g)?.length,
-    1,
-    'Only the persistent Results tab may switch to Results'
+    2,
+    'Only the persistent Results tab and the damaged-file chip may switch to Results'
 );
+assert.ok(agentPartSource.includes("this.host.selectResultsTask(task!.id); this.host.selectTab('results');"),
+    'The damaged-file chip must open the owning Task in Results');
 assert.ok(!agentWidget.includes('Results で確認'), 'Completed replies must not repeat a Results navigation action');
 const codeToggle = agentWidget.match(/public toggleCodeMode\(\): void \{[\s\S]*?\n    \}/)?.[0];
 assert.ok(codeToggle, 'Code mode toggle is missing');

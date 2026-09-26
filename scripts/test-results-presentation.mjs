@@ -21,6 +21,7 @@ assert.deepEqual(resultsHeaderText(requirement, requirement), { title: requireme
 assert.deepEqual(resultsHeaderText(requirement), { title: requirement });
 
 const resultsPart = await readFile('agent-window/src/browser/agent-window/results-part.tsx', 'utf8');
+const agentPart = await readFile('agent-window/src/browser/agent-window/agent-part.tsx', 'utf8');
 const canvas = resultsPart.slice(resultsPart.indexOf("className='poiesis-results__canvas'"), resultsPart.indexOf('this.renderImageViewer()'));
 const details = resultsPart.slice(resultsPart.indexOf('protected renderResultsDetails('), resultsPart.indexOf('protected renderResultsAuxiliaryHeader('));
 const verification = resultsPart.slice(resultsPart.indexOf('protected renderVerificationTable('), resultsPart.indexOf('protected resultsActionStatus('));
@@ -35,6 +36,14 @@ assert.ok(verification.includes("<section className='poiesis-results__verificati
     && verification.includes('<tbody>{table.rows.map((row, index) => <tr key={index} data-status={row.status}>')
     && !verification.includes('<details'), 'The detail table must be a noncollapsible section with status rows');
 assert.ok(resultsPart.includes('詳細の確認記録を参照してください。'));
+assert.ok(canvas.includes('this.renderEncodingDamageNotice(encodingTask)'),
+    'The app-owned Results notice must appear in the Results canvas.');
+assert.ok(resultsPart.includes('作業前の内容に戻す') && resultsPart.includes('作業の後に変更されているため戻せませんでした'));
+assert.ok(resultsPart.includes("outcome.skippedReasons?.[path] === 'changed-after-task'")
+    && resultsPart.includes('このファイルは戻せませんでした'),
+    'Unavailable files must not be described as changes made after the Task.');
+assert.ok(agentPart.includes("this.host.selectResultsTask(task!.id); this.host.selectTab('results');"),
+    'The damaged-file chip must open its Task in Results.');
 assert(toolbar.includes("['fail', 'unknown', 'outdated']") && toolbar.includes('counts[status] > 0')
     && toolbar.includes('VERIFICATION_LABELS[status]') && toolbar.includes('counts[status]}件')
     && toolbar.includes('poiesis-results__status-badge poiesis-results__status-badge--${status}'),

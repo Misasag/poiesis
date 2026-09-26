@@ -906,10 +906,12 @@ export class SessionStore extends AgentWindowPartBase {
             if (!session.taskIds.includes(event.task.id)) {
                 session.taskIds.push(event.task.id);
             }
-            session.unreadTaskCompletion = event.type === 'ended' && session.id !== this.selectedSessionId;
-            session.lastTaskStatus = event.type === 'started'
-                ? undefined
-                : event.type === 'ended' ? 'completed' : event.type;
+            if (event.type !== 'updated') {
+                session.unreadTaskCompletion = event.type === 'ended' && session.id !== this.selectedSessionId;
+                session.lastTaskStatus = event.type === 'started'
+                    ? undefined
+                    : event.type === 'ended' ? 'completed' : event.type;
+            }
             session.updatedAt = Date.now();
         }
         const shouldSelectResultsTask = (event.type === 'ended'

@@ -95,6 +95,8 @@ try {
     assert.equal((context.match(/A/g) ?? []).length, 8000); assert.equal((context.match(/B/g) ?? []).length, 8000);
     assert.ok(!context.includes('third'));
     const prompt = buildAgentExecutionPrompt('request', [{ role: 'user', content: 'history' }], '', context);
+    assert.ok(prompt.includes('Edit files with your file-editing tool (for example apply_patch).'));
+    assert.ok(prompt.includes('git checkout, git restore, git reset, git stash or git show'));
     assert.ok(prompt.startsWith('## Harness context (hooks)')); assert.ok(prompt.indexOf('first') < prompt.indexOf('second'));
     assert.ok(prompt.indexOf('second') < prompt.indexOf('## Conversation context'));
     await config(workspace, {});

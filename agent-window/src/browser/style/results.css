@@ -1430,6 +1430,22 @@
     color: #443726;
 }
 
+.poiesis-results__encoding-damage {
+    background: #f3e4df;
+    border-left: 3px solid #aa5549;
+    color: #60413d;
+    gap: 7px;
+    padding: 14px 18px;
+}
+
+.poiesis-results__encoding-damage ul {
+    margin: 0;
+    padding-left: 22px;
+    overflow-wrap: anywhere;
+}
+
+.poiesis-results__encoding-damage button:disabled { opacity: .6; cursor: wait; }
+
 .poiesis-results__auxiliary-scrim {
     background: rgb(0 0 0 / 18%);
     inset: 0;

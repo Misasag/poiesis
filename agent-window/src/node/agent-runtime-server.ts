@@ -20,6 +20,8 @@ import {
     GitSnapshotFileCapture,
     GitSnapshotFileRequest,
     GitSnapshotRequest,
+    RestoreEncodingDamageRequest,
+    RestoreEncodingDamageResult,
     KnownCliId,
     CLI_DISPLAY_NAMES
 } from '../common/agent-runtime-protocol';
@@ -151,6 +153,11 @@ export class AgentRuntimeServerImpl implements AgentRuntimeServer {
         }
         const workspacePath = await this.resolveWorkspace(request.workspacePath);
         return this.snapshotStore.readFileComparison({ ...request, workspacePath });
+    }
+
+    async restoreEncodingDamage(request: RestoreEncodingDamageRequest): Promise<RestoreEncodingDamageResult> {
+        const workspacePath = await this.resolveWorkspace(request.workspacePath);
+        return this.snapshotStore.restoreEncodingDamage({ ...request, workspacePath });
     }
 
     async runCodex({ executionId, providerId, model, effort, workspacePath, prompt, allowCodexAgentNetworkAccess }: CodexExecutionRequest): Promise<void> {
