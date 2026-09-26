@@ -50,6 +50,10 @@ assert.ok(resultsPart.includes('別の作業が実行中です。終わってか
     && resultsPart.includes('文字の状態を確認できなかったファイル')
     && agentPart.includes('作業前の内容に戻したファイル'),
     'Damage, restore, busy and inspection states must be visible as text.');
+assert.ok(agentPart.includes('`文字が壊れたファイル ${remainingDamageCount}件: ${chipNames}`')
+    && agentPart.includes("chipPaths.slice(0, 2).join('、')")
+    && agentPart.includes("title={chipPaths.join('\\n')}"),
+    'The damaged-file chip next to the task must name the files, not only count them.');
 assert.ok(agentPart.includes("this.host.selectResultsTask(task!.id); this.host.selectTab('results');"),
     'The damaged-file chip must open its Task in Results.');
 assert(toolbar.includes("['fail', 'unknown', 'outdated']") && toolbar.includes('counts[status] > 0')

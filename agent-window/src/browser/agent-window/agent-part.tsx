@@ -523,8 +523,11 @@ export class AgentPart extends AgentWindowPart {
         const diffstat = showChangeSummary ? summarizeTaskChangeSet(task.changeSet) : undefined;
         const damagedFiles = task?.changeSet?.encodingDamage ?? [];
         const restoredFiles = new Set(task?.encodingRestore?.restoredPaths ?? []);
-        const remainingDamageCount = damagedFiles.filter(item => !restoredFiles.has(item.path)).length;
+        const remainingDamage = damagedFiles.filter(item => !restoredFiles.has(item.path));
+        const remainingDamageCount = remainingDamage.length;
         const restoredDamageCount = damagedFiles.length - remainingDamageCount;
+        const chipPaths = (remainingDamageCount > 0 ? remainingDamage : damagedFiles).map(item => item.path);
+        const chipNames = chipPaths.slice(0, 2).join('、') + (chipPaths.length > 2 ? ` ほか${chipPaths.length - 2}件` : '');
         return (
             <>
                 {(message.complete || message.content.trim())
@@ -545,9 +548,10 @@ export class AgentPart extends AgentWindowPart {
                         {damagedFiles.length > 0 && <button
                             type='button'
                             className='poiesis-agent-window__diffstat-chip poiesis-agent-window__encoding-damage-chip'
+                            title={chipPaths.join('\n')}
                             onClick={() => { this.host.selectResultsTask(task!.id); this.host.selectTab('results'); }}
-                        >{remainingDamageCount > 0 ? `文字が壊れたファイル ${remainingDamageCount}件`
-                            : `作業前の内容に戻したファイル ${restoredDamageCount}件`}
+                        >{remainingDamageCount > 0 ? `文字が壊れたファイル ${remainingDamageCount}件: ${chipNames}`
+                            : `作業前の内容に戻したファイル ${restoredDamageCount}件: ${chipNames}`}
                             {remainingDamageCount > 0 && restoredDamageCount > 0 ? ` · ${restoredDamageCount}件を元に戻しました` : ''}</button>}
                     </div>
                 )}

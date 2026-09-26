@@ -328,6 +328,10 @@
 .poiesis-agent-window__encoding-damage-chip {
     border-color: #aa5549;
     color: #b65d52;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .poiesis-agent-window__requirement-classification {
