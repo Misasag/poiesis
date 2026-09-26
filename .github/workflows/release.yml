@@ -48,7 +48,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          # Match scripts/licenses/node/version.json: this Node is bundled as the Results runtime.
+          node-version: 24.14.1
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -137,7 +138,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          # Match scripts/licenses/node/version.json: this Node is bundled as the Results runtime.
+          node-version: 24.14.1
           architecture: ${{ matrix.arch }}
           cache: npm
           cache-dependency-path: package-lock.json

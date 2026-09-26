@@ -2953,6 +2953,15 @@ for (const marker of ['licenseMetadata.version !== process.version', 'WARNING: B
     "copyFileSync(join(licenseDirectory, 'version.json'), join(target, 'license-version.json'))"]) {
     assert.ok(resultsRuntimePreparation.includes(marker), `Results runtime license packaging is missing ${marker}`);
 }
+assert.ok(resultsRuntimePreparation.includes("key.toLowerCase() !== 'psmodulepath'"),
+    'The signature check must not inherit a PowerShell 7 module path');
+{
+    // The release build bundles its own Node as the Results runtime, so it must be the licensed version.
+    const licensedNode = JSON.parse((await read('scripts/licenses/node/version.json')).replace(/^﻿/, '')).version;
+    const releaseNodes = [...(await read('.github/workflows/release.yml')).matchAll(/^\s*node-version:\s*(\S+)\s*$/gm)].map(match => 'v' + match[1]);
+    assert.ok(releaseNodes.length >= 2 && releaseNodes.every(version => version === licensedNode),
+        `Release builds must use the vendored Node license version ${licensedNode}, found ${releaseNodes.join(', ')}`);
+}
 assert.ok(resultsSkillRunTest.includes("await import('./test-results-runtime-package.mjs')"));
 assert.ok(resultsSkillRunTest.includes('scripts/fixtures/results-stub-skill'));
 assert.ok(resultsSkill.includes('const verification = buildVerificationTable(tasks, input.changeSet)'));

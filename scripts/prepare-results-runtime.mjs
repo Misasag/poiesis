@@ -12,9 +12,13 @@ if (licenseMetadata.version !== process.version) {
 // Copy the distributor's original Node binary. Do not build a shim executable or rename Electron.
 if (process.platform === 'win32') {
     const literal = process.execPath.replaceAll("'", "''");
+    // A PowerShell 7 parent (GitHub Actions steps) leaves its module paths in PSModulePath, and Windows
+    // PowerShell 5.1 then fails to load the Core Security module (PowerShell/PowerShell#18681).
+    // Without the variable, 5.1 falls back to its own in-box module paths.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toLowerCase() !== 'psmodulepath'));
     const signature = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
         `Get-AuthenticodeSignature -LiteralPath '${literal}' | Select-Object -ExpandProperty Status`],
-    { encoding: 'utf8', windowsHide: true, shell: false }).trim();
+    { encoding: 'utf8', windowsHide: true, shell: false, env }).trim();
     if (signature !== 'Valid') { throw new Error('Packaging requires an Authenticode-signed Node binary.'); }
 }
 const target = join(root, 'electron-app', 'lib', 'results-runtime');

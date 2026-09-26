@@ -30,7 +30,20 @@ try {
         const digest = bytes => createHash('sha256').update(bytes).digest('hex');
         assert.equal(digest(await readFile(join(target, name))), digest(await readFile(process.execPath)));
     }
-    console.log('RESULTS_RUNTIME_PACKAGE_TEST=passed (license copy, version match, mismatch warning without failure)');
+    if (process.platform === 'win32') {
+        // GitHub Actions runs steps under PowerShell 7, whose module paths reach Windows PowerShell 5.1.
+        // A Security module that 5.1 cannot load must not break the signature check.
+        await writeFile(join(directory, 'version.json'), JSON.stringify(metadata), 'utf8');
+        const modules = join(root, 'core-modules');
+        await mkdir(join(modules, 'Microsoft.PowerShell.Security'), { recursive: true });
+        await writeFile(join(modules, 'Microsoft.PowerShell.Security', 'Microsoft.PowerShell.Security.psd1'),
+            "@{ ModuleVersion = '7.0.0.0'; GUID = 'a94c8c7e-9810-47c0-b8af-65089c13a35a'; RootModule = 'missing-core-only.dll'; CmdletsToExport = @('Get-AuthenticodeSignature') }\r\n", 'utf8');
+        const env = { ...process.env, PSModulePath: `${modules};${process.env.PSModulePath ?? ''}` };
+        const run = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8', shell: false, windowsHide: true, env });
+        assert.equal(run.status, 0, run.stderr);
+        assert.ok(run.stdout.includes('RESULTS_RUNTIME=prepared'));
+    }
+    console.log('RESULTS_RUNTIME_PACKAGE_TEST=passed (license copy, version match, mismatch warning without failure, inherited PowerShell 7 module path)');
 } finally {
     await rm(root, { recursive: true, force: true });
 }
