@@ -518,7 +518,8 @@ export class SettingsPart extends AgentWindowPart {
                             this.host.state.cliDetectionPhase,
                             report,
                             providerId,
-                            role
+                            role,
+                            selectionRole
                         );
                         const executable = availability === 'available';
                         const status = availability === 'available'
@@ -529,7 +530,7 @@ export class SettingsPart extends AgentWindowPart {
                         const guidance = availability === 'missing'
                             ? 'CLIを準備した後、AI情報を更新してください。'
                             : availability === 'unsupported'
-                                ? role === 'results' ? '成果文書の作成には未対応' : 'Poiesisからの実行には未対応です。'
+                                ? role === 'results' && selectionRole !== 'question' ? '成果文書の作成には未対応' : 'Poiesisからの実行には未対応です。'
                                 : availability === 'error'
                                     ? 'AI情報を更新して、もう一度お試しください。'
                                     : undefined;
@@ -577,7 +578,7 @@ export class SettingsPart extends AgentWindowPart {
                 {selectedDetection && (selectionRole === 'question' ? !sameAsResults : role !== 'judge' || !this.host.state.judgeSameAsResults) && (
                     <div className='poiesis-settings-modal__model-field'>
                         <span>モデルと処理の深さ</span>
-                        {selectionRole === 'question' ? <ModelPicker role='results' compact={false} detectionPhase={this.host.state.cliDetectionPhase}
+                        {selectionRole === 'question' ? <ModelPicker role='results' purpose='question' compact={false} detectionPhase={this.host.state.cliDetectionPhase}
                             detectionReport={this.host.state.cliDetectionReport} catalogs={this.host.state.modelCatalogs} selectedProvider={selected}
                             selectedModel={selectedModel ?? ''} selectedEffort={selectedEffort ?? ''}
                             onSelect={(p, m) => this.setQuestionProviderModel(p, m)} onEffortChange={e => this.setQuestionEffort(e)}

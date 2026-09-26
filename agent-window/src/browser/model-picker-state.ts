@@ -124,10 +124,11 @@ export function modelPickerProviders(
     catalogs: Partial<Record<KnownCliId, CliModelCatalog>>,
     role: AiRole,
     selectedProvider: KnownCliId,
-    selectedModel: string
+    selectedModel: string,
+    purpose?: 'question'
 ): ModelPickerProvider[] {
     return (report?.detections ?? []).flatMap(detection => {
-        if (cliRoleAvailability(phase, report, detection.id, role) !== 'available') {
+        if (cliRoleAvailability(phase, report, detection.id, role, purpose) !== 'available') {
             return [];
         }
         const catalog = catalogs[detection.id];

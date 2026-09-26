@@ -12,9 +12,11 @@ export function cliRoleAvailability(
     phase: CliDetectionPhase,
     report: CliDetectionReport | undefined,
     providerId: KnownCliId,
-    role: AiRole
+    role: AiRole,
+    purpose?: 'question'
 ): CliRoleAvailability {
-    if (role === 'results' && (providerId === 'grok' || providerId === 'pi')) { return 'unsupported'; }
+    // Writing Results runs the skill's scripts; answering a question about it is a read-only one-shot.
+    if (role === 'results' && purpose !== 'question' && (providerId === 'grok' || providerId === 'pi')) { return 'unsupported'; }
     if (phase === 'pending') {
         return 'pending';
     }

@@ -66,4 +66,12 @@ assert.match(resultsSource, /effort: questionAi\.effort \|\| undefined/);
 // The question radios form their own group so arrow keys never move into the Results AI group.
 assert.match(settingsSource, /name=\{selectionRole === 'question' \? 'poiesis-question-cli' : `poiesis-\$\{role\}-cli`\}/);
 assert.match(settingsSource, /name='poiesis-question-cli' checked=\{sameAsResults\}/);
+// Writing Results needs the skill's scripts, but a question is a read-only one-shot that Grok and pi can answer.
+const lifecycle = require('../agent-window/lib/common/cli-detection-lifecycle.js');
+const detectionReport = { detections: ['codex', 'claude', 'grok', 'pi'].map(id => ({ id, status: 'found', executableRoles: ['agent', 'results', 'judge'] })) };
+for (const id of ['grok', 'pi']) {
+    assert.equal(lifecycle.cliRoleAvailability('ready', detectionReport, id, 'results'), 'unsupported');
+    assert.equal(lifecycle.cliRoleAvailability('ready', detectionReport, id, 'results', 'question'), 'available');
+}
+assert.match(settingsSource, /<ModelPicker role='results' purpose='question'/);
 console.log('RESULTS_QUESTION_SELECTION_TEST=passed');

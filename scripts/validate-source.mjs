@@ -1790,7 +1790,7 @@ for (const marker of [
 assert.ok(!agentWidget.includes('任意のプロバイダーやAPIキーを追加する画面ではありません'),
     'AI settings must not show the superseded warning wall');
 for (const marker of [
-    'cliRoleAvailability(phase, report, detection.id, role)',
+    'cliRoleAvailability(phase, report, detection.id, role, purpose)',
     'selectedModel',
     'custom: true',
     'validateCustomModelDraft',

@@ -24,6 +24,8 @@ import { PoiesisSelect } from './poiesis-select';
 
 export interface ModelPickerProps {
     role: AiRole;
+    /** A Results question is a read-only one-shot, so every executable provider can answer it. */
+    purpose?: 'question';
     compact?: boolean;
     detectionPhase: CliDetectionPhase;
     detectionReport?: CliDetectionReport;
@@ -61,6 +63,7 @@ function catalogSourceLabel(source: 'live' | 'cached' | 'fallback' | 'failed'): 
 /** Search-first model chooser shared by the Agent and Results composer controls. */
 export const ModelPicker = ({
     role,
+    purpose,
     compact = false,
     detectionPhase,
     detectionReport,
@@ -72,7 +75,7 @@ export const ModelPicker = ({
     onEffortChange,
     onOpenSettings
 }: ModelPickerProps): React.ReactElement => {
-    const roleLabel = role === 'agent' ? 'Agent' : role === 'judge' ? '判定' : 'Results';
+    const roleLabel = role === 'agent' ? 'Agent' : role === 'judge' ? '判定' : purpose === 'question' ? '質問' : 'Results';
     const triggerRef = React.useRef<HTMLButtonElement>(null);
     const popoverRef = React.useRef<HTMLDivElement>(null);
     const searchRef = React.useRef<HTMLInputElement>(null);
@@ -94,7 +97,8 @@ export const ModelPicker = ({
         catalogs,
         role,
         selectedProvider,
-        selectedModel
+        selectedModel,
+        purpose
     );
     const filteredProviders = filterModelPickerProviders(providers, providerFilter, query);
     const visibleChoices = filteredProviders.flatMap(provider => provider.choices);
@@ -102,7 +106,7 @@ export const ModelPicker = ({
     const selectedChoice = providers.find(provider => provider.id === selectedProvider)?.choices
         .find(choice => choice.id === selectedModel);
     const selectedLabel = selectedChoice?.label ?? (selectedModel || '既定');
-    const availability = cliRoleAvailability(detectionPhase, detectionReport, selectedProvider, role);
+    const availability = cliRoleAvailability(detectionPhase, detectionReport, selectedProvider, role, purpose);
     const warning = availability === 'missing' || availability === 'unsupported' || availability === 'error';
     const loading = availability === 'pending';
     const supportedEfforts = modelSupportedEfforts(selectedProvider, selectedModel, providers);
@@ -303,7 +307,7 @@ export const ModelPicker = ({
         : availability === 'missing'
             ? '未検出'
             : availability === 'unsupported'
-                ? role === 'results' ? '成果文書の作成には未対応' : '実行未対応'
+                ? role === 'results' && purpose !== 'question' ? '成果文書の作成には未対応' : '実行未対応'
                 : availability === 'error'
                     ? '検出失敗'
                     : CLI_DISPLAY_NAMES[selectedProvider];
@@ -341,7 +345,7 @@ export const ModelPicker = ({
                 </span>
                 <span className={`codicon codicon-chevron-${open ? 'up' : 'down'}`} aria-hidden='true' />
             </button>
-            {role === 'results' && !compact && <small>Grok・pi: 成果文書の作成には未対応</small>}
+            {role === 'results' && purpose !== 'question' && !compact && <small>Grok・pi: 成果文書の作成には未対応</small>}
             {open && position && ReactDOM.createPortal(
                 <div
                     ref={popoverRef}
