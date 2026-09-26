@@ -14,6 +14,7 @@
     "electron-app"
   ],
   "scripts": {
+    "test:results-skill": "node scripts/test-results-skill.mjs",
     "test:results-evidence": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-evidence.mjs",
     "test:results-presentation": "npm run compile --workspace=@poiesis/theia-agent-window && node scripts/test-results-presentation.mjs",
     "build": "npm run compile --workspace=@poiesis/theia-agent-window && npm run build --workspace=@poiesis/theia-browser-app",

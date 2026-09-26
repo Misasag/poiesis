@@ -24,6 +24,7 @@ plugins/
 .dist-feed/
 electron-app/dist/
 *.log
+/out/
 
 # The development harness lives in the private Misasag/poiesis-harness repository.
 /tools/harness/

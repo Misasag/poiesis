@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#d94a3d">
+  <title>25:00 — 作業 | Pomodoro</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --accent: #d94a3d;
+      --accent-dark: #b9362d;
+      --accent-soft: #ffe1dc;
+      --ink: #29201e;
+      --muted: #756a67;
+      --surface: rgba(255, 255, 255, 0.82);
+      --line: rgba(91, 55, 49, 0.12);
+      --shadow: 0 24px 60px rgba(108, 50, 41, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      overflow-x: hidden;
+      color: var(--ink);
+      font-family: Inter, "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", sans-serif;
+      background:
+        radial-gradient(circle at 15% 18%, rgba(255, 255, 255, 0.95) 0 9%, transparent 30%),
+        radial-gradient(circle at 88% 84%, var(--accent-soft) 0 5%, transparent 30%),
+        linear-gradient(145deg, #fff8f2, #f9e9df);
+      transition: background 400ms ease;
+    }
+
+    body[data-mode="break"] {
+      --accent: #2f8b71;
+      --accent-dark: #216c57;
+      --accent-soft: #d9f3e9;
+      --ink: #1f2b28;
+      --muted: #64736f;
+      --line: rgba(38, 92, 76, 0.13);
+      --shadow: 0 24px 60px rgba(41, 102, 84, 0.16);
+      background:
+        radial-gradient(circle at 15% 18%, rgba(255, 255, 255, 0.95) 0 9%, transparent 30%),
+        radial-gradient(circle at 88% 84%, var(--accent-soft) 0 5%, transparent 30%),
+        linear-gradient(145deg, #f6fcf8, #e3f2eb);
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      z-index: -1;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      transition: border-color 400ms ease;
+    }
+
+    body::before {
+      width: 28rem;
+      height: 28rem;
+      top: -17rem;
+      right: -8rem;
+    }
+
+    body::after {
+      width: 19rem;
+      height: 19rem;
+      bottom: -11rem;
+      left: -6rem;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .app {
+      width: min(92vw, 560px);
+      margin: 32px auto;
+      padding: clamp(24px, 6vw, 48px);
+      text-align: center;
+      background: var(--surface);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      border-radius: 32px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      transition: box-shadow 400ms ease;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .brand-mark {
+      width: 11px;
+      height: 11px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 0 5px var(--accent-soft);
+      transition: background-color 300ms ease, box-shadow 300ms ease;
+    }
+
+    .cycle {
+      margin: 0 0 28px;
+      color: var(--accent-dark);
+      font-size: 0.86rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.08em;
+      transition: color 300ms ease;
+    }
+
+    .modes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      max-width: 360px;
+      margin: 0 auto 38px;
+      padding: 5px;
+      background: rgba(122, 87, 80, 0.08);
+      border-radius: 16px;
+    }
+
+    .mode-button {
+      min-height: 46px;
+      padding: 10px 16px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-weight: 700;
+      background: transparent;
+      border: 0;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: color 180ms ease, background-color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
+    }
+
+    .mode-button:hover:not([aria-selected="true"]) {
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.46);
+    }
+
+    .mode-button[aria-selected="true"] {
+      color: var(--accent-dark);
+      background: #fff;
+      box-shadow: 0 4px 14px rgba(71, 43, 38, 0.1);
+    }
+
+    .mode-button:active,
+    .control:active {
+      transform: translateY(1px);
+    }
+
+    .eyebrow {
+      margin: 0;
+      color: var(--accent-dark);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      transition: color 300ms ease;
+    }
+
+    .timer {
+      margin: 8px 0 12px;
+      font-size: clamp(5rem, 23vw, 8.8rem);
+      font-variant-numeric: tabular-nums;
+      font-weight: 750;
+      line-height: 1;
+      letter-spacing: -0.07em;
+      transform: translateX(-0.035em);
+    }
+
+    .status {
+      min-height: 1.5em;
+      margin: 0 0 34px;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 10px;
+      max-width: 360px;
+      margin: 0 auto;
+    }
+
+    .control {
+      min-height: 58px;
+      border-radius: 16px;
+      border: 0;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background-color 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
+    }
+
+    .primary {
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 28%, transparent);
+    }
+
+    .primary:hover {
+      background: var(--accent-dark);
+    }
+
+    .secondary {
+      width: 58px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      background: rgba(122, 87, 80, 0.08);
+    }
+
+    .secondary:hover {
+      color: var(--accent-dark);
+      background: var(--accent-soft);
+    }
+
+    .secondary svg {
+      width: 21px;
+      height: 21px;
+    }
+
+    .sound-toggle .sound-off,
+    .sound-toggle[aria-pressed="true"] .sound-on {
+      display: none;
+    }
+
+    .sound-toggle[aria-pressed="true"] .sound-off {
+      display: block;
+    }
+
+    button:focus-visible {
+      outline: 3px solid var(--accent-soft);
+      outline-offset: 3px;
+    }
+
+    .hint {
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: 0.74rem;
+      opacity: 0.75;
+    }
+
+    .daily-progress {
+      margin: 28px auto 0;
+      padding: 20px 16px;
+      max-width: 360px;
+      background: var(--accent-soft);
+      border-radius: 20px;
+      color: var(--accent-dark);
+    }
+
+    .daily-progress h2 {
+      margin: 0 0 6px;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    .daily-total {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .daily-count {
+      margin-right: 8px;
+      font-size: clamp(3.5rem, 14vw, 4.5rem);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+
+    .daily-caption {
+      margin: 8px 0 0;
+      font-size: 0.75rem;
+    }
+
+    .footer {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 0.64rem;
+      letter-spacing: 0.08em;
+      opacity: 0.55;
+    }
+
+    kbd {
+      display: inline-block;
+      min-width: 1.8em;
+      margin: 0 2px;
+      padding: 2px 5px;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.68rem;
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid var(--line);
+      border-bottom-width: 2px;
+      border-radius: 5px;
+    }
+
+    @media (max-width: 440px) {
+      .app {
+        border-radius: 26px;
+      }
+
+      .modes {
+        margin-bottom: 32px;
+      }
+
+      .timer {
+        font-size: clamp(4.75rem, 25vw, 6.5rem);
+      }
+
+      .hint {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body data-mode="work">
+  <main class="app" aria-labelledby="timer-heading">
+    <p class="brand"><span class="brand-mark" aria-hidden="true"></span>Pomodoro</p>
+    <p class="cycle" id="cycle" aria-live="polite">サイクル 1/4</p>
+
+    <div class="modes" role="tablist" aria-label="タイマーの種類">
+      <button class="mode-button" id="work-mode" type="button" role="tab" aria-selected="true" data-mode="work">作業 25分</button>
+      <button class="mode-button" id="break-mode" type="button" role="tab" aria-selected="false" tabindex="-1" data-mode="break">休憩 5分</button>
+    </div>
+
+    <p class="eyebrow" id="timer-heading">Focus time</p>
+    <div class="timer" id="timer" role="timer" aria-live="off" aria-atomic="true">25:00</div>
+    <p class="status" id="status" aria-live="polite">集中する準備はできましたか？</p>
+
+    <div class="controls">
+      <button class="control primary" id="toggle" type="button">スタート</button>
+      <button class="control secondary" id="reset" type="button" aria-label="タイマーをリセット" title="リセット">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path>
+          <path d="M3 3v5h5"></path>
+        </svg>
+      </button>
+      <button class="control secondary sound-toggle" id="sound-toggle" type="button" aria-label="通知音をミュート" aria-pressed="false" title="通知音をミュート">
+        <svg class="sound-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 5 6 9H3v6h3l5 4V5Z"></path>
+          <path d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+          <path d="M18 6a8.5 8.5 0 0 1 0 12"></path>
+        </svg>
+        <svg class="sound-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 5 6 9H3v6h3l5 4V5Z"></path>
+          <path d="m16 10 5 5"></path>
+          <path d="m21 10-5 5"></path>
+        </svg>
+      </button>
+    </div>
+
+    <section class="daily-progress" aria-labelledby="daily-heading">
+      <h2 id="daily-heading">今日の作業回数</h2>
+      <p class="daily-total" aria-live="polite" aria-atomic="true"><span class="daily-count" id="daily-count">0</span>回</p>
+      <p class="daily-caption">完了した作業タイマーの数</p>
+    </section>
+
+    <p class="hint"><kbd>Space</kbd> 開始・一時停止&nbsp;&nbsp; <kbd>R</kbd> リセット</p>
+    <footer class="footer">v1.0</footer>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const CYCLES_PER_SET = 4;
+      const DURATIONS = {
+        work: 25 * 60,
+        shortBreak: 5 * 60,
+        longBreak: 15 * 60
+      };
+
+      const COPY = {
+        work: {
+          label: "作業",
+          eyebrow: "Focus time",
+          ready: "集中する準備はできましたか？",
+          running: "ひとつのことに集中しましょう",
+          paused: "一時停止中"
+        },
+        break: {
+          label: "休憩",
+          eyebrow: "Take a break",
+          ready: "少し休んでリフレッシュしましょう",
+          running: "深呼吸して、ひと休み",
+          paused: "一時停止中"
+        }
+      };
+
+      const timerElement = document.getElementById("timer");
+      const headingElement = document.getElementById("timer-heading");
+      const statusElement = document.getElementById("status");
+      const cycleElement = document.getElementById("cycle");
+      const dailyCountElement = document.getElementById("daily-count");
+      const toggleButton = document.getElementById("toggle");
+      const resetButton = document.getElementById("reset");
+      const soundToggleButton = document.getElementById("sound-toggle");
+      const breakModeButton = document.getElementById("break-mode");
+      const modeButtons = [...document.querySelectorAll(".mode-button")];
+
+      let currentMode = "work";
+      let currentCycle = 1;
+      let isLongBreak = false;
+      let remainingSeconds = DURATIONS.work;
+      let deadline = 0;
+      let intervalId = null;
+      let isRunning = false;
+      let audioContext = null;
+      let isMuted = false;
+      const dailyCounts = new Map();
+      const DAILY_COUNT_PREFIX = "pomodoro-completed-work:";
+
+      try {
+        isMuted = window.localStorage.getItem("pomodoro-muted") === "true";
+      } catch {
+        // Storage may be unavailable in privacy-focused browser modes.
+      }
+
+      function getLocalDay(timestamp = Date.now()) {
+        const date = new Date(timestamp);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      }
+
+      function getDailyCount(day) {
+        let count = dailyCounts.get(day) ?? 0;
+        try {
+          const stored = window.localStorage.getItem(DAILY_COUNT_PREFIX + day);
+          const parsed = Number(stored);
+          if (stored !== null && Number.isSafeInteger(parsed) && parsed >= 0) count = Math.max(count, parsed);
+        } catch {
+          // Keep counting in memory when storage is unavailable.
+        }
+        dailyCounts.set(day, count);
+        return count;
+      }
+
+      function renderDailyCount() {
+        const count = String(getDailyCount(getLocalDay()));
+        if (dailyCountElement.textContent !== count) dailyCountElement.textContent = count;
+      }
+
+      function recordCompletedWork() {
+        // Use the timer's finish time even if a background tab resumes after midnight.
+        const day = getLocalDay(deadline);
+        const count = getDailyCount(day) + 1;
+        dailyCounts.set(day, count);
+        try {
+          window.localStorage.setItem(DAILY_COUNT_PREFIX + day, String(count));
+        } catch {
+          // The current page still retains the count if saving is blocked.
+        }
+        renderDailyCount();
+      }
+
+      function getAudioContext() {
+        if (audioContext?.state === "closed") audioContext = null;
+        if (audioContext) return audioContext;
+
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return null;
+
+        audioContext = new AudioContext();
+        return audioContext;
+      }
+
+      function prepareAudio() {
+        if (isMuted) return;
+
+        const context = getAudioContext();
+        if (context?.state === "suspended") {
+          context.resume().catch(() => {});
+        }
+      }
+
+      function playTransitionSound(nextMode) {
+        if (isMuted) return;
+
+        const context = getAudioContext();
+        if (!context) return;
+
+        const play = () => {
+          const startTime = context.currentTime + 0.02;
+          const notes = nextMode === "break"
+            ? [[523.25, 0, 0.2], [392, 0.18, 0.34]]
+            : [[392, 0, 0.18], [523.25, 0.16, 0.18], [659.25, 0.32, 0.3]];
+
+          notes.forEach(([frequency, delay, duration]) => {
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
+            const noteStart = startTime + delay;
+            const noteEnd = noteStart + duration;
+
+            oscillator.type = "sine";
+            oscillator.frequency.setValueAtTime(frequency, noteStart);
+            gain.gain.setValueAtTime(0.0001, noteStart);
+            gain.gain.exponentialRampToValueAtTime(0.12, noteStart + 0.025);
+            gain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
+
+            oscillator.connect(gain);
+            gain.connect(context.destination);
+            oscillator.start(noteStart);
+            oscillator.stop(noteEnd + 0.02);
+          });
+        };
+
+        if (context.state === "suspended") {
+          context.resume().then(play).catch(() => {});
+        } else {
+          play();
+        }
+      }
+
+      function renderSoundToggle() {
+        soundToggleButton.setAttribute("aria-pressed", String(isMuted));
+        soundToggleButton.setAttribute("aria-label", isMuted ? "通知音のミュートを解除" : "通知音をミュート");
+        soundToggleButton.title = isMuted ? "通知音のミュートを解除" : "通知音をミュート";
+      }
+
+      function getModeDuration() {
+        if (currentMode === "work") return DURATIONS.work;
+        return isLongBreak ? DURATIONS.longBreak : DURATIONS.shortBreak;
+      }
+
+      function formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const rest = seconds % 60;
+        return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+      }
+
+      function renderTime() {
+        const formatted = formatTime(remainingSeconds);
+        const minutes = Math.floor(remainingSeconds / 60);
+        const seconds = remainingSeconds % 60;
+        timerElement.textContent = formatted;
+        timerElement.setAttribute("aria-label", `${minutes}分${seconds}秒`);
+        document.title = `${formatted} — ${COPY[currentMode].label} | Pomodoro`;
+      }
+
+      function renderCycle() {
+        cycleElement.textContent = `サイクル ${currentCycle}/${CYCLES_PER_SET}`;
+      }
+
+      function stopTicker() {
+        if (intervalId !== null) {
+          window.clearInterval(intervalId);
+          intervalId = null;
+        }
+        isRunning = false;
+      }
+
+      function resetTimer(statusMessage = COPY[currentMode].ready) {
+        stopTicker();
+        remainingSeconds = getModeDuration();
+        toggleButton.textContent = "スタート";
+        statusElement.textContent = statusMessage;
+        renderTime();
+      }
+
+      function switchMode(mode, { longBreak = false, statusMessage } = {}) {
+        if (!COPY[mode]) return;
+
+        currentMode = mode;
+        isLongBreak = mode === "break" && longBreak;
+        document.body.dataset.mode = mode;
+        headingElement.textContent = isLongBreak ? "Long break" : COPY[mode].eyebrow;
+        breakModeButton.textContent = isLongBreak ? "長い休憩 15分" : "休憩 5分";
+
+        modeButtons.forEach((button) => {
+          const isSelected = button.dataset.mode === mode;
+          button.setAttribute("aria-selected", String(isSelected));
+          button.tabIndex = isSelected ? 0 : -1;
+        });
+
+        renderCycle();
+        resetTimer(statusMessage);
+      }
+
+      function finish() {
+        stopTicker();
+
+        if (currentMode === "work") {
+          recordCompletedWork();
+          const completedFourthCycle = currentCycle === CYCLES_PER_SET;
+
+          if (!completedFourthCycle) currentCycle += 1;
+          playTransitionSound("break");
+
+          switchMode("break", {
+            longBreak: completedFourthCycle,
+            statusMessage: completedFourthCycle
+              ? "4サイクル完了！長い休憩を取りましょう"
+              : "作業完了！休憩を取りましょう"
+          });
+        } else {
+          const completedLongBreak = isLongBreak;
+
+          if (completedLongBreak) currentCycle = 1;
+          playTransitionSound("work");
+
+          switchMode("work", {
+            statusMessage: completedLongBreak
+              ? "新しい4サイクルを始めましょう"
+              : "休憩終了。次のサイクルを始めましょう"
+          });
+        }
+      }
+
+      function tick() {
+        const nextRemaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+
+        if (nextRemaining !== remainingSeconds) {
+          remainingSeconds = nextRemaining;
+          renderTime();
+        }
+
+        if (remainingSeconds === 0) finish();
+      }
+
+      function start() {
+        if (remainingSeconds === 0) remainingSeconds = getModeDuration();
+
+        prepareAudio();
+        deadline = Date.now() + remainingSeconds * 1000;
+        isRunning = true;
+        toggleButton.textContent = "一時停止";
+        statusElement.textContent = COPY[currentMode].running;
+        renderTime();
+        intervalId = window.setInterval(tick, 250);
+      }
+
+      function pause() {
+        tick();
+        if (!isRunning || remainingSeconds === 0) return;
+        stopTicker();
+        toggleButton.textContent = "再開";
+        statusElement.textContent = COPY[currentMode].paused;
+      }
+
+      toggleButton.addEventListener("click", () => {
+        if (isRunning) {
+          pause();
+        } else {
+          start();
+        }
+      });
+
+      resetButton.addEventListener("click", () => resetTimer());
+
+      soundToggleButton.addEventListener("click", () => {
+        isMuted = !isMuted;
+        renderSoundToggle();
+
+        try {
+          window.localStorage.setItem("pomodoro-muted", String(isMuted));
+        } catch {
+          // Keep the toggle usable even when storage is unavailable.
+        }
+
+        if (!isMuted) prepareAudio();
+      });
+
+      modeButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const mode = button.dataset.mode;
+          if (mode === currentMode) return;
+          switchMode(mode);
+        });
+      });
+
+      document.addEventListener("keydown", (event) => {
+        const target = event.target;
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+
+        if (event.code === "Space") {
+          event.preventDefault();
+          toggleButton.click();
+        } else if (event.key.toLowerCase() === "r") {
+          event.preventDefault();
+          resetButton.click();
+        } else if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && target.classList.contains("mode-button")) {
+          event.preventDefault();
+          const nextMode = currentMode === "work" ? "break" : "work";
+          switchMode(nextMode);
+          document.querySelector(`.mode-button[data-mode="${nextMode}"]`).focus();
+        }
+      });
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          if (isRunning) tick();
+          renderDailyCount();
+        }
+      });
+
+      window.addEventListener("storage", renderDailyCount);
+      window.setInterval(renderDailyCount, 1000);
+      renderDailyCount();
+      renderCycle();
+      renderTime();
+      renderSoundToggle();
+    })();
+  </script>
+</body>
+</html>
