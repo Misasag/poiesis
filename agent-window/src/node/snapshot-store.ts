@@ -196,7 +196,9 @@ export class SnapshotStore {
         } finally {
             await this.finishCapture(context);
         }
-        return this.withEncodingDamage(capture, repository!, request.fromSnapshotId, request.toSnapshotId);
+        return request.detectEncodingDamage
+            ? this.withEncodingDamage(capture, repository!, request.fromSnapshotId, request.toSnapshotId)
+            : capture;
     }
 
     async cancel(captureId: string): Promise<void> {
@@ -270,7 +272,7 @@ export class SnapshotStore {
             !== this.normalizeWorkspacePath(request.workspacePath)) {
             throw new Error('保存された変更を利用できません。');
         }
-        const context = this.beginCapture();
+        const context = this.beginCapture(undefined, 60_000);
         try {
             const workspacePath = await this.guardWorkspace(repository.workspacePath, context);
             return await this.withWorkspaceLock(workspacePath, context, async () => {
@@ -282,12 +284,17 @@ export class SnapshotStore {
                     result.skippedReasons[path] = reason;
                 };
                 const canonicalWorkspace = await realpath(workspacePath);
+                let pairs: Map<string, [Buffer, Buffer]>;
+                try {
+                    pairs = await this.readEncodingSnapshotPairs(repository, request.baselineSnapshotId,
+                        request.endSnapshotId, requested, context);
+                } catch {
+                    for (const path of requested) { skip(path, 'unavailable'); }
+                    return result;
+                }
                 for (const path of requested) {
                     try {
-                        const [before, after] = await Promise.all([
-                            this.readEncodingSnapshotBytes(repository, request.baselineSnapshotId, path, context),
-                            this.readEncodingSnapshotBytes(repository, request.endSnapshotId, path, context)
-                        ]);
+                        const [before, after] = pairs.get(path) ?? [];
                         if (!before || !after || !detectEncodingDamage(before, after)) {
                             skip(path, 'unavailable');
                             continue;
@@ -507,6 +514,22 @@ export class SnapshotStore {
         repository: SnapshotRepository, fromSnapshotId: string, toSnapshotId: string,
         paths: readonly string[], context: SnapshotCaptureContext
     ): Promise<{ damage: EncodingDamage[]; errors: string[] }> {
+        const damage: EncodingDamage[] = [];
+        const errors: string[] = [];
+        await this.readEncodingSnapshotPairs(repository, fromSnapshotId, toSnapshotId, paths, context,
+            (path, before, after) => {
+                const reason = detectEncodingDamage(before, after);
+                if (reason) { damage.push({ path, reason }); }
+            }, errors);
+        return { damage, errors };
+    }
+
+    protected async readEncodingSnapshotPairs(
+        repository: SnapshotRepository, fromSnapshotId: string, toSnapshotId: string,
+        paths: readonly string[], context: SnapshotCaptureContext,
+        onPair?: (path: string, before: Buffer, after: Buffer) => void,
+        errors: string[] = []
+    ): Promise<Map<string, [Buffer, Buffer]>> {
         const specs = paths.flatMap(path => [`${fromSnapshotId}:${path}`, `${toSnapshotId}:${path}`]);
         const input = Buffer.from(`${specs.join('\n')}\n`, 'utf8');
         const check = await this.runGitBuffer([
@@ -515,7 +538,6 @@ export class SnapshotStore {
         const lines = check.toString('utf8').trimEnd().split('\n');
         if (lines.length !== specs.length) { throw new Error('Incomplete snapshot metadata.'); }
         const candidates: Array<{ path: string; sizes: [number, number] }> = [];
-        const errors: string[] = [];
         for (let index = 0; index < paths.length; index++) {
             const pair = lines.slice(index * 2, index * 2 + 2);
             if (pair.some(line => line.endsWith(' missing'))) { continue; }
@@ -527,32 +549,19 @@ export class SnapshotStore {
             if (sizes.some(size => size > ENCODING_DAMAGE_MAX_BYTES)) { continue; }
             candidates.push({ path: paths[index], sizes });
         }
-        if (candidates.length === 0) { return { damage: [], errors }; }
+        const pairs = new Map<string, [Buffer, Buffer]>();
+        if (candidates.length === 0) { return pairs; }
         const selected = candidates.flatMap(({ path }) => [`${fromSnapshotId}:${path}`, `${toSnapshotId}:${path}`]);
-        const parser = new GitBatchBlobParser(candidates);
+        const parser = new GitBatchBlobParser(candidates, (path, before, after) => {
+            if (onPair) { onPair(path, before, after); }
+            else { pairs.set(path, [before, after]); }
+        });
         await this.runGitBuffer([
             '--git-dir', repository.gitDir, 'cat-file', '--batch'
         ], repository.workspacePath, context, this.gitEnvironment,
             Buffer.from(`${selected.join('\n')}\n`, 'utf8'), chunk => parser.feed(chunk));
-        return { damage: parser.finish(), errors };
-    }
-
-    protected async readEncodingSnapshotBytes(
-        repository: SnapshotRepository, snapshotId: string, path: string, context?: SnapshotCaptureContext
-    ): Promise<Buffer | undefined> {
-        const object = `${snapshotId}:${path}`;
-        const exists = await this.runGit([
-            '--git-dir', repository.gitDir, 'cat-file', '-e', object
-        ], repository.workspacePath, context).then(() => true, () => false);
-        if (!exists) { return undefined; }
-        const sizeOutput = await this.runGit([
-            '--git-dir', repository.gitDir, 'cat-file', '-s', object
-        ], repository.workspacePath, context);
-        const size = Number(sizeOutput.trim());
-        if (!Number.isSafeInteger(size) || size < 0 || size > ENCODING_DAMAGE_MAX_BYTES) { return undefined; }
-        return this.runGitBuffer([
-            '--git-dir', repository.gitDir, 'cat-file', 'blob', object
-        ], repository.workspacePath, context);
+        parser.finish();
+        return pairs;
     }
 
     protected async trackedRuntimeArtifactPaths(
@@ -1234,11 +1243,10 @@ export function detectEncodingDamage(before: Buffer, after: Buffer): EncodingDam
         return undefined;
     }
     const strict = new TextDecoder('utf-8', { fatal: true });
-    let beforeIsUtf8 = true;
-    try { strict.decode(before); } catch { beforeIsUtf8 = false; }
+    try { strict.decode(before); } catch { return undefined; }
     let afterIsUtf8 = true;
     try { strict.decode(after); } catch { afterIsUtf8 = false; }
-    if (beforeIsUtf8 && !afterIsUtf8) { return 'invalid-utf8'; }
+    if (!afterIsUtf8) { return 'invalid-utf8'; }
     const tolerant = new TextDecoder('utf-8');
     const replacements = (buffer: Buffer): number => tolerant.decode(buffer).split('\uFFFD').length - 1;
     return replacements(after) > replacements(before) ? 'replacement-characters' : undefined;
@@ -1252,9 +1260,10 @@ class GitBatchBlobParser {
     protected bodyParts: Buffer[] = [];
     protected bodyRemaining = 0;
     protected pair: Buffer[] = [];
-    protected readonly damage: EncodingDamage[] = [];
-
-    constructor(protected readonly candidates: readonly { path: string; sizes: [number, number] }[]) { }
+    constructor(
+        protected readonly candidates: readonly { path: string; sizes: [number, number] }[],
+        protected readonly onPair: (path: string, before: Buffer, after: Buffer) => void
+    ) { }
 
     feed(chunk: Buffer): void {
         let offset = 0;
@@ -1289,8 +1298,7 @@ class GitBatchBlobParser {
                 if (this.part === 0) {
                     this.part = 1;
                 } else {
-                    const reason = detectEncodingDamage(this.pair[0], this.pair[1]);
-                    if (reason) { this.damage.push({ path: candidate.path, reason }); }
+                    this.onPair(candidate.path, this.pair[0], this.pair[1]);
                     this.pair = [];
                     this.part = 0;
                     this.index++;
@@ -1300,10 +1308,9 @@ class GitBatchBlobParser {
         }
     }
 
-    finish(): EncodingDamage[] {
+    finish(): void {
         if (this.index !== this.candidates.length || this.phase !== 'header' || this.header.length > 0) {
             throw new Error('Incomplete snapshot blob output.');
         }
-        return this.damage;
     }
 }

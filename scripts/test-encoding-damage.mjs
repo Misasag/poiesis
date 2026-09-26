@@ -36,6 +36,10 @@ assert.equal(detectEncodingDamage(before, Buffer.from('正常な編集', 'utf8')
 assert.equal(detectEncodingDamage(before, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), before])), undefined);
 assert.equal(detectEncodingDamage(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), before]), before), undefined);
 assert.equal(detectEncodingDamage(Buffer.from([0, 1]), damaged), undefined);
+const cp932Before = Buffer.from('836583588367', 'hex'); // テスト in Windows code page 932.
+const cp932After = Buffer.from('83658358836782c582b7', 'hex'); // テストです.
+assert.equal(new TextDecoder('shift_jis').decode(cp932After), 'テストです');
+assert.equal(detectEncodingDamage(cp932Before, cp932After), undefined);
 
 const root = await mkdtemp(join(tmpdir(), 'poiesis-encoding-damage-'));
 try {
@@ -49,6 +53,7 @@ try {
     await writeFile(join(workspace, 'bom.txt'), before);
     await writeFile(join(workspace, 'binary.bin'), Buffer.from([0, 1, 2]));
     await writeFile(join(workspace, 'deleted.txt'), before);
+    await writeFile(join(workspace, 'legacy.csv'), cp932Before);
     const baseline = await store.capture(workspace);
     assert.equal(baseline.source, 'git-snapshot', JSON.stringify(baseline));
     for (const path of ['index.html', 'later.html']) {
@@ -59,6 +64,7 @@ try {
     await writeFile(join(workspace, 'binary.bin'), Buffer.from([0, 0xff, 2]));
     await writeFile(join(workspace, 'added.txt'), damaged);
     await rm(join(workspace, 'deleted.txt'));
+    await writeFile(join(workspace, 'legacy.csv'), cp932After);
     const changes = await store.captureChangeSet(baseline.snapshotId);
     assert.equal(changes.source, 'task-diff', JSON.stringify(changes));
     assert.deepEqual(changes.encodingDamage, [
@@ -66,6 +72,7 @@ try {
         { path: 'later.html', reason: 'replacement-characters' }
     ]);
     assert.deepEqual(changes.encodingDamageErrors, undefined);
+    assert(!changes.encodingDamage.some(item => item.path === 'legacy.csv'));
     assert(changes.files.includes('binary.bin') && changes.files.includes('added.txt') && changes.files.includes('deleted.txt'));
 
     const task = {
@@ -99,6 +106,33 @@ try {
     const reloaded = restoredDurableTaskCandidates(await durable.getData('tasks'))[0];
     assert.deepEqual(reloaded.changeSet.encodingDamage, changes.encodingDamage);
     assert.deepEqual(reloaded.encodingRestore, task.encodingRestore);
+    const malformed = restoredDurableTaskCandidates([{ ...task,
+        changeSet: { ...task.changeSet, encodingDamage: [null, { path: '../bad', reason: 'invalid-utf8' },
+            { path: 'index.html', reason: 'invalid-utf8' }], encodingDamageErrors: 'bad' },
+        encodingRestore: { restoredAt: 'now', restoredPaths: 'bad', skippedPaths: null }
+    }])[0];
+    assert.deepEqual(malformed.changeSet.encodingDamage, [{ path: 'index.html', reason: 'invalid-utf8' }]);
+    assert.equal(malformed.encodingRestore, undefined);
+    const persistedFiles = ['same.txt', 'same.txt', 'a/./b'];
+    const persistedHash = 'sha256:keep-the-saved-value';
+    const unusual = restoredDurableTaskCandidates([{ ...task, changeSet: {
+        ...task.changeSet, files: persistedFiles, changeSetHash: persistedHash,
+        encodingDamage: [{ path: '../bad', reason: 'invalid-utf8' },
+            { path: 'index.html', reason: 'invalid-utf8' }]
+    } }])[0];
+    assert.deepEqual(unusual.changeSet.files, persistedFiles);
+    assert.equal(unusual.changeSet.changeSetHash, persistedHash);
+    assert.deepEqual(unusual.changeSet.encodingDamage, [{ path: 'index.html', reason: 'invalid-utf8' }]);
+    const malformedChangeSet = restoredDurableTaskCandidates([{ ...task, changeSet: {
+        source: 'unknown', files: persistedFiles, diff: 'saved diff', changeSetHash: persistedHash,
+        encodingDamage: [{ path: 'index.html', reason: 'invalid-utf8' }],
+        encodingDamageErrors: ['index.html']
+    } }])[0].changeSet;
+    assert.deepEqual(malformedChangeSet.files, persistedFiles);
+    assert.equal(malformedChangeSet.diff, 'saved diff');
+    assert.equal(malformedChangeSet.changeSetHash, persistedHash);
+    assert.equal(Object.hasOwn(malformedChangeSet, 'encodingDamage'), false);
+    assert.equal(Object.hasOwn(malformedChangeSet, 'encodingDamageErrors'), false);
 
     const runtime = { restoreEncodingDamage: async () => restored };
     const service = new TaskService(runtime, {}, {}, {});
@@ -116,6 +150,30 @@ try {
     assert.deepEqual(restoredDurableTaskCandidates(await durable.getData('updated-task'))[0].encodingRestore,
         update.task.encodingRestore);
 
+    const restoreCalls = [];
+    const retryRuntime = { restoreEncodingDamage: async request => {
+        restoreCalls.push(request.paths);
+        return restoreCalls.length === 1
+            ? { restoredPaths: ['index.html'], skippedPaths: ['later.html'],
+                skippedReasons: { 'later.html': 'unavailable' } }
+            : { restoredPaths: ['later.html'], skippedPaths: [], skippedReasons: {} };
+    } };
+    const retryService = new TaskService(retryRuntime, {}, {}, {});
+    const retryTask = { ...task, workspaceUri: pathToFileURL(workspace).toString(), encodingRestore: undefined };
+    retryService.restore([retryTask]);
+    retryService.tasks.set('busy', { ...retryTask, id: 'busy', status: 'running' });
+    assert.equal(retryService.hasRunningTaskInWorkspace(retryService.get(task.id)), true);
+    await assert.rejects(retryService.restoreEncodingDamage(task.id), /戻せません/);
+    assert.equal(restoreCalls.length, 0);
+    retryService.tasks.delete('busy');
+    const firstAttempt = await retryService.restoreEncodingDamage(task.id);
+    assert.deepEqual(firstAttempt.skippedPaths, ['later.html']);
+    const secondAttempt = await retryService.restoreEncodingDamage(task.id);
+    assert.deepEqual(restoreCalls, [['index.html', 'later.html'], ['later.html']]);
+    assert.deepEqual(secondAttempt.restoredPaths, ['index.html', 'later.html']);
+    assert.deepEqual(secondAttempt.skippedPaths, []);
+    await assert.rejects(retryService.restoreEncodingDamage(task.id), /戻せません/);
+
     await rm(join(workspace, 'later.html'));
     const unavailable = await store.restoreEncodingDamage({
         workspacePath: workspace, baselineSnapshotId: baseline.snapshotId,
@@ -128,7 +186,8 @@ try {
     }
     const failing = new FailingDetectionStore(join(root, 'store'));
     const withError = await failing.captureBetween({
-        fromSnapshotId: baseline.snapshotId, toSnapshotId: changes.endSnapshotId
+        fromSnapshotId: baseline.snapshotId, toSnapshotId: changes.endSnapshotId,
+        detectEncodingDamage: true
     });
     assert.equal(withError.source, 'task-diff');
     assert.deepEqual(withError.files, changes.files);
@@ -142,11 +201,18 @@ try {
         async detectEncodingDamageBatch() { return new Promise(() => undefined); }
     }
     const withoutDetection = await new NoDetectionStore(join(root, 'store')).captureBetween({
+        fromSnapshotId: baseline.snapshotId, toSnapshotId: changes.endSnapshotId,
+        detectEncodingDamage: true
+    });
+    const regularBetween = await store.captureBetween({
         fromSnapshotId: baseline.snapshotId, toSnapshotId: changes.endSnapshotId
     });
+    assert.equal(regularBetween.encodingDamage, undefined);
+    assert.equal(regularBetween.encodingDamageErrors, undefined);
     const timedOut = await new HangingDetectionStore(join(root, 'store'), undefined, {
         encodingDetectionTimeoutMs: 50
-    }).captureBetween({ fromSnapshotId: baseline.snapshotId, toSnapshotId: changes.endSnapshotId });
+    }).captureBetween({ fromSnapshotId: baseline.snapshotId, toSnapshotId: changes.endSnapshotId,
+        detectEncodingDamage: true });
     assert.equal(timedOut.source, withoutDetection.source);
     assert.deepEqual(timedOut.files, withoutDetection.files);
     assert.equal(timedOut.diff, withoutDetection.diff);
@@ -160,6 +226,13 @@ try {
     class CountingDetectionStore extends SnapshotStore {
         detectionGitProcesses = 0;
         detectionActive = false;
+        restoreBatchProcesses = 0;
+        restoreActive = false;
+        async restoreEncodingDamage(request) {
+            this.restoreActive = true;
+            try { return await super.restoreEncodingDamage(request); }
+            finally { this.restoreActive = false; }
+        }
         async detectEncodingDamageBatch(...args) {
             this.detectionActive = true;
             try { return await super.detectEncodingDamageBatch(...args); }
@@ -171,6 +244,9 @@ try {
         }
         runGitBuffer(args, ...rest) {
             if (this.detectionActive) { this.detectionGitProcesses++; }
+            if (this.restoreActive && args.some(arg => arg.startsWith('--batch'))) {
+                this.restoreBatchProcesses++;
+            }
             return super.runGitBuffer(args, ...rest);
         }
     }
@@ -183,6 +259,14 @@ try {
     assert.equal(manyChanges.files.length, 30);
     assert.equal(manyChanges.encodingDamage.length, 30);
     assert.equal(counting.detectionGitProcesses, 2);
+    const manyRestored = await counting.restoreEncodingDamage({
+        workspacePath: manyWorkspace, baselineSnapshotId: manyBaseline.snapshotId,
+        endSnapshotId: manyChanges.endSnapshotId,
+        paths: manyChanges.encodingDamage.map(item => item.path)
+    });
+    assert.equal(manyRestored.restoredPaths.length, 30);
+    assert.deepEqual(manyRestored.skippedPaths, []);
+    assert.equal(counting.restoreBatchProcesses, 2);
     console.log(`ENCODING_DAMAGE_GIT_PROCESSES_30_FILES=${counting.detectionGitProcesses}`);
     counting.dispose();
     failing.dispose();

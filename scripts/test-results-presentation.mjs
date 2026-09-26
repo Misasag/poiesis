@@ -36,12 +36,17 @@ assert.ok(verification.includes("<section className='poiesis-results__verificati
     && verification.includes('<tbody>{table.rows.map((row, index) => <tr key={index} data-status={row.status}>')
     && !verification.includes('<details'), 'The detail table must be a noncollapsible section with status rows');
 assert.ok(resultsPart.includes('詳細の確認記録を参照してください。'));
-assert.ok(canvas.includes('this.renderEncodingDamageNotice(encodingTask)'),
+assert.ok(canvas.includes('this.renderEncodingDamageNotice(encodingTask, Boolean(session?.archived))'),
     'The app-owned Results notice must appear in the Results canvas.');
 assert.ok(resultsPart.includes('作業前の内容に戻す') && resultsPart.includes('作業の後に変更されているため戻せませんでした'));
-assert.ok(resultsPart.includes("outcome.skippedReasons?.[path] === 'changed-after-task'")
+assert.ok(resultsPart.includes("outcome?.skippedReasons[item.path] === 'changed-after-task'")
     && resultsPart.includes('このファイルは戻せませんでした'),
     'Unavailable files must not be described as changes made after the Task.');
+assert.ok(resultsPart.includes('別の作業が実行中です。終わってから戻せます。')
+    && resultsPart.includes('disabled={pending || busy}')
+    && resultsPart.includes('文字の状態を確認できなかったファイル')
+    && agentPart.includes('作業前の内容に戻したファイル'),
+    'Damage, restore, busy and inspection states must be visible as text.');
 assert.ok(agentPart.includes("this.host.selectResultsTask(task!.id); this.host.selectTab('results');"),
     'The damaged-file chip must open its Task in Results.');
 assert(toolbar.includes("['fail', 'unknown', 'outdated']") && toolbar.includes('counts[status] > 0')

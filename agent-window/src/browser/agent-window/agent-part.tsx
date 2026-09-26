@@ -521,6 +521,10 @@ export class AgentPart extends AgentWindowPart {
             && task.changeSet?.source === 'task-diff'
             && task.changeSet.files.length > 0;
         const diffstat = showChangeSummary ? summarizeTaskChangeSet(task.changeSet) : undefined;
+        const damagedFiles = task?.changeSet?.encodingDamage ?? [];
+        const restoredFiles = new Set(task?.encodingRestore?.restoredPaths ?? []);
+        const remainingDamageCount = damagedFiles.filter(item => !restoredFiles.has(item.path)).length;
+        const restoredDamageCount = damagedFiles.length - remainingDamageCount;
         return (
             <>
                 {(message.complete || message.content.trim())
@@ -528,7 +532,7 @@ export class AgentPart extends AgentWindowPart {
                     : null}
                 {current?.htmlPreviews.map((preview, index) =>
                     this.renderAgentHtmlPreview(messageKey, preview, index, isMostRecentAgentMessage))}
-                {(showChangeSummary || Boolean(task?.changeSet?.encodingDamage?.length)) && (
+                {(showChangeSummary || damagedFiles.length > 0) && (
                     <div className='poiesis-agent-window__message-actions'>
                         {showChangeSummary && <button
                             type='button'
@@ -538,11 +542,13 @@ export class AgentPart extends AgentWindowPart {
                         >
                             変更 {diffstat!.fileCount} ファイル · +{diffstat!.additions} −{diffstat!.deletions}
                         </button>}
-                        {Boolean(task?.changeSet?.encodingDamage?.length) && <button
+                        {damagedFiles.length > 0 && <button
                             type='button'
                             className='poiesis-agent-window__diffstat-chip poiesis-agent-window__encoding-damage-chip'
                             onClick={() => { this.host.selectResultsTask(task!.id); this.host.selectTab('results'); }}
-                        >文字が壊れたファイル {task!.changeSet!.encodingDamage!.length}件</button>}
+                        >{remainingDamageCount > 0 ? `文字が壊れたファイル ${remainingDamageCount}件`
+                            : `作業前の内容に戻したファイル ${restoredDamageCount}件`}
+                            {remainingDamageCount > 0 && restoredDamageCount > 0 ? ` · ${restoredDamageCount}件を元に戻しました` : ''}</button>}
                     </div>
                 )}
                 {message.complete && task && task.status !== 'running' && (

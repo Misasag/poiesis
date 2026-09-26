@@ -230,7 +230,12 @@ export class ResultsPart extends AgentWindowPart {
                             </div>
                         )}
                         {encodingTask?.changeSet?.encodingDamage?.length
-                            ? this.renderEncodingDamageNotice(encodingTask) : null}
+                            ? this.renderEncodingDamageNotice(encodingTask, Boolean(session?.archived)) : null}
+                        {encodingTask?.changeSet?.encodingDamageErrors?.length
+                            ? <div className='poiesis-results__state poiesis-results__capture-notice' role='status'>
+                                <strong>文字の状態を確認できなかったファイル {encodingTask.changeSet.encodingDamageErrors.length}件</strong>
+                                <ul>{encodingTask.changeSet.encodingDamageErrors.map(path => <li key={path}>{path}</li>)}</ul>
+                            </div> : null}
                         {selectedRequirement && (document?.status === 'generating' && !document.html
                                 || latestTask?.status === 'completed' && !document) && (
                             <div className='poiesis-results__empty poiesis-results__generating'>
@@ -292,21 +297,28 @@ export class ResultsPart extends AgentWindowPart {
         );
     }
 
-    protected renderEncodingDamageNotice(task: ExecutionTask): React.ReactNode {
+    protected renderEncodingDamageNotice(task: ExecutionTask, archived: boolean): React.ReactNode {
         const damage = task.changeSet?.encodingDamage ?? [];
         const outcome = task.encodingRestore;
+        const restored = new Set(outcome?.restoredPaths ?? []);
+        const remaining = damage.filter(item => !restored.has(item.path));
+        const actionable = remaining.filter(item => !outcome || outcome.skippedReasons[item.path] === 'unavailable');
         const pending = this.encodingRestorePending.has(task.id);
+        const busy = this.taskService.hasRunningTaskInWorkspace(task);
         return <div className='poiesis-results__state poiesis-results__encoding-damage' role='alert'>
-            <strong>文字が壊れたファイル {damage.length}件</strong>
-            {!outcome && <p>作業の前は正しく読めた文字が、作業の後は読めない状態になっています。</p>}
-            <ul>{damage.map(item => <li key={item.path}>{item.path}</li>)}</ul>
-            {outcome ? <>
-                <p>{outcome.restoredPaths.length}件を作業前の内容に戻しました</p>
-                {outcome.skippedPaths.map(path => <p key={path}>{path}: {outcome.skippedReasons?.[path] === 'changed-after-task'
-                    ? '作業の後に変更されているため戻せませんでした' : 'このファイルは戻せませんでした'}</p>)}
-            </> : <>
+            <strong>{remaining.length > 0 ? `文字が壊れたファイル ${remaining.length}件`
+                : `${restored.size}件を作業前の内容に戻しました`}</strong>
+            {remaining.length > 0 && <p>作業の前は正しく読めた文字が、作業の後は読めない状態になっています。</p>}
+            <ul>{damage.map(item => <li key={item.path}>{item.path}: {restored.has(item.path)
+                ? '作業前の内容に戻しました'
+                : outcome?.skippedReasons[item.path] === 'changed-after-task'
+                    ? '作業の後に変更されているため戻せませんでした'
+                    : outcome?.skippedReasons[item.path] === 'unavailable'
+                        ? 'このファイルは戻せませんでした' : '文字を読めない状態です'}</li>)}</ul>
+            {actionable.length > 0 && !archived && <>
                 <p>このファイルに AI が加えた変更も元に戻ります。</p>
-                <button type='button' disabled={pending} onClick={() => void this.restoreDamagedFiles(task.id)}>
+                {busy && <p>別の作業が実行中です。終わってから戻せます。</p>}
+                <button type='button' disabled={pending || busy} onClick={() => void this.restoreDamagedFiles(task.id)}>
                     {pending ? '戻しています…' : '作業前の内容に戻す'}
                 </button>
             </>}

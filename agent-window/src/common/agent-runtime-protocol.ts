@@ -112,6 +112,7 @@ export interface GitChangeSetBetweenRequest {
     fromSnapshotId: string;
     toSnapshotId: string;
     paths?: string[];
+    detectEncodingDamage?: boolean;
 }
 
 export interface GitChangeSetCapture {
