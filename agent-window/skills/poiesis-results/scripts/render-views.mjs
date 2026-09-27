@@ -38,8 +38,8 @@ function judgmentUi(prepared, draft, gallery) {
       `<h3>差分の抜粋</h3>${excerpt ? `<pre class="ex-diff">${excerpt}</pre>` : '<p>この行の差分はありません。</p>'}` +
       `<p>${cite(file, line)}</p></div></details>`;
   };
-  const onNode = id => draft.interpretations.flatMap((row, i) => row.nodeId === id ? [badge(row, i)] : []).join('');
-  const onEdge = id => draft.interpretations.flatMap((row, i) => row.edgeId === id ? [badge(row, i)] : []).join('');
+  const onNode = id => id ? draft.interpretations.flatMap((row, i) => row.nodeId === id ? [badge(row, i)] : []).join('') : '';
+  const onEdge = id => id ? draft.interpretations.flatMap((row, i) => row.edgeId === id ? [badge(row, i)] : []).join('') : '';
   const table = `<h2>補った判断 ${draft.interpretations.length}件</h2><table class="ex-interp ex-judgments"><tr><th>番号</th><th>補った判断（AI）</th>` +
     `<th>確かめ方（検査は AI が選び、実行の記録で成功を確かめたもの）</th></tr>${draft.interpretations.map((row, i) => {
       const { file, line } = locate(row);
@@ -136,6 +136,14 @@ function legend() {
     `<span><b class="ex-view-unverified">未確認</b>確かめていない</span><span><b class="ex-view-concern">懸念1</b>懸念（並行の図）</span></div>`;
 }
 
+function remainingSourcePanels(base, draft, drawnHtml) {
+  const attached = new Set([...drawnHtml.matchAll(/data-view-source="([^"]+)"/g)].map(match => match[1]));
+  const rest = draft.nodes.filter(node => base.nodePanels?.[node.id] && !attached.has(node.id));
+  return rest.length ? `<details class="ex-view-source-list"><summary>ほかの部品の説明と差分 ${rest.length}件</summary>` +
+    rest.map(node => `<div><details class="ex-hit-inline ex-view-source" name="ex-panel" data-view-source="${esc(node.id)}">` +
+      `<summary>${esc(node.title)}の説明と差分</summary>${base.nodePanels[node.id]}</details></div>`).join('') + '</details>' : '';
+}
+
 function renderWithoutKey(prepared, draft, base, input) {
   const views = prepared.views, names = draft.viewNames ?? {};
   const file = views.nodes[0]?.file ?? prepared.hunks[0]?.file;
@@ -150,12 +158,13 @@ function renderWithoutKey(prepared, draft, base, input) {
     '追加した状態と読み書きする処理を示します。', `<table class="ex-interp"><tr><th>状態</th><th>書く処理</th><th>読む処理</th></tr>` +
     views.state.map(row => `<tr><td>${esc(names.states?.[row.declaredLine])}</td><td>${row.writers.map(item => cite(file, Number(item.match(/\d+$/)?.[0]))).join('、')}</td>` +
       `<td>${row.readers.map(item => cite(file, Number(item.match(/\d+$/)?.[0]))).join('、')}</td></tr>`).join('') + '</table>', names.dataSentence) : '';
+  const diagram = `${compare.html}${legend()}${state}${flow}${data}`;
   let html = base.html.replace(/<p class="ex-fact">[^<]*<\/p>\s*<figure class="ex-mapfig">[\s\S]*?<\/figure>/,
-    `${compare.html}${legend()}${state}${flow}${data}`);
-  html = html.replace(/<h2>依頼文<\/h2><p class="ex-request">([\s\S]*?)<\/p>/, '');
+    () => diagram + remainingSourcePanels(base, draft, diagram));
+  html = html.replace(/<h2>依頼文<\/h2><p class="ex-request">([\s\S]*?)<\/p>/, () => '');
   html = html.replace(/(<p class="ex-lead ex-ai-text">[\s\S]*?<\/p>)/,
-    `$1<p class="ex-request">依頼：${esc(input.task?.request ?? '')}</p>`);
-  html = html.replace(/<h2>補った判断 \d+件<\/h2><table class="ex-interp">[\s\S]*?<\/table>/, ui.table);
+    (_, lead) => `${lead}<p class="ex-request">依頼：${esc(input.task?.request ?? '')}</p>`);
+  html = html.replace(/<h2>補った判断 \d+件<\/h2><table class="ex-interp">[\s\S]*?<\/table>/, () => ui.table);
   html = withMissingImages(withoutPairedGallery(html, compare.pairedPaths), compare.missing);
   return { html,
     views: views.selected, drawnEdges: [], foldedEdges: [], panelCount: draft.offMap.length,
@@ -173,9 +182,11 @@ export function renderViews(prepared, draft, base, input) {
   const displayEdge = edge(structure.displayEdgeId), continuation = edge(structure.continuationId);
   const ui = judgmentUi(prepared, draft, gallery);
   const title = node => draft.nodes.find(item => item.id === node?.id)?.title ?? '';
+  const sourceDetails = node => node && base.nodePanels?.[node.id]
+    ? `<details class="ex-hit-inline ex-view-source" name="ex-panel" data-view-source="${esc(node.id)}"><summary>説明と差分</summary>${base.nodePanels[node.id]}</details>` : '';
   const card = (node, note = '', hint = '') => node ? `<div class="ex-view-card ex-part-${node.kind} ex-status-${node.status}" data-part="${esc(node.id)}" tabindex="0" role="button" aria-label="${esc(title(node))}を選ぶ">` +
     `<strong>${esc(title(node))}</strong><span class="ex-view-card-kind">${node.status === 'new' ? '新規' : node.status === 'modified' ? '変更' : '既存'}</span>` +
-    `${ui.onNode(node.id)}${note ? `<small>${esc(note)}</small>` : ''}${hint ? `<span class="ex-view-hint">${esc(hint)}</span>` : ''}${cite(node.file, node.line)}</div>` : '';
+    `${ui.onNode(node.id)}${note ? `<small>${esc(note)}</small>` : ''}${hint ? `<span class="ex-view-hint">${esc(hint)}</span>` : ''}${cite(node.file, node.line)}${sourceDetails(node)}</div>` : '';
   const arrow = (kind, evidence, from, to, edgeId) => `<span class="ex-view-arrow ex-view-arrow-${kind}" data-evidence="${esc(evidence ?? '')}" data-from="${esc(from?.id ?? '')}" data-to="${esc(to?.id ?? '')}">` +
     `<i class="ex-view-arrow-line" aria-hidden="true"></i><span>${kind === 'storage' ? '書く' : kind === 'display' ? '表示' : '呼ぶ'}</span>` +
     `${Number.isInteger(evidence) ? `<small>${evidence}行</small>` : ''}${edgeId ? ui.onEdge(edgeId) : ''}` +
@@ -186,7 +197,7 @@ export function renderViews(prepared, draft, base, input) {
     const actionLine = item.actionLine ?? item.line;
     const status = node?.status ?? 'existing';
     return `<li class="ex-view-entry ex-status-${status}" data-entry-line="${item.line}" data-action-line="${actionLine}">` +
-      `${cite(item.file, actionLine, entryName(item))} ${node ? ui.onNode(node.id) : ''}` +
+      `${cite(item.file, actionLine, entryName(item))} ${node ? ui.onNode(node.id) + sourceDetails(node) : ''}` +
       `<small>${status === 'new' ? '新しく作った' : status === 'modified' ? '手を入れた既存' : '既存'}　${actionLine}行</small></li>`;
   }).join('')}</ul></div>` : '';
   const compare = screenComparison(draft, gallery);
@@ -202,7 +213,7 @@ export function renderViews(prepared, draft, base, input) {
   const steps = views.steps.map(step => `<li data-step="${step.number}" data-evidence="${step.line}"><span>${esc(step.number)}　${step.kind === 'date' ? '日付を決める' : step.kind === 'keyPart' ? 'キーの部分を決める' : step.kind === 'read' ? '今の値を読む' : step.kind === 'write' ? '保存に書く' : '表示を読み直す'}</span>` +
     `${['date', 'keyPart'].includes(step.kind) ? `（${esc(names.origins?.[step.line])}）` : ''} <small>${step.line}行</small></li>`).join('');
   const recordCard = record ? `<div class="ex-view-card ex-part-function ex-status-${record.status} ex-view-record" data-part="${esc(record.id)}" tabindex="0" role="button" aria-label="${esc(title(record))}を選ぶ">` +
-    `<strong>${esc(title(record))}</strong><span class="ex-view-card-kind">${record.status === 'new' ? '新規' : record.status === 'modified' ? '変更' : '既存'}</span>${ui.onNode(record.id)}<ol class="ex-view-steps">${steps}</ol>${cite(record.file, record.line)}</div>` : '';
+    `<strong>${esc(title(record))}</strong><span class="ex-view-card-kind">${record.status === 'new' ? '新規' : record.status === 'modified' ? '変更' : '既存'}</span>${ui.onNode(record.id)}<ol class="ex-view-steps">${steps}</ol>${cite(record.file, record.line)}${sourceDetails(record)}</div>` : '';
   const writeOrigin = (structure.originEdges ?? []).map(edge).find(item => item?.from === record?.id);
   const displayOrigin = (structure.originEdges ?? []).map(edge).find(item => item?.from === display?.id);
   const flow = views.selected.T || views.selected.M ? section('structure', number++, names.flowTitle,
@@ -222,7 +233,12 @@ export function renderViews(prepared, draft, base, input) {
   const keyName = names.key;
   let partIndex = 0;
   const namedShape = key.shape.replace(/\{[^}]+\}/g, () => `{${names.keyParts?.[String(partIndex++)] ?? ''}}`);
-  const example = day => key.shape.replace(/\{[^}]+\}/g, day);
+  // Only the placeholder computed by the calendar helper receives an example date.
+  const datePartIds = new Set(views.boundary?.datePartIds ?? []);
+  const example = day => { let index = 0; return key.shape.replace(/\{[^}]+\}/g, () => {
+    const id = String(index++);
+    return datePartIds.has(id) ? day : `{${names.keyParts?.[id] ?? ''}}`;
+  }); };
   const memory = views.state.find(item => item.declaredLine === key.facts?.memoryLine);
   const siteCells = sites => sites.map(site => {
     const line = Number(site.match(/\d+$/)?.[0]), symbol = site.replace(/ \d+$/, '');
@@ -237,7 +253,7 @@ export function renderViews(prepared, draft, base, input) {
       `<td>${siteCells(item.writers)}</td><td>${siteCells(item.readers)}</td><td>—</td><td>—</td></tr>`).join('');
   const boundary = views.boundary;
   const keyExamples = boundary?.previousDate && boundary?.completedDate ? `<div class="ex-view-key-examples" data-key-dates="${esc(boundary.previousDate)},${esc(boundary.completedDate)}">` +
-    `<div>${esc(example(boundary.previousDate))} <small>前の日。${key.facts.noDelete ? '消さない' : '削除の有無は未確認'}</small></div>` +
+    `<div>${esc(example(boundary.previousDate))} <small>前の日。${key.facts.noDelete ? 'このファイルに削除の処理はありません' : '削除の有無は未確認'}</small></div>` +
     `<div>${esc(example(boundary.completedDate))} <small>完了日（例の値）</small></div></div>` : '';
   const origins = writeOrigin && displayOrigin ? `<div class="ex-view-origins" data-write-origin="${writeOrigin.line}" data-display-origin="${displayOrigin.line}">` +
     `<div class="ex-view-origin"><strong>保存するとき</strong><span>${esc(names.origins?.[writeOrigin.line])} ${cite(writeOrigin.file, writeOrigin.line, `${writeOrigin.line}行`)}${ui.onNode(record?.id)}</span><i class="ex-view-origin-line" aria-hidden="true"></i><span>${esc(keyName)}</span></div>` +
@@ -254,9 +270,9 @@ export function renderViews(prepared, draft, base, input) {
     `${record ? `<div>${card(record)}<span>→ 書く　${writeEdge?.line}行</span><small>${key.facts.incrementLine ? `+1　${key.facts.incrementLine}行` : ''}</small></div>` : ''}</div>` +
     `${card(storage, `${keyName}：${namedShape}`)}</div>${keyExamples}` +
     `<div class="ex-view-data-table"><table class="ex-interp"><tr><th>保存先・状態</th><th>書く処理</th><th>読む処理</th><th>書く入口</th><th>読む入口</th></tr>${rows}</table></div>` +
-    `${origins}${broken}<div class="ex-view-facts">${key.facts.noDelete ? '<span>古い日は消さない</span>' : ''}</div>`,
+    `${origins}${broken}<div class="ex-view-facts">${key.facts.noDelete ? '<span>このファイルに削除の処理はありません</span>' : ''}</div>`,
     names.dataSentence).replace('<section class="ex-view ex-view-data" data-view="data"',
-      `<section class="ex-view ex-view-data${flow ? '' : ' ex-view-visible'}" data-view="data" data-storage-part="${esc(storage?.id)}"`) : '';
+      () => `<section class="ex-view ex-view-data${flow ? '' : ' ex-view-visible'}" data-view="data" data-storage-part="${esc(storage?.id)}"`) : '';
   const race = views.race;
   const oldValue = race?.increment ? 3 : 'n', newValue = race?.increment ? 4 : 'f(n)';
   const points = race ? [['タブA', '読む', oldValue, readEdge?.line], ['タブB', '読む', oldValue, readEdge?.line],
@@ -272,7 +288,7 @@ export function renderViews(prepared, draft, base, input) {
     const path = [...item.path.matchAll(/@(\d+)/g)].map(match => `${match[1]}行`).join(' → ');
     return entry ? `<li>${cite(entry.file, entry.line, `${entryName(entry)} ${entry.line}行`)} → ${esc(path)} → 書く ${writeEdge?.line}行</li>` : '';
   }).join('');
-  const date = boundary ? `<div class="ex-view-date-boundary" data-write-origin="${boundary.writeOriginLine}" data-display-origin="${boundary.displayOriginLine}">` +
+  const date = boundary?.previousDate && boundary?.completedDate ? `<div class="ex-view-date-boundary" data-write-origin="${boundary.writeOriginLine}" data-display-origin="${boundary.displayOriginLine}">` +
     `<h3>日付の境目</h3><div class="ex-view-date-axis"><span>${esc(boundary.previousDate)} 23:59</span><i aria-label="日付の境目"></i><span>${esc(boundary.completedDate)} 0:00</span></div>` +
     `<div class="ex-view-date-timeline"><div class="ex-view-date-marker" aria-hidden="true"></div>` +
     `<div class="ex-view-date-lane" data-lane="background"><strong>裏で動く画面</strong><i class="ex-view-date-lane-line" aria-hidden="true"></i>` +
@@ -291,12 +307,13 @@ export function renderViews(prepared, draft, base, input) {
     `<div class="ex-view-result">${race.increment ? '保存結果 4　／　本来 5' : '最後に書いた値が残る'}</div>` +
     `${structure.noticeLine ? `<p class="ex-view-notify">保存の通知（${cite(display?.file, structure.noticeLine, `${structure.noticeLine}行`)}）で両方の画面を読み直します。</p>` : ''}` +
     `${date}<div class="ex-view-race-entries"><strong>起こしうる入口と経路</strong><ul>${raceEntries}</ul></div>`, names.raceSentence) : '';
-  const diagramHtml = `${compare.html}${legend()}${state}${flow}${data}${raceView}`;
-  let html = base.html.replace(/<p class="ex-fact">[^<]*<\/p>\s*<figure class="ex-mapfig">[\s\S]*?<\/figure>/, diagramHtml);
-  html = html.replace(/<div class="ex-tally">[\s\S]*?<h2>懸念点 \d+件<\/h2><ol class="ex-points">[\s\S]*?<\/ol>/, '');
-  html = html.replace(/<h2>依頼文<\/h2><p class="ex-request">([\s\S]*?)<\/p>/, '');
-  html = html.replace(/(<p class="ex-lead ex-ai-text">[\s\S]*?<\/p>)/, `$1<p class="ex-request">依頼：${esc(input.task?.request ?? '')}</p>`);
-  html = html.replace(/<h2>補った判断 \d+件<\/h2><table class="ex-interp">[\s\S]*?<\/table>/, ui.table);
+  const diagram = `${compare.html}${legend()}${state}${flow}${data}${raceView}`;
+  const diagramHtml = diagram + remainingSourcePanels(base, draft, diagram);
+  let html = base.html.replace(/<p class="ex-fact">[^<]*<\/p>\s*<figure class="ex-mapfig">[\s\S]*?<\/figure>/, () => diagramHtml);
+  html = html.replace(/<div class="ex-tally">[\s\S]*?<h2>懸念点 \d+件<\/h2><ol class="ex-points">[\s\S]*?<\/ol>/, () => '');
+  html = html.replace(/<h2>依頼文<\/h2><p class="ex-request">([\s\S]*?)<\/p>/, () => '');
+  html = html.replace(/(<p class="ex-lead ex-ai-text">[\s\S]*?<\/p>)/, (_, lead) => `${lead}<p class="ex-request">依頼：${esc(input.task?.request ?? '')}</p>`);
+  html = html.replace(/<h2>補った判断 \d+件<\/h2><table class="ex-interp">[\s\S]*?<\/table>/, () => ui.table);
   html = withMissingImages(withoutPairedGallery(html, compare.pairedPaths), compare.missing);
   const used = new Set([...html.matchAll(/data-part="([^"]+)"/g)].map(match => match[1]));
   const edges = views.edges.filter(item => used.has(item.from) && used.has(item.to));

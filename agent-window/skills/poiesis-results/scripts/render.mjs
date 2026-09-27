@@ -90,12 +90,12 @@ function validate(prepared, draft, imagePaths = [], workspace = prepared?.worksp
     }
   }
   const viewNames = draft.viewNames ?? {};
-  const needed = (name, reason) => { if (!viewNames[name]) reasons.push(`${reason}の名前を図の名前に書いてください。`); };
+  const needed = (name, reason) => { if (!Object.hasOwn(viewNames, name) || !viewNames[name]) reasons.push(`${reason}の名前を図の名前に書いてください。`); };
   if (prepared.views?.selected?.S) { needed('stateTitle', '状態の図'); needed('stateSentence', '状態の図の後の文'); needed('nonMain', '主役以外の線'); }
-  if (prepared.views?.selected?.T) needed('flowTitle', '入口の図');
+  if (prepared.views?.selected?.T || prepared.views?.selected?.M && prepared.views?.keys?.length) needed('flowTitle', '入口の図');
   if (prepared.views?.selected?.D) needed('dataTitle', '保存の図');
   if (prepared.views?.selected?.C) needed('raceTitle', '並行の図');
-  if (prepared.views?.selected?.T || prepared.views?.selected?.M && prepared.views?.structure) {
+  if (prepared.views?.selected?.T || prepared.views?.selected?.M && prepared.views?.keys?.length) {
     for (const group of prepared.views.groups ?? []) if (['count', 'refresh', 'flow'].includes(group.kind)) needed(group.kind, '入口のまとまり');
   }
   if (prepared.views?.selected?.D) { needed('key', '保存先'); needed('dataSentence', '保存の図の後の文'); }
@@ -108,7 +108,7 @@ function validate(prepared, draft, imagePaths = [], workspace = prepared?.worksp
     ['states', prepared.views?.naming?.states, 'line'],
     ['stateValues', prepared.views?.naming?.stateValues, 'id'],
     ['stateEvents', prepared.views?.naming?.stateEvents, 'line']
-  ]) for (const item of items ?? []) if (!viewNames[field]?.[item[id]])
+  ]) for (const item of items ?? []) if (!viewNames[field] || !Object.hasOwn(viewNames[field], item[id]) || !viewNames[field][item[id]])
     reasons.push(`${field} の ${item[id]} に表示する名前を付けてください。`);
   // Screenshots a hook or the agent left in the workspace are chosen here; the app only lists verification images.
   const chosenImages = [];
@@ -212,7 +212,9 @@ function validate(prepared, draft, imagePaths = [], workspace = prepared?.worksp
       ![...imagePaths, ...chosenImages].includes(row.image.replaceAll('\\', '/'))))
       reasons.push('判断の画面は入力にある画像から選んでください。');
   }
-  for (const id of [...(prepared.views?.structure?.countNodeIds ?? []), ...(prepared.views?.structure?.refreshNodeIds ?? [])])
+  const drawnNodeIds = [...(prepared.views?.structure?.countNodeIds ?? []), ...(prepared.views?.structure?.refreshNodeIds ?? []),
+    ...(prepared.views?.selected?.D && prepared.views?.structure?.readerId ? [prepared.views.structure.readerId] : [])];
+  for (const id of new Set(drawnNodeIds))
     if (!selected.has(id)) reasons.push('図に出す部品の日本語名を、準備の候補から指定してください。');
   if (!Array.isArray(draft.concerns) || draft.concerns.length > 3) reasons.push('懸念点は最大3件にしてください。');
   const changedLines = new Map();
@@ -362,7 +364,9 @@ ${images ? `<details><summary>画像 ${pictures.length}件</summary>${images}</d
 <details><summary>変更の詳細 ${draft.offMap.length}件</summary>${offMap}</details>
 <details><summary>補助の処理 ${graph.helperIds.length}件</summary>${foldedPanels}</details>
 ${verificationHtml}${unverifiedHtml(draft)}<details><summary>差分の全体 ${prepared.hunks.length}件</summary>${prepared.hunks.map(diffHtml).join('')}</details><details><summary>改行コードだけの変更 ${prepared.lineEndingChanges}件</summary><p>${prepared.lineEndingChanges}行です。</p></details><script>${script}</script></body></html>`;
-  return { html, drawnEdges: graph.edges.map(e => e.id), foldedEdges: graph.folded.map(e => e.id), unassignedHunks, panelCount: graph.boxes.length + graph.helperIds.length, geometry: graph };
+  return { html, nodePanels: Object.fromEntries(selected.map(node => [node.id, nodePanel(node)])),
+    drawnEdges: graph.edges.map(e => e.id), foldedEdges: graph.folded.map(e => e.id), unassignedHunks,
+    panelCount: graph.boxes.length + graph.helperIds.length, geometry: graph };
 }
 
 // The app also lists verification images in input.images; show each file once.

@@ -212,3 +212,4 @@ for (const file of [...sourceFiles(resolve(skill, 'scripts')), ...sourceFiles(re
 }
 assert.deepEqual(found, [], `Skill scripts or assets contain case-specific names: ${found.join(', ')}`);
 console.log('Results skill generic views: renamed source, test evidence, badges, and forbidden names passed.');
+export { prepared as baselinePrepared, draft as baselineDraft, input as baselineInput, s6Names };

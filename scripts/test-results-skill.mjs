@@ -361,7 +361,7 @@ const scripts = appInput(fixture, addedFile('mixed.html'));
 writeCase(scripts, JSON.stringify(emptyDraft));
 assert.equal(prepare().body.ok, true);
 const mixed = JSON.parse(readFileSync(resolve(runFolder, 'prepared.json'), 'utf8'));
-assert(!mixed.skipped.includes('mixed.html'));
+assert(mixed.skipped.includes('mixed.html'), 'J17: a file with an unreadable script is reported even when other scripts parse');
 assert(mixed.map.nodes.some(node => node.symbol === 'valid'));
 assert(!mixed.map.nodes.some(node => node.symbol.includes('imports')));
 const sameLine = appInput(fixture, addedFile('same-line.html'));
@@ -590,3 +590,4 @@ for (const [name, expected] of [['one-storage.js', { S: false, D: true, T: false
 }
 
 console.log('Results skill: fixture, derived variants, candidates, assignments, invalid drafts, encoding, and no-change states passed.');
+await import('./fixtures/results-skill/review-regressions.mjs');

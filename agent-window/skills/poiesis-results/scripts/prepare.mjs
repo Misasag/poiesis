@@ -18,6 +18,32 @@ const walk = (node, visit, ancestors = []) => {
 };
 const output = value => process.stdout.write(`${JSON.stringify(value)}\n`);
 
+function catchForStorage(source, file, operationLine, method, entries) {
+  if (!Number.isInteger(operationLine) || !entries.some(entry => entry.steps.some(step =>
+    step.line === operationLine && step.kind === `storage-${method === 'getItem' ? 'read' : 'write'}` && step.guards?.includes('try')))) return null;
+  const scripts = /\.html?$/i.test(file) ? [...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)]
+    .map(match => ({ code: match[1], offset: source.slice(0, match.index + match[0].indexOf('>') + 1).split('\n').length - 1 }))
+    : [{ code: source, offset: 0 }];
+  const matches = [];
+  for (const script of scripts) {
+    let ast;
+    try { ast = acorn.parse(script.code, { ecmaVersion: 'latest', sourceType: 'module', locations: true, allowHashBang: true }); }
+    catch { continue; }
+    walk(ast, node => {
+      if (node.type !== 'TryStatement' || !node.handler || operationLine < node.block.loc.start.line + script.offset ||
+        operationLine > node.block.loc.end.line + script.offset) return;
+      let operationInside = false;
+      walk(node.block, child => {
+        if (child.type !== 'CallExpression' || child.loc.start.line + script.offset !== operationLine) return;
+        const call = script.code.slice(child.callee.start, child.callee.end);
+        if (new RegExp(`(?:^|\\.)localStorage\\.${method}$`).test(call)) operationInside = true;
+      });
+      if (operationInside) matches.push({ span: node.block.end - node.block.start, line: node.handler.loc.start.line + script.offset });
+    });
+  }
+  return matches.sort((a, b) => a.span - b.span)[0]?.line ?? null;
+}
+
 function parseDiff(diff) {
   const hunks = [], added = new Map(), deleted = new Map();
   let file, oldFile, current, oldLine, newLine, oldRemaining = 0, newRemaining = 0;
@@ -259,7 +285,8 @@ function analyzeFile(file, source, changed, deleted, nodes, edges) {
     const page = addNode('entry', 'page load', offset + 1);
     scan(page, ast);
   }
-  return parsedScripts.length > 0;
+  // Keep the usable parts, but disclose every file with an unreadable script.
+  return parsedScripts.length > 0 && parsedScripts.length === scripts.length;
 }
 
 try {
@@ -452,23 +479,20 @@ try {
     views.edges = map.edges.filter(edge => ids.has(edge.from) && ids.has(edge.to));
     if (key) {
       const lines = sourceLines.map((text, i) => ({ line: i + 1, text }));
-      const site = regex => lines.find(item => regex.test(item.text) &&
-        views.nodes.some(node => node.kind === 'function' && item.line >= node.line && item.line <= node.end))?.line ?? null;
+      const readerSite = regex => lines.find(item => reader && item.line >= reader.line && item.line <= reader.end && regex.test(item.text))?.line ?? null;
       const inWriter = item => writer && item.line >= writer.line && item.line <= writer.end;
       const incrementLine = lines.find(item => inWriter(item) && item.line < writeEdge?.line &&
         /(?:\+\s*1\b|\+\+)/.test(item.text))?.line ?? null;
       const memory = data.state.find(item => [...item.writers, ...item.readers]
         .some(site => [writer?.symbol, reader?.symbol].includes(site.replace(/ \d+$/, ''))));
-      key.facts = { maxLine: site(/Math\.max\s*\(/), invalidLine: site(/Number\.isSafeInteger\s*\(/),
+      key.facts = { maxLine: readerSite(/Math\.max\s*\(/), invalidLine: readerSite(/Number\.isSafeInteger\s*\(/),
         incrementLine,
-        noDelete: !sourceLines.some(line => /localStorage\.removeItem\s*\(/.test(line)),
+        noDelete: !sourceLines.some(line => /localStorage(?:\.(?:removeItem|clear)|\[['"](?:removeItem|clear)['"]\])\s*\(/.test(line)),
         memoryLine: memory?.declaredLine ?? null,
         readLine: Number(key.readers[0]?.match(/\d+$/)?.[0]) || null,
         writeLine: Number(key.writers[0]?.match(/\d+$/)?.[0]) || null };
-      key.facts.saveCatchLine = writer && key.facts.writeLine ? lines.find(item => item.line > key.facts.writeLine &&
-        item.line <= writer.end && /\}\s*catch\b/.test(item.text))?.line ?? null : null;
-      key.facts.readCatchLine = reader && key.facts.readLine ? lines.find(item => item.line > key.facts.readLine &&
-        item.line <= reader.end && /\}\s*catch\b/.test(item.text))?.line ?? null : null;
+      key.facts.saveCatchLine = catchForStorage(derived.source, derived.file, key.facts.writeLine, 'setItem', data.entries);
+      key.facts.readCatchLine = catchForStorage(derived.source, derived.file, key.facts.readLine, 'getItem', data.entries);
       key.facts.emptyValue = reader ? sourceLines.slice(reader.line - 1, reader.end).join('\n').match(/\?\?\s*(\d+)\b/)?.[1] ?? null : null;
       views.keys[0].facts = key.facts;
     }
@@ -517,16 +541,50 @@ try {
         repeats.set(item.line, nth + 1);
         return { ...item, number: `${rank.get(item.line)}${same > 1 ? '.' + String.fromCharCode(97 + nth) : ''}` };
       });
-      const sourceArg = edge => edge?.call?.match(/\(([^)]*)\)/)?.[1]?.trim() ?? '';
-      // A calendar-derived key with different read/write date arguments gets
-      // a boundary view; example dates come only from the recorded completion.
-      if (hasDateParts && writeOrigin && displayOrigin && sourceArg(writeOrigin) !== sourceArg(displayOrigin)) {
+      const sourceArg = edge => {
+        if (!edge?.call) return null;
+        try {
+          const call = acorn.parseExpressionAt(edge.call, 0, { ecmaVersion: 'latest' });
+          return call.type === 'CallExpression' && call.arguments.length
+            ? edge.call.slice(call.arguments[0].start, call.arguments[0].end).trim() : '';
+        } catch { return null; }
+      };
+      const helperSource = dateHelper ? sourceLines.slice(dateHelper.line - 1, dateHelper.end).join('\n') : '';
+      const helperDefaultsToNow = (() => {
+        try {
+          const candidates = [helperSource, `({${helperSource}})`, `class Helper {${helperSource}}`];
+          for (const candidate of candidates) {
+            let ast;
+            try { ast = acorn.parse(candidate, { ecmaVersion: 'latest', sourceType: 'module' }); }
+            catch { continue; }
+            let found = false;
+            walk(ast, node => {
+              if (!/^(?:FunctionDeclaration|FunctionExpression|ArrowFunctionExpression)$/.test(node.type)) return;
+              if (node.params?.some(param => param.type === 'AssignmentPattern' &&
+                /^(?:Date\.now\(\)|new Date\(\))$/.test(candidate.slice(param.right.start, param.right.end)))) found = true;
+            });
+            if (found) return true;
+          }
+          return false;
+        } catch { return false; }
+      })();
+      const nowValue = arg => arg === '' ? helperDefaultsToNow
+        : /^(?:Date\.now\(\)|new Date\(\))$/.test(arg ?? '');
+      const storedValue = arg => /^[A-Za-z_$][\w$]*$/.test(arg ?? '') &&
+        data.state.some(item => item.name === arg && item.writers.length > 0);
+      const writeArg = sourceArg(writeOrigin), displayArg = sourceArg(displayOrigin);
+      // A boundary is justified only by a current-day origin paired with a
+      // previously assigned timestamp, never by different argument spellings.
+      if (hasDateParts && writeOrigin && displayOrigin &&
+        (nowValue(writeArg) && storedValue(displayArg) || nowValue(displayArg) && storedValue(writeArg))) {
         const completed = new Date(input.task?.endedAt);
         const format = date => Number.isNaN(date.getTime()) ? null :
           `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         const previous = new Date(completed); previous.setDate(previous.getDate() - 1);
         views.boundary = { writeOriginLine: writeOrigin.line, displayOriginLine: displayOrigin.line,
-          writeArgument: sourceArg(writeOrigin), displayArgument: sourceArg(displayOrigin),
+          writeArgument: writeArg, displayArgument: displayArg,
+          datePartIds: [...key.shape.matchAll(/\{([^}]+)\}/g)].flatMap((match, index) =>
+            match[1].includes(`${dateHelper.symbol}(`) ? [String(index)] : []),
           previousDate: format(previous), completedDate: format(completed),
           emptyValue: key.facts?.emptyValue ?? null,
           entryLine: countEntries.find(entry => /visibilitychange/.test(entry.entry))?.line ?? null };
@@ -534,9 +592,13 @@ try {
       views.naming.entries = [...new Map([...views.groups.flatMap(group => group.entries),
         ...(views.stateMachine?.transitions.flatMap(item => item.entries) ?? [])]
         .map(entry => [entry.line, { line: entry.line, entry: entry.entry }])).values()];
-      const condition = countEntries.flatMap(entry => entry.steps)
-        .find(step => step.line === primaryCall?.line && step.guards?.some(guard => guard !== 'try'));
-      views.naming.conditions = condition ? [{ line: condition.line, expression: condition.guards.join(' ') }] : [];
+      const mainLine = views.stateMachine?.transitions.find(item => item.main)?.throughLine;
+      // The state view reads the transition's through line, which can differ
+      // from the call chosen for the flow view. Index both observed guards.
+      views.naming.conditions = [...new Set([primaryCall?.line, mainLine].filter(Number.isInteger))]
+        .map(line => data.entries.flatMap(entry => entry.steps)
+          .find(step => step.line === line && step.guards?.some(guard => guard !== 'try')))
+        .filter(Boolean).map(step => ({ line: step.line, expression: step.guards.join(' ') }));
       views.naming.origins = sharedOrigins.map(edge => ({ line: edge.line, expression: edge.call, sourceId: edge.from }));
       views.naming.keyParts = [...key.shape.matchAll(/\{([^}]+)\}/g)].map((match, index) =>
         ({ id: String(index), expression: match[1] }));

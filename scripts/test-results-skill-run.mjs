@@ -163,6 +163,9 @@ try {
     assert.equal(redact(ordinary), ordinary);
     assert.equal(redact('TOKEN_COUNT=true\nPASSWORD=3'), 'TOKEN_COUNT=true\nPASSWORD=3');
     assert.equal(redact('const label = "abc";\nAPI_KEY=abc'), 'const label = "abc";\nAPI_KEY=[REDACTED]');
+    assert.equal(resultsRedactor({ API_KEY: 'abcd' })('value=abcd'), 'value=[REDACTED]', 'J8: four-character environment secret');
+    assert.equal(redact('api_key:abc123\npassword=hunter'), 'api_key:[REDACTED]\npassword=[REDACTED]', 'J8: bare values');
+    assert.equal(redact('token: string;\npassword = readPassword();'), 'token: string;\npassword = readPassword();', 'J8: types and calls');
     const sensitive = 'API_KEY=sk-live-abcdef123456\ntoken: abc123def456ghi\n"token": "abc123def456ghi"\nconst secret = "hunter2hunter2"\nAuthorization: Bearer xyz.abc\n-----BEGIN PRIVATE KEY-----\nprivate bytes\n-----END PRIVATE KEY-----\nsk-environment-12345';
     const cleaned = redact(sensitive);
     for (const secret of ['sk-live-abcdef123456', 'abc123def456ghi', 'hunter2hunter2', 'xyz.abc', 'private bytes', 'sk-environment-12345'])

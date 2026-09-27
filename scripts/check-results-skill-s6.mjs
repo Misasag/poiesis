@@ -148,7 +148,7 @@ assert(section('structure').includes('選ぶと図3 保存の形'));
 assert(section('structure').includes('ex-view-link-read'));
 assert(section('structure').includes('ex-view-link-call'));
 assert(section('data').includes('data-key-dates="2026-09-25,2026-09-26"'));
-assert(section('data').includes('古い日は消さない'));
+assert(section('data').includes('このファイルに削除の処理はありません'));
 assert(section('data').includes('data-read-catch="461" data-write-catch="480"'));
 assert(section('data').includes('data-write-origin="475" data-display-origin="469"'));
 assert(section('race').includes('ex-view-race-window'));
@@ -308,6 +308,15 @@ try {
     focused: document.activeElement === document.querySelector(`${selector} > summary`)
   }), judgment);
   assert.deepEqual(escapeResult, { open: false, focused: true });
+  const writerId = views.structure.writerId;
+  const sourceSelector = `[data-view="structure"] .ex-view-card[data-part="${writerId}"] .ex-view-source`;
+  await frame.click(`${sourceSelector} > summary`);
+  const sourcePanel = await frame.$eval(`${sourceSelector}[open] .ex-panel`, item => item.textContent);
+  assert(sourcePanel.includes(draft.nodes.find(item => item.id === writerId).caption) && sourcePanel.includes('行の変更'),
+    'J7: 図の部品から説明と差分を開ける');
+  await frame.evaluate(selector => document.querySelector(`${selector}[open] > summary`).focus(), sourceSelector);
+  await page.keyboard.press('Escape');
+  await frame.waitForFunction(selector => !document.querySelector(`${selector}[open]`), {}, sourceSelector);
   await frame.click('[data-view="structure"] .ex-view-entry[data-entry-line="727"] .ex-view-judgment > summary');
   assert(await frame.$eval('[data-view="structure"] .ex-view-entry[data-entry-line="727"] .ex-view-judgment[open] .ex-view-judgment-image img',
     item => item.naturalWidth > 0));

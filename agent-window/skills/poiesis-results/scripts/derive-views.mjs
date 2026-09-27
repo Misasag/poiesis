@@ -8,14 +8,17 @@ diff = diff.replace(/\r\n/g, '\n');
 
 const added = new Set();
 {
-  let cur = null, n = 0;
+  let cur = null, n = 0, oldRemaining = 0, newRemaining = 0;
   for (const line of diff.split('\n')) {
+    if (oldRemaining || newRemaining) {
+      if (line[0] === '+' && newRemaining) { if (cur === file) added.add(n); n++; newRemaining--; }
+      else if (line[0] === '-' && oldRemaining) oldRemaining--;
+      else if (line[0] === ' ' && oldRemaining && newRemaining) { n++; oldRemaining--; newRemaining--; }
+      continue;
+    }
     if (line.startsWith('+++ b/')) { cur = line.slice(6); continue; }
-    const h = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-    if (h) { n = +h[1]; continue; }
-    if (cur !== file || line.startsWith('--- ')) continue;
-    if (line[0] === '+') added.add(n++);
-    else if (line[0] === ' ') n++;
+    const h = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (h) { n = +h[3]; oldRemaining = +(h[2] ?? 1); newRemaining = +(h[4] ?? 1); }
   }
 }
 

@@ -34,7 +34,7 @@
       return;
     }
     const part = event.target.closest('.ex-view-card[data-part]');
-    if (part && !event.target.closest('a,.ex-view-judgment')) selectPart(part.dataset.part);
+    if (part && !event.target.closest('a,.ex-view-judgment,.ex-view-source')) selectPart(part.dataset.part);
   });
   function selectPart(id) {
     const selected = document.querySelector('.ex-view-card.ex-related')?.dataset.part === id;
@@ -45,7 +45,7 @@
   }
   document.addEventListener('keydown', event => {
     const part = event.target.closest('.ex-view-card[data-part]');
-    if (part && !event.target.closest('.ex-view-judgment') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); selectPart(part.dataset.part); return; }
+    if (part && !event.target.closest('.ex-view-judgment,.ex-view-source') && ['Enter', ' '].includes(event.key)) { event.preventDefault(); selectPart(part.dataset.part); return; }
     if (event.key === 'Escape' && opened()) { event.preventDefault(); closePanel(); }
     const grip = event.target.closest('.ex-panel-grip');
     if (!grip || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;

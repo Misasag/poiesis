@@ -7,14 +7,20 @@ const SECRET_NAME = /(?:secret|token|password|passwd|credential|api[_-]?key|auth
 
 /** Resolve values only for this invocation; never keep credentials in a capture or artifact. */
 export function resultsRedactor(env: NodeJS.ProcessEnv = process.env): (text: string) => string {
-    const values = Object.entries(env).filter(([key, value]) => SECRET_NAME.test(key) && value && value.length >= 8
+    const values = Object.entries(env).filter(([key, value]) => SECRET_NAME.test(key) && value && value.length >= 4
         && !/^(?:true|false|\d+(?:\.\d+)?)$/i.test(value))
         .map(([, value]) => value!).sort((a, b) => b.length - a.length);
     return text => {
         for (const value of values) { text = text.split(value).join('[REDACTED]'); }
         return text.replace(/((?:[\w.-]*(?:secret|token|password|passwd|credential|api[_-]?key|authorization|private[_-]?key)[\w.-]*)(?:["'])?\s*[:=]\s*)("[^"\r\n]*"|'[^'\r\n]*')/gi, '$1[REDACTED]')
-            .replace(/((?:[\w.-]*(?:secret|token|password|passwd|credential|api[_-]?key|authorization|private[_-]?key)[\w.-]*)\s*[:=]\s*)([A-Za-z0-9._~+/-]{8,})(?=[\s,;}]|$)/gi,
-                (match, prefix: string, value: string) => /\d/.test(value) && !/^(?:true|false|\d+(?:\.\d+)?)$/i.test(value) ? `${prefix}[REDACTED]` : match)
+            .replace(/((?:[\w.-]*(?:secret|token|password|passwd|credential|api[_-]?key|authorization|private[_-]?key)[\w.-]*)\s*[:=]\s*)([A-Za-z0-9._~+/-]{6,})(?=[\s,;}]|$|\()/gi,
+                (match, prefix: string, value: string, index: number, full: string) => {
+                    if (/^(?:true|false|\d+(?:\.\d+)?|string|number|boolean|null|undefined|any|unknown|void|never|object|Bearer)$/i.test(value)
+                        || /^\s*\(/.test(full.slice(index + match.length))) return match;
+                    const mixed = /\d|[a-z].*[A-Z]|[A-Z].*[a-z]|[_\-./+=]/.test(value);
+                    return mixed || /(?:password|passwd|secret|credential|private[_-]?key)/i.test(prefix)
+                        ? `${prefix}[REDACTED]` : match;
+                })
             .replace(/(^[+\- ]?\s*[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|API_KEY|PRIVATE_KEY)[A-Z0-9_]*\s*=\s*)([^\s#;]+)/gm,
                 (match, prefix: string, value: string) => /^(?:true|false|\d+(?:\.\d+)?|\[REDACTED\])$/i.test(value) ? match : `${prefix}[REDACTED]`)
             .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [REDACTED]')
