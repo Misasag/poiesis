@@ -270,19 +270,83 @@ try {
     for (const size of [
         { width: 1280, height: 720 },
         { width: 1000, height: 760 },
+        { width: 900, height: 760 },
         { width: 820, height: 700 }
     ]) {
         await page.setViewport({ ...size, deviceScaleFactor: 1 });
-        readingLayouts.push(await assertReadingLayout(page, `${size.width}x${size.height}`));
+        const readingLayout = await assertReadingLayout(page, `${size.width}x${size.height}`);
+        readingLayouts.push(readingLayout);
+        if (size.width === 900) {
+            for (const [trigger, selector] of [
+                ['.poiesis-results__outcome-trigger', '#poiesis-results-navigator'],
+                ['[aria-controls="poiesis-results-details-panel"]', '#poiesis-results-details-panel'],
+                ['#poiesis-results-question-trigger', '#poiesis-results-questions-panel']
+            ]) {
+                await page.click(trigger);
+                await page.waitForSelector(selector, { visible: true });
+                await assertSidePanelLayout(page, readingLayout, selector, trigger);
+                await page.keyboard.press('Escape');
+                await assertSidePanelClosed(page, readingLayout, selector, trigger);
+            }
+        }
+        if (size.width === 820) {
+            await page.click('#poiesis-results-question-trigger');
+            await page.waitForSelector('#poiesis-results-questions-panel', { visible: true });
+            await waitForResultsLayout(page);
+            const narrowLayout = await page.evaluate(() => {
+                const results = document.querySelector('.poiesis-results')?.getBoundingClientRect();
+                const panel = document.querySelector('#poiesis-results-questions-panel')?.getBoundingClientRect();
+                return {
+                    resultsWidth: results?.width,
+                    panelWidth: panel?.width,
+                    horizontalOverflow: document.documentElement.scrollWidth > innerWidth
+                };
+            });
+            assert(Math.abs(narrowLayout.resultsWidth - narrowLayout.panelWidth) <= 1 && !narrowLayout.horizontalOverflow,
+                `The narrow Results panel is not full width: ${JSON.stringify(narrowLayout)}`);
+            await page.click('[aria-label="質問を閉じる"]');
+        }
     }
     await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
-    const readingBaseline = await assertReadingLayout(page, 'navigator-baseline');
+    const readingBaseline = await assertReadingLayout(page, 'side-panel-baseline');
     await page.evaluate(() => {
         window.__poiesisResultsFrameIdentity = document.querySelector('.poiesis-results__document');
     });
     frame = await resultsFrame(page);
     await frame.evaluate(() => window.scrollTo(0, 480));
     const navigatorScrollBefore = await frame.evaluate(() => window.scrollY);
+    const sidePanelLayouts = [];
+    for (const panel of [
+        { trigger: '.poiesis-results__outcome-trigger', selector: '#poiesis-results-navigator', close: '成果ナビゲーターを閉じる' },
+        { trigger: '[aria-controls="poiesis-results-details-panel"]', selector: '#poiesis-results-details-panel', close: '詳細を閉じる' },
+        { trigger: '#poiesis-results-question-trigger', selector: '#poiesis-results-questions-panel', close: '質問を閉じる' }
+    ]) {
+        await page.click(panel.trigger);
+        await page.waitForSelector(panel.selector, { visible: true });
+        sidePanelLayouts.push(await assertSidePanelLayout(page, readingBaseline, panel.selector, panel.trigger));
+        assert(await page.evaluate(() => window.__poiesisResultsFrameIdentity === document.querySelector('.poiesis-results__document')),
+            `Opening ${panel.selector} replaced the Results document.`);
+        frame = await resultsFrame(page);
+        assert(await frame.evaluate(() => window.scrollY) === navigatorScrollBefore,
+            `Opening ${panel.selector} moved the document scroll position.`);
+        await page.$eval(panel.selector, element => element.querySelector('button:not(:disabled)')?.focus());
+        await page.keyboard.down('Shift');
+        await page.keyboard.press('Tab');
+        await page.keyboard.up('Shift');
+        assert(await page.$eval(panel.selector, element => !element.contains(document.activeElement)),
+            `Tab is trapped inside the non-modal ${panel.selector}.`);
+        await page.$eval(panel.selector, element => element.querySelector('button:not(:disabled)')?.focus());
+        await page.keyboard.press('Escape');
+        await assertSidePanelClosed(page, readingBaseline, panel.selector, panel.trigger);
+        frame = await resultsFrame(page);
+        assert(await frame.evaluate(() => window.scrollY) === navigatorScrollBefore,
+            `Closing ${panel.selector} moved the document scroll position.`);
+        await page.click(panel.trigger);
+        await page.waitForSelector(panel.selector, { visible: true });
+        await assertSidePanelLayout(page, readingBaseline, panel.selector, panel.trigger);
+        await page.click(`[aria-label="${panel.close}"]`);
+        await assertSidePanelClosed(page, readingBaseline, panel.selector, panel.trigger);
+    }
     await page.click('.poiesis-results__outcome-trigger');
     await page.waitForSelector('#poiesis-results-navigator');
     const navigatorLayout = await assertNavigatorLayout(page, readingBaseline, 1);
@@ -327,6 +391,7 @@ try {
     });
     stage = 'navigator-task-update';
     await page.waitForSelector('.poiesis-results__document');
+    const updatedReadingBaseline = await assertReadingLayout(page, 'updated-reading');
     await page.click('.poiesis-results__outcome-trigger');
     await page.waitForSelector('#poiesis-results-navigator .poiesis-results__task-list');
     const cumulativeTaskCount = await page.$eval(
@@ -335,9 +400,20 @@ try {
     );
     assert(cumulativeTaskCount.includes('タスク 2件'),
         `The cumulative Requirement did not retain both Tasks: ${cumulativeTaskCount}`);
-    const updatedNavigator = await assertNavigatorLayout(page, await assertReadingLayout(page, 'updated-reading-under-overlay', true), 1);
+    const updatedNavigator = await assertNavigatorLayout(page, updatedReadingBaseline, 1);
     await page.click('[aria-label="成果ナビゲーターを閉じる"]');
     const maximized = await maximizeAndAssert(page);
+    for (const [trigger, selector] of [
+        ['.poiesis-results__outcome-trigger', '#poiesis-results-navigator'],
+        ['[aria-controls="poiesis-results-details-panel"]', '#poiesis-results-details-panel'],
+        ['#poiesis-results-question-trigger', '#poiesis-results-questions-panel']
+    ]) {
+        await page.click(trigger);
+        await page.waitForSelector(selector, { visible: true });
+        await assertSidePanelLayout(page, maximized.layout, selector, trigger);
+        await page.keyboard.press('Escape');
+        await assertSidePanelClosed(page, maximized.layout, selector, trigger);
+    }
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page);
@@ -370,7 +446,8 @@ try {
         restoredQuestions: restored.count,
         citationLine: 12,
         navigatorPreservedDocument: stableWhileNavigatorOpen,
-        navigatorOverlay: navigatorLayout,
+        navigatorSidePanel: navigatorLayout,
+        sidePanelLayouts,
         taskCountAfterUpdate: cumulativeTaskCount,
         retainedDraft: true,
         resizeLayouts: readingLayouts,
@@ -396,9 +473,9 @@ async function resultsFrame(page) {
     return frame;
 }
 
-async function assertReadingLayout(page, label, allowAuxiliary = false) {
-    await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
-    const snapshot = await page.evaluate((currentLabel, auxiliaryAllowed) => {
+async function assertReadingLayout(page, label) {
+    await waitForResultsLayout(page);
+    const snapshot = await page.evaluate(currentLabel => {
         const bounds = selector => {
             const element = document.querySelector(selector);
             if (!(element instanceof HTMLElement)) return undefined;
@@ -426,16 +503,16 @@ async function assertReadingLayout(page, label, allowAuxiliary = false) {
             firstAction,
             frame: bounds('.poiesis-results__document'),
             hasPermanentTaskRail: Boolean(document.querySelector('.poiesis-results__task-switcher')),
-            hasPermanentComposer: !auxiliaryAllowed && Boolean(document.querySelector('.poiesis-results__composer')),
+            hasPermanentComposer: Boolean(document.querySelector('.poiesis-results__composer')),
             hasAuxiliary: Boolean(document.querySelector('.poiesis-results__auxiliary')),
             horizontalOverflow: document.documentElement.scrollWidth > innerWidth
         };
-    }, label, allowAuxiliary);
+    }, label);
     assert(snapshot.results && snapshot.main && snapshot.canvas && snapshot.header && snapshot.title && snapshot.firstAction && snapshot.frame,
         `The Results reading layout is incomplete at ${label}: ${JSON.stringify(snapshot)}`);
     assert(!snapshot.hasPermanentTaskRail && !snapshot.hasPermanentComposer,
         `Permanent Results chrome still reserves reading space at ${label}: ${JSON.stringify(snapshot)}`);
-    assert(allowAuxiliary || !snapshot.hasAuxiliary,
+    assert(!snapshot.hasAuxiliary,
         `An auxiliary panel remained open in the reading state at ${label}: ${JSON.stringify(snapshot)}`);
     assert(snapshot.main.width === snapshot.results.width
         && snapshot.canvas.width === snapshot.main.width
@@ -463,11 +540,25 @@ async function assertReadingLayout(page, label, allowAuxiliary = false) {
 }
 
 async function assertNavigatorLayout(page, readingBaseline, expectedCount) {
-    await page.$eval('#poiesis-results-navigator', async element => {
-        await Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished));
+    const layout = await assertSidePanelLayout(page, readingBaseline,
+        '#poiesis-results-navigator', '.poiesis-results__outcome-trigger');
+    const cardCount = await page.$$eval('#poiesis-results-navigator .poiesis-results__requirement-card', cards => cards.length);
+    assert(cardCount === expectedCount,
+        `The outcome navigator has ${cardCount} cards; expected ${expectedCount}.`);
+    return { ...layout, cardCount };
+}
+
+async function waitForResultsLayout(page) {
+    await page.$eval('.poiesis-results', async element => {
+        await Promise.allSettled(element.getAnimations({ subtree: true }).map(animation => animation.finished));
     });
-    const snapshot = await page.evaluate(() => {
-        const element = document.querySelector('#poiesis-results-navigator');
+    await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+}
+
+async function assertSidePanelLayout(page, readingBaseline, selector, trigger) {
+    await waitForResultsLayout(page);
+    const snapshot = await page.evaluate(({ selector: panelSelector, trigger: triggerSelector }) => {
+        const element = document.querySelector(panelSelector);
         const canvas = document.querySelector('.poiesis-results__canvas');
         const results = document.querySelector('.poiesis-results');
         const rect = node => {
@@ -475,28 +566,45 @@ async function assertNavigatorLayout(page, readingBaseline, expectedCount) {
             return bounds && { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom, width: bounds.width };
         };
         return {
-            navigator: rect(element),
+            panel: rect(element),
             canvas: rect(canvas),
             results: rect(results),
-            cardCount: document.querySelectorAll('#poiesis-results-navigator .poiesis-results__requirement-card').length,
-            expanded: document.querySelector('.poiesis-results__outcome-trigger')?.getAttribute('aria-expanded'),
-            dialog: element?.getAttribute('role'),
+            headerActions: [...document.querySelectorAll('.poiesis-results__toolbar-actions button')].map(rect),
+            expanded: document.querySelector(triggerSelector)?.getAttribute('aria-expanded'),
+            nonModalRole: element?.matches('aside, [role="region"], [role="complementary"]'),
             modal: element?.getAttribute('aria-modal'),
+            scrimCount: document.querySelectorAll('.poiesis-results__auxiliary-scrim').length,
+            focusInside: element?.contains(document.activeElement),
             horizontalOverflow: document.documentElement.scrollWidth > innerWidth
         };
-    });
-    assert(snapshot.navigator && snapshot.canvas && snapshot.results
-        && snapshot.cardCount === expectedCount
+    }, { selector, trigger });
+    assert(snapshot.panel && snapshot.canvas && snapshot.results
         && snapshot.expanded === 'true'
-        && snapshot.dialog === 'dialog'
-        && snapshot.modal === 'true',
-    `The outcome navigator contract is incomplete: ${JSON.stringify(snapshot)}`);
-    assert(Math.round(snapshot.canvas.width) === readingBaseline.canvasWidth
-        && snapshot.navigator.left >= snapshot.results.left
-        && snapshot.navigator.right <= snapshot.results.right + 1
+        && snapshot.nonModalRole && snapshot.modal === null && snapshot.scrimCount === 0
+        && snapshot.focusInside,
+    `The Results side panel contract is incomplete: ${JSON.stringify(snapshot)}`);
+    assert(snapshot.canvas.width < readingBaseline.canvasWidth - 100
+        && snapshot.panel.left >= snapshot.canvas.right - 1
+        && snapshot.headerActions.length > 0
+        && snapshot.headerActions.every(action => action.right <= snapshot.panel.left + 1)
+        && snapshot.panel.right <= snapshot.results.right + 1
         && !snapshot.horizontalOverflow,
-    `The outcome navigator changed or escaped the reading surface: ${JSON.stringify({ snapshot, readingBaseline })}`);
-    return { width: Math.round(snapshot.navigator.width), cardCount: snapshot.cardCount };
+    `The Results side panel overlaps or overflows the reading surface: ${JSON.stringify({ snapshot, readingBaseline })}`);
+    return { width: Math.round(snapshot.panel.width), canvasWidth: Math.round(snapshot.canvas.width) };
+}
+
+async function assertSidePanelClosed(page, readingBaseline, selector, trigger) {
+    await page.waitForFunction((panelSelector, triggerSelector) => !document.querySelector(panelSelector)
+        && document.activeElement === document.querySelector(triggerSelector), {}, selector, trigger);
+    await waitForResultsLayout(page);
+    const snapshot = await page.evaluate(triggerSelector => ({
+        canvasWidth: document.querySelector('.poiesis-results__canvas')?.getBoundingClientRect().width,
+        expanded: document.querySelector(triggerSelector)?.getAttribute('aria-expanded'),
+        horizontalOverflow: document.documentElement.scrollWidth > innerWidth
+    }), trigger);
+    assert(Math.abs(snapshot.canvasWidth - readingBaseline.canvasWidth) <= 1
+        && snapshot.expanded === 'false' && !snapshot.horizontalOverflow,
+    `Closing the Results side panel did not restore the reading width: ${JSON.stringify({ snapshot, readingBaseline })}`);
 }
 
 async function assertDockedLayout(page, label) {
