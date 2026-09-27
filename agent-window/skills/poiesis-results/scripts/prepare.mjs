@@ -17,32 +17,36 @@ const walk = (node, visit, ancestors = []) => {
 const output = value => process.stdout.write(`${JSON.stringify(value)}\n`);
 
 function parseDiff(diff) {
-  const hunks = [], added = new Map();
-  let file, oldFile, current, oldLine, newLine;
-  for (const line of diff.replace(/\r\n/g, '\n').split('\n')) {
-    if (line.startsWith('diff --git ')) { file = undefined; oldFile = undefined; current = undefined; continue; }
-    if (line.startsWith('--- a/')) { oldFile = line.slice(6); continue; }
-    if (line.startsWith('+++ b/')) { file = line.slice(6); continue; }
-    if (line === '+++ /dev/null') { file = oldFile; continue; }
+  const hunks = [], added = new Map(), deleted = new Map();
+  let file, oldFile, current, oldLine, newLine, oldRemaining = 0, newRemaining = 0;
+  for (const line of diff.split('\n')) {
+    if (current && (oldRemaining || newRemaining)) {
+      if (line[0] === '+' && newRemaining) {
+        current.lines.push({ kind: 'add', line: newLine, text: line.slice(1) });
+        if (!added.has(file)) added.set(file, new Set());
+        added.get(file).add(newLine++); newRemaining--;
+      } else if (line[0] === '-' && oldRemaining) {
+        current.lines.push({ kind: 'delete', line: oldLine++, newLine, text: line.slice(1) });
+        if (!deleted.has(file)) deleted.set(file, new Set());
+        deleted.get(file).add(newLine); oldRemaining--;
+      } else if (line[0] === ' ' && oldRemaining && newRemaining) {
+        current.lines.push({ kind: 'context', line: newLine++, text: line.slice(1) }); oldLine++; oldRemaining--; newRemaining--;
+      }
+      continue;
+    }
+    current = undefined;
+    if (line.startsWith('diff --git ')) { file = undefined; oldFile = undefined; continue; }
+    if (line.startsWith('--- a/')) { oldFile = line.slice(6).replace(/\r$/, ''); continue; }
+    if (line.startsWith('+++ b/')) { file = line.slice(6).replace(/\r$/, ''); continue; }
+    if (line.replace(/\r$/, '') === '+++ /dev/null') { file = oldFile; continue; }
     const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (header && file) {
       current = { file, oldStart: +header[1], oldCount: +(header[2] ?? 1), start: +header[3], count: +(header[4] ?? 1), lines: [] };
       // The identity follows the first changed line, independent of context width.
       current.id = `h-${hash(`${file}\0${current.oldStart}\0${current.start}\0${line}`)}`;
       hunks.push(current); oldLine = current.oldStart; newLine = current.start;
+      oldRemaining = current.oldCount; newRemaining = current.count;
       continue;
-    }
-    if (!current || line.startsWith('index ') || line.startsWith('--- ')) {
-      continue;
-    }
-    if (line[0] === '+') {
-      current.lines.push({ kind: 'add', line: newLine, text: line.slice(1) });
-      if (!added.has(file)) added.set(file, new Set());
-      added.get(file).add(newLine++);
-    } else if (line[0] === '-') {
-      current.lines.push({ kind: 'delete', line: oldLine++, newLine: current.count ? newLine : newLine + 1, text: line.slice(1) });
-    } else if (line[0] === ' ') {
-      current.lines.push({ kind: 'context', line: newLine++, text: line.slice(1) }); oldLine++;
     }
   }
   // A unified hunk can contain several separate edits when context is present.
@@ -66,14 +70,33 @@ function parseDiff(diff) {
     }
     finish();
   }
-  return { hunks: blocks, added };
+  let lineEndingChanges = 0;
+  for (const block of blocks) {
+    const removals = block.lines.filter(line => line.kind === 'delete');
+    const additions = block.lines.filter(line => line.kind === 'add');
+    const omitted = new Set();
+    for (let i = 0; i < Math.min(removals.length, additions.length); i++) {
+      const before = removals[i], after = additions[i];
+      if (before.text !== after.text && before.text.replace(/\r$/, '') === after.text.replace(/\r$/, '')) {
+        omitted.add(before); omitted.add(after); lineEndingChanges++;
+        added.get(block.file)?.delete(after.line); deleted.get(block.file)?.delete(before.newLine);
+      }
+    }
+    block.lines = block.lines.filter(line => !omitted.has(line));
+    block.oldCount = block.lines.filter(line => line.kind === 'delete').length;
+    block.count = block.lines.filter(line => line.kind === 'add').length;
+  }
+  return { hunks: blocks.filter(block => block.lines.length), added, deleted, lineEndingChanges };
 }
 
-function analyzeFile(file, source, changed, nodes, edges) {
+function analyzeFile(file, source, changed, deleted, nodes, edges) {
   const scripts = extname(file).toLowerCase() === '.html'
-    ? [...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].filter(m => !/\bsrc\s*=/.test(m[0].slice(0, m[0].indexOf('>')))).map(m => ({ code: m[1], offset: source.slice(0, m.index + m[0].indexOf('>') + 1).split('\n').length - 1 }))
-    : [{ code: /\.(?:ts|mts|cts)$/i.test(file) && nodeModule.stripTypeScriptTypes
-      ? nodeModule.stripTypeScriptTypes(source, { mode: 'strip' }) : source, offset: 0 }];
+    ? [...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].filter(m => {
+      const attrs = m[0].slice(0, m[0].indexOf('>'));
+      const type = /\btype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attrs);
+      return !/\bsrc\s*=/.test(attrs) && (!type || /^(?:module|(?:text|application)\/(?:javascript|ecmascript)(?:\s*;.*)?)$/i.test(type[1] ?? type[2] ?? type[3]));
+    }).map(m => ({ code: m[1], offset: source.slice(0, m.index + m[0].indexOf('>') + 1).split('\n').length - 1 }))
+    : [{ code: source, offset: 0 }];
   const idLines = new Map();
   if (extname(file).toLowerCase() === '.html') {
     source.split('\n').forEach((line, i) => {
@@ -81,32 +104,60 @@ function analyzeFile(file, source, changed, nodes, edges) {
     });
   }
   const parsedScripts = [];
-  for (const { code, offset } of scripts) {
-    try { parsedScripts.push({ code, offset, ast: acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module', locations: true, allowHashBang: true }) }); }
-    catch { return false; }
+  for (const [scriptIndex, script] of scripts.entries()) {
+    try {
+      const code = /\.(?:ts|mts|cts|tsx)$/i.test(file) && nodeModule.stripTypeScriptTypes
+        ? nodeModule.stripTypeScriptTypes(script.code, { mode: 'strip' }) : script.code;
+      parsedScripts.push({ code, offset: script.offset, scriptIndex, ast: acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module', locations: true, allowHashBang: true }) });
+    } catch { continue; }
   }
-  for (const { code, offset, ast } of parsedScripts) {
+  for (const { code, offset, scriptIndex, ast } of parsedScripts) {
     const lineOf = n => n.loc.start.line + offset;
     const endOf = n => n.loc.end.line + offset;
     const src = n => code.slice(n.start, n.end);
+    const safeSnippet = value => value.replace(/(["'])([^"'\r\n]*)\1/g, (literal, quote, contents, index) =>
+      /(?:secret|token|password|passwd|credential|api[_-]?key|authorization|private[_-]?key)/i.test(value.slice(0, index))
+      || contents.length >= 8 && /\d/.test(contents) ? `${quote}[REDACTED]${quote}` : literal);
     const status = (a, b) => {
-      const hits = [...changed].filter(n => n >= a && n <= b).length;
-      return hits === 0 ? 'existing' : hits === b - a + 1 ? 'new' : 'modified';
+      const additions = [...changed].filter(n => n >= a && n <= b).length;
+      const removals = [...deleted].filter(n => n >= a && n <= b).length;
+      return additions + removals === 0 ? 'existing' : additions === b - a + 1 && removals === 0 ? 'new' : 'modified';
     };
-    const functions = new Map(), elements = new Map(), handlers = new Set();
-    walk(ast, n => {
-      if (n.type === 'FunctionDeclaration' && n.id) {
-        const name = n.id.name;
-        const part = { id: `n-${hash(`${file}\0function\0${name}`)}`, kind: 'function', symbol: name, file, line: lineOf(n), end: endOf(n), status: status(lineOf(n), endOf(n)) };
-        functions.set(name, { ast: n, part }); nodes.push(part);
+    const functions = new Map(), functionNodes = new Set(), elements = new Map(), handlers = new Set();
+    const register = (name, fn, boundary = fn, ancestors = [], owner = '') => {
+      if (!name || functionNodes.has(fn)) return;
+      let id = `n-${hash(`${file}\0function\0${lineOf(boundary)}\0${boundary.start}`)}`;
+      if (nodes.some(node => node.id === id)) id = `n-${hash(`${file}\0function\0${lineOf(boundary)}\0${boundary.start}\0${scriptIndex}`)}`;
+      const part = { id, kind: 'function', symbol: name, file, line: lineOf(boundary), end: endOf(boundary), status: status(lineOf(boundary), endOf(boundary)) };
+      if (!functions.has(name)) functions.set(name, []);
+      const scope = [...ancestors].reverse().find(node => node.type === 'ClassBody' && name.startsWith('this.') || node.type === 'BlockStatement' || node.type === 'Program') ?? ast;
+      functions.get(name).push({ ast: fn, part, owner, scope }); functionNodes.add(fn); nodes.push(part);
+    };
+    walk(ast, (n, ancestors) => {
+      if (n.type === 'FunctionDeclaration' && n.id) register(n.id.name, n, n, ancestors);
+      if (n.type === 'VariableDeclarator' && n.id?.type === 'Identifier' && /FunctionExpression|ArrowFunctionExpression/.test(n.init?.type ?? ''))
+        register(n.id.name, n.init, n, ancestors);
+      if (n.type === 'AssignmentExpression' && /FunctionExpression|ArrowFunctionExpression/.test(n.right?.type ?? '') && n.left.type === 'Identifier')
+        register(n.left.name, n.right, n, ancestors);
+      if (n.type === 'Property' && /FunctionExpression|ArrowFunctionExpression/.test(n.value?.type ?? '')) {
+        const object = ancestors.at(-1);
+        const declarator = ancestors.at(-2);
+        const owner = object?.type === 'ObjectExpression' && declarator?.type === 'VariableDeclarator' ? declarator.id?.name : '';
+        register(owner ? `${owner}.${src(n.key)}` : src(n.key), n.value, n, ancestors, owner);
+      }
+      if (n.type === 'MethodDefinition' && n.value) {
+        const classNode = [...ancestors].reverse().find(a => /ClassDeclaration|ClassExpression/.test(a.type));
+        register(`this.${src(n.key)}`, n.value, n, ancestors, classNode?.id?.name ?? '');
       }
       if (n.type === 'VariableDeclarator' && n.id?.type === 'Identifier' && n.init?.type === 'CallExpression' && src(n.init.callee) === 'document.getElementById' && typeof n.init.arguments[0]?.value === 'string')
         elements.set(n.id.name, n.init.arguments[0].value);
+      // Event and timer handlers run later as their own entries, not as part of the code that registers them.
       if (n.type === 'CallExpression') {
         const callee = src(n.callee);
         if (/(?:^|\.)addEventListener$/.test(callee) && n.arguments[1]) handlers.add(n.arguments[1]);
         if (/(?:^|\.)setInterval$/.test(callee) && n.arguments[0]) handlers.add(n.arguments[0]);
       }
+      if (n.type === 'AssignmentExpression' && n.left?.type === 'MemberExpression' && /^on[a-z]+$/i.test(src(n.left.property))) handlers.add(n.right);
     });
     const byId = new Map(nodes.map(n => [n.id, n]));
     const addNode = (kind, symbol, line, end = line) => {
@@ -119,15 +170,24 @@ function analyzeFile(file, source, changed, nodes, edges) {
       const line = lineOf(n);
       const id = `e-${hash(`${from.id}\0${to.id}\0${file}\0${line}`)}`;
       if (!edges.some(e => e.id === id)) edges.push({ id, from: from.id, to: to.id, file, line, access,
-        ...(access === 'call' ? { call: src(n).replace(/\s+/g, ' ') } : {}), status: changed.has(line) ? 'new' : 'existing' });
+        ...(access === 'call' ? { call: safeSnippet(src(n)).replace(/\s+/g, ' ') } : {}), status: changed.has(line) ? 'new' : 'existing' });
+    };
+    const resolveCall = (callee, at) => {
+      const matches = (functions.get(callee) ?? []).filter(item => item.scope.start <= at.start && item.scope.end >= at.end);
+      if (!matches.length) return undefined;
+      const narrowest = Math.min(...matches.map(item => item.scope.end - item.scope.start));
+      const visible = matches.filter(item => item.scope.end - item.scope.start === narrowest);
+      return visible.length === 1 ? visible[0].part : undefined;
     };
     const scan = (owner, body) => walk(body, (n, ancestors) => {
-      if (ancestors.some(a => a !== body && a.body !== body && (a.type === 'FunctionDeclaration' || handlers.has(a)))) return;
+      // Named functions are parts and handlers are entries; both are scanned on their own. An anonymous
+      // callback (forEach, then, setTimeout, an immediately invoked function) belongs to the code around it.
+      if (ancestors.some(a => a !== body && (functionNodes.has(a) || handlers.has(a)))) return;
       if (n.type === 'CallExpression') {
         const callee = src(n.callee);
-        const target = functions.get(callee)?.part;
+        const target = resolveCall(callee, n);
         if (target) addEdge(owner, target, n);
-        if (/\blocalStorage\.(getItem|setItem)$/.test(callee)) addEdge(owner, addNode('storage', `localStorage ${n.arguments[0] ? src(n.arguments[0]) : ''}`, lineOf(n)), n, callee.endsWith('.getItem') ? 'read' : 'write');
+        if (/\blocalStorage\.(getItem|setItem)$/.test(callee)) addEdge(owner, addNode('storage', `localStorage ${n.arguments[0] ? safeSnippet(src(n.arguments[0])) : ''}`, lineOf(n)), n, callee.endsWith('.getItem') ? 'read' : 'write');
         const event = /(?:^|\.)addEventListener$/.test(callee), timer = /(?:^|\.)setInterval$/.test(callee);
         if (event || timer) {
           const handler = n.arguments[event ? 1 : 0];
@@ -136,19 +196,27 @@ function analyzeFile(file, source, changed, nodes, edges) {
           const entry = addNode('entry', symbol, lineOf(n), endOf(n));
           entry.sourceLabel = event && typeof n.arguments[0]?.value === 'string' ? n.arguments[0].value : timer ? 'setInterval' : symbol;
           if (handler.type === 'Identifier') {
-            addEdge(entry, functions.get(handler.name)?.part, n);
-            const edge = edges.find(e => e.from === entry.id && e.to === functions.get(handler.name)?.part.id);
+            const target = resolveCall(handler.name, n);
+            addEdge(entry, target, n);
+            const edge = edges.find(e => e.from === entry.id && e.to === target?.id);
             if (edge) edge.call = `${handler.name}()`;
           }
           else if (handler.body) scan(entry, handler.body);
         }
+      }
+      if (n.type === 'AssignmentExpression' && n.left?.type === 'MemberExpression' && /^on[a-z]+$/i.test(src(n.left.property))) {
+        const handler = n.right;
+        const entry = addNode('entry', `${src(n.left.object)} ${src(n.left.property)}`, lineOf(n));
+        entry.sourceLabel = src(n.left.property).slice(2);
+        if (handler.type === 'Identifier') addEdge(entry, resolveCall(handler.name, n), n);
+        else if (handler.body && !functionNodes.has(handler)) scan(entry, handler.body);
       }
       if (n.type === 'AssignmentExpression' && n.left?.type === 'MemberExpression' && src(n.left.property) === 'textContent') {
         const element = elements.get(src(n.left.object));
         if (element) addEdge(owner, addNode('screen', `#${element}`, idLines.get(element) ?? lineOf(n)), n, 'display');
       }
     });
-    for (const { ast: fn, part } of functions.values()) scan(part, fn.body);
+    for (const entries of functions.values()) for (const { ast: fn, part } of entries) scan(part, fn.body);
     const page = addNode('entry', 'page load', offset + 1);
     scan(page, ast);
   }
@@ -162,9 +230,7 @@ try {
   const workspace = resolve(input.workspace);
   const diff = input.diff;
   if (typeof diff !== 'string') throw new Error('差分が必要です。');
-  const { hunks, added } = parseDiff(diff);
-  if (hunks.some(h => h.lines.some(l => /\b(?:api[_-]?key|secret|token|password|credential|private[_-]?key)\b\s*[:=]/i.test(l.text))))
-    throw new Error('差分に秘密情報を示す項目があります。事実データを消毒してから準備をやり直してください。');
+  const { hunks, added, deleted, lineEndingChanges } = parseDiff(diff);
   const nodes = [], edges = [], skipped = [];
   for (const file of [...new Set(hunks.map(h => h.file))]) {
     if (!/\.(?:js|mjs|cjs|ts|mts|cts|jsx|tsx|html)$/i.test(file)) { skipped.push(file); continue; }
@@ -173,7 +239,7 @@ try {
     const actual = realpathSync(full), root = realpathSync(workspace), realRel = relative(root, actual);
     if (!realRel || realRel.startsWith('..') || isAbsolute(realRel)) { skipped.push(file); continue; }
     const source = readFileSync(full, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
-    if (!analyzeFile(file, source, added.get(file) ?? new Set(), nodes, edges)) skipped.push(file);
+    if (!analyzeFile(file, source, added.get(file) ?? new Set(), deleted.get(file) ?? new Set(), nodes, edges)) skipped.push(file);
   }
   const byId = new Map(nodes.map(n => [n.id, n]));
   const outgoing = new Map();
@@ -206,9 +272,9 @@ try {
     node.outgoing = out.map(e => e.id);
   }
   const map = { nodes: nodes.filter(n => selectedIds.has(n.id) || (n.status !== 'existing' && n.kind !== 'function' && n.kind !== 'entry')), edges: selectedEdges };
-  const brief = { nodes: map.nodes.map(({ id, kind, symbol, file, line, end, status }) => ({ id, kind, symbol, file, line, end, status })), edges: map.edges, hunks: hunks.map(({ id, file, start, count, lines }) => ({ id, file, start, count, excerpt: lines.slice(0, 3).map(l => l.text) })) };
+  const brief = { nodes: map.nodes.map(({ id, kind, symbol, file, line, end, status }) => ({ id, kind, symbol, file, line, end, status })), edges: map.edges, hunks: hunks.map(({ id, file, start, count, lines }) => ({ id, file, start, count, excerpt: lines.slice(0, 3).map(l => l.text) })), lineEndingChanges };
   const briefing = JSON.stringify(brief);
-  const result = { ok: true, workspace, map, hunks, skipped, aiMaterial: briefing };
+  const result = { ok: true, workspace, map, hunks, skipped, lineEndingChanges, aiMaterial: briefing };
   writeFileSync(resolve(process.cwd(), 'prepared.json'), JSON.stringify(result, null, 2) + '\n', 'utf8');
   output({ ok: true, prepared: 'prepared.json', candidates: map.nodes.length, arrows: map.edges.length, hunks: hunks.length, skipped: skipped.length });
 } catch (error) { output({ ok: false, reasons: [`準備に失敗しました: ${error.message}`] }); process.exitCode = 1; }

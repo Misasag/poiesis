@@ -11,7 +11,7 @@ import './fixtures/results-browser-env.mjs';
 const require = createRequire(import.meta.url);
 const { ResultsGenerationServerImpl, RESULTS_GENERATION_TIMEOUT_MS } = require('../agent-window/lib/node/results-generation-server.js');
 const { resultsExecutionEnvironment, resultsNodeExecutable, pathWithin, loadBundledResultsSkill, resultsSkillCandidates, writeClaudeResultsSettings } = require('../agent-window/lib/node/results-skill-runtime.js');
-const { buildResultsSkillInput } = require('../agent-window/lib/node/results-skill-input.js');
+const { buildResultsSkillInput, resultsRedactor } = require('../agent-window/lib/node/results-skill-input.js');
 const { spawnHiddenCli } = require('../agent-window/lib/node/hidden-process.js');
 const { AiResultsSkill } = require('../agent-window/lib/browser/results-skill.js');
 const { renderToStaticMarkup } = require('react-dom/server');
@@ -98,6 +98,16 @@ try {
     assert.deepEqual(material.requirement.tasks[0].changedFiles, request.changedFiles);
     assert.throws(() => buildResultsSkillInput({ ...request, diff: 'x'.repeat(16 * 1024 * 1024 + 1) }, workspace, fixture), /16 MiB/);
     assert.throws(() => buildResultsSkillInput({ ...request, images: [{ path: '../outside.png', label: '' }] }, workspace, fixture));
+    const redact = resultsRedactor({ API_KEY: 'sk-environment-12345', TOKEN_COUNT: 'true', PASSWORD: '3', SECRET_HINT: 'abc' });
+    const ordinary = 'token: string; private token?: string; password = readPassword(); const tokenCount = 3; if (token) { enabled = true; }';
+    assert.equal(redact(ordinary), ordinary);
+    assert.equal(redact('TOKEN_COUNT=true\nPASSWORD=3'), 'TOKEN_COUNT=true\nPASSWORD=3');
+    assert.equal(redact('const label = "abc";\nAPI_KEY=abc'), 'const label = "abc";\nAPI_KEY=[REDACTED]');
+    const sensitive = 'API_KEY=sk-live-abcdef123456\ntoken: abc123def456ghi\n"token": "abc123def456ghi"\nconst secret = "hunter2hunter2"\nAuthorization: Bearer xyz.abc\n-----BEGIN PRIVATE KEY-----\nprivate bytes\n-----END PRIVATE KEY-----\nsk-environment-12345';
+    const cleaned = redact(sensitive);
+    for (const secret of ['sk-live-abcdef123456', 'abc123def456ghi', 'hunter2hunter2', 'xyz.abc', 'private bytes', 'sk-environment-12345'])
+        assert(!cleaned.includes(secret), secret);
+    assert(cleaned.includes('[REDACTED]'));
 
     for (const providerId of ['grok', 'pi']) {
         const before = scopes.length;

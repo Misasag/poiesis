@@ -123,7 +123,7 @@ const segments = points => points.slice(1).map((b, i) => [points[i], b]);
 const along = (a, b, c, d) => a.x === b.x && c.x === d.x && a.x === c.x
   ? Math.min(Math.max(a.y, b.y), Math.max(c.y, d.y)) > Math.max(Math.min(a.y, b.y), Math.min(c.y, d.y))
   : a.y === b.y && c.y === d.y && a.y === c.y && Math.min(Math.max(a.x, b.x), Math.max(c.x, d.x)) > Math.max(Math.min(a.x, b.x), Math.min(c.x, d.x));
-function route(start, end, boxes, occupied, height, detour = false) {
+export function route(start, end, boxes, occupied, height, detour = false) {
   const xs = new Set([start.x, end.x, 4, 996]), ys = new Set([start.y, end.y, 28, height - 6]);
   for (const b of boxes) {
     for (const gap of [8, 18, 28]) {
@@ -138,8 +138,9 @@ function route(start, end, boxes, occupied, height, detour = false) {
   const point = p => ({ x: X[p % nx], y: Y[Math.floor(p / nx)] });
   const heuristic = p => Math.abs(point(p).x - end.x) + Math.abs(point(p).y - end.y);
   heap.push({ p: begin, axis: 0, cost: 0, score: heuristic(begin) }); best.set(`${begin}:0`, 0);
-  let terminal;
-  while (heap.items.length) {
+  let terminal, expansions = 0;
+  const expansionLimit = Math.max(1000, nx * Y.length * 12);
+  while (heap.items.length && expansions++ < expansionLimit) {
     const current = heap.pop(), key = `${current.p}:${current.axis}`;
     if (best.get(key) !== current.cost) continue;
     if (current.p === goal) { terminal = key; break; }
@@ -156,7 +157,7 @@ function route(start, end, boxes, occupied, height, detour = false) {
       if (crossing) continue;
       // Fan-in from upper entries uses the rightmost corridor first, leaving
       // room for lower entries without introducing crossings.
-      const corridor = axis === 2 && end.x > start.x && end.y > start.y ? (end.x - a.x) * Math.abs(a.y - b.y) * .01 : 0;
+      const corridor = axis === 2 && end.x > start.x && end.y > start.y ? Math.max(0, end.x - a.x) * Math.abs(a.y - b.y) * .01 : 0;
       const cost = current.cost + Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + (current.axis && current.axis !== axis ? 26 : 0) + corridor;
       const next = `${p}:${axis}`;
       if (cost >= (best.get(next) ?? Infinity)) continue;

@@ -11,12 +11,12 @@ const onlyKeys = (value, keys, label, reasons) => {
   for (const key of Object.keys(value)) if (!keys.includes(key)) reasons.push(`${label}に不要な項目 ${key} があります。指定された形だけで書き直してください。`);
 };
 const plain = (value, label, reasons) => {
-  if (typeof value !== 'string' || !value.trim() || value.length > 600 || /[<>]/.test(value)) { reasons.push(`${label}を短いプレーンテキストで書き直してください。`); return ''; }
+  if (typeof value !== 'string' || !value.trim() || value.length > 600) { reasons.push(`${label}を短いプレーンテキストで書き直してください。`); return ''; }
   return value.trim();
 };
 const oneSentence = (value, label, reasons) => {
   const text = plain(value, label, reasons);
-  if (!/[。．.!！]$/.test(text) || (text.match(/[。．.!！]/g) ?? []).length !== 1) reasons.push(`${label}を1文で書き直してください。`);
+  if (!/[。．.!！]$/.test(text) || (text.match(/[。！!]|\.(?=\s|$)|．(?=\s|$)/g) ?? []).length !== 1) reasons.push(`${label}を1文で書き直してください。`);
   return text;
 };
 const tag = { new: '新規', modified: '変更', existing: '既存' };
@@ -222,7 +222,9 @@ function render(prepared, draft, evidence, request, input) {
   const unassignedHunks = prepared.hunks.filter(h => !assigned.has(h.id)).length;
   const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${style}</style></head><body>
 <p class="ex-lead">${esc(draft.lead)}</p>
+${prepared.lineEndingChanges ? `<p>改行コードだけが異なる行が ${prepared.lineEndingChanges} 行ありました。</p>` : ''}
 ${input.task?.status === 'failed' ? '<p>作業を完了できませんでした。</p>' : input.task?.status === 'cancelled' ? '<p>作業は取り消されました。</p>' : ''}
+${input.changeCaptureError ? `<p>変更の記録に失敗しました：${esc(input.changeCaptureError)}</p>` : ''}
 <figure class="ex-mapfig"><div class="ex-mapviewport"><div class="ex-mapbox">${svg.join('')}${mapShot}${hits}</div></div><figcaption>${esc(draft.mapCaption)}</figcaption></figure>
 <p class="ex-legend">部品を押すと、変更の根拠を右に表示します。</p>
 <p class="ex-legend">実線と「新規」は追加、破線と「変更」は既存への変更、点線の矢印は既存の呼び出しです。矢印の数字は呼び出している行です。${graph.folded.length ? `補助の処理の呼び出し ${graph.folded.length}か所は、矢印にせず呼び出す側の箱の中に書いています。` : ''}${graph.bridges ? '線の交差にある切れ目は、つながらずに通り越すことを示します。' : ''}</p>
@@ -249,7 +251,7 @@ const readJson = (name) => {
   let text;
   try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/^\uFEFF/, ''); }
   catch { throw new Error(`${name} に読めないバイト列があります。UTF-8 で書き直してください。`); }
-  if (text.includes('\uFFFD')) throw new Error(`${name} に壊れた文字があります。UTF-8 で書き直してください。`);
+  if (name === 'draft.json' && text.includes('\uFFFD')) throw new Error(`${name} に壊れた文字があります。UTF-8 で書き直してください。`);
   return JSON.parse(text);
 };
 
@@ -265,7 +267,11 @@ try {
     if (!draft.nodes.length) {
       const style = readFileSync(fileURLToPath(new URL('../assets/style.css', import.meta.url)), 'utf8');
       const script = readFileSync(fileURLToPath(new URL('../assets/document.js', import.meta.url)), 'utf8');
-      const state = input.task?.status === 'failed' ? '作業を完了できませんでした。' : input.task?.status === 'cancelled' ? '作業は取り消されました。' : '変更はありません。';
+      const state = input.task?.status === 'failed' ? '作業を完了できませんでした。' : input.task?.status === 'cancelled' ? '作業は取り消されました。'
+        : input.changeCaptureError ? '変更の記録が不完全です。'
+        : prepared.hunks.length || input.changedFiles?.length ? '変更はありますが、処理の流れの図に載る部分はありません。' : '変更はありません。';
+      // The agent's own summary stays the work description; the state line is only the fallback.
+      const work = input.task?.status === 'completed' ? input.task?.completionSummary || state : input.task?.failureSummary || state;
       const hunks = new Map(prepared.hunks.map(hunk => [hunk.id, hunk]));
       const offMap = draft.offMap.map(item => {
         const first = hunks.get(item.hunkIds[0]);
@@ -279,7 +285,12 @@ try {
         return image.src ? `<figure><button type="button" data-poiesis-image="${esc(image.path)}"><img src="${esc(image.src)}" alt="${esc(item.label ?? item.path)}"></button><figcaption>${esc(item.label ?? item.path)}</figcaption></figure>`
           : `<p>${esc(image.reason)} ${image.path ? `<button type="button" data-poiesis-image="${esc(image.path)}">${esc(image.path)}</button>` : esc(item.path)}</p>`;
       }).join('');
-      const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${style}</style></head><body><p class="ex-lead">${esc(input.task?.status === 'completed' ? draft.lead : state)}</p><h2>作業内容</h2><p>${esc(input.task?.status === 'completed' ? input.task?.completionSummary || state : input.task?.failureSummary || state)}</p>${offMap ? `<h2>変更の詳細</h2><div class="ex-tally">${offMap}</div>` : ''}${input.requirement ? `<h2>関連する作業</h2><ul>${(input.requirement.tasks ?? []).map(task => `<li>${esc(task.title)}：${esc(task.completionSummary || task.failureSummary || '確認中')}</li>`).join('')}</ul>` : ''}${images ? `<h2>画像</h2>${images}` : ''}<h2>確認結果</h2><p>${esc(input.verification?.summary || '確認結果はありません。')}</p><ul>${(input.verification?.rows ?? []).map(row => `<li><strong>${esc(verificationStatus[row.status] ?? '未確認')}</strong> ${esc(row.label)}：${esc(row.detail || '詳細なし')}</li>`).join('')}</ul><script>${script}</script></body></html>`;
+      const concerns = draft.concerns.map(concern => {
+        const hunk = prepared.hunks.find(h => h.file === concern.file && h.lines.some(line => line.kind === 'add' && line.line === concern.line));
+        const nearby = hunk.lines.filter(line => Math.abs(line.line - concern.line) <= 2);
+        return `<li><details class="ex-hit-inline"><summary>${esc(concern.text)}</summary><div class="ex-panel" role="region"><div class="ex-panel-grip" role="separator" tabindex="0" aria-label="説明欄の幅"></div><p>${esc(concern.text)}</p><pre class="ex-diff">${nearby.map(line => `${line.kind === 'add' ? '+' : '-'} ${esc(line.text)}`).join('\n')}</pre><a href="#" data-poiesis-citation="${esc(`${concern.file}:${concern.line}-${concern.line}`)}">Code で開く</a><details class="ex-close"><summary>閉じる</summary></details></div></details></li>`;
+      }).join('');
+      const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${style}</style></head><body><p class="ex-lead">${esc(draft.lead)}</p>${prepared.lineEndingChanges ? `<p>改行コードだけが異なる行が ${prepared.lineEndingChanges} 行ありました。</p>` : ''}<h2>作業内容</h2><p>${esc(work)}</p>${input.changeCaptureError ? `<p>変更の記録に失敗しました：${esc(input.changeCaptureError)}</p>` : ''}${draft.mapCaption ? `<p>${esc(draft.mapCaption)}</p>` : ''}${offMap ? `<h2>変更の詳細</h2><div class="ex-tally">${offMap}</div>` : ''}<h2>依頼と判断</h2><p class="ex-request">${esc(input.task?.request ?? '')}</p><table class="ex-interp"><tr><th>補った判断</th><th>確かめ方</th></tr>${draft.interpretations.map(row => `<tr><td>${esc(row.decision)}</td><td>${esc(row.evidence)}</td></tr>`).join('')}</table>${input.requirement ? `<h2>関連する作業</h2><ul>${(input.requirement.tasks ?? []).map(task => `<li>${esc(task.title)}：${esc(task.completionSummary || task.failureSummary || '確認中')}</li>`).join('')}</ul>` : ''}${images ? `<h2>画像</h2>${images}` : ''}<h2>懸念点</h2><ol class="ex-points">${concerns}</ol><h2>確認結果</h2><p>${esc(input.verification?.summary || '確認結果はありません。')}</p><ul>${(input.verification?.rows ?? []).map(row => `<li><strong>${esc(verificationStatus[row.status] ?? '未確認')}</strong> ${esc(row.label)}：${esc(row.detail || '詳細なし')}</li>`).join('')}</ul><details><summary>まだ確かめていないこと ${draft.unverified.length}件</summary><ul>${draft.unverified.map(value => `<li>${esc(value)}</li>`).join('')}</ul></details><script>${script}</script></body></html>`;
       result = { html, drawnEdges: [], foldedEdges: [], unassignedHunks: 0, panelCount: 0, geometry: { boxes: [], edges: [], columns: [], width: 0, height: 0 } };
     } else result = render(prepared, draft, evidence, input.task?.request ?? '', input);
     const bytes = Buffer.byteLength(result.html, 'utf8');
