@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import puppeteer from 'puppeteer-core';
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const { resolveResultsImages } = require('../agent-window/lib/node/results-images.js');
@@ -52,11 +54,22 @@ try {
     const page = await browser.newPage();
     await page.addScriptTag({ path: resolve('node_modules/dompurify/dist/purify.js') });
     const code = await readFile('agent-window/lib/browser/results-rich-content.js', 'utf8');
+    const trustedScript = await readFile('agent-window/skills/poiesis-results/assets/document.js', 'utf8');
+    const declared = JSON.parse(await readFile('agent-window/skills/poiesis-results/trusted-scripts.json', 'utf8'));
+    const hashScript = script => createHash('sha256').update(script.replace(/\r\n?/g, '\n')).digest('base64');
+    assert(declared.sha256.includes(hashScript(trustedScript)));
+    for (const tag of ['v0.4.0', 'v0.4.1']) {
+        const prior = spawnSync('git', ['show', `${tag}:agent-window/skills/poiesis-results/assets/document.js`],
+            { encoding: 'utf8', windowsHide: true, shell: false });
+        assert.equal(prior.status, 0, prior.stderr);
+        assert(declared.sha256.includes(hashScript(prior.stdout)), `${tag} document script remains trusted`);
+    }
     const typography = require('../agent-window/lib/browser/typography.js');
-    await page.evaluate(({ code, typography }) => {
+    await page.evaluate(({ code, typography, declared }) => {
         window.rich = {};
-        new Function('require', 'exports', code)(name => name.includes('dompurify') ? window.DOMPurify : typography, window.rich);
-    }, { code, typography });
+        new Function('require', 'exports', code)(name => name.includes('dompurify') ? window.DOMPurify
+            : name.includes('trusted-scripts.json') ? declared : typography, window.rich);
+    }, { code, typography, declared });
     const result = await page.evaluate(() => {
         const original = '<html lang="ja"><head><style>h1 { color:red; }</style></head><body onload="bad()"><h1>自由な見出し</h1><img src="data:image/png;base64,aA==" onclick="bad()"><button id="b">操作</button><script>document.getElementById("b").addEventListener("click",()=>parent.postMessage({type:"fixture-click"},"*"));</script><iframe src="https://bad/"></iframe></body></html>';
         const html = window.rich.resultsFrameHtml(original, 'dark');
@@ -71,7 +84,8 @@ try {
     assert.equal(result.script, 1); assert.equal(result.handlers, 0); assert.equal(result.frame, false);
     assert.equal(result.theme, 'dark'); assert.equal(result.language, 'ja'); assert.equal(result.heading, '自由な見出し');
     assert.deepEqual(result.retries, [false, true, false, true]);
-    assert.equal(result.policy, "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'");
+    assert.equal(result.policy, await page.evaluate(() => window.rich.RESULTS_FRAME_CSP));
+    assert(result.policy.includes("script-src 'sha256-") && !result.policy.includes("'unsafe-inline'", result.policy.indexOf('script-src')));
     for (const selector of [...result.style.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/(?:^|})\s*([^{}]+)\{/g)].map(match => match[1].trim())) {
         assert(selector.split(',').every(part => /^:root(?:\[data-theme="dark"\])?$|^::-webkit-scrollbar(?:-[a-z]+)?(?::hover)?$/.test(part.trim())), selector);
     }
@@ -82,7 +96,67 @@ try {
     }, result.html);
     const frame = await (await page.waitForSelector('iframe')).contentFrame();
     await frame.waitForSelector('#b'); await frame.click('#b');
-    await page.waitForFunction(() => window.messages.some(message => message.type === 'fixture-click'));
+    assert.deepEqual(await page.evaluate(() => window.messages), [], 'Untrusted inline script must not execute');
+    const trustedHtml = await page.evaluate(script => window.rich.resultsFrameHtml(
+        `<html><body><details class="ex-hit"><summary>説明</summary><a data-poiesis-citation="a.ts:1">引用</a>`
+        + `<img data-poiesis-image="shot.png" src="data:image/png;base64,aA=="></details>`
+        + `<div class="ex-panel-grip" tabindex="0"></div><script>${script}</script></body></html>`, 'light'), trustedScript);
+    await page.evaluate(html => {
+        const frame = document.createElement('iframe'); frame.sandbox = 'allow-scripts'; frame.srcdoc = html; document.body.append(frame);
+    }, trustedHtml);
+    const trustedFrame = await (await page.$$('iframe'))[1].contentFrame();
+    await trustedFrame.waitForSelector('summary');
+    await trustedFrame.click('summary');
+    assert.equal(await trustedFrame.$eval('details', node => node.open), true);
+    await trustedFrame.click('[data-poiesis-citation]');
+    await page.waitForFunction(() => window.messages.some(message => message.type === 'poiesis:open-citation'));
+    await trustedFrame.click('[data-poiesis-image]');
+    await page.waitForFunction(() => window.messages.some(message => message.type === 'poiesis:open-image'));
+    assert(Number(await trustedFrame.$eval('.ex-panel-grip', node => node.getAttribute('aria-valuenow'))) >= 320);
+    const gateChecks = await page.evaluate(() => {
+        const gate = new window.rich.ResultsFrameMessageGate();
+        const element = document.querySelectorAll('iframe')[1];
+        const message = origin => new MessageEvent('message', { origin, source: element.contentWindow });
+        const before = gate.accept(element, message('null'));
+        gate.loaded(element);
+        const wrongOrigin = gate.accept(element, message('https://example.invalid'));
+        const accepted = Array.from({ length: 20 }, () => gate.accept(element, message('null')));
+        const overLimit = gate.accept(element, message('null'));
+        gate.loaded(element);
+        const afterNavigation = gate.accept(element, message('null'));
+        element.srcdoc += '<!-- refreshed document -->';
+        gate.loaded(element);
+        const afterRefresh = gate.accept(element, message('null'));
+        return { before, wrongOrigin, accepted, overLimit, afterNavigation, afterRefresh };
+    });
+    assert.equal(gateChecks.before, false);
+    assert.equal(gateChecks.wrongOrigin, false);
+    assert(gateChecks.accepted.every(Boolean));
+    assert.equal(gateChecks.overLimit, false);
+    assert.equal(gateChecks.afterNavigation, false);
+    assert.equal(gateChecks.afterRefresh, true);
+    const movedFrame = await page.evaluate(async () => {
+        const gate = new window.rich.ResultsFrameMessageGate();
+        const element = document.createElement('iframe');
+        element.sandbox = 'allow-scripts';
+        element.srcdoc = '<p>original</p>';
+        document.body.append(element);
+        await new Promise(resolveLoad => element.addEventListener('load', resolveLoad, { once: true }));
+        gate.loaded(element);
+        let accepted = false;
+        const received = new Promise(resolveMessage => window.addEventListener('message', event => {
+            if (event.data?.type !== 'moved-frame') return;
+            accepted = gate.accept(element, event);
+            resolveMessage();
+        }, { once: true }));
+        element.removeAttribute('srcdoc');
+        element.src = 'data:text/html,<script>parent.postMessage({type:"moved-frame"},"*")</script>';
+        await new Promise(resolveLoad => element.addEventListener('load', resolveLoad, { once: true }));
+        gate.loaded(element);
+        await received;
+        return { accepted, frameLoads: 2 };
+    });
+    assert.equal(movedFrame.accepted, false, 'Messages from a navigated opaque frame are rejected');
     assert.equal(await frame.evaluate(() => { try { localStorage.setItem('probe', '1'); return false; } catch { return true; } }), true);
     assert.equal(await frame.evaluate(async () => { try { await fetch('https://example.com'); return false; } catch { return true; } }), true);
     for (const allowExternalResources of [false, true]) {
@@ -92,6 +166,8 @@ try {
             + '<style>@import "https://results-fixture.invalid/import.css";</style></head><body>'
             + '<h1 id="external">External resources</h1><p id="imported">Imported style</p>'
             + '<img id="external-image" src="https://results-fixture.invalid/image.png" onerror="bad()">'
+            + '<script src="https://results-fixture.invalid/evil.js"></script>'
+            + '<script>window.untrustedInlineRan = true</script>'
             + '<a href="javascript:bad()">Unsafe link</a></body></html>', 'light', allow), allowExternalResources);
         const externalPage = await browser.newPage();
         const requests = [];
@@ -115,10 +191,17 @@ try {
             imported: getComputedStyle(document.querySelector('#imported')).backgroundColor,
             handlers: document.querySelectorAll('[onerror]').length,
             unsafeLink: document.querySelector('a').hasAttribute('href'),
+            untrustedInlineRan: window.untrustedInlineRan === true,
             opaque: (() => { try { localStorage.setItem('probe', '1'); return false; } catch { return true; } })()
         }));
-        assert.deepEqual(resources.policies, allowExternalResources ? [] : [result.policy], 'CSP follows the external-resource setting');
+        assert.equal(resources.policies.length, 1, 'CSP is mandatory in both resource settings');
+        assert(resources.policies[0].includes('connect-src \'none\'; form-action \'none\''));
+        assert(resources.policies[0].includes('script-src \'sha256-'));
         assert.equal(resources.handlers, 0); assert.equal(resources.unsafeLink, false); assert.equal(resources.opaque, true);
+        assert.equal(resources.untrustedInlineRan, false);
+        assert.equal(await resourceFrame.evaluate(async () => {
+            try { await fetch('https://results-fixture.invalid/connect'); return true; } catch { return false; }
+        }), false, 'connect-src blocks requests in both resource settings');
         assert.equal(resources.imageWidth > 0, allowExternalResources, 'The external image follows the setting');
         assert.equal(resources.color === 'rgb(12, 34, 56)', allowExternalResources, 'The linked stylesheet follows the setting');
         assert.equal(resources.imported === 'rgb(65, 43, 21)', allowExternalResources, 'The imported stylesheet follows the setting');

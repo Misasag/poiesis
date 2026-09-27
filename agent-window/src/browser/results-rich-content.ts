@@ -1,5 +1,7 @@
 import DOMPurify = require('@theia/core/shared/dompurify');
 import { POIESIS_FONT_MONO, POIESIS_FONT_SANS } from './typography';
+// Webpack bundles the skill-owned declaration into the renderer. The app does not inspect document markup.
+const trustedScripts: { sha256: string[] } = require('../../skills/poiesis-results/trusted-scripts.json');
 
 /** Scripts belong to the document and execute only in the opaque frame. */
 export function sanitizeResultsHtml(html: string, allowExternalResources = false): string {
@@ -22,7 +24,13 @@ export function sanitizeResultsHtml(html: string, allowExternalResources = false
     return '<!doctype html>\n' + doc.documentElement.outerHTML;
 }
 
-export const RESULTS_FRAME_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
+const scriptHashes = trustedScripts.sha256.map(hash => `'sha256-${hash}'`).join(' ');
+export function resultsFrameCsp(allowExternalResources = false): string {
+    const remote = allowExternalResources ? ' https: http:' : '';
+    return `default-src 'none'; img-src data:${remote}; style-src 'unsafe-inline'${remote}; `
+        + `script-src ${scriptHashes}; connect-src 'none'; form-action 'none'; base-uri 'none'`;
+}
+export const RESULTS_FRAME_CSP = resultsFrameCsp();
 export const RESULTS_RICH_STYLE = `
 :root { --results-bg: #f1efe8; --results-fg: #262721; --results-muted: #61645c; --results-border: #d6d3c9; --results-accent: #386e63; --results-font-sans: ${POIESIS_FONT_SANS}; --results-font-mono: ${POIESIS_FONT_MONO}; --results-scrollbar-opacity: 22%; --results-scrollbar-hover-opacity: 40%; color-scheme: light; }
 :root[data-theme="dark"] { --results-bg: #242722; --results-fg: #eceee8; --results-muted: #b5b9af; --results-border: #50574b; --results-accent: #91cdb9; --results-scrollbar-opacity: 18%; --results-scrollbar-hover-opacity: 35%; color-scheme: dark; }
@@ -38,12 +46,10 @@ export const RESULTS_RICH_STYLE = `
 export function resultsFrameHtml(html: string, theme: 'light' | 'dark', allowExternalResources = false): string {
     const doc = new DOMParser().parseFromString(sanitizeResultsHtml(html, allowExternalResources), 'text/html');
     doc.documentElement.dataset.theme = theme;
-    if (!allowExternalResources) {
-        const policy = doc.createElement('meta');
-        policy.httpEquiv = 'Content-Security-Policy';
-        policy.content = RESULTS_FRAME_CSP;
-        doc.head.prepend(policy);
-    }
+    const policy = doc.createElement('meta');
+    policy.httpEquiv = 'Content-Security-Policy';
+    policy.content = resultsFrameCsp(allowExternalResources);
+    doc.head.prepend(policy);
     const style = doc.createElement('style');
     style.textContent = RESULTS_RICH_STYLE;
     doc.head.append(style);
@@ -56,6 +62,25 @@ export class ResultsFrameRetryGate {
     take(document: string | undefined, generating: boolean): boolean {
         if (!document || generating || this.consumed.has(document)) { return false; }
         this.consumed.add(document);
+        return true;
+    }
+}
+
+/** A frame accepts the current srcdoc load and a bounded number of side-effect messages. */
+export class ResultsFrameMessageGate {
+    protected readonly frames = new WeakMap<HTMLIFrameElement, { srcdoc: string; loads: number; windowStart: number; count: number }>();
+    loaded(frame: HTMLIFrameElement): void {
+        const state = this.frames.get(frame);
+        this.frames.set(frame, !state || (frame.srcdoc !== '' && state.srcdoc !== frame.srcdoc)
+            ? { srcdoc: frame.srcdoc, loads: 1, windowStart: 0, count: 0 }
+            : { ...state, loads: state.loads + 1 });
+    }
+    accept(frame: HTMLIFrameElement, event: MessageEvent, now = Date.now()): boolean {
+        const state = this.frames.get(frame);
+        if (state?.loads !== 1 || event.origin !== 'null' || event.source !== frame.contentWindow) { return false; }
+        if (now - state.windowStart >= 60_000) { state.windowStart = now; state.count = 0; }
+        if (state.count >= 20) { return false; }
+        state.count++;
         return true;
     }
 }
