@@ -2925,7 +2925,10 @@ assert.ok(richResults.includes("require('../../skills/poiesis-results/trusted-sc
     && richResults.includes('ResultsFrameMessageGate')
     && richResults.includes("frame.srcdoc !== '' && state.srcdoc !== frame.srcdoc")
     && (await read('electron-app/scripts/theia-electron-main.js')).includes("'will-frame-navigate'")
-    && (await read('electron-app/scripts/results-frame-navigation.js')).includes("details.url !== 'about:srcdoc'"),
+    && (await read('electron-app/scripts/theia-electron-main.js')).includes("'frame-created'")
+    && (await read('electron-app/scripts/results-frame-navigation.js')).includes("details.url !== 'about:srcdoc'")
+    && (await read('electron-app/scripts/results-frame-navigation.js')).includes('resultsFrames.has(details.frame.frameTreeNodeId)')
+    && (await read('electron-app/scripts/results-frame-navigation.js')).includes('if (!details.frame) return true;'),
     'Results document script and frame navigation boundaries must stay active');
 for (const marker of [
     'allowExternalResultsResources: false',

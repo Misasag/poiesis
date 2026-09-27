@@ -12,14 +12,24 @@ import { DURABLE_SESSION_KEY, DURABLE_SESSION_MIGRATION_KEY, writeDurableValue }
 
 const root = process.cwd();
 const require = createRequire(import.meta.url);
-const { shouldBlockResultsFrameNavigation } = require('../electron-app/scripts/results-frame-navigation.js');
+const { createResultsFrameNavigationGuard } = require('../electron-app/scripts/results-frame-navigation.js');
 const mainFrame = {};
-assert.equal(shouldBlockResultsFrameNavigation({ isMainFrame: false, frame: { name: 'poiesis-results-document', parent: mainFrame },
-    url: 'https://example.invalid' }, mainFrame), true);
-assert.equal(shouldBlockResultsFrameNavigation({ isMainFrame: false, frame: { name: 'theia-webview', parent: mainFrame },
-    url: 'https://example.invalid' }, mainFrame), false);
-assert.equal(shouldBlockResultsFrameNavigation({ isMainFrame: true, frame: { name: 'poiesis-results-document', parent: mainFrame },
-    url: 'https://example.invalid' }, mainFrame), false);
+const frameGuard = createResultsFrameNavigationGuard({ mainFrame });
+const resultsFrame = { name: 'poiesis-results-document', parent: mainFrame, frameTreeNodeId: 2 };
+const webviewFrame = { name: 'theia-webview', parent: mainFrame, frameTreeNodeId: 3 };
+const nestedFrame = { name: 'poiesis-results-document', parent: resultsFrame, frameTreeNodeId: 4 };
+for (const frame of [resultsFrame, webviewFrame, nestedFrame, null]) frameGuard.frameCreated(frame);
+const away = 'https://example.invalid';
+assert.equal(frameGuard.shouldBlock({ isMainFrame: false, frame: resultsFrame, url: away }), true);
+// A document that renames its own window is still the recorded Results frame.
+assert.equal(frameGuard.shouldBlock({ isMainFrame: false, frame: { ...resultsFrame, name: 'renamed' }, url: away }), true);
+assert.equal(frameGuard.shouldBlock({ isMainFrame: false, frame: resultsFrame, url: 'about:srcdoc' }), false);
+assert.equal(frameGuard.shouldBlock({ isMainFrame: false, frame: webviewFrame, url: away }), false);
+// Taking the Results name later does not make another frame the Results frame.
+assert.equal(frameGuard.shouldBlock({ isMainFrame: false, frame: { ...webviewFrame, name: 'poiesis-results-document' }, url: away }), false);
+assert.equal(frameGuard.shouldBlock({ isMainFrame: false, frame: nestedFrame, url: away }), false);
+assert.equal(frameGuard.shouldBlock({ isMainFrame: false, frame: null, url: away }), true);
+assert.equal(frameGuard.shouldBlock({ isMainFrame: true, frame: resultsFrame, url: away }), false);
 const run = resolve(root, '.run', `results-security-electron-${Date.now()}`);
 const workspace = resolve(run, 'workspace');
 const config = resolve(run, 'theia-config');
@@ -111,6 +121,11 @@ try {
     await new Promise(done => setTimeout(done, 1000));
     assert.equal(frame.url(), 'about:srcdoc', 'Electron must keep the Results frame on srcdoc');
     assert.equal(navigationRequests, 0, 'Navigation must not reach the local server');
+    // Renaming its own window must not release the frame from the navigation guard.
+    await frame.evaluate(url => { window.name = 'renamed'; location.href = url; }, `http://127.0.0.1:${leakPort}/leak?secret=renamed`);
+    await new Promise(done => setTimeout(done, 1000));
+    assert.equal(frame.url(), 'about:srcdoc', 'A renamed Results frame must stay on srcdoc');
+    assert.equal(navigationRequests, 0, 'Navigation after renaming must not reach the local server');
     assert(await frame.$('.ex-hit'), 'Blocked navigation keeps the document visible');
     console.log(JSON.stringify({ resultsSecurityElectron: 'passed', assembledBytes: Buffer.byteLength(assembled),
         trustedPanelOpen: true, untrustedScriptRan: false, blockedNavigationRequests: navigationRequests }));

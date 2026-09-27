@@ -1,10 +1,12 @@
 const path = require('node:path');
 const { app } = require('electron');
-const { shouldBlockResultsFrameNavigation } = require('./results-frame-navigation');
+const { createResultsFrameNavigationGuard } = require('./results-frame-navigation');
 
 app.on('web-contents-created', (_event, contents) => {
+    const resultsFrames = createResultsFrameNavigationGuard(contents);
+    contents.on('frame-created', (_frameEvent, details) => resultsFrames.frameCreated(details.frame));
     contents.on('will-frame-navigate', event => {
-        if (shouldBlockResultsFrameNavigation(event, contents.mainFrame)) event.preventDefault();
+        if (resultsFrames.shouldBlock(event)) event.preventDefault();
     });
 });
 
