@@ -32,6 +32,8 @@ const made = render();
 assert.equal(made.status, 0);
 assert.equal(made.body.ok, true, JSON.stringify(made.body.reasons));
 assert.equal(made.body.unassignedHunks, 0);
+assert.equal(made.body.geometry.boxes.length, 11);
+assert.equal(made.body.drawnEdges.length, 14);
 const prepared = JSON.parse(readFileSync(resolve(runFolder, 'prepared.json'), 'utf8'));
 assert(made.body.drawnEdges.every(id => prepared.map.edges.some(edge => edge.id === id)));
 const tests = command(process.execPath, ['--test', '--test-reporter=tap', 'tests/daily-count.test.cjs'], { cwd: realWorkspace });
@@ -61,6 +63,19 @@ try {
   const iframe = await page.waitForSelector('iframe');
   const frame = await iframe.contentFrame();
   await frame.waitForSelector('.ex-map .ex-title');
+  const citations = await frame.evaluate(() => [...document.querySelectorAll('details[data-node-id]')].map(el => ({
+    id: el.dataset.nodeId, citation: el.querySelector('[data-poiesis-citation]')?.getAttribute('data-poiesis-citation')
+  })));
+  for (const item of citations) {
+    const box = made.body.geometry.boxes.find(candidate => candidate.id === item.id);
+    const source = box?.ranges?.[0] ?? prepared.map.nodes.find(candidate => candidate.id === item.id);
+    assert(source, item.id);
+    assert.equal(item.citation, `${source.file}:${source.line}-${source.end}`, item.id);
+  }
+  const tick = made.body.geometry.boxes.find(box => box.symbol === 'tick');
+  const pageLoad = made.body.geometry.boxes.find(box => box.symbol === 'page load' && box.file === 'index.html');
+  assert.equal(citations.find(item => item.id === tick.id)?.citation, 'index.html:639-648');
+  assert.equal(citations.find(item => item.id === pageLoad.id)?.citation, 'index.html:727-727');
   await frame.evaluate(() => document.fonts.ready);
   const measure = () => frame.evaluate(() => {
     const map = document.querySelector('.ex-map');

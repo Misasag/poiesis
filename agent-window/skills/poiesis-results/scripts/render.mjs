@@ -1,10 +1,11 @@
 import { readFileSync, writeFileSync, realpathSync, rmSync } from 'node:fs';
 import { resolve, extname, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { layoutGraph } from './layout.mjs';
+import { layoutGraph, textWidth } from './layout.mjs';
 
 const emit = value => process.stdout.write(`${JSON.stringify(value)}\n`);
 const esc = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const diffRows = (lines, file) => lines.map(l => `<span class="ex-l ${l.kind === 'add' ? 'ex-add' : l.kind === 'delete' ? 'ex-del' : ''}" data-diff-file="${esc(file)}" data-diff-line="${l.line}" data-diff-kind="${l.kind}"><span class="ex-n">${l.line}</span>${l.kind === 'add' ? '+' : l.kind === 'delete' ? '-' : ' '} ${esc(l.text)}</span>`).join('');
 const list = value => Array.isArray(value) ? value : [];
 const onlyKeys = (value, keys, label, reasons) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) { reasons.push(`${label}を JSON オブジェクトで書き直してください。`); return; }
@@ -21,6 +22,14 @@ const oneSentence = (value, label, reasons) => {
 };
 const tag = { new: '新規', modified: '変更', existing: '既存' };
 const verificationStatus = { pass: '確認済み', fail: '失敗', unknown: '未確認', outdated: '以前の結果', human: '人の確認待ち' };
+const mapQuestion = 'この図は、変更した処理がどの入口から動き、何を読み書きし表示するかを示します。';
+const visualQuestion = '変更した表示と実際の差分の確認箇所を示します。';
+const noMapQuestion = '処理の地図を省いた理由と、実際の差分を示します。';
+const judgmentsHtml = draft => `<h2>補った判断 ${draft.interpretations.length}件</h2><table class="ex-interp"><tr><th>番号</th><th>補った判断</th><th>確かめ方</th></tr>${draft.interpretations.map((row, i) => `<tr><td>判断${i + 1}</td><td class="ex-ai-text">${esc(row.decision)}</td><td class="ex-ai-text">${esc(row.evidence)}</td></tr>`).join('')}</table>`;
+// Both document forms state a failed or cancelled task as a fact, independent of the AI's lead sentence.
+const taskStateHtml = input => input.task?.status === 'failed' ? '<p class="ex-fact">作業を完了できませんでした。</p>'
+  : input.task?.status === 'cancelled' ? '<p class="ex-fact">作業は取り消されました。</p>' : '';
+const unverifiedHtml = draft =>`<details><summary>まだ確かめていないこと ${draft.unverified.length}件</summary><ul>${draft.unverified.map(v => `<li class="ex-ai-text">${esc(v)}</li>`).join('')}</ul></details>`;
 const safePath = (workspace, path) => {
   if (typeof path !== 'string' || /^(?:[a-z]+:|\/\/)/i.test(path)) return null;
   const full = resolve(workspace, path);
@@ -62,7 +71,9 @@ function validate(prepared, draft, imagePaths = [], workspace = prepared?.worksp
     else chosenImages.push(image.path);
   }
   oneSentence(draft.lead, '冒頭', reasons);
-  if (prepared.map.nodes.length && list(draft.nodes).length) oneSentence(draft.mapCaption, '地図の説明', reasons);
+  oneSentence(draft.mapCaption, '図の後の説明', reasons);
+  if (prepared.mapDecision?.kind === 'map' && !list(draft.nodes).length) reasons.push('準備は処理の地図を指定しています。候補の部品を選んでください。');
+  if (prepared.mapDecision?.kind !== 'map' && (list(draft.nodes).length || list(draft.edges).length || draft.screenImage)) reasons.push('準備は処理の地図を出さないと決めています。部品と矢印を空にしてください。');
   const nodes = new Map(prepared.map.nodes.map(n => [n.id, n]));
   const edges = new Map(prepared.map.edges.map(e => [e.id, e]));
   const hunks = new Map(prepared.hunks.map(h => [h.id, h]));
@@ -75,7 +86,7 @@ function validate(prepared, draft, imagePaths = [], workspace = prepared?.worksp
       else assigned.set(id, owner);
     }
   };
-  if (!Array.isArray(draft.nodes) || (prepared.hunks.length && prepared.map.nodes.length && !draft.nodes.length)) reasons.push('描く部品を nodes に選んでください。');
+  if (!Array.isArray(draft.nodes)) reasons.push('描く部品を nodes に選んでください。');
   const selected = new Set();
   for (const item of list(draft.nodes)) {
     onlyKeys(item, ['id', 'title', 'caption', 'hunkIds'], '部品', reasons);
@@ -114,7 +125,11 @@ function validate(prepared, draft, imagePaths = [], workspace = prepared?.worksp
   const unassigned = [...hunks.keys()].filter(id => !assigned.has(id));
   if (unassigned.length) reasons.push(`割り当てのない差分の塊が ${unassigned.length} 件あります。${unassigned.join('、')} を部品か地図に載らない変更のパネルへ割り当ててください。`);
   if (!Array.isArray(draft.interpretations)) reasons.push('依頼と解釈の表を interpretations に書いてください。');
-  for (const row of list(draft.interpretations)) { onlyKeys(row, ['decision', 'evidence'], '補った判断の行', reasons); plain(row?.decision, '依頼にない判断', reasons); plain(row?.evidence, '確かめ方', reasons); }
+  for (const row of list(draft.interpretations)) {
+    onlyKeys(row, ['decision', 'evidence', 'nodeId'], '補った判断の行', reasons);
+    plain(row?.decision, '依頼にない判断', reasons); plain(row?.evidence, '確かめ方', reasons);
+    if (row?.nodeId !== undefined && !selected.has(row.nodeId)) reasons.push('判断の札の部品は、選んだ部品から指定してください。');
+  }
   if (!Array.isArray(draft.concerns) || draft.concerns.length > 3) reasons.push('懸念点は最大3件にしてください。');
   const changedLines = new Map();
   for (const h of prepared.hunks) for (const l of h.lines) if (l.kind === 'add') { if (!changedLines.has(h.file)) changedLines.set(h.file, new Set()); changedLines.get(h.file).add(l.line); }
@@ -125,6 +140,9 @@ function validate(prepared, draft, imagePaths = [], workspace = prepared?.worksp
   }
   if (!Array.isArray(draft.unverified)) reasons.push('未確認の項目を unverified の配列にしてください。');
   for (const value of list(draft.unverified)) plain(value, '未確認の項目', reasons);
+  if (prepared.mapDecision?.kind === 'visual' && !imagePaths.length && !chosenImages.length
+    && !list(draft.unverified).some(value => /画面|表示|画像/.test(value)))
+    reasons.push('実際の画面の画像がないため、確認していない表示を未確認の項目に書いてください。');
   return reasons;
 }
 
@@ -132,17 +150,28 @@ function render(prepared, draft, evidence, request, input) {
   const nodes = new Map(prepared.map.nodes.map(n => [n.id, n]));
   const edges = new Map(prepared.map.edges.map(e => [e.id, e]));
   const hunks = new Map(prepared.hunks.map(h => [h.id, h]));
-  const selected = draft.nodes.map(item => ({ ...nodes.get(item.id), title: item.title, caption: item.caption, hunkIds: item.hunkIds }));
+  // Each badge resolves to one chosen part before layout, so a box reserves exactly the rows it draws.
+  const chosen = draft.nodes.map(item => nodes.get(item.id));
+  const concernSources = draft.concerns.map(row => chosen.filter(node => node.file === row.file && row.line >= node.line && row.line <= node.end)
+    .sort((a, b) => (a.end - a.line) - (b.end - b.line) || (a.kind === 'function' ? -1 : 1))[0]?.id);
+  const badgeSources = [
+    ...draft.interpretations.map((row, i) => ({ source: row.nodeId, label: `判断${i + 1}`, kind: 'decision' })),
+    ...draft.concerns.map((row, i) => ({ source: concernSources[i], label: `懸念${i + 1}`, kind: 'concern' }))
+  ].filter(badge => badge.source);
+  const selected = draft.nodes.map(item => ({ ...nodes.get(item.id), title: item.title, caption: item.caption, hunkIds: item.hunkIds,
+    badgeCount: badgeSources.filter(badge => badge.source === item.id).length }));
   const budget = { used: 0 };
   const shotEntry = draft.screenImage ? documentImages(draft, evidence).find(item => item.path.replaceAll('\\', '/') === draft.screenImage.replaceAll('\\', '/')) : null;
   const mapShotImage = shotEntry && selected.some(n => n.kind === 'screen') ? imagePath(prepared.workspace, shotEntry.path, budget) : null;
   const graph = layoutGraph(selected, draft.edges.map(id => edges.get(id)), { screenImage: Boolean(mapShotImage?.src) });
   const { width, height } = graph;
   const positions = new Map(graph.boxes.map(box => [box.id, box]));
-  const diffRows = (lines, file) => lines.map(l => `<span class="ex-l ${l.kind === 'add' ? 'ex-add' : l.kind === 'delete' ? 'ex-del' : ''}" data-diff-file="${esc(file)}" data-diff-line="${l.line}" data-diff-kind="${l.kind}"><span class="ex-n">${l.line}</span>${l.kind === 'add' ? '+' : l.kind === 'delete' ? '-' : ' '} ${esc(l.text)}</span>`).join('');
+  // A folded helper's badges go to the box that shows its call, as graph.mjs counted them.
+  const badges = badgeSources.map(badge => ({ ...badge, box: graph.boxes.find(box => box.members.includes(badge.source))?.id
+    ?? graph.folded.find(edge => edge.to === badge.source)?.owner }));
   const diffHtml = h => `<div class="ex-hunk" data-hunk-id="${esc(h.id)}"><div class="ex-diff-head">${esc(h.file)} ${h.start}${h.count > 1 ? `-${h.start + h.count - 1}` : ''}行</div><pre class="ex-diff">${diffRows(h.lines, h.file)}</pre></div>`;
   const cite = (file, start, end = start) => `${file}:${start}-${end}`;
-  const panel = ({ title, caption, chunks, citation, status }) => `<div class="ex-panel" role="region" aria-label="${esc(title)}の中身"><div class="ex-panel-grip" role="separator" tabindex="0" aria-orientation="vertical" aria-label="説明欄の幅" aria-valuemin="320"></div><div class="ex-p-top"><span class="ex-p-title">${esc(title)}</span>${status ? `<span class="ex-p-tag ex-p-tag-${status === 'modified' ? 'chg' : status === 'new' ? 'new' : 'same'}">${tag[status]}</span>` : ''}</div><p class="ex-p-why">${esc(caption)}</p>${chunks || '<p>この部品に割り当てた差分はありません。</p>'}<p class="ex-p-foot"><a class="ex-p-open" href="#" data-poiesis-citation="${esc(citation)}">Code で開く</a></p><details class="ex-close"><summary>閉じる</summary></details></div>`;
+  const panel = ({ title, caption, chunks, citation, status }) => `<div class="ex-panel" role="region" aria-label="${esc(title)}の中身"><div class="ex-panel-grip" role="separator" tabindex="0" aria-orientation="vertical" aria-label="説明欄の幅" aria-valuemin="320"></div><div class="ex-p-top"><span class="ex-p-title">${esc(title)}</span>${status ? `<span class="ex-p-tag ex-p-tag-${status === 'modified' ? 'chg' : status === 'new' ? 'new' : 'same'}">${tag[status]}</span>` : ''}</div><p class="ex-p-why ex-ai-text">${esc(caption)}</p>${chunks || '<p>この部品に割り当てた差分はありません。</p>'}<p class="ex-p-foot"><a class="ex-p-open" href="#" data-poiesis-citation="${esc(citation)}">Code で開く</a></p><details class="ex-close"><summary>閉じる</summary></details></div>`;
   const ranges = new Map(selected.map(n => [n.id, [{ file: n.file, line: n.line, end: n.end }]]));
   for (const box of graph.boxes) for (const member of box.members) ranges.set(member, box.ranges.filter(r => r.id === member));
   const inRange = (file, row, rs) => rs.some(r => r.file === file && (row.newLine ?? row.line) >= r.line && (row.newLine ?? row.line) <= r.end);
@@ -160,7 +189,8 @@ function render(prepared, draft, evidence, request, input) {
     const source = [...names, ...(n.subs ?? [`${n.symbol} ${n.line}-${n.end}行`])];
     const fullText = `<div class="ex-p-source">${source.map(s => `<p>${esc(s)}</p>`).join('')}</div>`;
     const diff = chunksFor(members);
-    return panel({ title: n.title, caption: n.caption, chunks: fullText + (diff || '<p>この部品に変更はありません。</p>'), citation: cite(n.file, n.line, n.end), status: n.status });
+    const shown = n.ranges?.[0] ?? { file: n.file, line: n.line, end: n.end };
+    return panel({ title: n.title, caption: n.caption, chunks: fullText + (diff || '<p>この部品に変更はありません。</p>'), citation: cite(shown.file, shown.line, shown.end), status: n.status });
   };
   const offMapPanel = item => {
     const first = hunks.get(item.hunkIds[0]);
@@ -175,7 +205,10 @@ function render(prepared, draft, evidence, request, input) {
     const excerpt = `<div class="ex-diff-head">${esc(concern.file)} ${concern.line}行の周辺</div><pre class="ex-diff">${diffRows(nearby, concern.file)}</pre>`;
     return panel({ title: '懸念点', caption: concern.text, chunks: excerpt, citation: cite(concern.file, concern.line) });
   };
-  const svg = [`<svg class="ex-map" viewBox="0 0 ${width} ${height}" role="img" aria-label="変更の全体の地図"><defs><marker id="arrow-new" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ex-arrowhead-new" d="M0,0 L10,5 L0,10 z"/></marker><marker id="arrow-same" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ex-arrowhead-same" d="M0,0 L10,5 L0,10 z"/></marker></defs>`];
+  const kinds = { call: '呼ぶ', read: '読む', write: '書く', display: '表示', trigger: 'きっかけ' };
+  // One head per kind (R10-P7): writing ends in a filled diamond, a trigger in a hollow circle.
+  const arrowShapes = { call: 'M0,0 L10,5 L0,10 z', read: 'M0,1 L9,5 L0,9 z', write: 'M0,5 L5,0 L10,5 L5,10 z', display: 'M0,0 L10,0 L10,10 L0,10 z', trigger: 'M1,5 A4,4 0 1 1 9,5 A4,4 0 1 1 1,5 z' };
+  const svg = [`<svg class="ex-map" viewBox="0 0 ${width} ${height}" role="img" aria-label="変更の全体の地図"><defs>${Object.entries(arrowShapes).map(([kind, shape]) => `<marker id="arrow-${kind}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ex-arrowhead-${kind}" d="${shape}"/></marker>`).join('')}</defs>`];
   for (const column of graph.columns) svg.push(`<text class="ex-col" x="${column.x + column.w / 2}" y="18">${column.title}</text>`);
   for (const edge of graph.edges) {
     const cls = edge.status === 'new' ? 'new' : 'same';
@@ -183,16 +216,22 @@ function render(prepared, draft, evidence, request, input) {
     if (edge.paintedSegments) {
       const paint = edge.paintedSegments.map(([a, b]) => `M${a.x},${a.y} L${b.x},${b.y}`).join(' ');
       const [a, b] = edge.paintedSegments.at(-1);
-      svg.push(`<path class="ex-edge ex-edge-${cls}" d="${paint}"/><path class="ex-edge ex-edge-${cls}" d="M${a.x},${a.y} L${b.x},${b.y}" marker-end="url(#arrow-${cls})"/>`);
-    } else svg.push(`<path class="ex-edge ex-edge-${cls}" d="${path}" marker-end="url(#arrow-${cls})"/>`);
+      svg.push(`<path class="ex-edge ex-edge-${cls} ex-kind-${edge.access}" d="${paint}"/><path class="ex-edge ex-edge-${cls} ex-kind-${edge.access}" d="M${a.x},${a.y} L${b.x},${b.y}" marker-end="url(#arrow-${edge.access})"/>`);
+    } else svg.push(`<path class="ex-edge ex-edge-${cls} ex-kind-${edge.access}" d="${path}" marker-end="url(#arrow-${edge.access})"/>`);
   }
   for (const p of graph.boxes) {
     const cls = p.status === 'modified' ? 'chg' : p.status === 'new' ? 'new' : 'same';
     const title = p.titleLines.map((text, i) => `<text class="ex-title" x="${p.x + 10}" y="${p.y + 31 + i * 19}">${esc(text)}</text>`).join('');
     const subs = p.subLines.map((text, i) => `<text class="ex-sub" x="${p.x + 10}" y="${p.y + 31 + p.titleLines.length * 19 + i * 15}">${esc(text)}</text>`).join('');
-    svg.push(`<g data-map-node="${p.id}"><rect class="ex-node ex-node-${cls}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="9"/>${title}<text class="ex-tag ex-tag-${cls}" x="${p.x + p.w - 8}" y="${p.y + 13}" text-anchor="end">${tag[p.status]}</text>${subs}</g>`);
+    const badgeItems = badges.filter(badge => badge.box === p.id);
+    if (badgeItems.length !== p.badgeCount) throw new Error('番号の札を部品の中に配置できません。');
+    const markers = badgeItems.map((badge, localIndex) => {
+      if (textWidth(badge.label, 12) + 20 > p.w) throw new Error('番号の札が部品の幅を超えます。');
+      return `<text class="ex-marker ex-marker-${badge.kind}" x="${p.x + 10}" y="${p.y + p.badgeStart + localIndex * 17 + 14}">${badge.label}</text>`;
+    }).join('');
+    svg.push(`<g data-map-node="${p.id}"><rect class="ex-node ex-node-${cls}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="9"/>${title}<text class="ex-tag ex-tag-${cls}" x="${p.x + p.w - 8}" y="${p.y + 13}" text-anchor="end">${tag[p.status]}</text>${subs}${markers}</g>`);
   }
-  for (const edge of graph.edges) svg.push(`<g><rect class="ex-label-bg" x="${edge.label.x}" y="${edge.label.y}" width="${edge.label.w}" height="${edge.label.h}" rx="4"/><text class="ex-edge-label" x="${edge.label.x + edge.label.w / 2}" y="${edge.label.y + 13}" text-anchor="middle">${edge.text}</text></g>`);
+  for (const edge of graph.edges) svg.push(`<g><rect class="ex-label-bg" x="${edge.label.x}" y="${edge.label.y}" width="${edge.label.w}" height="${edge.label.h}" rx="4"/><text class="ex-edge-label" x="${edge.label.x + edge.label.w / 2}" y="${edge.label.y + 12}" text-anchor="middle">${edge.text}</text><text class="ex-edge-line" x="${edge.label.x + edge.label.w / 2}" y="${edge.label.y + 23}" text-anchor="middle">${edge.line}行</text></g>`);
   svg.push('</svg>');
   const screen = selected.find(n => n.kind === 'screen');
   const screenBox = screen ? positions.get(screen.id) : null;
@@ -203,7 +242,7 @@ function render(prepared, draft, evidence, request, input) {
     const count = item.hunkIds.flatMap(id => hunks.get(id).lines).filter(line => line.kind === 'add' || line.kind === 'delete').length;
     return `<details class="ex-hit-inline" name="ex-panel"><summary>${esc(item.title)} ${count}行</summary>${offMapPanel(item)}</details>`;
   }).join('・');
-  const concerns = draft.concerns.map(c => `<li><details class="ex-hit-inline" name="ex-panel"><summary>${esc(c.text)}</summary>${concernPanel(c)}</details></li>`).join('');
+  const concerns = draft.concerns.map((c, i) => `<li><details class="ex-hit-inline" name="ex-panel"><summary><strong>懸念${i + 1}</strong>：<span class="ex-ai-text">${esc(c.text)}</span> <span class="ex-fact">${c.line}行</span></summary>${concernPanel(c)}</details></li>`).join('');
   const imageEntries = documentImages(draft, evidence);
   const pictures = imageEntries.map(item => ({ ...item, data: imagePath(prepared.workspace, item.path, budget) }));
   const picture = item => item.data.src
@@ -211,7 +250,7 @@ function render(prepared, draft, evidence, request, input) {
     : `<p>${esc(item.data.reason)} ${item.data.path ? `<button type="button" data-poiesis-image="${esc(item.data.path)}">${esc(item.data.path)}</button>` : esc(item.path)}</p>`;
   const images = pictures.map(picture).join('');
   const verification = evidence.verification ?? { rows: [] };
-  const verificationHtml = `<details><summary>確認結果${verification.summary ? ` ${esc(verification.summary)}` : ''}</summary><ul class="ex-testlist">${(verification.rows ?? []).map(row => `<li><strong>${esc(verificationStatus[row.status] ?? '未確認')}</strong> ${esc(row.label)}${row.detail ? `：${esc(row.detail)}` : ''}</li>`).join('')}</ul></details>`;
+  const verificationHtml = `<details><summary>確認結果 ${(verification.rows ?? []).length}件</summary>${verification.summary ? `<p class="ex-ai-text">${esc(verification.summary)}</p>` : ''}<ul class="ex-testlist">${(verification.rows ?? []).map(row => `<li><strong>${esc(verificationStatus[row.status] ?? '未確認')}</strong> ${esc(row.label)}${row.detail ? `：${esc(row.detail)}` : ''}</li>`).join('')}</ul></details>`;
   const style = readFileSync(fileURLToPath(new URL('../assets/style.css', import.meta.url)), 'utf8');
   const script = readFileSync(fileURLToPath(new URL('../assets/document.js', import.meta.url)), 'utf8');
   const selectedFiles = new Set(selected.map(n => n.file));
@@ -220,20 +259,23 @@ function render(prepared, draft, evidence, request, input) {
     + selected.filter(n => n.kind === 'entry' && n.status !== 'new' && n.symbol !== 'page load' && draft.edges.some(id => edges.get(id).from === n.id && edges.get(id).status === 'new')).length;
   const assigned = new Set([...draft.nodes.flatMap(n => n.hunkIds), ...draft.offMap.flatMap(item => item.hunkIds)]);
   const unassignedHunks = prepared.hunks.filter(h => !assigned.has(h.id)).length;
+  const usedKinds = [...new Set(graph.edges.map(edge => edge.access))];
+  const usedStates = [...new Set(graph.edges.map(edge => edge.status))];
+  const legend = `<div class="ex-legend" aria-label="地図の凡例">${usedKinds.map(kind => `<span class="ex-legend-item"><svg class="ex-legend-svg" width="42" height="18" viewBox="0 0 42 18" aria-hidden="true"><defs><marker id="legend-arrow-${kind}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path class="ex-arrowhead-${kind}" d="${arrowShapes[kind]}"/></marker></defs><path class="ex-legend-path ex-kind-${kind}" d="M2,9 L34,9" marker-end="url(#legend-arrow-${kind})"/></svg>${kinds[kind]}</span>`).join('')}${usedStates.map(state => `<span class="ex-legend-item"><svg class="ex-legend-svg" width="42" height="18" viewBox="0 0 42 18" aria-hidden="true"><path class="ex-legend-path ex-edge-${state === 'new' ? 'new' : 'same'}" d="M2,9 L38,9"/></svg>${state === 'new' ? 'この変更で追加' : '既存の線'}</span>`).join('')}${badges.some(badge => badge.kind === 'decision' && badge.box) ? '<span class="ex-legend-item">判断1：補った判断の札</span>' : ''}${badges.some(badge => badge.kind === 'concern' && badge.box) ? '<span class="ex-legend-item">懸念1：見てほしい点の札</span>' : ''}</div>`;
   const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${style}</style></head><body>
-<p class="ex-lead">${esc(draft.lead)}</p>
-${prepared.lineEndingChanges ? `<p>改行コードだけが異なる行が ${prepared.lineEndingChanges} 行ありました。</p>` : ''}
-${input.task?.status === 'failed' ? '<p>作業を完了できませんでした。</p>' : input.task?.status === 'cancelled' ? '<p>作業は取り消されました。</p>' : ''}
+<p class="ex-lead ex-ai-text">${esc(draft.lead)}</p>
+${taskStateHtml(input)}
 ${input.changeCaptureError ? `<p>変更の記録に失敗しました：${esc(input.changeCaptureError)}</p>` : ''}
-<figure class="ex-mapfig"><div class="ex-mapviewport"><div class="ex-mapbox">${svg.join('')}${mapShot}${hits}</div></div><figcaption>${esc(draft.mapCaption)}</figcaption></figure>
-<p class="ex-legend">部品を押すと、変更の根拠を右に表示します。</p>
-<p class="ex-legend">実線と「新規」は追加、破線と「変更」は既存への変更、点線の矢印は既存の呼び出しです。矢印の数字は呼び出している行です。${graph.folded.length ? `補助の処理の呼び出し ${graph.folded.length}か所は、矢印にせず呼び出す側の箱の中に書いています。` : ''}${graph.bridges ? '線の交差にある切れ目は、つながらずに通り越すことを示します。' : ''}</p>
-<div class="ex-tally">新しい関数 ${newFunctions} ・ 手を入れた既存の処理 ${modifiedProcessing} ・ 補助の処理 ${foldedPanels || 'なし'} ・ 地図に載らない変更 ${offMap || 'なし'} ・ 割り当てのない差分 ${unassignedHunks}件</div>
-<h2>依頼と判断</h2><p class="ex-request">${esc(request)}</p><table class="ex-interp"><tr><th>補った判断</th><th>確かめ方</th></tr>${draft.interpretations.map(r => `<tr><td>${esc(r.decision)}</td><td>${esc(r.evidence)}</td></tr>`).join('')}</table>
+<p class="ex-fact">${mapQuestion}</p>
+<figure class="ex-mapfig"><div class="ex-mapviewport"><div class="ex-mapbox">${svg.join('')}${mapShot}${hits}</div></div>${legend}<p class="ex-fact">部品を押すと、変更の根拠を右に表示します。</p><figcaption class="ex-ai-text">${esc(draft.mapCaption)}</figcaption></figure>
+<div class="ex-tally">確認 ${(verification.rows ?? []).length}件 ・ 新しい関数 ${newFunctions}件 ・ 手を入れた既存の処理 ${modifiedProcessing}件 ・ 補助の処理 ${graph.helperIds.length}件 ・ 地図に載らない変更 ${draft.offMap.length}件 ・ 割り当てのない差分 ${unassignedHunks}件</div>
+<h2>懸念点 ${draft.concerns.length}件</h2><ol class="ex-points">${concerns}</ol>
+${judgmentsHtml(draft)}<h2>依頼文</h2><p class="ex-request">${esc(request)}</p>
 ${input.requirement ? `<h2>関連する作業</h2><ul>${(input.requirement.tasks ?? []).map(task => `<li>${esc(task.title)}：${esc(task.completionSummary || task.failureSummary || '確認中')}</li>`).join('')}</ul>` : ''}
-${images ? `<h2>画像</h2>${images}` : ''}
-<h2>懸念点</h2><ol class="ex-points">${concerns}</ol>
-${verificationHtml}<details><summary>まだ確かめていないこと ${draft.unverified.length}件</summary><ul>${draft.unverified.map(v => `<li>${esc(v)}</li>`).join('')}</ul></details><script>${script}</script></body></html>`;
+${images ? `<details><summary>画像 ${pictures.length}件</summary>${images}</details>` : ''}
+<details><summary>変更の詳細 ${draft.offMap.length}件</summary>${offMap}</details>
+<details><summary>補助の処理 ${graph.helperIds.length}件</summary>${foldedPanels}</details>
+${verificationHtml}${unverifiedHtml(draft)}<details><summary>差分の全体 ${prepared.hunks.length}件</summary>${prepared.hunks.map(diffHtml).join('')}</details><details><summary>改行コードだけの変更 ${prepared.lineEndingChanges}件</summary><p>${prepared.lineEndingChanges}行です。</p></details><script>${script}</script></body></html>`;
   return { html, drawnEdges: graph.edges.map(e => e.id), foldedEdges: graph.folded.map(e => e.id), unassignedHunks, panelCount: graph.boxes.length + graph.helperIds.length, geometry: graph };
 }
 
@@ -243,6 +285,41 @@ const uniqueImages = items => [...new Map(items.filter(item => typeof item?.path
 const evidenceImages = evidence => uniqueImages([...(evidence.images ?? []), ...(evidence.verification?.rows ?? []).filter(row => row.image).map(row => ({ path: row.image, label: row.label }))]);
 // The images the AI chose come first, captioned in its words; listed evidence follows once.
 const documentImages = (draft, evidence) => uniqueImages([...list(draft.images).map(item => ({ path: item.path, label: item.caption })), ...evidenceImages(evidence)]);
+
+function renderNoMap(prepared, draft, input) {
+  const style = readFileSync(fileURLToPath(new URL('../assets/style.css', import.meta.url)), 'utf8');
+  const script = readFileSync(fileURLToPath(new URL('../assets/document.js', import.meta.url)), 'utf8');
+  const hunks = new Map(prepared.hunks.map(h => [h.id, h]));
+  const budget = { used: 0 };
+  const screenOrder = item => /変更前|before/i.test(item.label ?? '') ? 0 : /変更後|after/i.test(item.label ?? '') ? 1 : 2;
+  const images = documentImages(draft, { images: input.images, verification: input.verification }).sort((a, b) => screenOrder(a) - screenOrder(b)).map(item => {
+    const image = imagePath(input.workspace, item.path, budget);
+    return image.src ? `<figure class="ex-screen-evidence"><button type="button" data-poiesis-image="${esc(image.path)}"><img src="${esc(image.src)}" alt="${esc(item.label ?? item.path)}"></button><figcaption class="ex-ai-text">${esc(item.label ?? item.path)}</figcaption></figure>`
+      : `<p>${esc(image.reason)} ${image.path ? `<button type="button" data-poiesis-image="${esc(image.path)}">${esc(image.path)}</button>` : esc(item.path)}</p>`;
+  });
+  const offMap = draft.offMap.map(item => {
+    const first = hunks.get(item.hunkIds[0]);
+    const source = first ? `${first.file}:${first.start}-${first.start + Math.max(0, first.count - 1)}` : '';
+    const parts = item.hunkIds.map(id => hunks.get(id)).filter(Boolean).map(h => `<div class="ex-diff-head">${esc(h.file)} ${h.start}行</div><pre class="ex-diff">${diffRows(h.lines, h.file)}</pre>`).join('');
+    return `<section class="ex-offmap"><h3>${esc(item.title)}</h3><p class="ex-ai-text">${esc(item.caption)}</p>${parts}${source ? `<a href="#" data-poiesis-citation="${esc(source)}">Code で開く</a>` : ''}</section>`;
+  }).join('');
+  const concerns = draft.concerns.map((c, i) => `<li><span class="ex-concern-label">懸念${i + 1}</span> <span class="ex-ai-text">${esc(c.text)}</span> <span class="ex-fact">${esc(c.file)} ${c.line}行</span> <a href="#" data-poiesis-citation="${esc(`${c.file}:${c.line}-${c.line}`)}">Code で開く</a></li>`).join('');
+  const verification = input.verification ?? { rows: [] };
+  const question = prepared.mapDecision.kind === 'visual' ? visualQuestion : noMapQuestion;
+  const reason = prepared.mapDecision.reason;
+  const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${style}</style></head><body>
+<p class="ex-lead ex-ai-text">${esc(draft.lead)}</p>${taskStateHtml(input)}<p class="ex-fact">${esc(question)}</p><p class="ex-fact">${esc(reason)}</p>${input.changeCaptureError ? `<p class="ex-fact">変更の記録に失敗しました：${esc(input.changeCaptureError)}</p>` : ''}
+<div class="ex-screens">${images.join('')}</div><p class="ex-ai-text">${esc(draft.mapCaption ?? '実際の差分を確認します。')}</p>
+<div class="ex-tally">変更のまとまり ${draft.offMap.length}件 ・ 懸念 ${draft.concerns.length}件 ・ 判断 ${draft.interpretations.length}件 ・ 確認 ${verification.rows?.length ?? 0}件</div>
+<h2>懸念点 ${draft.concerns.length}件</h2><ol class="ex-points">${concerns}</ol>
+${judgmentsHtml(draft)}<h2>依頼文</h2><p class="ex-request">${esc(input.task?.request ?? '')}</p><h2>作業内容</h2><p>${esc((input.task?.status === 'completed' ? input.task?.completionSummary : input.task?.failureSummary) || reason)}</p>
+${input.requirement ? `<h2>関連する作業</h2><ul>${(input.requirement.tasks ?? []).map(task => `<li>${esc(task.title)}：${esc(task.completionSummary || task.failureSummary || '確認中')}</li>`).join('')}</ul>` : ''}
+<h2>変更の詳細 ${draft.offMap.length}件</h2>${offMap}
+<details><summary>確認結果 ${verification.rows?.length ?? 0}件</summary>${verification.summary ? `<p class="ex-ai-text">${esc(verification.summary)}</p>` : ''}<ul>${(verification.rows ?? []).map(row => `<li><strong>${esc(verificationStatus[row.status] ?? '未確認')}</strong> ${esc(row.label)}：${esc(row.detail || '詳細なし')}</li>`).join('')}</ul></details>
+${unverifiedHtml(draft)}<details><summary>差分の全体 ${prepared.hunks.length}件</summary>${prepared.hunks.map(h => `<div class="ex-diff-head">${esc(h.file)} ${h.start}行</div><pre class="ex-diff">${diffRows(h.lines, h.file)}</pre>`).join('')}</details>
+<details><summary>改行コードだけの変更 ${prepared.lineEndingChanges}件</summary><p>${prepared.lineEndingChanges}行です。</p></details><script>${script}</script></body></html>`;
+  return { html, drawnEdges: [], foldedEdges: [], unassignedHunks: 0, panelCount: 0, geometry: { boxes: [], edges: [], columns: [], width: 0, height: 0 } };
+}
 
 const readJson = (name) => {
   const bytes = readFileSync(resolve(process.cwd(), name));
@@ -264,35 +341,7 @@ try {
   else {
     const evidence = { images: input.images, verification: input.verification };
     let result;
-    if (!draft.nodes.length) {
-      const style = readFileSync(fileURLToPath(new URL('../assets/style.css', import.meta.url)), 'utf8');
-      const script = readFileSync(fileURLToPath(new URL('../assets/document.js', import.meta.url)), 'utf8');
-      const state = input.task?.status === 'failed' ? '作業を完了できませんでした。' : input.task?.status === 'cancelled' ? '作業は取り消されました。'
-        : input.changeCaptureError ? '変更の記録が不完全です。'
-        : prepared.hunks.length || input.changedFiles?.length ? '変更はありますが、処理の流れの図に載る部分はありません。' : '変更はありません。';
-      // The agent's own summary stays the work description; the state line is only the fallback.
-      const work = input.task?.status === 'completed' ? input.task?.completionSummary || state : input.task?.failureSummary || state;
-      const hunks = new Map(prepared.hunks.map(hunk => [hunk.id, hunk]));
-      const offMap = draft.offMap.map(item => {
-        const first = hunks.get(item.hunkIds[0]);
-        const source = first ? `${first.file}:${first.start}-${first.start + Math.max(0, first.count - 1)}` : '';
-        const parts = item.hunkIds.map(id => hunks.get(id)).filter(Boolean).map(hunk => `<div class="ex-diff-head">${esc(hunk.file)}</div><pre class="ex-diff">${hunk.lines.map(line => `${line.kind === 'add' ? '+' : '-'} ${esc(line.text)}`).join('\n')}</pre>`).join('');
-        return `<details class="ex-hit-inline"><summary>${esc(item.title)}</summary><div class="ex-panel" role="region"><div class="ex-panel-grip" role="separator" tabindex="0" aria-label="説明欄の幅"></div><h3>${esc(item.title)}</h3><p>${esc(item.caption)}</p>${parts}<p><a href="#" data-poiesis-citation="${esc(source)}">Code で開く</a></p><details class="ex-close"><summary>閉じる</summary></details></div></details>`;
-      }).join('・');
-      const budget = { used: 0 };
-      const images = documentImages(draft, { images: input.images, verification: input.verification }).map(item => {
-        const image = imagePath(input.workspace, item.path, budget);
-        return image.src ? `<figure><button type="button" data-poiesis-image="${esc(image.path)}"><img src="${esc(image.src)}" alt="${esc(item.label ?? item.path)}"></button><figcaption>${esc(item.label ?? item.path)}</figcaption></figure>`
-          : `<p>${esc(image.reason)} ${image.path ? `<button type="button" data-poiesis-image="${esc(image.path)}">${esc(image.path)}</button>` : esc(item.path)}</p>`;
-      }).join('');
-      const concerns = draft.concerns.map(concern => {
-        const hunk = prepared.hunks.find(h => h.file === concern.file && h.lines.some(line => line.kind === 'add' && line.line === concern.line));
-        const nearby = hunk.lines.filter(line => Math.abs(line.line - concern.line) <= 2);
-        return `<li><details class="ex-hit-inline"><summary>${esc(concern.text)}</summary><div class="ex-panel" role="region"><div class="ex-panel-grip" role="separator" tabindex="0" aria-label="説明欄の幅"></div><p>${esc(concern.text)}</p><pre class="ex-diff">${nearby.map(line => `${line.kind === 'add' ? '+' : '-'} ${esc(line.text)}`).join('\n')}</pre><a href="#" data-poiesis-citation="${esc(`${concern.file}:${concern.line}-${concern.line}`)}">Code で開く</a><details class="ex-close"><summary>閉じる</summary></details></div></details></li>`;
-      }).join('');
-      const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${style}</style></head><body><p class="ex-lead">${esc(draft.lead)}</p>${prepared.lineEndingChanges ? `<p>改行コードだけが異なる行が ${prepared.lineEndingChanges} 行ありました。</p>` : ''}<h2>作業内容</h2><p>${esc(work)}</p>${input.changeCaptureError ? `<p>変更の記録に失敗しました：${esc(input.changeCaptureError)}</p>` : ''}${draft.mapCaption ? `<p>${esc(draft.mapCaption)}</p>` : ''}${offMap ? `<h2>変更の詳細</h2><div class="ex-tally">${offMap}</div>` : ''}<h2>依頼と判断</h2><p class="ex-request">${esc(input.task?.request ?? '')}</p><table class="ex-interp"><tr><th>補った判断</th><th>確かめ方</th></tr>${draft.interpretations.map(row => `<tr><td>${esc(row.decision)}</td><td>${esc(row.evidence)}</td></tr>`).join('')}</table>${input.requirement ? `<h2>関連する作業</h2><ul>${(input.requirement.tasks ?? []).map(task => `<li>${esc(task.title)}：${esc(task.completionSummary || task.failureSummary || '確認中')}</li>`).join('')}</ul>` : ''}${images ? `<h2>画像</h2>${images}` : ''}<h2>懸念点</h2><ol class="ex-points">${concerns}</ol><h2>確認結果</h2><p>${esc(input.verification?.summary || '確認結果はありません。')}</p><ul>${(input.verification?.rows ?? []).map(row => `<li><strong>${esc(verificationStatus[row.status] ?? '未確認')}</strong> ${esc(row.label)}：${esc(row.detail || '詳細なし')}</li>`).join('')}</ul><details><summary>まだ確かめていないこと ${draft.unverified.length}件</summary><ul>${draft.unverified.map(value => `<li>${esc(value)}</li>`).join('')}</ul></details><script>${script}</script></body></html>`;
-      result = { html, drawnEdges: [], foldedEdges: [], unassignedHunks: 0, panelCount: 0, geometry: { boxes: [], edges: [], columns: [], width: 0, height: 0 } };
-    } else result = render(prepared, draft, evidence, input.task?.request ?? '', input);
+    result = prepared.mapDecision.kind === 'map' ? render(prepared, draft, evidence, input.task?.request ?? '', input) : renderNoMap(prepared, draft, input);
     const bytes = Buffer.byteLength(result.html, 'utf8');
     if (bytes > 8 * 1024 * 1024) emit({ ok: false, reasons: [`文書が8 MiBを超えました (${bytes} bytes)。画像や本文を減らしてください。`] });
     else {

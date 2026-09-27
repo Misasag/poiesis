@@ -16,7 +16,7 @@ export const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.
 export const segmentHits = (a, b, r, margin = 0) => a.x === b.x
   ? a.x > r.x - margin && a.x < r.x + r.w + margin && Math.max(a.y, b.y) > r.y - margin && Math.min(a.y, b.y) < r.y + r.h + margin
   : a.y === b.y && a.y > r.y - margin && a.y < r.y + r.h + margin && Math.max(a.x, b.x) > r.x - margin && Math.min(a.x, b.x) < r.x + r.w + margin;
-const textWidth = (text, size) => [...text].reduce((w, c) => w + (/[\x20-\x7e]/.test(c) ? size * .60 : size), 0);
+export const textWidth = (text, size) => [...text].reduce((w, c) => w + (/[\x20-\x7e]/.test(c) ? size * .60 : size), 0);
 // Keep quoted strings, function calls and line references together. Overflow is
 // abbreviated on the map; the panel always contains the complete source text.
 export function abbreviate(text, width, size) {
@@ -65,13 +65,15 @@ function arrange(model, { screenImage = false } = {}) {
     const subLines = n.subs.slice(0, 3).map(s => {
       const annotation = n.annotations.find(a => a.text === s);
       if (!annotation || textWidth(s, 11) <= column.w - 20) return abbreviate(s, column.w - 20, 11);
-      const reference = `${annotation.call} ${annotation.line}行`;
+      const reference = `${annotation.line}行`;
       const room = column.w - 20 - textWidth(` ${reference}`, 11);
       return room >= 22 ? `${abbreviate(annotation.title, room, 11)} ${reference}` : abbreviate(reference, column.w - 20, 11);
     });
     if (n.subs.length > 3) subLines[2] = 'ほかの呼び出しは中身に表示';
     const textHeight = 18 + titleLines.length * 19 + subLines.length * 15 + 10;
-    return { ...n, ...column, title: n.title, titleLines, subLines, h: Math.max(62, textHeight) + (n.kind === 'screen' && screenImage ? 90 : 0), y: 34 };
+    const badgeStart = Math.max(62, textHeight);
+    return { ...n, ...column, title: n.title, titleLines, subLines, badgeStart,
+      h: badgeStart + (n.badgeCount ?? 0) * 17 + (n.kind === 'screen' && screenImage ? 90 : 0), y: 34 };
   });
   const byId = new Map(boxes.map(b => [b.id, b]));
   const processing = orderProcessing(boxes.filter(b => b.layer === 1), model.edges);
@@ -171,7 +173,7 @@ export function route(start, end, boxes, occupied, height, detour = false) {
   return path.filter((p, i) => !i || i === path.length - 1 || !(path[i - 1].x === p.x && p.x === path[i + 1].x) && !(path[i - 1].y === p.y && p.y === path[i + 1].y));
 }
 function placeLabel(edge, boxes, labels, allSegments, height) {
-  const w = Math.ceil(textWidth(edge.text, 12) + 10), h = 18, candidates = [];
+  const w = Math.ceil(Math.max(textWidth(edge.text, 12), textWidth(`${edge.line}行`, 9)) + 10), h = 29, candidates = [];
   for (const [a, b] of segments(edge.points)) {
     const length = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
     for (let offset = 4; offset <= length - 4; offset += 4) {

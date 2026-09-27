@@ -20,30 +20,36 @@ export function reduceGraph(selected, edges) {
     // Top-level entries own the selected statements, never the whole script.
     if (n.symbol === 'page load') ranges.splice(0, ranges.length, ...outgoing(n.id).map(e => ({ id: n.id, file: e.file, line: e.line, end: e.line })));
     const source = member ?? n;
-    const sub = source.kind === 'function' ? `${source.symbol}() ${source.line}-${source.end}行`
+    const sub = source.kind === 'function' ? `${source.line}-${source.end}行`
       : n.symbol === 'page load' ? `${ranges.map(r => r.line).join('・')}行`
-      : n.kind === 'storage' ? [n.symbol.replace(/^localStorage /, ''), `${n.line}行`]
-      : `${n.sourceLabel ?? n.symbol} ${n.line}${n.end > n.line ? `-${n.end}` : ''}行`;
+      : n.kind === 'storage' ? `${n.line}行`
+      : `${n.line}${n.end > n.line ? `-${n.end}` : ''}行`;
     const status = n.symbol === 'page load' && outgoing(n.id).some(e => e.status === 'new')
       ? outgoing(n.id).every(e => e.status === 'new') ? 'new' : 'modified' : n.status;
     return { ...n, status, title: member?.title ?? n.title, caption: member ? `${n.caption}${member.caption}` : n.caption,
-      members: member ? [n.id, member.id] : [n.id], ranges, subs: Array.isArray(sub) ? sub : [sub], annotations: [] };
+      members: member ? [n.id, member.id] : [n.id], ranges, subs: Array.isArray(sub) ? sub : [sub], annotations: [],
+      badgeCount: (n.badgeCount ?? 0) + (member?.badgeCount ?? 0) };
   });
   const visibleById = new Map(visible.map(n => [n.id, n]));
   const drawn = [];
+  const foldedBadgeSources = new Set();
   for (const edge of edges) {
     if (folded.some(e => e.id === edge.id)) continue;
     const from = representative.get(edge.from), to = representative.get(edge.to);
     if (helperIds.has(edge.to) || merged.has(edge.to)) {
       const target = byId.get(edge.to), owner = visibleById.get(from);
       if (!owner) throw new Error('補助の呼び出しを呼ぶ側へ畳めません。');
-      const text = `${helperIds.has(edge.to) ? `${target.title} ` : ''}${edge.call ?? `${target.symbol}()`} ${edge.line}行`;
+      if (helperIds.has(target.id) && target.badgeCount && !foldedBadgeSources.has(target.id)) {
+        owner.badgeCount += target.badgeCount;
+        foldedBadgeSources.add(target.id);
+      }
+      const text = `${target.title} ${edge.line}行`;
       owner.annotations.push({ edge: edge.id, node: target.id, text, title: helperIds.has(edge.to) ? target.title : '', call: edge.call ?? `${target.symbol}()`, line: edge.line }); owner.subs.push(text);
       folded.push({ ...edge, owner: from, reason: helperIds.has(edge.to) ? 'helper' : 'entry-call' });
     } else {
-      const prefix = { read: '読み出し ', write: '書き込み ', display: '表示 ', call: '' }[edge.access];
+      const prefix = { read: '読む', write: '書く', display: '表示', call: '呼ぶ', trigger: 'きっかけ' }[edge.access];
       if (prefix === undefined) throw new Error('矢印の読み書きの種類を準備し直してください。');
-      drawn.push({ ...edge, originalFrom: edge.from, originalTo: edge.to, from, to, text: `${prefix}${edge.line}` });
+      drawn.push({ ...edge, originalFrom: edge.from, originalTo: edge.to, from, to, text: prefix });
     }
   }
   for (const n of visible) {

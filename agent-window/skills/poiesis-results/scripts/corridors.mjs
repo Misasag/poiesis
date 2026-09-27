@@ -14,7 +14,7 @@ export function corridorRoutes(boxes, edges, columns, baseHeight) {
     const a = { x: from.x + from.w / 2, y: from.y + from.h }, b = { x: to.x + to.w / 2, y: to.y };
     if (from.layer === to.layer && b.y > a.y && !boxes.some(r => hits(a, b, r))
       && !direct.some(e => e.points[0].x === a.x && Math.min(e.points[1].y, b.y) > Math.max(e.points[0].y, a.y))) {
-      direct.push({ ...edge, points: [a, b], label: { x: a.x + 5, y: (a.y + b.y) / 2 - 9, w: edge.text.length * 8 + 12, h: 18 } });
+      direct.push({ ...edge, points: [a, b], label: { x: a.x + 5, y: (a.y + b.y) / 2 - 15, w: Math.max(edge.text.length * 8 + 12, String(edge.line).length * 6 + 16), h: 29 } });
     } else pending.push(edge);
   }
   const port = (edge, side) => {
@@ -40,10 +40,10 @@ export function corridorRoutes(boxes, edges, columns, baseHeight) {
     const sx = tracks.get(`${edge.id}:out`), tx = tracks.get(`${edge.id}:in`), turn = tracks.get(`${edge.id}:turn`);
     const y = baseHeight + 28 + i * 54, left = tracks.get(`${edge.id}:left`);
     const box = byId.get(left ? edge.from : edge.to);
-    const w = Math.min(box.w - 20, [...edge.text].reduce((n, c) => n + (c.charCodeAt(0) < 128 ? 7.2 : 12), 10));
+    const w = Math.min(box.w - 20, Math.max([...edge.text].reduce((n, c) => n + (c.charCodeAt(0) < 128 ? 7.2 : 12), 10), String(edge.line).length * 6 + 16));
     return { ...edge, points: clean([from, { x: sx, y: from.y }, { x: sx, y }, { x: turn, y },
       { x: turn, y: y + 24 }, { x: tx, y: y + 24 }, { x: tx, y: to.y }, to]),
-      label: { x: box.x + (box.w - w) / 2, y: left ? y - 21 : y + 3, w, h: 18 } };
+      label: { x: box.x + (box.w - w) / 2, y: left ? y - 32 : y + 3, w, h: 29 } };
   });
   const all = [...direct, ...routed];
   // The geometry carries exactly the painted segments so QA can verify gaps,

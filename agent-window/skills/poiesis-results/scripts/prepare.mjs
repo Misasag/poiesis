@@ -20,6 +20,8 @@ function parseDiff(diff) {
   const hunks = [], added = new Map(), deleted = new Map();
   let file, oldFile, current, oldLine, newLine, oldRemaining = 0, newRemaining = 0;
   for (const line of diff.split('\n')) {
+    // A file or hunk header can never be a hunk line; a miscounted hunk ends there instead of absorbing it.
+    if (line.startsWith('diff --git ') || line.startsWith('@@ ')) oldRemaining = newRemaining = 0;
     if (current && (oldRemaining || newRemaining)) {
       if (line[0] === '+' && newRemaining) {
         current.lines.push({ kind: 'add', line: newLine, text: line.slice(1) });
@@ -124,6 +126,7 @@ function analyzeFile(file, source, changed, deleted, nodes, edges) {
       return additions + removals === 0 ? 'existing' : additions === b - a + 1 && removals === 0 ? 'new' : 'modified';
     };
     const functions = new Map(), functionNodes = new Set(), elements = new Map(), handlers = new Set();
+    const deferred = [];
     const register = (name, fn, boundary = fn, ancestors = [], owner = '') => {
       if (!name || functionNodes.has(fn)) return;
       let id = `n-${hash(`${file}\0function\0${lineOf(boundary)}\0${boundary.start}`)}`;
@@ -151,11 +154,25 @@ function analyzeFile(file, source, changed, deleted, nodes, edges) {
       }
       if (n.type === 'VariableDeclarator' && n.id?.type === 'Identifier' && n.init?.type === 'CallExpression' && src(n.init.callee) === 'document.getElementById' && typeof n.init.arguments[0]?.value === 'string')
         elements.set(n.id.name, n.init.arguments[0].value);
-      // Event and timer handlers run later as their own entries, not as part of the code that registers them.
+      // Deferred callbacks form a separate processing unit. Synchronous callbacks remain in their owner.
       if (n.type === 'CallExpression') {
         const callee = src(n.callee);
         if (/(?:^|\.)addEventListener$/.test(callee) && n.arguments[1]) handlers.add(n.arguments[1]);
-        if (/(?:^|\.)setInterval$/.test(callee) && n.arguments[0]) handlers.add(n.arguments[0]);
+        const delayed = /(?:^|\.)(?:setTimeout|setInterval|requestAnimationFrame|requestIdleCallback|queueMicrotask)$/.test(callee)
+          || /\.(?:then|catch|finally)$/.test(callee);
+        if (delayed && n.arguments[0]) {
+          const callback = n.arguments[0];
+          if (/FunctionExpression|ArrowFunctionExpression/.test(callback.type) && !functionNodes.has(callback)) {
+            handlers.add(callback);
+            deferred.push({ call: n, callback, api: callee.split('.').at(-1), delay: n.arguments[1] && /^(?:setTimeout|setInterval)$/.test(callee) ? safeSnippet(src(n.arguments[1])) : '' });
+          }
+        }
+      }
+      if (n.type === 'NewExpression' && /^(?:MutationObserver|ResizeObserver|IntersectionObserver)$/.test(src(n.callee)) && n.arguments[0]) {
+        const callback = n.arguments[0];
+        if (/FunctionExpression|ArrowFunctionExpression/.test(callback.type) && !functionNodes.has(callback)) {
+          handlers.add(callback); deferred.push({ call: n, callback, api: src(n.callee), delay: '' });
+        }
       }
       if (n.type === 'AssignmentExpression' && n.left?.type === 'MemberExpression' && /^on[a-z]+$/i.test(src(n.left.property))) handlers.add(n.right);
     });
@@ -168,7 +185,7 @@ function analyzeFile(file, source, changed, deleted, nodes, edges) {
     const addEdge = (from, to, n, access = 'call') => {
       if (!from || !to) return;
       const line = lineOf(n);
-      const id = `e-${hash(`${from.id}\0${to.id}\0${file}\0${line}`)}`;
+      const id = `e-${hash(`${from.id}\0${to.id}\0${file}\0${line}${access === 'trigger' ? '\0trigger' : ''}`)}`;
       if (!edges.some(e => e.id === id)) edges.push({ id, from: from.id, to: to.id, file, line, access,
         ...(access === 'call' ? { call: safeSnippet(src(n)).replace(/\s+/g, ' ') } : {}), status: changed.has(line) ? 'new' : 'existing' });
     };
@@ -179,6 +196,13 @@ function analyzeFile(file, source, changed, deleted, nodes, edges) {
       const visible = matches.filter(item => item.scope.end - item.scope.start === narrowest);
       return visible.length === 1 ? visible[0].part : undefined;
     };
+    const deferredOwners = new Map();
+    for (const { call, callback, api, delay } of deferred) {
+      const symbol = `${api}${delay ? ` ${delay}ms` : ''} の処理`;
+      const part = addNode('function', symbol, lineOf(callback), endOf(callback));
+      part.deferred = true;
+      deferredOwners.set(callback, part);
+    }
     const scan = (owner, body) => walk(body, (n, ancestors) => {
       // Named functions are parts and handlers are entries; both are scanned on their own. An anonymous
       // callback (forEach, then, setTimeout, an immediately invoked function) belongs to the code around it.
@@ -186,23 +210,35 @@ function analyzeFile(file, source, changed, deleted, nodes, edges) {
       if (n.type === 'CallExpression') {
         const callee = src(n.callee);
         const target = resolveCall(callee, n);
-        if (target) addEdge(owner, target, n);
+        if (target && !/(?:^|\.)(?:setTimeout|setInterval|requestAnimationFrame|requestIdleCallback|queueMicrotask)$/.test(callee)) addEdge(owner, target, n);
         if (/\blocalStorage\.(getItem|setItem)$/.test(callee)) addEdge(owner, addNode('storage', `localStorage ${n.arguments[0] ? safeSnippet(src(n.arguments[0])) : ''}`, lineOf(n)), n, callee.endsWith('.getItem') ? 'read' : 'write');
-        const event = /(?:^|\.)addEventListener$/.test(callee), timer = /(?:^|\.)setInterval$/.test(callee);
-        if (event || timer) {
-          const handler = n.arguments[event ? 1 : 0];
+        const event = /(?:^|\.)addEventListener$/.test(callee);
+        if (event) {
+          const handler = n.arguments[1];
           if (!handler) return;
-          const symbol = event ? `${src(n.callee.object)} ${n.arguments[0] ? src(n.arguments[0]) : ''}` : `setInterval ${n.arguments[1] ? src(n.arguments[1]) : ''}ms`;
+          const symbol = `${src(n.callee.object)} ${n.arguments[0] ? src(n.arguments[0]) : ''}`;
           const entry = addNode('entry', symbol, lineOf(n), endOf(n));
-          entry.sourceLabel = event && typeof n.arguments[0]?.value === 'string' ? n.arguments[0].value : timer ? 'setInterval' : symbol;
+          entry.sourceLabel = typeof n.arguments[0]?.value === 'string' ? n.arguments[0].value : symbol;
           if (handler.type === 'Identifier') {
             const target = resolveCall(handler.name, n);
-            addEdge(entry, target, n);
+            addEdge(entry, target, n, 'trigger');
             const edge = edges.find(e => e.from === entry.id && e.to === target?.id);
             if (edge) edge.call = `${handler.name}()`;
           }
           else if (handler.body) scan(entry, handler.body);
         }
+        const delayed = /(?:^|\.)(?:setTimeout|setInterval|requestAnimationFrame|requestIdleCallback|queueMicrotask)$/.test(callee)
+          || /\.(?:then|catch|finally)$/.test(callee);
+        if (delayed && n.arguments[0]) {
+          const callback = n.arguments[0];
+          const target = deferredOwners.get(callback) ?? (callback.type === 'Identifier' ? resolveCall(callback.name, n) : undefined);
+          if (target) addEdge(owner, target, n, 'trigger');
+        }
+      }
+      if (n.type === 'NewExpression' && /^(?:MutationObserver|ResizeObserver|IntersectionObserver)$/.test(src(n.callee))) {
+        const callback = n.arguments[0];
+        const target = deferredOwners.get(callback) ?? (callback?.type === 'Identifier' ? resolveCall(callback.name, n) : undefined);
+        if (target) addEdge(owner, target, n, 'trigger');
       }
       if (n.type === 'AssignmentExpression' && n.left?.type === 'MemberExpression' && /^on[a-z]+$/i.test(src(n.left.property))) {
         const handler = n.right;
@@ -217,6 +253,7 @@ function analyzeFile(file, source, changed, deleted, nodes, edges) {
       }
     });
     for (const entries of functions.values()) for (const { ast: fn, part } of entries) scan(part, fn.body);
+    for (const [callback, part] of deferredOwners) scan(part, callback.body);
     const page = addNode('entry', 'page load', offset + 1);
     scan(page, ast);
   }
@@ -232,6 +269,7 @@ try {
   if (typeof diff !== 'string') throw new Error('差分が必要です。');
   const { hunks, added, deleted, lineEndingChanges } = parseDiff(diff);
   const nodes = [], edges = [], skipped = [];
+  let scriptTouched = false;
   for (const file of [...new Set(hunks.map(h => h.file))]) {
     if (!/\.(?:js|mjs|cjs|ts|mts|cts|jsx|tsx|html)$/i.test(file)) { skipped.push(file); continue; }
     const full = resolve(workspace, file), rel = relative(workspace, full);
@@ -239,6 +277,11 @@ try {
     const actual = realpathSync(full), root = realpathSync(workspace), realRel = relative(root, actual);
     if (!realRel || realRel.startsWith('..') || isAbsolute(realRel)) { skipped.push(file); continue; }
     const source = readFileSync(full, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+    if (/\.html?$/i.test(file)) for (const match of source.matchAll(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi)) {
+      const start = source.slice(0, match.index).split('\n').length;
+      const end = start + match[0].split('\n').length - 1;
+      if ([...(added.get(file) ?? []), ...(deleted.get(file) ?? [])].some(line => line >= start && line <= end)) scriptTouched = true;
+    }
     if (!analyzeFile(file, source, added.get(file) ?? new Set(), deleted.get(file) ?? new Set(), nodes, edges)) skipped.push(file);
   }
   const byId = new Map(nodes.map(n => [n.id, n]));
@@ -263,6 +306,8 @@ try {
     }
     for (const path of paths) for (const id of path) keepEdges.add(id);
   }
+  const initialIds = new Set(edges.filter(e => keepEdges.has(e.id)).flatMap(e => [e.from, e.to]));
+  for (const edge of edges) if (edge.access === 'trigger' && initialIds.has(edge.to)) keepEdges.add(edge.id);
   const selectedEdges = edges.filter(e => keepEdges.has(e.id));
   const selectedIds = new Set(selectedEdges.flatMap(e => [e.from, e.to]));
   // Classify against the full syntax graph, before pruning candidates or AI selection.
@@ -271,10 +316,26 @@ try {
     node.helper = node.kind === 'function' && out.length === 0;
     node.outgoing = out.map(e => e.id);
   }
-  const map = { nodes: nodes.filter(n => selectedIds.has(n.id) || (n.status !== 'existing' && n.kind !== 'function' && n.kind !== 'entry')), edges: selectedEdges };
+  const map = { nodes: nodes.filter(n => selectedIds.has(n.id) || (n.status !== 'existing' && n.kind !== 'entry')), edges: selectedEdges };
+  const changedFunctions = nodes.filter(n => n.kind === 'function' && n.status !== 'existing' &&
+    [...(added.get(n.file) ?? []), ...(deleted.get(n.file) ?? [])].some(line => line >= n.line && line <= n.end));
+  const changedFiles = new Set(hunks.map(h => h.file));
+  const unparsed = skipped.some(file => !/\.(?:css|md|txt|json|svg|png|jpe?g|gif|webp)$/i.test(file));
+  const visualOnly = hunks.length > 0 && [...changedFiles].every(file => /\.(?:css|html?|md|txt)$/i.test(file))
+    && changedFunctions.length === 0 && !scriptTouched && !unparsed;
+  const captureError = Boolean(input.changeCaptureError);
+  const deletionOnly = hunks.length > 0 && !hunks.some(h => h.lines.some(l => l.kind === 'add'));
+  const reportedChange = hunks.length > 0 || lineEndingChanges > 0 || input.changedFiles?.length > 0;
+  const mapDecision = captureError ? { kind: 'none', reason: '変更の記録に失敗したため、処理の地図は出しません。' }
+    : deletionOnly ? { kind: 'none', reason: '削除だけの変更なので、処理の地図は出しません。' }
+    : changedFunctions.length >= 2 ? { kind: 'map', reason: '変更は2つ以上の処理にまたがります。' }
+    : visualOnly ? { kind: 'visual', reason: '見た目だけの変更なので、処理の地図は出しません。' }
+    : unparsed ? { kind: 'none', reason: '解析できない変更を含むため、処理の地図は出しません。' }
+    : changedFunctions.length === 1 ? { kind: 'none', reason: '変更は1つの関数の中だけなので、処理の地図は出しません。' }
+    : { kind: 'none', reason: reportedChange ? '処理の単位を取り出せなかったため、処理の地図は出しません。' : '変更はありません。' };
   const brief = { nodes: map.nodes.map(({ id, kind, symbol, file, line, end, status }) => ({ id, kind, symbol, file, line, end, status })), edges: map.edges, hunks: hunks.map(({ id, file, start, count, lines }) => ({ id, file, start, count, excerpt: lines.slice(0, 3).map(l => l.text) })), lineEndingChanges };
   const briefing = JSON.stringify(brief);
-  const result = { ok: true, workspace, map, hunks, skipped, lineEndingChanges, aiMaterial: briefing };
+  const result = { ok: true, workspace, map, mapDecision, hunks, skipped, lineEndingChanges, aiMaterial: briefing };
   writeFileSync(resolve(process.cwd(), 'prepared.json'), JSON.stringify(result, null, 2) + '\n', 'utf8');
   output({ ok: true, prepared: 'prepared.json', candidates: map.nodes.length, arrows: map.edges.length, hunks: hunks.length, skipped: skipped.length });
 } catch (error) { output({ ok: false, reasons: [`準備に失敗しました: ${error.message}`] }); process.exitCode = 1; }
