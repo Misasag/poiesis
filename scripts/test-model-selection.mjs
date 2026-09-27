@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const require = createRequire(import.meta.url);
 const {
     beginCustomModelDraft,
+    effectiveProviderFilter,
     filterModelPickerProviders,
     modelEffortIsUnsupported,
     openRouterModelLabel,
@@ -118,6 +119,38 @@ assert.deepEqual(filterModelPickerProviders(pickerProviders, 'all', 'GLM-5.3')
 assert.deepEqual(filterModelPickerProviders(pickerProviders, 'ChatGPT（pi 経由）', 'glm-5.3'), []);
 assert.deepEqual(filterModelPickerProviders(pickerProviders, 'OpenRouter', 'kimi k3')
     .flatMap(group => group.choices.map(choice => choice.id)), ['openrouter/moonshotai/kimi-k3']);
+for (const name of ['claude', 'codex', 'grok', 'pi 経由']) {
+    const matching = pickerProviders.filter(provider => provider.name.toLocaleLowerCase().includes(name));
+    const result = filterModelPickerProviders(pickerProviders, 'all', name);
+    for (const provider of matching) {
+        assert.deepEqual(result.find(group => group.name === provider.name)?.choices.map(choice => choice.id),
+            provider.choices.map(choice => choice.id),
+            `Searching for ${name} must include every model in the matching provider ${provider.name}.`);
+    }
+}
+assert.deepEqual(filterModelPickerProviders(pickerProviders, 'all', 'no-such-provider-or-model'), [],
+    'An unmatched provider and model query must show no groups.');
+assert.deepEqual(filterModelPickerProviders(pickerProviders, 'Claude', 'codex'), [],
+    'A provider chip and a provider-name query must both match.');
+assert.deepEqual(filterModelPickerProviders(pickerProviders, 'Claude', 'claude')
+    .flatMap(provider => provider.choices.map(choice => choice.id)),
+pickerProviders.find(provider => provider.name === 'Claude').choices.map(choice => choice.id),
+'A matching chip and provider-name query must include every model in that provider.');
+const expandedPiProviders = modelPickerProviders('ready', pickerReport, {
+    pi: { providerId: 'pi', source: 'live', models: Array.from({ length: 12 }, (_, index) => ({
+        id: `vendor${index}/model`, label: `model ${index}`, piProvider: `vendor${index}`
+    })) }
+}, 'agent', 'pi', '');
+assert(expandedPiProviders.length > pickerProviders.length,
+    'New pi providers must produce selectable groups without a fixed provider count.');
+assert.equal(effectiveProviderFilter(expandedPiProviders, 'vendor11（pi 経由）'), 'vendor11（pi 経由）',
+    'A provider filter that is still listed must stay selected.');
+assert.equal(effectiveProviderFilter(pickerProviders, 'vendor11（pi 経由）'), 'all',
+    'A provider filter that disappeared while the picker was open must fall back to all providers.');
+assert.equal(effectiveProviderFilter(pickerProviders, 'all'), 'all');
+assert.deepEqual(filterModelPickerProviders(expandedPiProviders, 'vendor11（pi 経由）', 'vendor11')
+    .flatMap(provider => provider.choices.map(choice => choice.id)), ['vendor11/model'],
+    'The provider selector and search must compose for a provider added later.');
 const customSelection = { providerId: 'codex', model: 'private-preview-model', effort: 'max' };
 const providers = modelPickerProviders(
     'ready', report, catalogs, 'agent', customSelection.providerId, customSelection.model

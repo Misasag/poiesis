@@ -105,7 +105,107 @@ try {
         'Opening Questions did not focus the input.');
     stage = 'question-ai-picker';
     await page.waitForSelector('.poiesis-results__question-panel .poiesis-model-picker__trigger[aria-label="質問の AI のモデル"]');
+    await page.evaluate(async () => {
+        const container = window.theia.container;
+        const key = [...container._bindingDictionary._map.keys()]
+            .find(candidate => typeof candidate === 'function' && candidate.name === 'AgentWindowWidget');
+        const widget = container.get(key);
+        await widget.waitForCurrentCliDetection();
+        window.__questionPickerOriginal = {
+            report: widget.state.cliDetectionReport,
+            catalogs: widget.state.modelCatalogs
+        };
+        widget.state.cliDetectionReport = {
+            ...widget.state.cliDetectionReport,
+            detections: widget.state.cliDetectionReport.detections.map(detection =>
+                ['claude', 'grok', 'pi'].includes(detection.id)
+                    ? { ...detection, status: 'found', path: `poiesis-test://${detection.id}` }
+                    : detection)
+        };
+        widget.state.modelCatalogs = {
+            ...widget.state.modelCatalogs,
+            pi: { providerId: 'pi', source: 'live', models: [
+                { id: 'openrouter/z-ai/glm-5.3', label: 'z-ai/glm-5.3', piProvider: 'openrouter' },
+                { id: 'openai-codex/gpt-6-luna', label: 'gpt-6-luna', piProvider: 'openai-codex' }
+            ] }
+        };
+        widget.update();
+    });
     await page.click('.poiesis-results__question-panel .poiesis-model-picker__trigger');
+    const picker = '.poiesis-model-picker__popover';
+    const radio = `${picker} .poiesis-model-picker__filters [role="radio"]`;
+    await page.waitForSelector(`${picker} .poiesis-model-picker__filters[role="radiogroup"]`);
+    const providerNames = await page.$$eval(radio, buttons => buttons.map(button => button.textContent.trim()));
+    assert(providerNames.length === 6, `The six-provider fixture must render six radio chips: ${providerNames}`);
+    // Count the rows of the chips actually drawn, not a copy built with the same assumptions as the picker.
+    const sixProviderRows = await page.$eval(`${picker} .poiesis-model-picker__filters`, filters => ({
+        measuring: filters.classList.contains('measuring'),
+        rows: new Set([...filters.querySelectorAll('button')].map(button => Math.round(button.getBoundingClientRect().top))).size
+    }));
+    assert(!sixProviderRows.measuring && sixProviderRows.rows <= 2,
+        `The six current provider chips must stay visible in at most two rows at the normal picker width: ${JSON.stringify(sixProviderRows)}`);
+    assert(await page.$eval(`${picker} .poiesis-model-picker__filters`, group => group.getAttribute('aria-label')) === 'AIで絞り込む',
+        'The provider radio group must have its accessible name.');
+    assert(await page.$$eval(radio, buttons => buttons.filter(button => button.tabIndex === 0).length) === 1,
+        'Only one provider radio may be in the Tab order.');
+    await page.keyboard.press('Tab');
+    assert(await page.evaluate(() => document.activeElement?.matches('.poiesis-model-picker__filters [role="radio"][aria-checked="true"]')),
+        'Tab from search must focus the selected provider radio.');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(expected => document.querySelector('.poiesis-model-picker__filters [role="radio"][aria-checked="true"]')?.textContent?.trim() === expected,
+        {}, providerNames[1]);
+    assert(await page.evaluate(() => document.activeElement?.matches('.poiesis-model-picker__filters [role="radio"][aria-checked="true"].active')),
+        'ArrowRight must move focus, selection, and active styling together.');
+    assert(await page.$$eval(`${picker} .poiesis-model-picker__group span`, groups => groups.map(group => group.textContent.trim()).join('|')) === providerNames[1],
+        'ArrowRight must filter the model list to the chosen provider.');
+    await page.keyboard.press('ArrowDown');
+    await page.waitForFunction(expected => document.querySelector('.poiesis-model-picker__filters [role="radio"][aria-checked="true"]')?.textContent?.trim() === expected,
+        {}, providerNames[2]);
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    assert(await page.$eval(`${picker} .poiesis-model-picker__filters [role="radio"][aria-checked="true"]`, button => button.textContent.trim())
+        === providerNames.at(-1), 'ArrowUp from the first radio must wrap to the last.');
+    await page.keyboard.press('Tab');
+    assert(!await page.evaluate(() => document.activeElement?.matches('.poiesis-model-picker__filters [role="radio"]')),
+        'Tab must leave the provider radio group after one stop.');
+    await page.keyboard.down('Shift');
+    await page.keyboard.press('Tab');
+    await page.keyboard.up('Shift');
+    assert(await page.evaluate(() => document.activeElement?.matches('.poiesis-model-picker__filters [role="radio"][aria-checked="true"]')),
+        'Shift+Tab must return to the selected radio.');
+    await page.evaluate(() => document.querySelectorAll('.poiesis-model-picker__filters [role="radio"]')[0].focus());
+    await page.keyboard.press('Space');
+    assert(await page.$eval(`${picker} .poiesis-model-picker__filters [role="radio"][aria-checked="true"]`, button => button.textContent.trim())
+        === 'すべて', 'Space must select a focused radio that was not selected.');
+    await page.click(`${picker} .poiesis-model-picker__search input`);
+    const searchProvider = providerNames.includes('OpenRouter') ? 'OpenRouter' : providerNames[1];
+    await page.type(`${picker} .poiesis-model-picker__search input`, searchProvider);
+    await page.waitForFunction(expected => [...document.querySelectorAll('.poiesis-model-picker__group span')]
+        .some(group => group.textContent.trim() === expected), {}, searchProvider);
+    assert(await page.$$eval(`${picker} .poiesis-model-picker__group span`, groups => groups.map(group => group.textContent.trim()).join('|')) === searchProvider,
+        'Searching by provider name must show its models.');
+    await page.$eval(`${picker} .poiesis-model-picker__search input`, input => { input.focus(); input.select(); });
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(() => document.querySelector('.poiesis-model-picker__search input')?.value === '');
+    await page.$eval(`${picker} .poiesis-model-picker__filters [role="radio"][aria-checked="true"]`, button => button.focus());
+    await page.setViewport({ width: 240, height: 720, deviceScaleFactor: 1 });
+    await page.waitForSelector(`${picker} .poiesis-model-picker__provider-select .poiesis-select__trigger`, { visible: true });
+    await page.waitForFunction(() => document.activeElement?.matches('.poiesis-model-picker__provider-select .poiesis-select__trigger'));
+    assert(await page.$eval(`${picker} .poiesis-model-picker__filters`, group => group.getAttribute('aria-hidden')) === 'true',
+        'The radio row must leave accessibility and Tab order when a third line is needed.');
+    await page.click(`${picker} .poiesis-model-picker__provider-select .poiesis-select__trigger`);
+    await page.waitForSelector(`.poiesis-model-picker__nested-select .poiesis-select__option[data-value="${providerNames[1]}"]`);
+    await page.click(`.poiesis-model-picker__nested-select .poiesis-select__option[data-value="${providerNames[1]}"]`);
+    await page.waitForFunction(expected => document.querySelector('.poiesis-model-picker__provider-select')?.getAttribute('data-value') === expected,
+        { timeout: 5000 }, providerNames[1]);
+    assert(await page.$$eval(`${picker} .poiesis-model-picker__group span`, groups => groups.map(group => group.textContent.trim()).join('|')) === providerNames[1],
+        'The provider select must filter the model list.');
+    await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
+    await page.waitForFunction(() => !document.querySelector('.poiesis-model-picker__provider-select'));
+    await page.waitForFunction(() => document.activeElement?.matches('.poiesis-model-picker__filters [role="radio"][aria-checked="true"]'));
+    assert(await page.$eval(`${picker} .poiesis-model-picker__filters [role="radio"][aria-checked="true"]`, button => button.textContent.trim())
+        === providerNames[1], 'Returning to two lines must restore the radios without losing selection.');
     await page.waitForSelector('.poiesis-model-picker__option[data-provider="codex"][data-model="gpt-6-astra"]', { visible: true });
     await page.click('.poiesis-model-picker__option[data-provider="codex"][data-model="gpt-6-astra"]');
     await page.waitForFunction(() => {
@@ -117,6 +217,150 @@ try {
     });
     assert(await page.$eval('.poiesis-results__question-panel .poiesis-model-picker', element => element.dataset.model)
         === 'gpt-6-astra', 'The question badge must display the question model after selection.');
+    // The picker renders in a portal under body. In the light theme its text once fell to 1.2-3.2:1 because
+    // the light color variables did not reach it; every visible text in the list and the custom form must read.
+    const setTheme = mode => page.evaluate(value => {
+        const container = window.theia.container;
+        const key = [...container._bindingDictionary._map.keys()]
+            .find(candidate => typeof candidate === 'function' && candidate.name === 'AgentWindowWidget');
+        const themes = container.get(key).themePreferenceService;
+        const previous = themes.preference;
+        themes.setPreference(value);
+        return previous;
+    }, mode);
+    const lowContrastText = () => page.evaluate(() => {
+        const parse = value => {
+            const [r, g, b, a = 1] = (value.match(/[\d.]+/g) ?? ['0', '0', '0']).map(Number);
+            return { r, g, b, a };
+        };
+        const luminance = ({ r, g, b }) => [r, g, b].map(v => v / 255)
+            .map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
+            .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+        const background = element => {
+            for (let node = element; node; node = node.parentElement) {
+                const color = parse(getComputedStyle(node).backgroundColor);
+                if (color.a > .5) return color;
+            }
+            return { r: 255, g: 255, b: 255, a: 1 };
+        };
+        const popover = document.querySelector('.poiesis-model-picker__popover');
+        return [...popover.querySelectorAll('*')].filter(element => [...element.childNodes]
+            .some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim())
+            && element.getBoundingClientRect().width > 0 && getComputedStyle(element).visibility !== 'hidden')
+            .map(element => {
+                const text = parse(getComputedStyle(element).color), back = background(element);
+                const shown = { r: text.r * text.a + back.r * (1 - text.a), g: text.g * text.a + back.g * (1 - text.a),
+                    b: text.b * text.a + back.b * (1 - text.a) };
+                const [light, dark] = [luminance(shown), luminance(back)].sort((a, b) => b - a);
+                return { text: element.textContent.trim().slice(0, 20), ratio: (light + .05) / (dark + .05) };
+            })
+            .filter(item => item.ratio < 4.5);
+    });
+    const waitForDocumentTheme = async mode => {
+        const rebuiltBy = Date.now() + 10_000;
+        for (;;) {
+            frame = await resultsFrame(page);
+            if (await frame.evaluate(() => document.documentElement.dataset.theme).catch(() => undefined) === mode) return;
+            assert(Date.now() < rebuiltBy, `The Results document did not change to the ${mode} theme.`);
+            await new Promise(done => setTimeout(done, 100));
+        }
+    };
+    const previousTheme = await setTheme('light');
+    await page.waitForFunction(() => document.documentElement.dataset.poiesisColorMode === 'light');
+    await waitForDocumentTheme('light');
+    await page.click('.poiesis-results__question-panel .poiesis-model-picker__trigger');
+    await page.waitForSelector(`${picker} .poiesis-model-picker__filters [role="radio"]`, { visible: true });
+    const lightListIssues = await lowContrastText();
+    await page.click(`${picker} .poiesis-model-picker__custom-entry`);
+    await page.waitForSelector(`${picker} .poiesis-model-picker__custom-actions button`);
+    const lightCustomIssues = await lowContrastText();
+    await page.keyboard.press('Escape');
+    if (await page.$(picker)) await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-model-picker__popover'));
+    await setTheme(previousTheme);
+    // A theme change rebuilds the document frame in the new theme and returns it to the top. Wait for the
+    // rebuilt frame, then restore the reading position that the send and answer checks below compare against.
+    await waitForDocumentTheme(await page.evaluate(() => document.documentElement.dataset.poiesisColorMode));
+    await frame.evaluate(y => window.scrollTo(0, y), documentScrollBefore);
+    await frame.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(resolveFrame)));
+    assert(await frame.evaluate(() => window.scrollY) === documentScrollBefore, 'The reading position was not restored.');
+    const lightIssues = [...lightListIssues, ...lightCustomIssues];
+    assert(lightIssues.length === 0, `Every picker text must reach 4.5:1 in the light theme: ${JSON.stringify(lightIssues.slice(0, 8))}`);
+    await page.evaluate(() => {
+        const container = window.theia.container;
+        const key = [...container._bindingDictionary._map.keys()]
+            .find(candidate => typeof candidate === 'function' && candidate.name === 'AgentWindowWidget');
+        const widget = container.get(key);
+        window.__questionPickerSixProviders = widget.state.modelCatalogs;
+        widget.state.modelCatalogs = {
+            ...widget.state.modelCatalogs,
+            pi: {
+                ...widget.state.modelCatalogs.pi,
+                models: [
+                    ...widget.state.modelCatalogs.pi.models,
+                    ...Array.from({ length: 12 }, (_, index) => ({
+                        id: `vendor${index}/model`, label: `model ${index}`, piProvider: `vendor${index}`
+                    }))
+                ]
+            }
+        };
+        widget.update();
+    });
+    await page.click('.poiesis-results__question-panel .poiesis-model-picker__trigger');
+    await page.waitForSelector(`${picker} .poiesis-model-picker__provider-select .poiesis-select__trigger`, { visible: true });
+    const manyProviderCount = await page.$eval(`${picker} .poiesis-model-picker__provider-select`, element => Number(element.dataset.optionCount));
+    assert(manyProviderCount > 6, `The expanded pi fixture did not add enough providers: ${manyProviderCount}`);
+    await page.click(`${picker} .poiesis-model-picker__provider-select .poiesis-select__trigger`);
+    await page.click('.poiesis-model-picker__nested-select .poiesis-select__option[data-value="vendor11（pi 経由）"]');
+    await page.waitForFunction(() => [...document.querySelectorAll('.poiesis-model-picker__group span')]
+        .map(group => group.textContent.trim()).join('|') === 'vendor11（pi 経由）');
+    // The catalogs can change while the picker is open; a chosen provider that disappears must fall back to
+    // すべて instead of leaving no checked radio, no Tab stop and an empty list.
+    await page.evaluate(() => {
+        const container = window.theia.container;
+        const key = [...container._bindingDictionary._map.keys()]
+            .find(candidate => typeof candidate === 'function' && candidate.name === 'AgentWindowWidget');
+        const widget = container.get(key);
+        window.__questionPickerManyProviders = widget.state.modelCatalogs;
+        widget.state.modelCatalogs = window.__questionPickerSixProviders;
+        delete window.__questionPickerSixProviders;
+        widget.update();
+    });
+    await page.waitForSelector(`${picker} .poiesis-model-picker__filters [role="radio"]`, { visible: true });
+    const vanishedFilter = await page.evaluate(() => ({
+        checked: [...document.querySelectorAll('.poiesis-model-picker__filters [role="radio"][aria-checked="true"]')]
+            .map(button => button.textContent.trim()),
+        tabStops: [...document.querySelectorAll('.poiesis-model-picker__filters [role="radio"]')]
+            .filter(button => button.tabIndex === 0).length,
+        groups: document.querySelectorAll('.poiesis-model-picker__group').length
+    }));
+    assert(vanishedFilter.checked.join('|') === 'すべて' && vanishedFilter.tabStops === 1 && vanishedFilter.groups > 1,
+        `A provider that disappeared while open must fall back to すべて: ${JSON.stringify(vanishedFilter)}`);
+    // When the provider comes back, the fallback stays; the earlier choice must not return without the user.
+    await page.evaluate(() => {
+        const container = window.theia.container;
+        const key = [...container._bindingDictionary._map.keys()]
+            .find(candidate => typeof candidate === 'function' && candidate.name === 'AgentWindowWidget');
+        const widget = container.get(key);
+        widget.state.modelCatalogs = window.__questionPickerManyProviders;
+        delete window.__questionPickerManyProviders;
+        widget.update();
+    });
+    await page.waitForSelector(`${picker} .poiesis-model-picker__provider-select .poiesis-select__trigger`, { visible: true });
+    const returnedFilter = await page.$eval(`${picker} .poiesis-model-picker__provider-select`, element => element.dataset.value);
+    assert(returnedFilter === 'all', `A provider that came back must not be selected again by itself: ${returnedFilter}`);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.poiesis-model-picker__popover'));
+    await page.evaluate(() => {
+        const container = window.theia.container;
+        const key = [...container._bindingDictionary._map.keys()]
+            .find(candidate => typeof candidate === 'function' && candidate.name === 'AgentWindowWidget');
+        const widget = container.get(key);
+        widget.state.cliDetectionReport = window.__questionPickerOriginal.report;
+        widget.state.modelCatalogs = window.__questionPickerOriginal.catalogs;
+        delete window.__questionPickerOriginal;
+        widget.update();
+    });
     await page.click('[aria-label="表示中の成果について質問"]');
     await page.type('[aria-label="表示中の成果について質問"]', question);
     await page.click('[aria-label="Results 内へ送信"]');
@@ -451,6 +695,11 @@ try {
 
     console.log(`RESULTS_QUESTION_SMOKE_RESULT=${JSON.stringify({
         provider: 'mock',
+        pickerProviderCount: providerNames.length,
+        sixProviderRows,
+        pickerProviderSearch: searchProvider,
+        pickerThirdRowSelect: true,
+        manyProviderCount,
         sendingVisible: sending.visible,
         answerVisible: answered.visible,
         documentScrollStable: documentScrollBefore === documentScrollAfterSend

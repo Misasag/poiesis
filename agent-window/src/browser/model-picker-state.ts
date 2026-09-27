@@ -182,6 +182,11 @@ export function modelPickerProviders(
     });
 }
 
+/** A provider filter that no longer names a listed provider (the catalogs changed while open) falls back to all. */
+export function effectiveProviderFilter(providers: readonly ModelPickerProvider[], providerFilter: string): string {
+    return providers.some(provider => provider.name === providerFilter) ? providerFilter : 'all';
+}
+
 export function filterModelPickerProviders(
     providers: readonly ModelPickerProvider[],
     providerFilter: string,
@@ -192,7 +197,7 @@ export function filterModelPickerProviders(
         if (providerFilter !== 'all' && provider.name !== providerFilter) {
             return [];
         }
-        const choices = normalizedQuery
+        const choices = normalizedQuery && !provider.name.toLocaleLowerCase().includes(normalizedQuery)
             ? provider.choices.filter(choice => [choice.label, choice.id]
                 .some(value => value.toLocaleLowerCase().includes(normalizedQuery)))
             : provider.choices;
