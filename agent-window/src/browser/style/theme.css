@@ -3,7 +3,12 @@ html[data-poiesis-color-mode='light'] #poiesis-window-host {
     background: #f3f3f0;
 }
 
-html[data-poiesis-color-mode='light'] .poiesis-agent-window__content {
+/* The model picker and select lists render in a portal under body, outside the content element. */
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-agent-window__content,
+    .poiesis-model-picker__popover,
+    .poiesis-select__listbox
+) {
     --poiesis-chrome-bg: #f7f7f4;
     --poiesis-chrome-panel: #efefeb;
     --poiesis-chrome-panel-raised: #ffffff;
@@ -183,6 +188,7 @@ html[data-poiesis-color-mode='light'] :is(
     .poiesis-model-picker__custom input,
     .poiesis-model-picker__custom .poiesis-select__trigger,
     .poiesis-model-picker__effort .poiesis-select__trigger,
+    .poiesis-model-picker__provider-select .poiesis-select__trigger,
     .poiesis-customize-view__new-skill input,
     .poiesis-customize-view__new-skill .poiesis-select__trigger,
     .poiesis-customize-view__search,
@@ -196,6 +202,64 @@ html[data-poiesis-color-mode='light'] :is(
     background: #ffffff;
     border-color: var(--poiesis-control-border);
     color: var(--poiesis-chrome-text);
+}
+
+/* The picker's own text colors are written for the dark surface; on white they fell to 1.2-3.2:1. */
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-model-picker__filters button:not(.active),
+    .poiesis-model-picker__group small,
+    .poiesis-model-picker__option-copy small,
+    .poiesis-model-picker__effort > span,
+    .poiesis-model-picker__custom label > span
+) {
+    color: var(--poiesis-chrome-muted);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-model-picker__group,
+    .poiesis-model-picker__custom-entry,
+    .poiesis-model-picker__popover-heading,
+    .poiesis-model-picker__custom-actions button:not(.primary)
+) {
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-model-picker__settings,
+    .poiesis-model-picker__option > .codicon
+) {
+    color: var(--poiesis-focus-ring);
+}
+
+html[data-poiesis-color-mode='light'] .poiesis-model-picker__popover[data-ai-role='agent'] :is(
+    .poiesis-model-picker__settings,
+    .poiesis-model-picker__option > .codicon
+) {
+    color: var(--poiesis-chrome-muted);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-model-picker__custom-entry:hover,
+    .poiesis-model-picker__settings:hover
+) {
+    background: var(--poiesis-chrome-hover);
+    color: var(--poiesis-chrome-text);
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-model-picker__error,
+    .poiesis-model-picker__effort-warning
+) {
+    color: #9c3b2c;
+}
+
+html[data-poiesis-color-mode='light'] :is(
+    .poiesis-model-picker__filters,
+    .poiesis-model-picker__group,
+    .poiesis-model-picker__custom-entry,
+    .poiesis-model-picker__footer
+) {
+    border-color: var(--poiesis-chrome-line);
 }
 
 html[data-poiesis-color-mode='light'] :is(

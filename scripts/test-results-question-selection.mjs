@@ -21,6 +21,18 @@ for (const version of [1, 2, 3, 4, 5, 6, 7]) {
     await settings.restorePoiesisSettings();
     assert.equal(host.state.questionSameAsResults, true, `version ${version} defaults to Results AI`);
 }
+for (const provider of ['grok', 'pi']) {
+    const legacyHost = { state: { resultsCli: 'codex', resultsModel: '', resultsEffort: '' } };
+    const legacySettings = productionMethods('../agent-window/src/browser/agent-window/settings-part.tsx', 'SettingsPart',
+        ['restorePoiesisSettings', 'normalizeEffort', 'normalizeEffortByModel', 'effortKey', 'syncJudgeSelection'],
+        { ...protocol, SETTINGS_STORAGE_KEY: 'test-settings' });
+    Object.assign(legacySettings, { host: legacyHost, resultsGenerationContext: new context.ResultsGenerationContext(),
+        storageService: { async getData() { return { version: 8, resultsCli: provider, resultsModel: '' }; } },
+        requirementClassificationService: {}, update() {} });
+    await legacySettings.restorePoiesisSettings();
+    assert.equal(legacyHost.state.resultsCli, provider, 'The old selection must remain visible for repair.');
+    assert.equal(legacySettings.resultsGenerationContext.providerId, provider);
+}
 
 let saved;
 const host = { state: { questionSameAsResults: false, questionCli: 'claude', questionModel: 'haiku', questionEffort: 'low',
@@ -59,7 +71,24 @@ assert.equal(restoredHost.state.questionSameAsResults, false);
 assert.equal(restoredHost.state.questionCli, 'claude');
 assert.equal(restoredHost.state.questionModel, 'haiku');
 assert.equal(restoredHost.state.questionEffort, 'low');
+const picker = productionMethods('../agent-window/src/browser/agent-window/settings-part.tsx', 'SettingsPart',
+    ['questionAiPill'], { React: { createElement: (type, props) => ({ type, props }) },
+        ModelPicker: 'ModelPicker', resolveResultsQuestionSelection });
+let questionSelection;
+Object.assign(picker, { host, setQuestionProviderModel(provider, model) { questionSelection = { provider, model }; },
+    setQuestionEffort(effort) { questionSelection = { effort }; }, openAiSettings() {} });
+const badge = picker.questionAiPill(true);
+assert.equal(badge.type, 'ModelPicker');
+assert.equal(badge.props.purpose, 'question');
+assert.equal(badge.props.selectedProvider, 'claude');
+assert.equal(badge.props.selectedModel, 'haiku');
+badge.props.onSelect('codex', 'gpt-6-astra');
+assert.deepEqual(questionSelection, { provider: 'codex', model: 'gpt-6-astra' });
+badge.props.onEffortChange('high');
+assert.deepEqual(questionSelection, { effort: 'high' });
+assert.equal(host.state.resultsModel, 'gpt-6-astra');
 assert.match(resultsSource, /const questionAi = resolveResultsQuestionSelection\(this\.host\.state\)/);
+assert.match(resultsSource, /this\.host\.questionAiPill\(true\)/);
 assert.match(resultsSource, /providerId: questionAi\.providerId/);
 assert.match(resultsSource, /model: questionAi\.model \|\| undefined/);
 assert.match(resultsSource, /effort: questionAi\.effort \|\| undefined/);
@@ -74,6 +103,8 @@ for (const id of ['grok', 'pi']) {
     assert.equal(lifecycle.cliRoleAvailability('ready', detectionReport, id, 'results', 'question'), 'available');
 }
 assert.match(settingsSource, /<ModelPicker role='results' purpose='question'/);
+assert.match(settingsSource, /this\.host\.state\.resultsCli === 'grok' \|\| this\.host\.state\.resultsCli === 'pi'/);
+assert.match(settingsSource, /設定で Codex か Claude を選び直してください。/);
 // pi's provider note follows pi's own model, not a Codex or Claude model chosen in the same group.
 assert(settingsSource.includes("const model = piChosen ? selectionRole === 'question' ? selectedModel ?? '' : this.roleModel(role) : '';"));
 console.log('RESULTS_QUESTION_SELECTION_TEST=passed');

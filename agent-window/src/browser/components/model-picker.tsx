@@ -11,6 +11,7 @@ import { CliDetectionPhase, cliRoleAvailability } from '../../common/cli-detecti
 import {
     beginCustomModelDraft,
     CustomModelDraft,
+    effectiveProviderFilter,
     filterModelPickerProviders,
     modelChoiceKey,
     modelEffortIsUnsupported,
@@ -75,10 +76,11 @@ export const ModelPicker = ({
     onEffortChange,
     onOpenSettings
 }: ModelPickerProps): React.ReactElement => {
-    const roleLabel = role === 'agent' ? 'Agent' : role === 'judge' ? '判定' : purpose === 'question' ? '質問' : 'Results';
+    const roleLabel = role === 'agent' ? 'Agent' : role === 'judge' ? '判定' : purpose === 'question' ? '質問の AI' : 'Results';
     const triggerRef = React.useRef<HTMLButtonElement>(null);
     const popoverRef = React.useRef<HTMLDivElement>(null);
     const searchRef = React.useRef<HTMLInputElement>(null);
+    const filtersRef = React.useRef<HTMLDivElement>(null);
     const activeRowRef = React.useRef<HTMLDivElement>(null);
     const composingRef = React.useRef(false);
     const pickerId = `poiesis-model-picker-${React.useId().replace(/:/g, '')}`;
@@ -86,6 +88,7 @@ export const ModelPicker = ({
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState('');
     const [providerFilter, setProviderFilter] = React.useState<string>('all');
+    const [useProviderSelect, setUseProviderSelect] = React.useState(false);
     const [activeKey, setActiveKey] = React.useState('');
     const [position, setPosition] = React.useState<ModelPickerPlacement>();
     const [customDraft, setCustomDraft] = React.useState<CustomModelDraft>();
@@ -100,7 +103,10 @@ export const ModelPicker = ({
         selectedModel,
         purpose
     );
-    const filteredProviders = filterModelPickerProviders(providers, providerFilter, query);
+    const providerFilters = ['all', ...providers.map(provider => provider.name)];
+    const providerNames = providers.map(provider => provider.name).join('\u0000');
+    const activeProviderFilter = effectiveProviderFilter(providers, providerFilter);
+    const filteredProviders = filterModelPickerProviders(providers, activeProviderFilter, query);
     const visibleChoices = filteredProviders.flatMap(provider => provider.choices);
     const selectedKey = modelChoiceKey(selectedProvider, selectedModel);
     const selectedChoice = providers.find(provider => provider.id === selectedProvider)?.choices
@@ -225,10 +231,52 @@ export const ModelPicker = ({
     }, [activeKey, customDraft, open, selectedKey, visibleChoices]);
 
     React.useEffect(() => {
+        // Keep the fallback: a provider that disappeared while open must not become selected again when it returns.
+        if (activeProviderFilter !== providerFilter) {
+            setProviderFilter(activeProviderFilter);
+        }
+    }, [activeProviderFilter, providerFilter]);
+
+    React.useEffect(() => {
         if (open && activeRowRef.current) {
             activeRowRef.current.scrollIntoView({ block: 'nearest' });
         }
     }, [activeKey, open]);
+
+    React.useLayoutEffect(() => {
+        if (!open || customDraft || providers.length <= 1 || !filtersRef.current || !popoverRef.current) {
+            return undefined;
+        }
+        const filters = filtersRef.current;
+        const popover = popoverRef.current;
+        const measureRows = (): void => {
+            const buttons = Array.from(filters.querySelectorAll<HTMLButtonElement>('button'));
+            const tops: number[] = [];
+            for (const button of buttons) {
+                const top = button.getBoundingClientRect().top;
+                if (!tops.some(previous => Math.abs(previous - top) < 1)) {
+                    tops.push(top);
+                }
+            }
+            const next = tops.length > 2;
+            setUseProviderSelect(current => {
+                if (current !== next) {
+                    const focused = document.activeElement;
+                    if (next && focused && filters.contains(focused)) {
+                        requestAnimationFrame(() => popover.querySelector<HTMLElement>('.poiesis-model-picker__provider-select .poiesis-select__trigger')?.focus());
+                    } else if (!next && focused?.closest('.poiesis-model-picker__provider-select')) {
+                        requestAnimationFrame(() => filters.querySelector<HTMLButtonElement>('button[aria-checked="true"]')?.focus());
+                    }
+                }
+                return next;
+            });
+        };
+        measureRows();
+        const observer = new ResizeObserver(measureRows);
+        observer.observe(popover);
+        observer.observe(filters);
+        return () => observer.disconnect();
+    }, [open, customDraft, position?.width, providerNames]);
 
     const choose = (providerId: KnownCliId, model: string): void => {
         onSelect(providerId, model);
@@ -345,7 +393,7 @@ export const ModelPicker = ({
                 </span>
                 <span className={`codicon codicon-chevron-${open ? 'up' : 'down'}`} aria-hidden='true' />
             </button>
-            {role === 'results' && purpose !== 'question' && !compact && <small>Grok・pi: 成果文書の作成には未対応</small>}
+            {role === 'results' && purpose !== 'question' && !compact && <small>Grok・pi では成果文書を作成できません。</small>}
             {open && position && ReactDOM.createPortal(
                 <div
                     ref={popoverRef}
@@ -420,12 +468,51 @@ export const ModelPicker = ({
                                     onCompositionStart={() => composingRef.current = true}
                                     onCompositionEnd={() => composingRef.current = false}
                                 />
+                                {providers.length > 1 && useProviderSelect && (
+                                    <PoiesisSelect
+                                        className='poiesis-model-picker__provider-select'
+                                        ariaLabel='AIで絞り込む'
+                                        value={activeProviderFilter}
+                                        options={providerFilters.map((value, index) => ({ value, label: index === 0 ? 'すべて' : value }))}
+                                        popoverClassName='poiesis-model-picker__nested-select'
+                                        onChange={setProviderFilter}
+                                    />
+                                )}
                             </div>
                             {providers.length > 1 && (
-                                <div className='poiesis-model-picker__filters' role='group' aria-label='AIで絞り込む'>
-                                    <button type='button' className={providerFilter === 'all' ? 'active' : ''} aria-pressed={providerFilter === 'all'} onClick={() => setProviderFilter('all')}>すべて</button>
-                                    {providers.map(provider => (
-                                        <button key={`${provider.id}:${provider.name}`} type='button' className={providerFilter === provider.name ? 'active' : ''} aria-pressed={providerFilter === provider.name} onClick={() => setProviderFilter(provider.name)}>{provider.name}</button>
+                                <div
+                                    ref={filtersRef}
+                                    className={`poiesis-model-picker__filters${useProviderSelect ? ' measuring' : ''}`}
+                                    role='radiogroup'
+                                    aria-label='AIで絞り込む'
+                                    aria-hidden={useProviderSelect || undefined}
+                                    onKeyDown={event => {
+                                        if (!['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) {
+                                            return;
+                                        }
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        const current = Number((event.target as HTMLElement).dataset.filterIndex);
+                                        if (!Number.isInteger(current)) {
+                                            return;
+                                        }
+                                        const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+                                        const next = (current + direction + providerFilters.length) % providerFilters.length;
+                                        setProviderFilter(providerFilters[next]);
+                                        filtersRef.current?.querySelectorAll<HTMLButtonElement>('button')[next]?.focus();
+                                    }}
+                                >
+                                    {providerFilters.map((value, index) => (
+                                        <button
+                                            key={value}
+                                            type='button'
+                                            role='radio'
+                                            data-filter-index={index}
+                                            className={activeProviderFilter === value ? 'active' : ''}
+                                            aria-checked={activeProviderFilter === value}
+                                            tabIndex={!useProviderSelect && activeProviderFilter === value ? 0 : -1}
+                                            onClick={() => setProviderFilter(value)}
+                                        >{index === 0 ? 'すべて' : value}</button>
                                     ))}
                                 </div>
                             )}

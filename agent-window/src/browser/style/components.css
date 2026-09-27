@@ -329,6 +329,19 @@ details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
     width: 100%;
 }
 
+.poiesis-model-picker__provider-select {
+    flex: 0 1 42%;
+    min-width: 100px;
+}
+
+.poiesis-model-picker__provider-select .poiesis-select__trigger {
+    background: #181917;
+    border: 1px solid #5f625a;
+    color: #efeee9;
+    font: inherit;
+    min-height: 32px;
+}
+
 .poiesis-model-picker__search:focus-within {
     box-shadow: inset 0 -2px #c28b60;
 }
@@ -337,12 +350,21 @@ details[open] > .poiesis-disclosure__summary .poiesis-disclosure__chevron {
     border-bottom: 1px solid #3b3d38;
     display: flex;
     flex: none;
-    flex-wrap: nowrap;
+    /* Wrap instead of scrolling sideways: in the 392px question picker the last provider was cut off
+       with no visible scrollbar, so it looked missing. */
+    flex-wrap: wrap;
     gap: 4px;
     min-height: 34px;
-    overflow-x: auto;
-    overflow-y: hidden;
     padding: 5px 9px;
+}
+
+.poiesis-model-picker__filters.measuring {
+    left: 0;
+    pointer-events: none;
+    position: absolute;
+    right: 0;
+    top: 44px;
+    visibility: hidden;
 }
 
 .poiesis-model-picker__filters button {

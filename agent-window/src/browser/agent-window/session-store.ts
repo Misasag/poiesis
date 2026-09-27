@@ -780,17 +780,22 @@ export class SessionStore extends AgentWindowPartBase {
                 .catch(() => undefined)
                 .then(async () => {
                     const currentIds = new Set<string>();
+                    const currentMarkers = new Map<string, NonNullable<TaskResultDocument['htmlStored']>>();
                     for (const session of state.sessions) {
                         for (const task of session.tasks ?? []) {
                             if (task.resultsDocument) {
                                 task.resultsDocument = await this.documentStorage.persist('task', task.id, task.resultsDocument);
                                 if (task.resultsDocument.htmlStored) {
                                     currentIds.add(task.id);
+                                    currentMarkers.set(task.id, task.resultsDocument.htmlStored);
                                 }
                             }
                         }
                     }
                     await this.globalStorageService.setData(GLOBAL_SESSION_STORAGE_KEY, state);
+                    for (const [id, marker] of currentMarkers) {
+                        await this.documentStorage.commit('task', id, marker);
+                    }
                     for (const id of this.storedTaskDocumentIds) {
                         if (!currentIds.has(id)) {
                             await this.documentStorage.remove('task', id);

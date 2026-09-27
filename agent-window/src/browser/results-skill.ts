@@ -57,6 +57,7 @@ export interface ResultsSkill extends ResultsSkillBundle {
 
 export interface ResultsSkillDocument {
     calls?: CliCallRecord[];
+    updateError?: string;
     html: string;
     generator: 'ai' | 'template' | 'fallback';
     providerId?: TaskResultDocument['providerId'];
@@ -112,7 +113,7 @@ export class AiResultsSkill implements ResultsSkill {
         const workspaceUri = input.task.workspaceUri;
         this.cancelledDocumentIds.delete(documentId);
         if (!workspaceUri) { throw new Error("成果を作成する作業場所がありません。"); }
-        if (providerId !== 'codex' && providerId !== 'claude') { throw new Error("成果文書の作成には未対応"); }
+        if (providerId !== 'codex' && providerId !== 'claude') { throw new Error("成果文書の作成には未対応です。設定で Codex か Claude を選び直してください。"); }
         const workspaceSkills = await this.workspaceSkillService.buildPrompt(workspaceUri, 'results');
         this.taskService.setAppliedSkills(input.task.id, 'results', workspaceSkills.includedSkillIds);
         const generatedHooks = await this.taskService.runHooks('resultsGenerate', input.task, {
@@ -151,6 +152,10 @@ export class AiResultsSkill implements ResultsSkill {
                 if (attempt === 1 && result.error.retryable) {
                     request.assertionRetryGuidance = result.error.message;
                     continue;
+                }
+                if (first) {
+                    return { ...first.document, calls, assertions: [...first.assertions], assertionAttempts: 2,
+                        updateError: `2回目の作成に失敗しました。${result.error.message}` };
                 }
                 throw new Error(result.error.message);
             }

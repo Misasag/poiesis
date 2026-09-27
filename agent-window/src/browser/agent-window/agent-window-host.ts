@@ -147,6 +147,7 @@ export interface AgentWindowHost {
     renderSettingsModal(): React.ReactNode;
     renderShortcutsOverlay(): React.ReactNode;
     renderAiRolePill(role: AiRole, compact?: boolean): React.ReactNode;
+    questionAiPill(compact?: boolean): React.ReactNode;
     openSettings(): void;
     closeSettings(): void;
     openShortcutsOverlay(): void;
