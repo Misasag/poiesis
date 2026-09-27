@@ -99,8 +99,12 @@ assert.deepEqual(['すべて', ...pickerProviders.map(group => group.name)],
     ['すべて', 'Codex', 'Claude', 'Grok', 'OpenRouter', 'ChatGPT（pi 経由）'],
     'Each selectable group has one chip, with no duplicate pi chip.');
 const pickerCss = readFileSync(new URL('../agent-window/src/browser/style/components.css', import.meta.url), 'utf8');
-assert.match(pickerCss, /\.poiesis-model-picker__filters\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s,
-    'Filter chips must remain on one horizontally scrollable line.');
+// Contract changed 2026-09-27: a one-line row that scrolled sideways cut the last provider off with no
+// visible scrollbar in the narrow question picker. Every provider chip must stay visible, so the row wraps.
+assert.match(pickerCss, /\.poiesis-model-picker__filters\s*\{[^}]*flex-wrap:\s*wrap;/s,
+    'Filter chips must wrap so every provider chip stays visible.');
+assert.doesNotMatch(pickerCss, /\.poiesis-model-picker__filters\s*\{[^}]*overflow-x:\s*auto;/s,
+    'Filter chips must not hide providers behind a sideways scroll.');
 // The owner chose one scrollbar design for every Poiesis surface (2026-09-26): the chip row inside the picker
 // popover uses the shared thin, rounded, token-colored scrollbar instead of its own override.
 assert.doesNotMatch(pickerCss, /\.poiesis-model-picker__filters(?::hover)?::-webkit-scrollbar/,
