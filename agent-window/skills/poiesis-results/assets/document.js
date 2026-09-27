@@ -39,7 +39,7 @@
     const grip = event.target.closest('.ex-panel-grip');
     if (!grip || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
-    const current = parseFloat(getComputedStyle(root).getPropertyValue('--ex-panel-w')) || Math.min(innerWidth * .46, 620);
+    const current = parseFloat(getComputedStyle(root).getPropertyValue('--ex-panel-w')) || openingWidth();
     const delta = (event.key === 'ArrowLeft' ? 1 : -1) * (event.shiftKey ? 40 : 20);
     setWidth(current + delta);
   });
@@ -67,5 +67,10 @@
     const current = parseFloat(getComputedStyle(root).getPropertyValue('--ex-panel-w'));
     if (Number.isFinite(current)) setWidth(current);
   });
-  setWidth(Math.min(innerWidth * .46, 620));
+  // The panel opens in the space right of the document so it neither covers nor narrows it:
+  // style.css keeps the open document at most 1100px wide plus 72px of margins and gap.
+  function openingWidth() {
+    return Math.min(620, Math.max(320, innerWidth - 1100 - 72));
+  }
+  setWidth(openingWidth());
 })();

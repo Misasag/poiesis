@@ -103,11 +103,32 @@ try {
     focused: document.activeElement?.matches('.ex-hit > summary') }));
   assert.deepEqual(closedByEscape, { open: false, focused: true });
   assert.equal((await measure()).overflow, 0);
+  // The owner's width: a 1920px window leaves a 1688px Results frame. An open panel must neither cover the document nor shrink the map.
+  const wide = await browser.newPage();
+  await wide.setViewport({ width: 1688, height: 934, deviceScaleFactor: 1 });
+  await wide.setContent(srcdoc.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ''));
+  await wide.waitForSelector('.ex-map .ex-title');
+  const layout = () => wide.evaluate(() => {
+    const panel = document.querySelector('details[open] .ex-panel');
+    const blocks = [...document.body.querySelectorAll('.ex-mapfig, p, h2, table, ol, ul')]
+      .filter(el => !el.closest('.ex-panel') && el.getBoundingClientRect().width > 0);
+    return { mapWidth: document.querySelector('.ex-map').getBoundingClientRect().width,
+      covered: panel ? Math.max(0, Math.max(...blocks.map(el => el.getBoundingClientRect().right)) - panel.getBoundingClientRect().left) : 0 };
+  });
+  const wideClosed = await layout();
+  await wide.click('.ex-hit > summary');
+  await wide.waitForSelector('.ex-hit[open] .ex-panel');
+  await wide.evaluate(() => new Promise(done => setTimeout(done, 400)));
+  const wideOpened = await layout();
+  assert.equal(wideOpened.covered, 0, `The panel covers ${wideOpened.covered}px of the document at 1688px.`);
+  assert.equal(wideOpened.mapWidth, wideClosed.mapWidth, 'Opening a panel at 1688px shrinks the map.');
+  await wide.screenshot({ path: resolve(out, 'results-skill-s6-panel-1688.png') });
+  await wide.close();
   const report = { preparationExit: prep.status, renderExit: made.status, s6TestsExit: tests.status,
     boxes: made.body.geometry.boxes.length, arrows: made.body.drawnEdges.length,
     columns: made.body.geometry.layerCount, width: made.body.geometry.width,
     minFont: closed.minFont, unassignedHunks: made.body.unassignedHunks,
-    closed, opened, resized, citation };
+    closed, opened, resized, citation, wideClosed, wideOpened };
   writeFileSync(resolve(out, 'results-skill-s6-report.json'), JSON.stringify(report, null, 2), 'utf8');
   console.log(JSON.stringify(report));
 } finally { await browser?.close(); }
