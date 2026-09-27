@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtemp, readFile, writeFile, mkdir, rm, readdir, symlink } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, realpath, rm, readdir, symlink } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -9,8 +9,9 @@ import { spawnSync } from 'node:child_process';
 import './fixtures/results-browser-env.mjs';
 
 const require = createRequire(import.meta.url);
-const { ResultsGenerationServerImpl, RESULTS_GENERATION_TIMEOUT_MS } = require('../agent-window/lib/node/results-generation-server.js');
-const { resultsExecutionEnvironment, resultsNodeExecutable, pathWithin, loadBundledResultsSkill, resultsSkillCandidates, writeClaudeResultsSettings } = require('../agent-window/lib/node/results-skill-runtime.js');
+const { ResultsGenerationServerImpl, GENERATED_RESULTS_HTML_MAX_BYTES, RESULTS_GENERATION_TIMEOUT_MS } = require('../agent-window/lib/node/results-generation-server.js');
+const { resultsExecutionEnvironment, resultsNodeExecutable, pathWithin, loadBundledResultsSkill, resultsSkillCandidates,
+    resultsSkillCliArgs, writeClaudeResultsSettings } = require('../agent-window/lib/node/results-skill-runtime.js');
 const { buildResultsSkillInput, resultsRedactor } = require('../agent-window/lib/node/results-skill-input.js');
 const { spawnHiddenCli } = require('../agent-window/lib/node/hidden-process.js');
 const { AiResultsSkill } = require('../agent-window/lib/browser/results-skill.js');
@@ -23,6 +24,12 @@ const root = await mkdtemp(join(tmpdir(), 'poiesis-skill-test-'));
 const workspace = join(root, 'workspace');
 await mkdir(workspace);
 const savedEnv = { ...process.env };
+const fakeCodexHome = join(root, 'fake-codex-home');
+const fakeAuth = join(fakeCodexHome, 'auth.json');
+const originalAuth = Buffer.from(JSON.stringify({ token: 'original-fixture' }), 'utf8');
+await mkdir(fakeCodexHome);
+await writeFile(fakeAuth, originalAuth);
+process.env.CODEX_HOME = fakeCodexHome;
 process.env.POIESIS_RESULTS_SKILL_DIR = fixture;
 delete process.env.POIESIS_RESULTS_KEEP_RUN_DIR;
 process.env.POIESIS_TEST_SECRET = 'fixture-secret-value-9d731';
@@ -42,7 +49,7 @@ class FixtureServer extends ResultsGenerationServerImpl {
         const bytes = readFileSync(join(cwd, 'input.json'));
         assert.notDeepEqual([...bytes.subarray(0, 3)], [239, 187, 191]);
         const data = JSON.parse(bytes.toString('utf8'));
-        scopes.push({ args, cwd, input, data });
+        scopes.push({ args, cwd, input, data, env });
         assert(!pathWithin(workspace, cwd));
         assert.equal(data.schema, 'poiesis-results-input/1');
         assert.equal(data.workspace, workspace.replaceAll('\\', '/'));
@@ -54,6 +61,20 @@ class FixtureServer extends ResultsGenerationServerImpl {
         // Start with no caller PATH: the app still has to make `node` work in the skill's shell.
         env = resultsExecutionEnvironment(resultsNodeExecutable(), { ...env, PATH: '', Path: '' });
         return spawnHiddenCli(id, process.execPath, [resolve('scripts/fixtures/results-fake-cli.mjs'), ...args], { cwd, input, env });
+    }
+}
+class FaultServer extends FixtureServer {
+    constructor(registry, fault) { super(registry); this.fault = fault; }
+    async restoreCodexAuth(auth) {
+        if (this.fault === 'writeback') throw new Error('fixture writeback failure');
+        return super.restoreCodexAuth(auth);
+    }
+    async removeResultsTemporaryDirectory(path) {
+        if ((this.fault === 'home-cleanup' && path.endsWith(join('control', 'codex-home')))
+            || (this.fault === 'root-cleanup' && !path.endsWith(join('control', 'codex-home')))) {
+            throw new Error('fixture cleanup failure');
+        }
+        return super.removeResultsTemporaryDirectory(path);
     }
 }
 let definitions = [];
@@ -87,10 +108,49 @@ try {
     assert.equal(args[args.indexOf('-C') + 1], scopes[0].cwd);
     assert(args.includes('sandbox_workspace_write.network_access=false'));
     assert(args.includes('web_search="disabled"'));
+    for (const flag of ['--ignore-user-config', '--ignore-rules', '--ephemeral']) assert(args.includes(flag), flag);
+    assert.equal(scopes[0].env.CODEX_HOME, join(dirname(scopes[0].cwd), 'control', 'codex-home'));
     assert.deepEqual(scopes[0].data.changedFiles, request.changedFiles);
     assert.equal(scopes[0].data.diff, task.changeSet.diff);
     assert.equal(scopes[0].data.retry, null);
     assert(scopes[0].data.executionEvidence.includes('[REDACTED]'));
+    process.env.POIESIS_FIXTURE_AUTH_SOURCE = fakeAuth;
+    process.env.POIESIS_FIXTURE_OUTPUT = 'auth-refresh';
+    assert.equal((await server.generate(request)).status, 'generated');
+    assert.deepEqual(await readFile(fakeAuth), Buffer.from(JSON.stringify({ token: 'refreshed-by-fixture' }), 'utf8'));
+    assert(!existsSync(join(dirname(scopes.at(-1).cwd), 'control', 'codex-home')));
+    await writeFile(fakeAuth, originalAuth);
+    process.env.POIESIS_FIXTURE_OUTPUT = 'auth-race';
+    assert.equal((await server.generate(request)).status, 'generated');
+    assert.deepEqual(await readFile(fakeAuth), Buffer.from(JSON.stringify({ token: 'refreshed-elsewhere' }), 'utf8'));
+    assert.deepEqual(await readdir(fakeCodexHome), ['auth.json']);
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = message => warnings.push(message);
+    try {
+        await writeFile(fakeAuth, originalAuth);
+        process.env.POIESIS_FIXTURE_OUTPUT = 'auth-refresh';
+        assert.equal((await new FaultServer(registry, 'writeback').generate(request)).status, 'generated');
+        assert.deepEqual(await readFile(fakeAuth), originalAuth);
+        process.env.POIESIS_FIXTURE_OUTPUT = 'valid';
+        for (const fault of ['home-cleanup', 'root-cleanup']) {
+            assert.equal((await new FaultServer(registry, fault).generate(request)).status, 'generated');
+            const runRoot = dirname(scopes.at(-1).cwd);
+            if (fault === 'root-cleanup') {
+                assert(pathWithin(await realpath(tmpdir()), await realpath(runRoot)));
+                await rm(runRoot, { recursive: true, force: true });
+            } else { assert(!existsSync(runRoot)); }
+        }
+        assert.equal(warnings.length, 3);
+        assert(warnings.every(message => !message.includes('original-fixture') && !message.includes('refreshed-by-fixture')));
+    } finally { console.warn = originalWarn; }
+    delete process.env.POIESIS_FIXTURE_AUTH_SOURCE;
+    delete process.env.POIESIS_FIXTURE_OUTPUT;
+    process.env.POIESIS_FIXTURE_OUTPUT = 'tamper';
+    const tampered = await server.generate(request);
+    assert.equal(tampered.status, 'failed');
+    assert(tampered.error.message.includes('入力が書き換えられた'));
+    delete process.env.POIESIS_FIXTURE_OUTPUT;
     const fullDiff = 'diff --git a/a b/a\n' + '+data\n'.repeat(20_000);
     const material = buildResultsSkillInput({ ...request, diff: fullDiff, executionEvidence: 'x'.repeat(300_000),
         requirement: { title: 'まとめ', tasks: [{ ...request.taskMetadata, changedFiles: request.changedFiles }] } }, workspace, fixture);
@@ -112,11 +172,23 @@ try {
     for (const providerId of ['grok', 'pi']) {
         const before = scopes.length;
         const unsupported = await server.generate({ ...request, providerId });
-        assert.equal(unsupported.error.message, '成果文書の作成には未対応');
+        assert.equal(unsupported.error.message, '成果文書の作成には未対応です。設定で Codex か Claude を選び直してください。');
         assert.equal(scopes.length, before);
         assert.equal(cliRoleAvailability('pending', undefined, providerId, 'results'), 'unsupported');
-        await assert.rejects(skill(server, providerId).generate({ task, changeSet: task.changeSet }), /成果文書の作成には未対応/);
+        await assert.rejects(skill(server, providerId).generate({ task, changeSet: task.changeSet }),
+            /設定で Codex か Claude を選び直してください。/);
+        assert.throws(() => resultsSkillCliArgs({ providerId }), /設定で Codex か Claude を選び直してください。/);
     }
+    const malformedDir = join(root, 'malformed-output');
+    await mkdir(malformedDir);
+    await writeFile(join(malformedDir, 'results.html'), Buffer.from([0x3c, 0x68, 0x3e, 0xc3, 0x28]));
+    const malformed = await server.readOutput(malformedDir);
+    assert.equal(malformed.error.code, 'invalid-output');
+    assert.match(malformed.error.message, /UTF-8/);
+    await writeFile(join(malformedDir, 'results.html'), Buffer.from([0xef, 0xbb, 0xbf, 0x3c, 0x68, 0x3e]));
+    assert.equal((await server.readOutput(malformedDir)).html, '<h>');
+    await writeFile(join(malformedDir, 'results.html'), Buffer.alloc(GENERATED_RESULTS_HTML_MAX_BYTES + 1, 0x61));
+    assert.equal((await server.readOutput(malformedDir)).error.code, 'too-large');
     await assert.rejects(skill(server).generate({ task: { ...task, workspaceUri: undefined }, changeSet: task.changeSet }), /作業場所/);
     for (const mode of ['missing', 'empty', 'large', 'missing-always', 'empty-always', 'large-always']) {
         process.env.POIESIS_FIXTURE_OUTPUT = mode;
@@ -138,6 +210,18 @@ try {
     assert.equal(judgeAttempts, 2); assert.equal(assertionDocument.assertionAttempts, 2);
     assert(scopes.at(-1).data.retry.reason.includes('利用者の条件がある'));
     assert.deepEqual(assertionDocument.assertions.map(a => a.source), ['skill']);
+    judgeAttempts = 0;
+    const retryCalls = [];
+    const firstOnRetryFailure = await skill({ async generate(attemptRequest) {
+        if (attemptRequest.attempt === 1) return { status: 'generated', html: '<h1>Readable first document</h1>' };
+        return { status: 'failed', error: { code: 'cli-failed', message: '2回目の実行に失敗しました。' },
+            call: { purpose: 'results-generation', providerId: 'codex', exitCode: 1 } };
+    } }).generate({ task, changeSet: task.changeSet, onCall: call => retryCalls.push(call) });
+    assert.equal(firstOnRetryFailure.html, '<h1>Readable first document</h1>');
+    assert.equal(firstOnRetryFailure.assertionAttempts, 2);
+    assert.match(firstOnRetryFailure.updateError, /2回目の実行に失敗しました/);
+    assert.equal(firstOnRetryFailure.calls.length, 1);
+    assert.equal(retryCalls.length, 1, 'The failed retry must remain in the call record.');
     definitions = []; judgeFailOnce = false;
 
     const claude = await server.generate({ ...request, providerId: 'claude' });
@@ -164,6 +248,9 @@ try {
     for (const path of [join(run, 'draft.json'), join(workspace, 'source.ts'), join(fixture, 'SKILL.md')]) assert.equal(check('Read', { file_path: path }), 'allow');
     assert.equal(check('Read', { file_path: join(root, 'secret.txt') }), 'deny');
     assert.equal(check('Write', { file_path: join(run, 'draft.json') }), 'allow');
+    assert.equal(check('Write', { file_path: join(run, 'intermediate.json') }), 'allow');
+    assert.equal(check('Write', { file_path: join(run, 'input.json') }), 'deny');
+    assert.equal(check('Write', { file_path: join(run, 'results.html') }), 'deny');
     assert.equal(check('Write', { file_path: join(run, 'escape', 'source.ts') }), 'deny');
     assert.equal(check('Write', { file_path: join(control, 'gate.cjs') }), 'deny');
     assert.equal(check('Write', { file_path: join(workspace, 'source.ts') }), 'deny');

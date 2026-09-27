@@ -607,7 +607,9 @@ export class AgentPart extends AgentWindowPart {
         const expanded = this.agentActivityExpanded.has(messageKey);
         const finished = task ? task.status !== 'running' : message.complete;
         const commandCount = activities.filter(activity => activity.kind === 'command').length;
-        const fileChangeCount = activities.filter(activity => activity.kind === 'file-change').length;
+        // Files changed through shell commands have no edit activity; the app's change record is the fact.
+        const recordedFiles = finished && task?.changeSet?.source === 'task-diff' ? task.changeSet.files.length : undefined;
+        const fileChangeCount = recordedFiles ?? activities.filter(activity => activity.kind === 'file-change').length;
         return (
             <div className={`poiesis-agent-activity${expanded ? ' expanded' : ' collapsed'}${finished ? '' : ' running'}`}>
                 <button

@@ -1,5 +1,5 @@
 import { CliUsageLine } from '../components/cli-usage';
-import { resultsFrameHtml, ResultsFrameRetryGate } from '../results-rich-content';
+import { resultsFrameHtml, ResultsFrameMessageGate, ResultsFrameRetryGate } from '../results-rich-content';
 import { cliModelLabel, formatCliDuration } from '../cli-usage-display';
 import { sumCliUsage } from '../../common/cli-usage';
 import * as React from '@theia/core/shared/react';
@@ -97,6 +97,7 @@ export class ResultsPart extends AgentWindowPart {
     protected richSignature = '';
     protected richContent?: { html: string; images: Map<string, string> };
     protected readonly frameRetries = new ResultsFrameRetryGate();
+    protected readonly frameMessages = new ResultsFrameMessageGate();
     protected frameDocument?: TaskResultDocument;
     protected frameWorkspace = '';
     protected frameScope?: string;
@@ -263,11 +264,13 @@ export class ResultsPart extends AgentWindowPart {
                         )}
                         {selectedRequirement && document?.html && this.richContent && (document.status === 'ready' || document.status === 'generating') && (
                             <iframe
-                                key={`${scopeKey}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}
+                                key={`${scopeKey}-${document.generatedAt}-${this.host.themePreferenceService.effectiveMode}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}
                                 className='poiesis-results__document'
+                                name='poiesis-results-document'
                                 title={`${selectedTitle}の成果`}
                                 sandbox='allow-scripts'
                                 srcDoc={this.resultsDocumentHtml(this.richContent.html)}
+                                onLoad={event => this.frameMessages.loaded(event.currentTarget)}
                             />
                         )}
                     </div>
@@ -1191,7 +1194,7 @@ export class ResultsPart extends AgentWindowPart {
                         >
                             <span className='codicon codicon-arrow-up' aria-hidden='true' />
                         </button>
-                        {documentReady && this.host.renderAiRolePill('results', true)}
+                        {documentReady && this.host.questionAiPill(true)}
                     </>}
                 </section>
             </section>;
@@ -1211,7 +1214,7 @@ export class ResultsPart extends AgentWindowPart {
 
     public handleResultsFrameMessage(event: MessageEvent): void {
         const frame = this.node.querySelector<HTMLIFrameElement>('.poiesis-results__document');
-        if (!frame?.contentWindow || event.source !== frame.contentWindow || !event.data || typeof event.data !== 'object') {
+        if (!frame?.contentWindow || !this.frameMessages.accept(frame, event) || !event.data || typeof event.data !== 'object') {
             return;
         }
         const message = event.data as Partial<ResultsFrameMessage>;

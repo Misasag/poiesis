@@ -48,7 +48,7 @@ import { getDesignVariant } from '../design-variant';
 import { FolderExplorerService } from '../folder-explorer-service';
 import { ResultsQuestionService } from '../results-question-service';
 import { GlobalStorageService } from '../global-storage-service';
-import { ResultsGenerationContext } from '../results-generation-context';
+import { resolveResultsQuestionSelection, ResultsGenerationContext } from '../results-generation-context';
 import { SkillBundleKind } from '../../common/skill-bundle';
 import {
     collectWorkspaceRichContentReferences,
@@ -326,6 +326,8 @@ export class SettingsPart extends AgentWindowPart {
                         )}
                     </div>
                     {this.renderCliRoleSelector('results', 'Results の AI', this.host.state.resultsCli)}
+                    {(this.host.state.resultsCli === 'grok' || this.host.state.resultsCli === 'pi') &&
+                        <p role='alert'>選択中の AI では成果文書を作成できません。「Results の AI」で Codex か Claude を選び直してください。</p>}
                     {this.renderCliRoleSelector('judge', '判定の AI', this.host.state.judgeCli)}
                     {this.questionAiSelector()}
                 </div>
@@ -530,7 +532,9 @@ export class SettingsPart extends AgentWindowPart {
                         const guidance = availability === 'missing'
                             ? 'CLIを準備した後、AI情報を更新してください。'
                             : availability === 'unsupported'
-                                ? role === 'results' && selectionRole !== 'question' ? '成果文書の作成には未対応' : 'Poiesisからの実行には未対応です。'
+                                ? role === 'results' && selectionRole !== 'question'
+                                    ? '成果文書の作成には未対応です。設定で Codex か Claude を選び直してください。'
+                                    : 'Poiesisからの実行には未対応です。'
                                 : availability === 'error'
                                     ? 'AI情報を更新して、もう一度お試しください。'
                                     : undefined;
@@ -665,6 +669,17 @@ export class SettingsPart extends AgentWindowPart {
                 onOpenSettings={() => this.openAiSettings()}
             />
         );
+    }
+
+    public questionAiPill(compact = false): React.ReactNode {
+        const selection = resolveResultsQuestionSelection(this.host.state);
+        return <ModelPicker role='results' purpose='question' compact={compact}
+            detectionPhase={this.host.state.cliDetectionPhase}
+            detectionReport={this.host.state.cliDetectionReport} catalogs={this.host.state.modelCatalogs}
+            selectedProvider={selection.providerId} selectedModel={selection.model} selectedEffort={selection.effort}
+            onSelect={(provider, model) => this.setQuestionProviderModel(provider, model)}
+            onEffortChange={effort => this.setQuestionEffort(effort)}
+            onOpenSettings={() => this.openAiSettings()} />;
     }
 
     protected openAiSettings(): void {

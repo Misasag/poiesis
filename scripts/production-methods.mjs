@@ -15,7 +15,7 @@ export function productionMethods(path, className, names, dependencies = {}) {
         return member.getText(source);
     });
     const { outputText } = ts.transpileModule(`class Subject { ${members.join('\n')} }\nSubject;`, {
-        compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None }
+        compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None, jsx: ts.JsxEmit.React }
     });
     return new (vm.runInNewContext(outputText, { console, ...dependencies }))();
 }

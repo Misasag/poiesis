@@ -456,8 +456,8 @@ for (const marker of [
     "RESULTS_GENERATION_TIMEOUT_MS = 600_000",
     "process.env.POIESIS_RESULTS_GENERATION_FORCE_FAILURE === '1'",
     "buildResultsSkillInput(request, workspace, skill.directory)",
-    "await writeFile(join(directory, 'input.json'), JSON.stringify(input, null, 2), 'utf8')",
-    "this.readOutput(run.directory)",
+    "await writeFile(join(directory, 'input.json'), expectedInput)",
+    "this.readVerifiedOutput(run)",
     "loadBundledResultsSkill()",
     "input?: string",
     "promptViaStdin",
@@ -1231,6 +1231,10 @@ assert.ok(elapsedSource.includes("progress?.phase === 'regeneration'") && elapse
 assert.ok(elapsedSource.includes('clock(progress.startedAt)') && elapsedSource.includes('formatTaskElapsedTime(generationStartedAt, now)'));
 assert.ok(resultsPartSource.includes('sumCliUsage(document.calls.map(call => call.usage))'));
 assert.ok(agentPartSource.includes('<CliUsageLine usage={task.usage}'));
+// T-1108: shell-only edits have no edit activity; the activity summary counts the app's change record.
+assert.ok(agentPartSource.includes("const recordedFiles = finished && task?.changeSet?.source === 'task-diff' ? task.changeSet.files.length : undefined;")
+    && agentPartSource.includes("const fileChangeCount = recordedFiles ?? activities.filter(activity => activity.kind === 'file-change').length;"),
+    'The activity summary must count changed files from the change record');
 for (const source of [runtimeServer, resultsQuestionServer, resultsGenerationServer, requirementClassificationServer, resultsAssertionServer, cliDetector]) {
     assert.ok(!source.includes('shell: true'), 'Product child-process sites must not use a shell fallback');
     assert.ok(!source.includes('cmd.exe'), 'Product child-process sites must not launch cmd.exe');
@@ -1551,9 +1555,11 @@ for (const marker of [
     "appliedSkillNames.join('、')",
     'this.workspaceSkillService.list(root)',
     "sandbox='allow-scripts'",
+    // The Electron navigation guard recognises the Results frame by this name at frame creation.
+    "name='poiesis-results-document'",
     "type: 'poiesis:open-citation' | 'poiesis:retry-ai-results'",
     "window.addEventListener('message', receiveResultsMessage)",
-    'event.source !== frame.contentWindow',
+    'this.frameMessages.accept(frame, event)',
     'public async openResultsCitation(rawCitation: string)',
     'workspace.isEqualOrParent(file, false)',
     'await this.editorManager.open(file, {',
@@ -1720,7 +1726,7 @@ for (const marker of [
     '<ModelPicker',
     'catalogs={this.host.state.modelCatalogs}',
     "this.host.renderAiRolePill('agent')",
-    "this.host.renderAiRolePill('results', true)",
+    "this.host.questionAiPill(true)",
     'onSelect={(provider, model) => this.setRoleProviderModel(role, provider, model)}',
     'onEffortChange={effort => this.setRoleEffort(role, effort)}',
     'onOpenSettings={() => this.openAiSettings()}',
@@ -2908,30 +2914,39 @@ for (const marker of [
     "DOMPurify.sanitize",
     "ADD_TAGS: ['use', 'script', ...(allowExternalResources ? ['link'] : [])]",
     'allowExternalResources = false',
-    'if (!allowExternalResources)',
+    'resultsFrameCsp(allowExternalResources)',
     "foreignObject",
     "name.startsWith('on')",
     "--results-font-sans:",
     "--results-font-mono:",
     "--results-scrollbar-opacity: 18%",
     "::-webkit-scrollbar-button",
-    "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+    "script-src ${scriptHashes}; connect-src 'none'; form-action 'none'; base-uri 'none'",
     "doc.head.prepend(policy)",
     "ResultsFrameRetryGate"
 ]) {
     assert.ok(richResults.includes(marker), `Rich Results boundary is missing ${marker}`);
 }
+assert.ok(richResults.includes("require('../../skills/poiesis-results/trusted-scripts.json')")
+    && richResults.includes('ResultsFrameMessageGate')
+    && richResults.includes("frame.srcdoc !== '' && state.srcdoc !== frame.srcdoc")
+    && (await read('electron-app/scripts/theia-electron-main.js')).includes("'will-frame-navigate'")
+    && (await read('electron-app/scripts/theia-electron-main.js')).includes("'frame-created'")
+    && (await read('electron-app/scripts/results-frame-navigation.js')).includes("details.url !== 'about:srcdoc'")
+    && (await read('electron-app/scripts/results-frame-navigation.js')).includes('resultsFrames.has(details.frame.frameTreeNodeId)')
+    && (await read('electron-app/scripts/results-frame-navigation.js')).includes('if (!details.frame) return true;'),
+    'Results document script and frame navigation boundaries must stay active');
 for (const marker of [
     'allowExternalResultsResources: false',
     '<strong>外部リソースを読み込む</strong>',
     'checked={this.host.state.allowExternalResultsResources}',
     'onChange={event => this.setAllowExternalResultsResources(event.currentTarget.checked)}',
-    "key={`${scopeKey}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}"
+    "key={`${scopeKey}-${document.generatedAt}-${this.host.themePreferenceService.effectiveMode}-${this.host.state.allowExternalResultsResources ? 'external' : 'isolated'}`}"
 ]) {
     assert.ok(agentWindowSource.includes(marker), `Results external-resource setting is missing ${marker}`);
 }
 const resultsRichContentTest = await read('scripts/test-results-rich-content.mjs');
-for (const marker of ['CSP follows the external-resource setting', 'The external image follows the setting',
+for (const marker of ['CSP is mandatory in both resource settings', 'The external image follows the setting',
     'The linked stylesheet follows the setting', 'Disabled external resources must not reach the network']) {
     assert.ok(resultsRichContentTest.includes(marker), `Results resource-policy coverage is missing ${marker}`);
 }
@@ -2965,6 +2980,13 @@ assert.ok(resultsEvidence.includes('if (!evidenceCount)')
 const resultsSkillRunTest = await read('scripts/test-results-skill-run.mjs');
 const resultsSkillInput = await read('agent-window/src/node/results-skill-input.ts');
 const resultsSkillRuntime = await read('agent-window/src/node/results-skill-runtime.ts');
+assert.ok(resultsGenerationServer.includes('actual.equals(run.expectedInput)')
+    && resultsGenerationServer.includes('environment.CODEX_HOME = isolatedHome')
+    && resultsGenerationServer.includes('await this.restoreCodexAuth(authCopy)')
+    && resultsGenerationServer.includes('await rename(temporary, auth.source)')
+    && resultsGenerationServer.includes('await this.removeResultsTemporaryDirectory(root)')
+    && resultsSkillRuntime.includes("'--ignore-user-config', '--ignore-rules', '--ephemeral'"),
+    'Results input integrity and Codex isolation must stay active');
 const resultsRuntimePreparation = await read('scripts/prepare-results-runtime.mjs');
 for (const marker of ['licenseMetadata.version !== process.version', 'WARNING: Bundled Node',
     "copyFileSync(join(licenseDirectory, 'LICENSE'), join(target, 'LICENSE'))",

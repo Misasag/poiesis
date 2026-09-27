@@ -2,8 +2,9 @@ import { readChildUtf8 } from './child-utf8';
 import { resolveResultsImages } from './results-images';
 import { CliStdoutBuffer } from '../common/cli-usage';
 import { captureCliCall, CliCallCapture } from './cli-call';
-import { mkdir, mkdtemp, open, realpath, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, open, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import URI from '@theia/core/lib/common/uri';
 import { inject, injectable } from '@theia/core/shared/inversify';
@@ -21,6 +22,13 @@ interface ResultsGenerationRun {
     cancelled: boolean;
     providerName: string;
     directory: string;
+    expectedInput: Buffer;
+}
+
+interface CodexAuthCopy {
+    source: string;
+    copy: string;
+    original: Buffer;
 }
 
 export const GENERATED_RESULTS_HTML_MAX_BYTES = 8 * 1024 * 1024;
@@ -62,6 +70,8 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
 
     protected async generateOnce(request: ResultsGenerationRequest, call: CliCallCapture): Promise<ResultsGenerationResult> {
         let root: string | undefined;
+        let cleanupParent: string | undefined;
+        let authCopy: CodexAuthCopy | undefined;
         try {
             const delay = Number(process.env.POIESIS_RESULTS_GENERATION_TEST_DELAY_MS);
             if (delay > 0) { await new Promise(done => setTimeout(done, Math.min(delay, 10_000))); }
@@ -79,20 +89,31 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             const temp = await realpath(tmpdir());
             const parent = pathWithin(workspace, temp) ? dirname(workspace) : temp;
             if (pathWithin(workspace, parent)) { throw new Error("作業場所の外に成果作成の一時フォルダーを用意できません。"); }
+            cleanupParent = await realpath(parent);
             root = await mkdtemp(join(parent, 'poiesis-results-'));
             const directory = join(root, 'run');
             const control = join(root, 'control');
             await mkdir(directory);
             await mkdir(control);
-            await writeFile(join(directory, 'input.json'), JSON.stringify(input, null, 2), 'utf8');
+            const expectedInput = Buffer.from(JSON.stringify(input, null, 2), 'utf8');
+            await writeFile(join(directory, 'input.json'), expectedInput);
             const settings = provider.id === 'claude'
                 ? await writeClaudeResultsSettings(control, directory, workspace, skill.directory, node) : undefined;
+            const environment = resultsExecutionEnvironment(node);
+            if (provider.id === 'codex') {
+                const isolatedHome = join(control, 'codex-home');
+                await mkdir(isolatedHome);
+                // Auth is the only user-owned Codex file copied in. Config, MCP, AGENTS and rules stay outside this home.
+                const userHome = environment.CODEX_HOME || join(homedir(), '.codex');
+                authCopy = await this.copyCodexAuth(userHome, isolatedHome);
+                environment.CODEX_HOME = isolatedHome;
+            }
             const prompt = this.buildPrompt(skill.content, skill.directory, (input as { userGuidance: string }).userGuidance);
             const args = resultsSkillCliArgs({ providerId: provider.id, model: provider.model, effort: request.effort,
                 workspace: directory, prompt, promptViaStdin: true }, settings);
             if (this.cancelledTaskIds.has(request.taskId)) { return this.cancelled(); }
-            const child = this.spawnCli(provider.id, provider.path, args, directory, prompt, resultsExecutionEnvironment(node));
-            const run = { call, process: child, cancelled: false, providerName: provider.name, directory };
+            const child = this.spawnCli(provider.id, provider.path, args, directory, prompt, environment);
+            const run = { call, process: child, cancelled: false, providerName: provider.name, directory, expectedInput };
             this.runs.set(request.taskId, run);
             return await this.collectResult(request.taskId, run);
         } catch (error) {
@@ -101,10 +122,52 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                 message: unsupportedModelEffortMessage(error) ?? (error instanceof Error && /^[組成果作変]/.test(error.message)
                     ? resultsRedactor()(error.message) : '成果文書の作成を開始できませんでした。') });
         } finally {
-            if (root && process.env.POIESIS_RESULTS_KEEP_RUN_DIR !== '1') {
-                await rm(root, { recursive: true, force: true }).catch(() => undefined);
+            if (authCopy) {
+                try { await this.restoreCodexAuth(authCopy); }
+                catch { console.warn('[Poiesis] 成果作成後の認証の更新を保存できませんでした。'); }
+            }
+            if (root) {
+                const actualRoot = await realpath(root).catch(() => undefined);
+                if (!actualRoot || !cleanupParent || actualRoot === cleanupParent || !pathWithin(cleanupParent, actualRoot)) {
+                    console.warn('[Poiesis] 成果作成の一時フォルダーを安全に削除できませんでした。');
+                } else {
+                    try { await this.removeResultsTemporaryDirectory(join(root, 'control', 'codex-home')); }
+                    catch { console.warn('[Poiesis] 成果作成の一時認証を削除できませんでした。'); }
+                    if (process.env.POIESIS_RESULTS_KEEP_RUN_DIR !== '1') {
+                        try { await this.removeResultsTemporaryDirectory(root); }
+                        catch { console.warn('[Poiesis] 成果作成の一時ファイルを削除できませんでした。'); }
+                    }
+                }
             }
         }
+    }
+
+    protected async copyCodexAuth(userHome: string, isolatedHome: string): Promise<CodexAuthCopy | undefined> {
+        const source = join(userHome, 'auth.json');
+        if (!await stat(source).then(info => info.isFile(), () => false)) { return undefined; }
+        const original = await readFile(source);
+        const copy = join(isolatedHome, 'auth.json');
+        await writeFile(copy, original, { flag: 'wx', mode: 0o600 });
+        return { source, copy, original };
+    }
+
+    protected async restoreCodexAuth(auth: CodexAuthCopy): Promise<void> {
+        const updated = await readFile(auth.copy);
+        if (updated.equals(auth.original)) { return; }
+        const temporary = join(dirname(auth.source), `.auth.json.poiesis-${process.pid}-${randomUUID()}.tmp`);
+        try {
+            await writeFile(temporary, updated, { flag: 'wx', mode: 0o600 });
+            // A different Codex may have refreshed the user's login while this run was active.
+            if ((await readFile(auth.source)).equals(auth.original)) {
+                await rename(temporary, auth.source);
+            }
+        } finally {
+            await rm(temporary, { force: true });
+        }
+    }
+
+    protected async removeResultsTemporaryDirectory(path: string): Promise<void> {
+        await rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
 
     protected buildPrompt(content: string, skillDir: string, userGuidance: string): string {
@@ -153,10 +216,22 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                         exitCode: code, signal, stderr: resultsRedactor()(stderr.trim()) }));
                     return;
                 }
-                void this.readOutput(run.directory).then(result => finish(run.cancelled || this.cancelledTaskIds.has(taskId) ? this.cancelled() : result),
+                void this.readVerifiedOutput(run).then(result => finish(run.cancelled || this.cancelledTaskIds.has(taskId) ? this.cancelled() : result),
                     () => finish(this.failed({ code: 'invalid-output', message: "成果文書を読み込めませんでした。", retryable: true })));
             });
         });
+    }
+
+    protected async readVerifiedOutput(run: ResultsGenerationRun): Promise<ResultsGenerationResult> {
+        try {
+            const path = join(run.directory, 'input.json');
+            if (!pathWithin(await realpath(run.directory), await realpath(path))) { throw new Error('Input left run directory'); }
+            const actual = await readFile(path);
+            if (!actual.equals(run.expectedInput)) { throw new Error('Input changed'); }
+        } catch {
+            return this.failed({ code: 'invalid-output', message: "成果作成の入力が書き換えられたため、文書を受け取れませんでした。" });
+        }
+        return this.readOutput(run.directory);
     }
 
     protected async readOutput(directory: string): Promise<ResultsGenerationResult> {
@@ -177,7 +252,12 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                     if (!bytesRead) { break; }
                     offset += bytesRead;
                 }
-                return this.checkedHtml(buffer.subarray(0, offset).toString('utf8'));
+                if (offset > GENERATED_RESULTS_HTML_MAX_BYTES) { return this.outputTooLarge(); }
+                try {
+                    return this.checkedHtml(new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, offset)));
+                } catch {
+                    return this.failed({ code: 'invalid-output', message: "成果文書が正しい UTF-8 ではありません。", retryable: true });
+                }
             } finally { await file.close(); }
         } catch {
             return this.failed({ code: 'invalid-output', message: "成果文書が保存されていないか、読み込めませんでした。", retryable: true });
@@ -206,7 +286,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             return { code: 'invalid-scope', message: "成果文書の作成に必要な作業情報が揃っていません。" };
         }
         if (request.providerId !== 'codex' && request.providerId !== 'claude') {
-            return { code: 'unsupported-provider', message: "成果文書の作成には未対応" };
+            return { code: 'unsupported-provider', message: "成果文書の作成には未対応です。設定で Codex か Claude を選び直してください。" };
         }
         return undefined;
     }

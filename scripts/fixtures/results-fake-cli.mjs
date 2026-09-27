@@ -11,11 +11,17 @@ else {
         if (mode.startsWith('empty')) writeFileSync('results.html', '\uFEFF \n', 'utf8');
         else if (mode.startsWith('large')) writeFileSync('results.html', 'あ'.repeat(Math.ceil(8 * 1024 * 1024 / 3) + 1), 'utf8');
     }
-    if (mode === 'valid' || input.retry && !mode.endsWith('-always')) {
+    if (mode === 'valid' || mode === 'tamper' || mode.startsWith('auth-') || input.retry && !mode.endsWith('-always')) {
         const result = spawnSync('node', [join(input.skillDir, 'scripts/render.mjs')], {
             cwd: process.cwd(), env: process.env, encoding: 'utf8', windowsHide: true, shell: false
         });
         if (result.status !== 0) throw Error('The skill could not run Node from PATH');
+    }
+    if (mode === 'tamper') writeFileSync('input.json', JSON.stringify({ ...input, diff: 'tampered' }), 'utf8');
+    if (mode.startsWith('auth-')) {
+        writeFileSync(join(process.env.CODEX_HOME, 'auth.json'), JSON.stringify({ token: 'refreshed-by-fixture' }), 'utf8');
+        if (mode === 'auth-race') writeFileSync(process.env.POIESIS_FIXTURE_AUTH_SOURCE,
+            JSON.stringify({ token: 'refreshed-elsewhere' }), 'utf8');
     }
     const output = { type: 'item.completed', item: { type: 'agent_message', text: '成果を保存しました。' } };
     console.log(JSON.stringify(output));

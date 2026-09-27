@@ -211,6 +211,9 @@ export class AgentWindowWidget extends ReactWidget implements AgentWindowHost {
     public renderAiRolePill(role: AiRole, compact = false): React.ReactNode {
         return this.settingsPart.renderAiRolePill(role, compact);
     }
+    public questionAiPill(compact = false): React.ReactNode {
+        return this.settingsPart.questionAiPill(compact);
+    }
     public openSettings(): void { this.settingsPart.openSettings(); }
     public closeSettings(): void { this.settingsPart.closeSettings(); }
     public openShortcutsOverlay(): void { this.settingsPart.openShortcutsOverlay(); }
