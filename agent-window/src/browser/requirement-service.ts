@@ -379,6 +379,7 @@ export class RequirementService {
         const write = this.persistence.catch(() => undefined)
             .then(async () => {
                 const currentIds = new Set<string>();
+                const currentMarkers = new Map<string, NonNullable<TaskResultDocument['htmlStored']>>();
                 for (const requirements of Object.values(state.sessions)) {
                     for (const requirement of requirements) {
                         if (requirement.resultsDocument) {
@@ -386,11 +387,15 @@ export class RequirementService {
                                 'requirement', requirement.id, requirement.resultsDocument);
                             if (requirement.resultsDocument.htmlStored) {
                                 currentIds.add(requirement.id);
+                                currentMarkers.set(requirement.id, requirement.resultsDocument.htmlStored);
                             }
                         }
                     }
                 }
                 await this.globalStorageService.setData(REQUIREMENTS_STORAGE_KEY, state);
+                for (const [id, marker] of currentMarkers) {
+                    await this.documentStorage.commit('requirement', id, marker);
+                }
                 for (const id of this.storedDocumentIds) {
                     if (!currentIds.has(id)) {
                         await this.documentStorage.remove('requirement', id);

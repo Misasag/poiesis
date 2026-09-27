@@ -33,10 +33,16 @@ const { RequirementService } = require('../agent-window/lib/browser/requirement-
 
 const saved = new Map([[SESSION_MIGRATION_MARKER_KEY, true]]);
 const writes = new Map();
+let failReadKey;
+let failWriteKey;
 const clone = value => value === undefined ? undefined : structuredClone(value);
 const storage = {
-    async getData(key) { return clone(saved.get(key)); },
+    async getData(key) {
+        if (key === failReadKey) throw new Error('Temporary read failure');
+        return clone(saved.get(key));
+    },
     async setData(key, value) {
+        if (key === failWriteKey) throw new Error('Interrupted metadata write');
         writes.set(key, (writes.get(key) ?? 0) + 1);
         if (value === undefined) saved.delete(key);
         else saved.set(key, clone(value));
@@ -63,23 +69,59 @@ function makeStore() {
     return store;
 }
 const key = resultsDocumentHtmlKey('task', task.id);
+const taskMarker = () => saved.get(GLOBAL_SESSION_STORAGE_KEY).sessions[0].tasks[0]?.resultsDocument?.htmlStored;
+const taskKey = () => taskMarker()?.key ?? key;
 const store = makeStore();
 await store.persistWindowState();
-assert.equal(saved.get(key), html, 'The separate key must retain every character of the image document.');
+const firstMarker = taskMarker();
+const firstKey = taskKey();
+assert.notEqual(firstKey, key, 'New documents must use a separate immutable key.');
+assert.equal(saved.get(firstKey), html, 'The separate key must retain every character of the image document.');
 assert.equal(saved.get(GLOBAL_SESSION_STORAGE_KEY).sessions[0].tasks[0].resultsDocument.html, undefined);
 assert.equal(saved.get(GLOBAL_SESSION_STORAGE_KEY).sessions[0].tasks[0].resultsDocument.htmlStored.length, html.length);
 await store.persistWindowState();
-assert.equal(writes.get(key), 1, 'Unchanged HTML must not be written again.');
+assert.equal(writes.get(firstKey), 1, 'Unchanged HTML must not be written again.');
 const restored = await makeStore().loadGlobalWindowState();
 assert.equal(restored.sessions[0].tasks[0].resultsDocument.html, html);
 const restartedStore = makeStore();
 await restartedStore.loadGlobalWindowState();
 await restartedStore.persistWindowState();
-assert.equal(writes.get(key), 1, 'Reloading an unchanged document must not rewrite its key.');
+assert.equal(writes.get(firstKey), 1, 'Reloading an unchanged document must not rewrite its key.');
 
-task = { ...task, resultsDocument: { ...task.resultsDocument, html: '<html>replacement</html>', generatedAt: '2026-09-27T00:01:00.000Z' } };
+// A transient startup read failure must leave the marker and its HTML intact through another save.
+failReadKey = firstKey;
+const unreadable = await makeStore().loadGlobalWindowState();
+assert.equal(unreadable.sessions[0].tasks[0].resultsDocument.status, 'failed');
+assert.equal(unreadable.sessions[0].tasks[0].resultsDocument.htmlStored.key, firstKey);
+task = unreadable.sessions[0].tasks[0];
+await makeStore().persistWindowState();
+assert.equal(taskKey(), firstKey);
+assert.equal(saved.get(firstKey), html);
+failReadKey = undefined;
+const recoveredTaskDocument = (await makeStore().loadGlobalWindowState()).sessions[0].tasks[0].resultsDocument;
+assert.equal(recoveredTaskDocument.html, html);
+assert.equal(recoveredTaskDocument.status, 'ready');
+
+task = { ...task, resultsDocument: { ...task.resultsDocument, status: 'ready', html: '<html>replacement</html>',
+    generatedAt: '2026-09-27T00:01:00.000Z' } };
+failWriteKey = GLOBAL_SESSION_STORAGE_KEY;
+await assert.rejects(store.persistWindowState(), /Interrupted metadata write/);
+failWriteKey = undefined;
+assert.equal(taskKey(), firstKey, 'An interrupted switch must keep the old marker.');
+assert.equal(saved.get(firstKey), html, 'An interrupted switch must keep the old document.');
+assert.equal((await makeStore().loadGlobalWindowState()).sessions[0].tasks[0].resultsDocument.html, html);
 await store.persistWindowState();
-assert.equal(saved.get(key), task.resultsDocument.html, 'Regeneration must overwrite the same key.');
+const replacementKey = taskKey();
+assert.notEqual(replacementKey, firstKey, 'Regeneration must switch to a new key.');
+assert.equal(saved.get(replacementKey), task.resultsDocument.html);
+assert.equal(saved.has(firstKey), false, 'The old key can be removed after the switch is saved.');
+task = { ...task, resultsDocument: { ...task.resultsDocument, html: 'x'.repeat(8 * 1024 * 1024 + 1) } };
+await store.persistWindowState();
+assert.equal(taskKey(), replacementKey, 'An oversized regeneration must keep the readable document.');
+assert.equal(saved.get(GLOBAL_SESSION_STORAGE_KEY).sessions[0].tasks[0].resultsDocument.status, 'ready');
+assert.match(saved.get(GLOBAL_SESSION_STORAGE_KEY).sessions[0].tasks[0].resultsDocument.updateError, /8 MiB/);
+assert.equal((await makeStore().loadGlobalWindowState()).sessions[0].tasks[0].resultsDocument.html,
+    '<html>replacement</html>');
 
 const legacy = '<html>legacy inline document</html>';
 saved.set(GLOBAL_SESSION_STORAGE_KEY, { version: 1, railWidth: 232, railCollapsed: false,
@@ -88,27 +130,36 @@ saved.set(GLOBAL_SESSION_STORAGE_KEY, { version: 1, railWidth: 232, railCollapse
 const migrated = await makeStore().loadGlobalWindowState();
 assert.equal(migrated.sessions[0].tasks[0].resultsDocument.html, legacy);
 task = migrated.sessions[0].tasks[0];
-await makeStore().persistWindowState();
-assert.equal(saved.get(key), legacy);
+const legacyStore = makeStore();
+await legacyStore.persistWindowState();
+assert.equal(saved.get(taskKey()), legacy);
 assert.equal(saved.get(GLOBAL_SESSION_STORAGE_KEY).sessions[0].tasks[0].resultsDocument.html, undefined);
 
 task = undefined;
-await store.persistWindowState();
-assert.equal(saved.has(key), false, 'Removing a task must remove its HTML key.');
+const legacyKey = taskKey();
+await legacyStore.persistWindowState();
+assert.equal(saved.has(legacyKey), false, 'Removing a task must remove its HTML key.');
 task = { id: 'task-1', sessionId: session.id,
     resultsDocument: { taskId: 'task-1', status: 'ready', html: 'x'.repeat(8 * 1024 * 1024 + 1) } };
 
-await store.persistWindowState();
-assert.equal(saved.has(key), false, 'Oversized HTML must not leave a partial durable document.');
+await makeStore().persistWindowState();
+assert.equal(saved.has(taskKey()), false, 'Oversized HTML must not leave a partial durable document.');
 const oversize = saved.get(GLOBAL_SESSION_STORAGE_KEY).sessions[0].tasks[0].resultsDocument;
 assert.equal(oversize.status, 'failed');
 assert.equal(oversize.html, undefined);
 assert.match(oversize.error, /8 MiB/);
 
 const documentStorage = new ResultsDocumentStorage(storage);
+saved.set(key, html);
+const legacyMarker = { version: 1, length: html.length, hash: firstMarker.hash };
+assert.equal((await documentStorage.restore('task', task.id,
+    { taskId: task.id, status: 'ready', htmlStored: legacyMarker })).html, html);
+saved.delete(key);
 const marker = { taskId: task.id, status: 'ready', htmlStored: { version: 1, length: 10, hash: 'deadbeef' } };
 assert.equal((await documentStorage.restore('task', task.id, marker)).status, 'failed',
     'A missing document must use the existing failure state.');
+assert.deepEqual((await documentStorage.restore('task', task.id, marker)).htmlStored, marker.htmlStored,
+    'An unreadable legacy document must retain its marker.');
 assert(resultsDocumentHtmlKey('requirement', 'x'.repeat(500)).length <= 160);
 
 saved.set('poiesis.requirements.migrated.v1', true);
@@ -125,13 +176,41 @@ requirements.requirements.set('requirement-1', {
 });
 await requirements.persist();
 const requirementKey = resultsDocumentHtmlKey('requirement', 'requirement-1');
-assert.equal(saved.get(requirementKey), html);
+const requirementMarker = () => saved.get('poiesis.requirements.sessions.v1').sessions['session-1'][0].resultsDocument.htmlStored;
+const firstRequirementKey = requirementMarker().key;
+assert.notEqual(firstRequirementKey, requirementKey);
+assert.equal(saved.get(firstRequirementKey), html);
 assert.equal(saved.get('poiesis.requirements.sessions.v1').sessions['session-1'][0].resultsDocument.html, undefined);
 const restoredRequirements = new RequirementService(fakeTasks, storage, fakeLegacy);
 restoredRequirements.init();
 await restoredRequirements.loading;
 assert.equal(restoredRequirements.get('requirement-1').resultsDocument.html, html);
+failReadKey = firstRequirementKey;
+const unreadableRequirements = new RequirementService(fakeTasks, storage, fakeLegacy);
+unreadableRequirements.init();
+await unreadableRequirements.loading;
+assert.equal(unreadableRequirements.get('requirement-1').resultsDocument.status, 'failed');
+await unreadableRequirements.persist();
+assert.equal(requirementMarker().key, firstRequirementKey);
+assert.equal(saved.get(firstRequirementKey), html);
+failReadKey = undefined;
+const recoveredRequirements = new RequirementService(fakeTasks, storage, fakeLegacy);
+recoveredRequirements.init();
+await recoveredRequirements.loading;
+assert.equal(recoveredRequirements.get('requirement-1').resultsDocument.html, html);
+assert.equal(recoveredRequirements.get('requirement-1').resultsDocument.status, 'ready');
+requirements.requirements.get('requirement-1').resultsDocument.html = '<html>new aggregate</html>';
+failWriteKey = 'poiesis.requirements.sessions.v1';
+await assert.rejects(requirements.persist(), /Interrupted metadata write/);
+failWriteKey = undefined;
+assert.equal(requirementMarker().key, firstRequirementKey);
+assert.equal(saved.get(firstRequirementKey), html);
+await requirements.persist();
+const newRequirementKey = requirementMarker().key;
+assert.notEqual(newRequirementKey, firstRequirementKey);
+assert.equal(saved.get(newRequirementKey), '<html>new aggregate</html>');
+assert.equal(saved.has(firstRequirementKey), false);
 assert.equal(requirements.remove('requirement-1'), true);
 await requirements.persistence;
-assert.equal(saved.has(requirementKey), false, 'Removing a requirement must remove its HTML key.');
+assert.equal(saved.has(newRequirementKey), false, 'Removing a requirement must remove its HTML key.');
 console.log('RESULTS_DOCUMENT_PERSISTENCE_TEST={"imageChars":1000000,"separateKey":true,"legacyMigrated":true,"unchangedWrites":1,"oversizeFailed":true}');

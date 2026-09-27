@@ -57,7 +57,7 @@ export function resultsExecutionEnvironment(node: string, source: NodeJS.Process
 
 export function resultsSkillCliArgs(input: OneShotCliArgsInput, settings?: string): string[] {
     if (input.providerId !== 'codex' && input.providerId !== 'claude') {
-        throw new Error('成果文書の作成には未対応');
+        throw new Error('成果文書の作成には未対応です。設定で Codex か Claude を選び直してください。');
     }
     const base = oneShotCliArgs({ ...input, skipGitRepositoryCheck: true });
     let args: string[];

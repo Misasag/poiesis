@@ -1191,7 +1191,7 @@ export class ResultsPart extends AgentWindowPart {
                         >
                             <span className='codicon codicon-arrow-up' aria-hidden='true' />
                         </button>
-                        {documentReady && this.host.renderAiRolePill('results', true)}
+                        {documentReady && this.host.questionAiPill(true)}
                     </>}
                 </section>
             </section>;

@@ -9,8 +9,9 @@ import { spawnSync } from 'node:child_process';
 import './fixtures/results-browser-env.mjs';
 
 const require = createRequire(import.meta.url);
-const { ResultsGenerationServerImpl, RESULTS_GENERATION_TIMEOUT_MS } = require('../agent-window/lib/node/results-generation-server.js');
-const { resultsExecutionEnvironment, resultsNodeExecutable, pathWithin, loadBundledResultsSkill, resultsSkillCandidates, writeClaudeResultsSettings } = require('../agent-window/lib/node/results-skill-runtime.js');
+const { ResultsGenerationServerImpl, GENERATED_RESULTS_HTML_MAX_BYTES, RESULTS_GENERATION_TIMEOUT_MS } = require('../agent-window/lib/node/results-generation-server.js');
+const { resultsExecutionEnvironment, resultsNodeExecutable, pathWithin, loadBundledResultsSkill, resultsSkillCandidates,
+    resultsSkillCliArgs, writeClaudeResultsSettings } = require('../agent-window/lib/node/results-skill-runtime.js');
 const { buildResultsSkillInput } = require('../agent-window/lib/node/results-skill-input.js');
 const { spawnHiddenCli } = require('../agent-window/lib/node/hidden-process.js');
 const { AiResultsSkill } = require('../agent-window/lib/browser/results-skill.js');
@@ -102,11 +103,23 @@ try {
     for (const providerId of ['grok', 'pi']) {
         const before = scopes.length;
         const unsupported = await server.generate({ ...request, providerId });
-        assert.equal(unsupported.error.message, '成果文書の作成には未対応');
+        assert.equal(unsupported.error.message, '成果文書の作成には未対応です。設定で Codex か Claude を選び直してください。');
         assert.equal(scopes.length, before);
         assert.equal(cliRoleAvailability('pending', undefined, providerId, 'results'), 'unsupported');
-        await assert.rejects(skill(server, providerId).generate({ task, changeSet: task.changeSet }), /成果文書の作成には未対応/);
+        await assert.rejects(skill(server, providerId).generate({ task, changeSet: task.changeSet }),
+            /設定で Codex か Claude を選び直してください。/);
+        assert.throws(() => resultsSkillCliArgs({ providerId }), /設定で Codex か Claude を選び直してください。/);
     }
+    const malformedDir = join(root, 'malformed-output');
+    await mkdir(malformedDir);
+    await writeFile(join(malformedDir, 'results.html'), Buffer.from([0x3c, 0x68, 0x3e, 0xc3, 0x28]));
+    const malformed = await server.readOutput(malformedDir);
+    assert.equal(malformed.error.code, 'invalid-output');
+    assert.match(malformed.error.message, /UTF-8/);
+    await writeFile(join(malformedDir, 'results.html'), Buffer.from([0xef, 0xbb, 0xbf, 0x3c, 0x68, 0x3e]));
+    assert.equal((await server.readOutput(malformedDir)).html, '<h>');
+    await writeFile(join(malformedDir, 'results.html'), Buffer.alloc(GENERATED_RESULTS_HTML_MAX_BYTES + 1, 0x61));
+    assert.equal((await server.readOutput(malformedDir)).error.code, 'too-large');
     await assert.rejects(skill(server).generate({ task: { ...task, workspaceUri: undefined }, changeSet: task.changeSet }), /作業場所/);
     for (const mode of ['missing', 'empty', 'large', 'missing-always', 'empty-always', 'large-always']) {
         process.env.POIESIS_FIXTURE_OUTPUT = mode;
@@ -128,6 +141,18 @@ try {
     assert.equal(judgeAttempts, 2); assert.equal(assertionDocument.assertionAttempts, 2);
     assert(scopes.at(-1).data.retry.reason.includes('利用者の条件がある'));
     assert.deepEqual(assertionDocument.assertions.map(a => a.source), ['skill']);
+    judgeAttempts = 0;
+    const retryCalls = [];
+    const firstOnRetryFailure = await skill({ async generate(attemptRequest) {
+        if (attemptRequest.attempt === 1) return { status: 'generated', html: '<h1>Readable first document</h1>' };
+        return { status: 'failed', error: { code: 'cli-failed', message: '2回目の実行に失敗しました。' },
+            call: { purpose: 'results-generation', providerId: 'codex', exitCode: 1 } };
+    } }).generate({ task, changeSet: task.changeSet, onCall: call => retryCalls.push(call) });
+    assert.equal(firstOnRetryFailure.html, '<h1>Readable first document</h1>');
+    assert.equal(firstOnRetryFailure.assertionAttempts, 2);
+    assert.match(firstOnRetryFailure.updateError, /2回目の実行に失敗しました/);
+    assert.equal(firstOnRetryFailure.calls.length, 1);
+    assert.equal(retryCalls.length, 1, 'The failed retry must remain in the call record.');
     definitions = []; judgeFailOnce = false;
 
     const claude = await server.generate({ ...request, providerId: 'claude' });

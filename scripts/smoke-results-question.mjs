@@ -57,7 +57,7 @@ const serverProcess = spawn(process.execPath, [
     env: {
         ...process.env,
         THEIA_CONFIG_DIR: theiaConfig,
-        POIESIS_DISABLE_CLI_DETECTION: '1',
+        POIESIS_CLI_DETECTION_TEST_FORCE_FOUND: 'codex',
         POIESIS_RESULTS_QUESTION_MOCK_REPLY: mockAnswer,
         POIESIS_RESULTS_QUESTION_MOCK_DELAY_MS: '5000'
     },
@@ -103,6 +103,21 @@ try {
     await page.waitForSelector('.poiesis-results__question-panel [aria-label="表示中の成果について質問"]', { visible: true });
     assert(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') === '表示中の成果について質問'),
         'Opening Questions did not focus the input.');
+    stage = 'question-ai-picker';
+    await page.waitForSelector('.poiesis-results__question-panel .poiesis-model-picker__trigger[aria-label="質問の AI のモデル"]');
+    await page.click('.poiesis-results__question-panel .poiesis-model-picker__trigger');
+    await page.waitForSelector('.poiesis-model-picker__option[data-provider="codex"][data-model="gpt-6-astra"]', { visible: true });
+    await page.click('.poiesis-model-picker__option[data-provider="codex"][data-model="gpt-6-astra"]');
+    await page.waitForFunction(() => {
+        const key = Object.keys(localStorage).find(candidate => candidate.endsWith(':poiesis.settings.v1'));
+        if (!key) return false;
+        const state = JSON.parse(localStorage.getItem(key) ?? '{}');
+        return state.questionSameAsResults === false && state.questionCli === 'codex'
+            && state.questionModel === 'gpt-6-astra' && state.resultsModel === '';
+    });
+    assert(await page.$eval('.poiesis-results__question-panel .poiesis-model-picker', element => element.dataset.model)
+        === 'gpt-6-astra', 'The question badge must display the question model after selection.');
+    await page.click('[aria-label="表示中の成果について質問"]');
     await page.type('[aria-label="表示中の成果について質問"]', question);
     await page.click('[aria-label="Results 内へ送信"]');
     await page.waitForSelector('.poiesis-results__question-panel .poiesis-results__qa-entry.sending', { visible: true });

@@ -1231,6 +1231,10 @@ assert.ok(elapsedSource.includes("progress?.phase === 'regeneration'") && elapse
 assert.ok(elapsedSource.includes('clock(progress.startedAt)') && elapsedSource.includes('formatTaskElapsedTime(generationStartedAt, now)'));
 assert.ok(resultsPartSource.includes('sumCliUsage(document.calls.map(call => call.usage))'));
 assert.ok(agentPartSource.includes('<CliUsageLine usage={task.usage}'));
+// T-1108: shell-only edits have no edit activity; the activity summary counts the app's change record.
+assert.ok(agentPartSource.includes("const recordedFiles = finished && task?.changeSet?.source === 'task-diff' ? task.changeSet.files.length : undefined;")
+    && agentPartSource.includes("const fileChangeCount = recordedFiles ?? activities.filter(activity => activity.kind === 'file-change').length;"),
+    'The activity summary must count changed files from the change record');
 for (const source of [runtimeServer, resultsQuestionServer, resultsGenerationServer, requirementClassificationServer, resultsAssertionServer, cliDetector]) {
     assert.ok(!source.includes('shell: true'), 'Product child-process sites must not use a shell fallback');
     assert.ok(!source.includes('cmd.exe'), 'Product child-process sites must not launch cmd.exe');
@@ -1720,7 +1724,7 @@ for (const marker of [
     '<ModelPicker',
     'catalogs={this.host.state.modelCatalogs}',
     "this.host.renderAiRolePill('agent')",
-    "this.host.renderAiRolePill('results', true)",
+    "this.host.questionAiPill(true)",
     'onSelect={(provider, model) => this.setRoleProviderModel(role, provider, model)}',
     'onEffortChange={effort => this.setRoleEffort(role, effort)}',
     'onOpenSettings={() => this.openAiSettings()}',

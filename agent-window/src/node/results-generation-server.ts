@@ -177,7 +177,12 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
                     if (!bytesRead) { break; }
                     offset += bytesRead;
                 }
-                return this.checkedHtml(buffer.subarray(0, offset).toString('utf8'));
+                if (offset > GENERATED_RESULTS_HTML_MAX_BYTES) { return this.outputTooLarge(); }
+                try {
+                    return this.checkedHtml(new TextDecoder('utf-8', { fatal: true }).decode(buffer.subarray(0, offset)));
+                } catch {
+                    return this.failed({ code: 'invalid-output', message: "成果文書が正しい UTF-8 ではありません。", retryable: true });
+                }
             } finally { await file.close(); }
         } catch {
             return this.failed({ code: 'invalid-output', message: "成果文書が保存されていないか、読み込めませんでした。", retryable: true });
@@ -206,7 +211,7 @@ export class ResultsGenerationServerImpl implements ResultsGenerationServer {
             return { code: 'invalid-scope', message: "成果文書の作成に必要な作業情報が揃っていません。" };
         }
         if (request.providerId !== 'codex' && request.providerId !== 'claude') {
-            return { code: 'unsupported-provider', message: "成果文書の作成には未対応" };
+            return { code: 'unsupported-provider', message: "成果文書の作成には未対応です。設定で Codex か Claude を選び直してください。" };
         }
         return undefined;
     }

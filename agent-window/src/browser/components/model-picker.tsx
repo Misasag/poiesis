@@ -75,7 +75,7 @@ export const ModelPicker = ({
     onEffortChange,
     onOpenSettings
 }: ModelPickerProps): React.ReactElement => {
-    const roleLabel = role === 'agent' ? 'Agent' : role === 'judge' ? '判定' : purpose === 'question' ? '質問' : 'Results';
+    const roleLabel = role === 'agent' ? 'Agent' : role === 'judge' ? '判定' : purpose === 'question' ? '質問の AI' : 'Results';
     const triggerRef = React.useRef<HTMLButtonElement>(null);
     const popoverRef = React.useRef<HTMLDivElement>(null);
     const searchRef = React.useRef<HTMLInputElement>(null);
@@ -345,7 +345,7 @@ export const ModelPicker = ({
                 </span>
                 <span className={`codicon codicon-chevron-${open ? 'up' : 'down'}`} aria-hidden='true' />
             </button>
-            {role === 'results' && purpose !== 'question' && !compact && <small>Grok・pi: 成果文書の作成には未対応</small>}
+            {role === 'results' && purpose !== 'question' && !compact && <small>Grok・pi では成果文書を作成できません。</small>}
             {open && position && ReactDOM.createPortal(
                 <div
                     ref={popoverRef}
