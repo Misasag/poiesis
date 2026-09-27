@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>S6 の Results の見本</title>
+<style>
+:root { --fg:#1d2925; --muted:#57645e; --border:#d4ddd7; --bg:#fff; --new:#17804b; --chg:#a8581a; --store:#7263a6; --screen:#3b6e8f; --state:#458f9a; --dec:#435a98; --con:#a13b3b; --unv:#6b6b6b; }
+body { max-width:1100px; margin:24px auto; padding:0 16px; background:var(--bg); color:var(--fg); font:15px/1.55 "Yu Gothic UI","Meiryo",system-ui,sans-serif; }
+.lead { font-size:16px; margin:0 0 4px; }
+.request { color:var(--muted); margin:0 0 14px; }
+.screens { margin:0 0 20px; }
+.screens h2 { font-size:19px; margin:0 0 8px; }
+.screens figure { margin:0; text-align:center; }
+.screens figcaption { font-size:13px; margin-top:4px; }
+.screens img { display:block; border:1px solid var(--border); border-radius:8px; cursor:zoom-in; }
+.screens .pair { display:flex; align-items:center; gap:14px; }
+.screens .pair img { width:400px; }
+.screens .row { display:flex; align-items:center; gap:10px; margin-top:14px; }
+.screens .row img { width:300px; }
+.screens .arrow { font-size:26px; color:var(--muted); }
+.screens .note { font-size:12.5px; color:var(--muted); margin:8px 0 0; }
+.legend { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; font-size:13px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; margin-bottom:18px; }
+.legend svg { vertical-align:middle; }
+section.fig { margin:0 0 26px; padding:14px 16px 12px; border:1px solid var(--border); border-radius:12px; }
+section.fig h2 { font-size:19px; margin:0 0 4px; }
+section.fig .q { margin:0 0 8px; }
+section.fig .look { margin:8px 0 2px; }
+section.fig .note { font-size:12.5px; color:var(--muted); margin:2px 0 0; }
+section.fig .hint { font-size:13px; color:var(--muted); margin:0 0 6px; }
+svg text { font-family:"Yu Gothic UI","Meiryo",sans-serif; }
+.mono { font-family:Consolas,monospace; }
+table { border-collapse:collapse; width:100%; font-size:14px; }
+th, td { text-align:left; vertical-align:top; padding:7px 10px 7px 0; border-bottom:1px solid var(--border); }
+th { font-size:13px; color:var(--muted); font-weight:600; }
+td.num { white-space:nowrap; font-weight:700; color:var(--dec); width:3.2em; }
+.ai { color:var(--fg); }
+.fact { color:var(--muted); }
+.tag-unv { display:inline-block; padding:0 6px; border:1.5px dashed var(--unv); border-radius:10px; color:var(--unv); font-size:12.5px; }
+.tag-add { display:inline-block; padding:0 6px; border:1.5px dashed var(--dec); border-radius:4px; color:var(--dec); font-size:12.5px; }
+.tag-con { display:inline-block; padding:0 6px; background:var(--con); color:#fff; border-radius:4px; font-size:12.5px; }
+a { color:#1f5fbf; }
+details { margin:6px 0; } summary { cursor:pointer; }
+.panel { position:fixed; top:0; right:0; bottom:0; width:516px; box-sizing:border-box; padding:22px; background:#fff; border-left:1px solid var(--border); box-shadow:-8px 0 24px rgba(0,0,0,.18); display:none; }
+body.panel-open .panel { display:block; }
+body.panel-open { margin-left:24px; }
+.panel h3 { margin:0 0 8px; font-size:17px; }
+.panel .h { font-size:13px; color:var(--muted); margin:14px 0 4px; }
+.panel pre { font:12.5px/1.5 Consolas,monospace; background:rgba(127,127,127,.1); padding:6px 8px; border-radius:6px; margin:0; white-space:pre-wrap; }
+.panel .add { background:rgba(46,160,67,.18); display:block; }
+</style>
+</head>
+<body>
+<p class="lead">タイマー画面に今日の作業回数を表示し、作業を終えたときに1足して保存し、再読み込みやほかのタブでも同じ数を表示するようにしました。</p>
+<p class="request">依頼: タイマー画面に、今日の作業回数を大きく表示してください。</p>
+
+<section class="screens">
+  <h2>画面の変更</h2>
+  <div class="pair">
+    <figure><img src="s6-before-card.png" alt="変更前のタイマー画面"><figcaption>変更前</figcaption></figure>
+    <div class="arrow">→</div>
+    <figure><img src="s6-after-card.png" alt="変更後のタイマー画面。スタートの下に今日の作業回数 0回"><figcaption>変更後: スタートの下に「今日の作業回数」</figcaption></figure>
+  </div>
+  <p class="note">変更前の版と変更後の版を、同じ幅(900px)で描いて撮ったものです。画像を押すと拡大します。操作の前後の画面(0回 → 1回 → 再読み込み後も1回)は図2 の「画面の欄」の横にあります。</p>
+</section>
+
+<div class="legend">
+  <span><svg width="46" height="12"><line x1="2" y1="6" x2="38" y2="6" stroke="#1d2925" stroke-width="2"/><path d="M38 2 L45 6 L38 10z" fill="#1d2925"/></svg> 呼ぶ</span>
+  <span><svg width="46" height="12"><line x1="2" y1="6" x2="38" y2="6" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3"/><path d="M38 2 L45 6 L38 10z" fill="#7263a6"/></svg> 保存を読む・書く</span>
+  <span><svg width="46" height="12"><line x1="2" y1="6" x2="38" y2="6" stroke="#3b6e8f" stroke-width="2" stroke-dasharray="2 3"/><path d="M38 2 L45 6 L38 10z" fill="#3b6e8f"/></svg> 画面に表示</span>
+  <span><svg width="34" height="18"><rect x="1" y="2" width="32" height="14" rx="7" fill="#fff" stroke="#57645e" stroke-width="1.5"/></svg> 入口(きっかけ)</span>
+  <span><svg width="30" height="18"><rect x="1" y="2" width="28" height="14" rx="3" fill="#fff" stroke="#17804b" stroke-width="2"/></svg> 新しく作った</span>
+  <span><svg width="30" height="18"><rect x="1" y="2" width="28" height="14" rx="3" fill="#fff" stroke="#a8581a" stroke-width="2" stroke-dasharray="4 3"/></svg> 手を入れた既存</span>
+  <span><svg width="22" height="22"><circle cx="11" cy="11" r="9.5" fill="#fff" stroke="#435a98" stroke-width="1.6"/><text x="11" y="15.5" font-size="13" font-weight="700" text-anchor="middle" fill="#435a98">1</text></svg> 補った判断(下の一覧と同じ番号)</span>
+  <span><span class="tag-add">追加</span> 依頼にない追加</span>
+  <span><span class="tag-unv">未確認</span> 確かめていない</span>
+  <span><span class="tag-con">懸念1</span> 懸念(図4)</span>
+</div>
+
+<!-- Figure 1: state diagram -->
+<section class="fig">
+  <h2>図1　回数が増える時</h2>
+  <p class="q">作業中と休憩中の切り替えのうち、回数を足す処理を通るものを示します。</p>
+  <svg width="1068" height="350" viewBox="0 0 1068 350">
+    <defs>
+      <marker id="hd" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#1d2925"/></marker>
+      <marker id="hb" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="13" refY="8" orient="auto"><path d="M0 0 L16 8 L0 16z" fill="#1d2925"/></marker>
+      <marker id="hs" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto"><path d="M10 0 L0 5 L10 10z" fill="#1d2925"/></marker>
+    </defs>
+    <!-- states -->
+    <rect x="60" y="138" width="220" height="84" rx="42" fill="#eef6f7" stroke="#458f9a" stroke-width="2"/>
+    <text x="170" y="175" font-size="18" font-weight="700" text-anchor="middle">作業中</text>
+    <text x="170" y="198" font-size="12" class="mono" text-anchor="middle" fill="#57645e">currentMode = "work"</text>
+    <rect x="788" y="138" width="220" height="84" rx="42" fill="#eef6f7" stroke="#458f9a" stroke-width="2"/>
+    <text x="898" y="175" font-size="18" font-weight="700" text-anchor="middle">休憩中</text>
+    <text x="898" y="198" font-size="12" class="mono" text-anchor="middle" fill="#57645e">currentMode = "break"</text>
+    <!-- main transition: work -> break on time-out, through the counting process -->
+    <path d="M250 146 C 380 20, 690 20, 818 146" fill="none" stroke="#1d2925" stroke-width="5" marker-end="url(#hb)"/>
+    <text x="250" y="96" font-size="14" font-weight="700">時間切れ</text>
+    <text x="250" y="113" font-size="12" fill="#57645e">647行</text>
+    <text x="800" y="84" font-size="14" font-weight="700">休憩へ</text>
+    <text x="800" y="101" font-size="12" fill="#57645e">619行</text>
+    <rect x="394" y="30" width="280" height="66" rx="6" fill="#fff" stroke="#17804b" stroke-width="2"/>
+    <text x="408" y="54" font-size="15" font-weight="700">回数を1足して保存</text>
+    <text x="408" y="72" font-size="12" class="mono" fill="#57645e">recordCompletedWork() 473–484行</text>
+    <text x="408" y="88" font-size="12" fill="#57645e">作業中の終了時だけ 613行</text>
+    <circle cx="668" cy="32" r="11" fill="#fff" stroke="#435a98" stroke-width="1.6"/><text x="668" y="37" font-size="14" font-weight="700" text-anchor="middle" fill="#435a98">1</text>
+    <!-- break -> work on time-out: does not count -->
+    <path d="M818 214 C 690 318, 380 318, 250 214" fill="none" stroke="#1d2925" stroke-width="1.6" marker-end="url(#hd)"/>
+    <text x="534" y="316" font-size="14" text-anchor="middle">時間切れ <tspan font-size="12" fill="#57645e">631行</tspan></text>
+    <rect x="496" y="324" width="76" height="20" rx="10" fill="#fff" stroke="#6b6b6b" stroke-width="1.2"/>
+    <text x="534" y="339" font-size="12.5" text-anchor="middle" fill="#57645e">通らない</text>
+    <!-- mode button and arrow keys: both directions, do not count -->
+    <line x1="284" y1="180" x2="784" y2="180" stroke="#1d2925" stroke-width="1.6" marker-end="url(#hd)" marker-start="url(#hs)"/>
+    <rect x="384" y="166" width="300" height="28" rx="4" fill="#fff"/>
+    <text x="534" y="185" font-size="14" text-anchor="middle">モードのボタン <tspan font-size="12" fill="#57645e">697行</tspan>・矢印キー <tspan font-size="12" fill="#57645e">714行</tspan></text>
+    <rect x="496" y="200" width="76" height="20" rx="10" fill="#fff" stroke="#6b6b6b" stroke-width="1.2"/>
+    <text x="534" y="215" font-size="12.5" text-anchor="middle" fill="#57645e">通らない</text>
+  </svg>
+  <p class="hint">時間切れを確かめる入口: 250msごとに確認 659行・タブに戻る 721行・一時停止(ボタン 670行、スペースキー 707行)</p>
+  <p class="look">太い線の1本だけが「回数を1足して保存」を通ります。休憩の終了とモードの切り替えでは回数は増えません。</p>
+  <p class="note">状態と切り替えはコードから取り出したもの、名前は AI が付けたものです。図に載せなかったもの 0件。</p>
+</section>
+
+<!-- Figure 2: reread bundle and numbered record steps -->
+<section class="fig">
+  <h2>図2　表示を読み直す時</h2>
+  <p class="q">画面の数字を読み直す入口と、記録の中の順番を示します。</p>
+  <svg width="1068" height="500" viewBox="0 0 1068 500">
+    <defs>
+      <marker id="c" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#1d2925"/></marker>
+      <marker id="p" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#7263a6"/></marker>
+      <marker id="b" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#3b6e8f"/></marker>
+    </defs>
+    <!-- record process with numbered steps -->
+    <text x="210" y="60" font-size="12.5" fill="#57645e" text-anchor="end">図1 の太い線から</text>
+    <line x1="216" y1="56" x2="318" y2="56" stroke="#1d2925" stroke-width="2" marker-end="url(#c)"/>
+    <rect x="322" y="14" width="420" height="168" rx="6" fill="#fff" stroke="#17804b" stroke-width="2"/>
+    <text x="336" y="38" font-size="15" font-weight="700">回数を1足して保存</text>
+    <text x="336" y="56" font-size="12" class="mono" fill="#57645e">recordCompletedWork() 473–484行</text>
+    <text x="336" y="84" font-size="14">1　日付を決める(終了予定時刻)<tspan font-size="12" fill="#57645e">　475行</tspan></text>
+    <circle cx="628" cy="79" r="11" fill="#fff" stroke="#435a98" stroke-width="1.6"/><text x="628" y="84" font-size="14" font-weight="700" text-anchor="middle" fill="#435a98">2</text>
+    <text x="336" y="110" font-size="14">2　今の数を読んで +1<tspan font-size="12" fill="#57645e">　476行</tspan></text>
+    <text x="336" y="136" font-size="14">3　保存に書く<tspan font-size="12" fill="#57645e">　479行</tspan></text>
+    <text x="336" y="162" font-size="14">4　表示を読み直す<tspan font-size="12" fill="#57645e">　483行</tspan></text>
+    <!-- storage -->
+    <rect x="850" y="70" width="196" height="92" rx="6" fill="#f3f0fa" stroke="#7263a6" stroke-width="2"/>
+    <text x="864" y="96" font-size="15" font-weight="700">ブラウザの保存</text>
+    <text x="864" y="114" font-size="12" fill="#57645e">日付ごとのキー 442行</text>
+    <text x="864" y="150" font-size="12.5" font-weight="700" fill="#7263a6">押すと図3 保存の形</text>
+    <!-- write: step 3 -> storage -->
+    <path d="M742 131 H846" fill="none" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#p)"/>
+    <text x="760" y="124" font-size="13" font-weight="700">書く <tspan font-size="12" font-weight="400" fill="#57645e">479行</tspan></text>
+    <circle cx="772" cy="150" r="11" fill="#fff" stroke="#435a98" stroke-width="1.6"/><text x="772" y="155" font-size="14" font-weight="700" text-anchor="middle" fill="#435a98">4</text>
+    <rect x="788" y="140" width="50" height="20" rx="4" fill="#a13b3b"/><text x="813" y="155" font-size="12.5" text-anchor="middle" fill="#fff">懸念1</text>
+    <!-- step 4 -> display -->
+    <path d="M470 182 V290" fill="none" stroke="#1d2925" stroke-width="2" marker-end="url(#c)"/>
+    <rect x="478" y="222" width="86" height="22" rx="4" fill="#fff"/>
+    <text x="482" y="238" font-size="13" font-weight="700">呼ぶ <tspan font-size="12" font-weight="400" fill="#57645e">483行</tspan></text>
+    <!-- storage -> display (read) -->
+    <path d="M948 162 V250 H610 V290" fill="none" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#p)"/>
+    <rect x="740" y="238" width="96" height="22" rx="4" fill="#fff"/>
+    <text x="746" y="254" font-size="13" font-weight="700">読む <tspan font-size="12" font-weight="400" fill="#57645e">458行</tspan></text>
+    <!-- display process -->
+    <rect x="400" y="294" width="250" height="78" rx="6" fill="#fff" stroke="#17804b" stroke-width="2"/>
+    <text x="414" y="320" font-size="15" font-weight="700">画面の数字を読み直す</text>
+    <text x="414" y="338" font-size="12" class="mono" fill="#57645e">renderDailyCount() 468–471行</text>
+    <text x="414" y="358" font-size="12" fill="#57645e">今の日付の回数を出す 469行</text>
+    <!-- reread bundle -->
+    <rect x="16" y="226" width="250" height="262" rx="8" fill="#fff" stroke="#57645e" stroke-width="1.2"/>
+    <text x="30" y="252" font-size="15" font-weight="700">読み直す(入口 4)</text>
+    <rect x="30" y="266" width="190" height="34" rx="17" fill="#fff" stroke="#17804b" stroke-width="2"/>
+    <text x="46" y="288" font-size="14">ページを開く <tspan font-size="12" fill="#57645e">728行</tspan></text>
+    <rect x="30" y="316" width="190" height="34" rx="17" fill="#fff" stroke="#a8581a" stroke-width="2" stroke-dasharray="5 3"/>
+    <text x="46" y="338" font-size="14">タブに戻る <tspan font-size="12" fill="#57645e">722行</tspan></text>
+    <rect x="30" y="366" width="190" height="34" rx="17" fill="#fff" stroke="#17804b" stroke-width="2"/>
+    <text x="46" y="388" font-size="14">別のタブで保存 <tspan font-size="12" fill="#57645e">726行</tspan></text>
+    <circle cx="232" cy="376" r="11" fill="#fff" stroke="#435a98" stroke-width="1.6"/><text x="232" y="381" font-size="14" font-weight="700" text-anchor="middle" fill="#435a98">5</text>
+    <rect x="200" y="394" width="40" height="18" rx="3" fill="#fff" stroke="#435a98" stroke-width="1.4" stroke-dasharray="4 2"/><text x="220" y="408" font-size="12" text-anchor="middle" fill="#435a98">追加</text>
+    <rect x="30" y="424" width="190" height="34" rx="17" fill="#fff" stroke="#17804b" stroke-width="2"/>
+    <text x="46" y="446" font-size="14">1秒ごとに確認 <tspan font-size="12" fill="#57645e">727行</tspan></text>
+    <circle cx="232" cy="434" r="11" fill="#fff" stroke="#435a98" stroke-width="1.6"/><text x="232" y="439" font-size="14" font-weight="700" text-anchor="middle" fill="#435a98">3</text>
+    <!-- bundle -> display -->
+    <path d="M266 333 H396" fill="none" stroke="#1d2925" stroke-width="2" marker-end="url(#c)"/>
+    <text x="300" y="325" font-size="13" font-weight="700">呼ぶ</text>
+    <!-- display -> screen -->
+    <path d="M650 333 H736" fill="none" stroke="#3b6e8f" stroke-width="2" stroke-dasharray="2 3" marker-end="url(#b)"/>
+    <text x="656" y="323" font-size="13" font-weight="700">表示 <tspan font-size="12" font-weight="400" fill="#57645e">470行</tspan></text>
+    <rect x="740" y="300" width="144" height="66" rx="6" fill="#eef4f8" stroke="#17804b" stroke-width="2"/>
+    <text x="752" y="326" font-size="15" font-weight="700">画面の欄</text>
+    <text x="752" y="344" font-size="12" class="mono" fill="#57645e">#daily-count 385行</text>
+    <!-- real screens -->
+    <image href="s6-screen.png" x="894" y="262" width="160" height="60" preserveAspectRatio="xMidYMid meet"/>
+    <text x="974" y="334" font-size="12.5" text-anchor="middle">0回</text>
+    <image href="s6-screen-one.png" x="894" y="342" width="160" height="60" preserveAspectRatio="xMidYMid meet"/>
+    <text x="974" y="414" font-size="12.5" text-anchor="middle">1回</text>
+    <image href="s6-screen-reloaded.png" x="894" y="422" width="160" height="60" preserveAspectRatio="xMidYMid meet"/>
+    <text x="974" y="494" font-size="12.5" text-anchor="middle">再読み込み後1回</text>
+  </svg>
+  <p class="look">4つの入口と記録の手順4が、同じ「画面の数字を読み直す」に集まります。手順の番号と ②③④⑤ の札を見ます。</p>
+  <p class="note">部品と線はコードから取り出したもの、名前は AI が付けたものです。図に載せなかったもの 2件: 補助の関数(日付の文字を作る 450行、回数を読み出す 455行)は呼ぶ側の線にたたみました。</p>
+</section>
+
+<!-- Figure 3: storage shape (opens from the storage part) -->
+<section class="fig">
+  <h2>図3　保存の形</h2>
+  <p class="hint">図2 の「ブラウザの保存」を押すと開きます(ここでは開いた状態)。</p>
+  <p class="q">保存のキーと、値を読み書きする処理と、日付の出どころを示します。</p>
+  <svg width="1068" height="360" viewBox="0 0 1068 360">
+    <defs>
+      <marker id="p3" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#7263a6"/></marker>
+      <marker id="g3" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#57645e"/></marker>
+    </defs>
+    <!-- local memory -->
+    <rect x="16" y="60" width="230" height="110" rx="6" fill="#eef6f7" stroke="#17804b" stroke-width="2"/>
+    <text x="30" y="86" font-size="15" font-weight="700">このタブの手元の数</text>
+    <text x="30" y="104" font-size="12" class="mono" fill="#57645e">dailyCounts 441行</text>
+    <text x="30" y="126" font-size="13">日付 → 回数</text>
+    <!-- storage keys -->
+    <rect x="640" y="20" width="412" height="170" rx="6" fill="#f3f0fa" stroke="#7263a6" stroke-width="2"/>
+    <text x="654" y="46" font-size="15" font-weight="700">ブラウザの保存</text>
+    <circle cx="1030" cy="24" r="11" fill="#fff" stroke="#435a98" stroke-width="1.6"/><text x="1030" y="29" font-size="14" font-weight="700" text-anchor="middle" fill="#435a98">4</text>
+    <text x="654" y="80" font-size="12.5" class="mono" fill="#57645e">pomodoro-completed-work:2026-09-25　3</text>
+    <text x="654" y="98" font-size="12" fill="#57645e">前の日。消さない(削除の処理なし)</text>
+    <text x="654" y="130" font-size="12.5" class="mono" font-weight="700">pomodoro-completed-work:2026-09-26　1</text>
+    <text x="654" y="148" font-size="12" fill="#57645e">今日(作業の完了日。例の値)</text>
+    <text x="654" y="176" font-size="12" fill="#57645e">キーの日付の部分は、下の2本のどちらかで決まる</text>
+    <!-- read -->
+    <path d="M636 92 H250" fill="none" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#p3)"/>
+    <text x="300" y="80" font-size="13" font-weight="700">読む <tspan font-size="12" font-weight="400" fill="#57645e">458行</tspan>　大きい方を使う <tspan font-size="12" font-weight="400" fill="#57645e">460行</tspan>・壊れた値は無視 <tspan font-size="12" font-weight="400" fill="#57645e">460行</tspan></text>
+    <!-- write -->
+    <path d="M250 142 H636" fill="none" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#p3)"/>
+    <text x="300" y="162" font-size="13" font-weight="700">+1 して書く <tspan font-size="12" font-weight="400" fill="#57645e">476・479行</tspan></text>
+    <!-- date origins -->
+    <path d="M846 190 V230 H700 V252" fill="none" stroke="#57645e" stroke-width="1.6" marker-end="url(#g3)"/>
+    <path d="M846 190 V230 H960 V252" fill="none" stroke="#57645e" stroke-width="1.6" marker-end="url(#g3)"/>
+    <rect x="600" y="256" width="200" height="58" rx="6" fill="#fff" stroke="#17804b" stroke-width="2"/>
+    <text x="612" y="280" font-size="14" font-weight="700">数えるとき: 終了予定時刻</text>
+    <text x="612" y="300" font-size="12" class="mono" fill="#57645e">getLocalDay(deadline) 475行</text>
+    <circle cx="794" cy="258" r="11" fill="#fff" stroke="#435a98" stroke-width="1.6"/><text x="794" y="263" font-size="14" font-weight="700" text-anchor="middle" fill="#435a98">2</text>
+    <rect x="860" y="256" width="192" height="58" rx="6" fill="#fff" stroke="#17804b" stroke-width="2"/>
+    <text x="872" y="280" font-size="14" font-weight="700">表示するとき: 今</text>
+    <text x="872" y="300" font-size="12" class="mono" fill="#57645e">getLocalDay() 469行</text>
+    <!-- broken variant -->
+    <text x="16" y="222" font-size="14" font-weight="700">保存できないとき</text>
+    <rect x="16" y="236" width="120" height="44" rx="6" fill="#eef6f7" stroke="#17804b" stroke-width="2"/>
+    <text x="28" y="263" font-size="13">手元の数</text>
+    <path d="M136 258 H236" fill="none" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3"/>
+    <line x1="246" y1="246" x2="240" y2="270" stroke="#a13b3b" stroke-width="2"/><line x1="256" y1="246" x2="250" y2="270" stroke="#a13b3b" stroke-width="2"/>
+    <path d="M260 258 H330" fill="none" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3"/>
+    <rect x="334" y="236" width="120" height="44" rx="6" fill="#f3f0fa" stroke="#7263a6" stroke-width="2"/>
+    <text x="346" y="263" font-size="13">保存</text>
+    <text x="16" y="306" font-size="12.5" fill="#57645e">読み書きが失敗しても(461–463・480–482行)、手元の数で数え続ける。ページを閉じると消える。</text>
+  </svg>
+  <p class="look">「今日」のキーの日付が、数えるときと表示するときで別の時刻から決まること(②)を見ます。</p>
+  <p class="note">キー・読み書き・日付の出どころはコードから取り出したもの、名前は AI が付けたものです。日付の値 2026-09-25・26 は作業の完了日から作った例です。</p>
+</section>
+
+<!-- Figure 4: two tabs and the date boundary -->
+<section class="fig">
+  <h2>図4　2つのタブと日付の境目で起きうること(実行では未確認)</h2>
+  <p class="q">2つのタブが保存する順番と、日付の境目をまたぐ時間切れを示します。</p>
+  <svg width="1068" height="420" viewBox="0 0 1068 420">
+    <defs>
+      <marker id="p4" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#7263a6"/></marker>
+    </defs>
+    <!-- race lanes -->
+    <text x="90" y="30" font-size="15" font-weight="700" text-anchor="middle">タブA</text>
+    <rect x="200" y="12" width="200" height="30" rx="6" fill="#f3f0fa" stroke="#7263a6" stroke-width="2"/>
+    <text x="300" y="32" font-size="14" font-weight="700" text-anchor="middle">ブラウザの保存(今日のキー)</text>
+    <text x="510" y="30" font-size="15" font-weight="700" text-anchor="middle">タブB</text>
+    <line x1="90" y1="44" x2="90" y2="272" stroke="#57645e" stroke-width="2"/>
+    <line x1="300" y1="44" x2="300" y2="272" stroke="#7263a6" stroke-width="2"/>
+    <line x1="510" y1="44" x2="510" y2="272" stroke="#57645e" stroke-width="2"/>
+    <rect x="20" y="60" width="560" height="208" rx="6" fill="none" stroke="#57645e" stroke-width="1.2" stroke-dasharray="6 4"/>
+    <text x="195" y="78" font-size="12.5" fill="#57645e" text-anchor="middle">ほぼ同時(排他なし)</text>
+    <path d="M296 100 H96" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#p4)"/>
+    <text x="110" y="94" font-size="14">1. 読む 3 <tspan font-size="12" fill="#57645e">458行</tspan></text>
+    <path d="M304 146 H504" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#p4)"/>
+    <text x="330" y="140" font-size="14">2. 読む 3 <tspan font-size="12" fill="#57645e">458行</tspan></text>
+    <path d="M94 196 H294" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#p4)"/>
+    <text x="110" y="190" font-size="14">3. 書く 4 <tspan font-size="12" fill="#57645e">479行</tspan></text>
+    <path d="M506 244 H306" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#p4)"/>
+    <text x="330" y="238" font-size="14">4. 書く 4 <tspan font-size="12" fill="#57645e">479行</tspan></text>
+    <rect x="450" y="226" width="50" height="20" rx="4" fill="#a13b3b"/><text x="475" y="241" font-size="12.5" text-anchor="middle" fill="#fff">懸念1</text>
+    <text x="300" y="296" font-size="17" font-weight="700" text-anchor="middle" fill="#a13b3b">保存 4 ／ 本来 5</text>
+    <text x="300" y="326" font-size="13" text-anchor="middle">保存の通知 <tspan font-size="12" fill="#57645e">726行</tspan> で、タブA・タブB とも 4 を表示</text>
+    <!-- date boundary -->
+    <text x="650" y="30" font-size="15" font-weight="700">日付の境目</text>
+    <text x="650" y="76" font-size="13">タブA(裏で動く)</text>
+    <line x1="650" y1="92" x2="1050" y2="92" stroke="#57645e" stroke-width="2"/>
+    <text x="650" y="238" font-size="13">ブラウザの保存</text>
+    <line x1="650" y1="216" x2="1050" y2="216" stroke="#7263a6" stroke-width="2"/>
+    <line x1="850" y1="50" x2="850" y2="250" stroke="#1d2925" stroke-width="2" stroke-dasharray="5 4"/>
+    <text x="850" y="266" font-size="13" font-weight="700" text-anchor="middle">0:00</text>
+    <text x="760" y="266" font-size="12.5" text-anchor="middle" fill="#57645e">9月25日</text>
+    <text x="950" y="266" font-size="12.5" text-anchor="middle" fill="#57645e">9月26日</text>
+    <circle cx="800" cy="92" r="6" fill="#1d2925"/>
+    <text x="842" y="116" font-size="12.5" text-anchor="end">23:59:59 時間切れの予定</text>
+    <circle cx="920" cy="92" r="6" fill="#1d2925"/>
+    <text x="930" y="72" font-size="12.5">0:00:10 タブに戻る <tspan font-size="12" fill="#57645e">721行</tspan></text>
+    <path d="M916 98 L768 210" stroke="#7263a6" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#p4)"/>
+    <text x="662" y="150" font-size="12.5">25日のキーに書く</text>
+    <text x="662" y="166" font-size="12" fill="#57645e">終了予定時刻 475行</text>
+    <circle cx="790" cy="146" r="11" fill="#fff" stroke="#435a98" stroke-width="1.6"/><text x="790" y="151" font-size="14" font-weight="700" text-anchor="middle" fill="#435a98">2</text>
+    <text x="930" y="150" font-size="12.5">画面は26日の数(0)</text>
+    <text x="930" y="166" font-size="12" fill="#57645e">今の日付 469行</text>
+    <text x="930" y="186" font-size="12" fill="#57645e">検査②で成功・実画面は</text><rect x="1046" y="174" width="0" height="0"/><rect x="930" y="192" width="50" height="18" rx="9" fill="#fff" stroke="#6b6b6b" stroke-width="1.2" stroke-dasharray="3 2"/><text x="955" y="206" font-size="12" text-anchor="middle" fill="#6b6b6b">未確認</text>
+    <!-- entries and paths below -->
+    <text x="16" y="362" font-size="13" font-weight="700">起こしうる入口と経路</text>
+    <text x="16" y="382" font-size="12.5">250msごとに確認 659 → 時間切れ 647 → 613 → 読む 476 → 書く 479 ／ ボタン 670 → 一時停止 663 → 647 → …</text>
+    <text x="16" y="402" font-size="12.5">スペースキー 707 → ボタン 670 → … ／ タブに戻る 721 → 647 → …(行番号)</text>
+  </svg>
+  <p class="look">1〜4の順番で1回分が消えること(保存 4、本来 5)と、境目の線の左右で書く日付と表示する日付が分かれることを見ます。</p>
+  <p class="note">読み書きの行と入口はコードから取り出したもの。4点の順番は決まった型に当てはめた「起こりうる例」で、実行して確かめてはいません。境目の場面は検査②(a delayed tick after midnight…)で、保存は前の日、表示は 0 になることを確かめています。実際のブラウザの画面では確かめていません。</p>
+</section>
+
+<h2 style="font-size:19px">補った判断 5件</h2>
+<table>
+  <tr><th>番号</th><th>補った判断(AI)</th><th>確かめ方(行はコード、検査は AI が選び実行の記録で成功を確かめたもの)</th></tr>
+  <tr><td class="num">①</td><td class="ai">休憩の完了や中断、リセットでは回数を増やさない。</td><td class="fact"><a href="#">613行 Code で開く</a>・検査「only completed work increments; pause, reset and mode changes do not」: 成功</td></tr>
+  <tr><td class="num">②</td><td class="ai">回数を記録する日付は、確認した時刻ではなくタイマーの終了時刻で決める。</td><td class="fact"><a href="#">475行 Code で開く</a>・検査「work spanning local midnight belongs to the completion date」: 成功・検査「a delayed tick after midnight records the actual deadline's date」: 成功</td></tr>
+  <tr><td class="num">③</td><td class="ai">日付が変わったら表示対象を当日分へ切り替える。</td><td class="fact"><a href="#">727行 Code で開く</a>・検査「reload restores today&#39;s total and the next local date starts at zero」: 成功</td></tr>
+  <tr><td class="num">④</td><td class="ai">保存された値が不正な場合は採用せず、保存できない場合も開いているページ内では回数を保持する。</td><td class="fact"><a href="#">460行</a>・<a href="#">480行 Code で開く</a>・検査「invalid saved counts are ignored without breaking work completion」: 成功・検査「blocked storage retains counts in memory, including failed writes to existing data」: 成功</td></tr>
+  <tr><td class="num">⑤</td><td class="ai">別のタブで保存が変わった場合も表示を読み直す。 <span class="tag-add">追加</span></td><td class="fact"><a href="#">726行 Code で開く</a>・検査「another tab's saved completion appears and is preserved on the next completion」: 成功</td></tr>
+</table>
+<p class="note" style="font-size:12.5px;color:#57645e">図の札を押すと、右の欄に判断の理由の1文、確かめ方、差分の抜粋が出ます。</p>
+
+<details><summary>変更の詳細 3件</summary></details>
+<details><summary>確認結果 1件</summary></details>
+<details><summary>まだ確かめていないこと 2件</summary></details>
+<details><summary>差分の全体 10件</summary></details>
+
+<div class="panel">
+  <h3>② 回数を記録する日付は、確認した時刻ではなくタイマーの終了時刻で決める。</h3>
+  <div class="h">理由(AI の1文)</div>
+  <div>裏のタブが 0:00 を過ぎてから時間切れを確かめても、作業が終わった日の回数にするためです。</div>
+  <div class="h">確かめ方</div>
+  <div>検査「work spanning local midnight belongs to the completion date」: 成功<br>検査「a delayed tick after midnight records the actual deadline's date」: 成功<br><span style="color:#57645e;font-size:13px">検査は AI が選び、実行の記録で成功を確かめました。</span></div>
+  <div class="h">差分の抜粋 index.html 473–476行</div>
+  <pre><span class="add">+      function recordCompletedWork() {</span><span class="add">+        // Use the timer's finish time even if a background tab resumes after midnight.</span><span class="add">+        const day = getLocalDay(deadline);</span><span class="add">+        const count = getDailyCount(day) + 1;</span></pre>
+  <p><a href="#">475行 Code で開く</a></p>
+</div>
+</body>
+</html>

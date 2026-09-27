@@ -1,0 +1,144 @@
+diff --git a/base/index.html b/v5-constant-write/index.html
+index f55a830..b0c470d 100644
+--- a/base/index.html
++++ b/index.html
+@@ -259,6 +259,41 @@
+       opacity: 0.75;
+     }
+ 
++    .daily-progress {
++      margin: 28px auto 0;
++      padding: 20px 16px;
++      max-width: 360px;
++      background: var(--accent-soft);
++      border-radius: 20px;
++      color: var(--accent-dark);
++    }
++
++    .daily-progress h2 {
++      margin: 0 0 6px;
++      font-size: 0.9rem;
++      font-weight: 700;
++    }
++
++    .daily-total {
++      margin: 0;
++      font-size: 1.1rem;
++      font-weight: 700;
++    }
++
++    .daily-count {
++      margin-right: 8px;
++      font-size: clamp(3.5rem, 14vw, 4.5rem);
++      font-weight: 800;
++      font-variant-numeric: tabular-nums;
++      line-height: 1.1;
++      overflow-wrap: anywhere;
++    }
++
++    .daily-caption {
++      margin: 8px 0 0;
++      font-size: 0.75rem;
++    }
++
+     .footer {
+       margin: 12px 0 0;
+       color: var(--muted);
+@@ -345,6 +380,12 @@
+       </button>
+     </div>
+ 
++    <section class="daily-progress" aria-labelledby="daily-heading">
++      <h2 id="daily-heading">今日の作業回数</h2>
++      <p class="daily-total" aria-live="polite" aria-atomic="true"><span class="daily-count" id="daily-count">0</span>回</p>
++      <p class="daily-caption">完了した作業タイマーの数</p>
++    </section>
++
+     <p class="hint"><kbd>Space</kbd> 開始・一時停止&nbsp;&nbsp; <kbd>R</kbd> リセット</p>
+     <footer class="footer">v1.0</footer>
+   </main>
+@@ -381,6 +422,7 @@
+       const headingElement = document.getElementById("timer-heading");
+       const statusElement = document.getElementById("status");
+       const cycleElement = document.getElementById("cycle");
++      const dailyCountElement = document.getElementById("daily-count");
+       const toggleButton = document.getElementById("toggle");
+       const resetButton = document.getElementById("reset");
+       const soundToggleButton = document.getElementById("sound-toggle");
+@@ -396,6 +438,8 @@
+       let isRunning = false;
+       let audioContext = null;
+       let isMuted = false;
++      const dailyCounts = new Map();
++      const DAILY_COUNT_PREFIX = "pomodoro-completed-work:";
+ 
+       try {
+         isMuted = window.localStorage.getItem("pomodoro-muted") === "true";
+@@ -403,6 +447,42 @@
+         // Storage may be unavailable in privacy-focused browser modes.
+       }
+ 
++      function getLocalDay(timestamp = Date.now()) {
++        const date = new Date(timestamp);
++        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
++      }
++
++      function getDailyCount(day) {
++        let count = dailyCounts.get(day) ?? 0;
++        try {
++          const stored = window.localStorage.getItem(DAILY_COUNT_PREFIX + day);
++          const parsed = Number(stored);
++          if (stored !== null && Number.isSafeInteger(parsed) && parsed >= 0) count = Math.max(count, parsed);
++        } catch {
++          // Keep counting in memory when storage is unavailable.
++        }
++        dailyCounts.set(day, count);
++        return count;
++      }
++
++      function renderDailyCount() {
++        const count = String(getDailyCount(getLocalDay()));
++        if (dailyCountElement.textContent !== count) dailyCountElement.textContent = count;
++      }
++
++      function recordCompletedWork() {
++        // Use the timer's finish time even if a background tab resumes after midnight.
++        const day = getLocalDay(deadline);
++        const count = getDailyCount(day) + 1;
++        dailyCounts.set(day, count);
++        try {
++          window.localStorage.setItem(DAILY_COUNT_PREFIX + day, "1");
++        } catch {
++          // The current page still retains the count if saving is blocked.
++        }
++        renderDailyCount();
++      }
++
+       function getAudioContext() {
+         if (audioContext?.state === "closed") audioContext = null;
+         if (audioContext) return audioContext;
+@@ -530,6 +610,7 @@
+         stopTicker();
+ 
+         if (currentMode === "work") {
++          recordCompletedWork();
+           const completedFourthCycle = currentCycle === CYCLES_PER_SET;
+ 
+           if (!completedFourthCycle) currentCycle += 1;
+@@ -636,9 +717,15 @@
+       });
+ 
+       document.addEventListener("visibilitychange", () => {
+-        if (isRunning && document.visibilityState === "visible") tick();
++        if (document.visibilityState === "visible") {
++          if (isRunning) tick();
++          renderDailyCount();
++        }
+       });
+ 
++      window.addEventListener("storage", renderDailyCount);
++      window.setInterval(renderDailyCount, 1000);
++      renderDailyCount();
+       renderCycle();
+       renderTime();
+       renderSoundToggle();

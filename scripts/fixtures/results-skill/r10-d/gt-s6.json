@@ -1,0 +1,71 @@
+{
+  "note": "Hand-labelled by reading index.html after the change (lines of the working-tree file). Labelled by the same person who wrote the extractor. Correction: the first version of orderedChangedSteps250 omitted the two calls inside renderDailyCount (labelling error; extractor output was right).",
+  "storageSites": [
+    "445 read pomodoro-muted",
+    "685 write pomodoro-muted",
+    "458 read pomodoro-completed-work:",
+    "479 write pomodoro-completed-work:"
+  ],
+  "changedKey": {
+    "writers": [
+      "recordCompletedWork"
+    ],
+    "readers": [
+      "getDailyCount"
+    ],
+    "writeEntries": [
+      "setInterval 250ms",
+      "#toggle click",
+      "document keydown",
+      "document visibilitychange"
+    ],
+    "readEntries": [
+      "page load",
+      "setInterval 250ms",
+      "#toggle click",
+      "document keydown",
+      "document visibilitychange",
+      "window storage",
+      "setInterval 1000ms"
+    ]
+  },
+  "stateTouched": [
+    "dailyCounts",
+    "deadline",
+    "isRunning"
+  ],
+  "entriesTouchingChange": [
+    "page load",
+    "setInterval 250ms",
+    "#toggle click",
+    "document keydown",
+    "document visibilitychange",
+    "window storage",
+    "setInterval 1000ms"
+  ],
+  "orderedChangedSteps250": [
+    "recordCompletedWork()@613",
+    "getLocalDay()@475",
+    "getDailyCount()@476",
+    "storage-read@458",
+    "storage-write@479",
+    "renderDailyCount()@483",
+    "getLocalDay()@469",
+    "getDailyCount()@469",
+    "storage-read@458",
+    "dom-write@470"
+  ],
+  "guards250": {
+    "finish()@647": "remainingSeconds === 0",
+    "recordCompletedWork()@613": "currentMode === \"work\""
+  },
+  "rmw": [
+    "recordCompletedWork@479"
+  ],
+  "rmwEntries": [
+    "setInterval 250ms",
+    "#toggle click",
+    "document keydown",
+    "document visibilitychange"
+  ]
+}

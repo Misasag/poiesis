@@ -1,227 +1,79 @@
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { route, textWidth } from '../agent-window/skills/poiesis-results/scripts/layout.mjs';
-import { appInput, fixture, runFolder, skill, writeCase, prepare, render, copyFixtureDraft } from './fixtures/results-skill/helper.mjs';
-
-const skillText = readFileSync(resolve(skill, 'SKILL.md'), 'utf8').replace(/^\uFEFF/, '');
-assert(skillText.indexOf('1. `node <skillフォルダー>/scripts/prepare.mjs`') < skillText.indexOf('## 判断基準'));
-for (const phrase of [
-  '## 判断基準', '現在の対象で実行成功', '失敗・未実施・実行不明', '変更前の対象で成功',
-  '検証用ファイルが変わった', '人の判断が残る', '入力が矛盾・不足', '変更がない', '委任先の報告',
-  '## 冒頭の答え', '終了コード0', '## 地図の根拠', '構文から分かる関係',
-  '## 画像と確認の限界', '別の版', '## 平易な日本語', '## 危険な兆候と避けること',
-  '## 書き終える前の確認', '## 根拠', 'harness-results/SKILL.md',
-  'research-r6-results-visual-first.md', 'research-r8-results-for-engineers.md',
-  'research-r9-results-app-skill-boundary.md',
-  '`lead`', '`mapCaption`', '`nodes[].title/caption`', '`offMap`', '`interpretations`',
-  '`concerns`', '`unverified`'
-]) assert(skillText.includes(phrase), `SKILL.md に ${phrase} がありません。`);
-assert(!/\b(?:flow|states|tree|compare)\b/i.test(skillText), 'アプリの図の部品名を SKILL.md に移してはいけません。');
-
+import { route } from '../agent-window/skills/poiesis-results/scripts/layout.mjs';
+import { appInput, fixture, runFolder, skill, writeCase, prepare, render } from './fixtures/results-skill/helper.mjs';
+import './fixtures/results-skill/generic-checks.mjs';
 const htmlPath = resolve(runFolder, 'results.html');
 const clearHtml = () => { if (existsSync(htmlPath)) unlinkSync(htmlPath); };
-const expectReason = (draftBytes, match) => {
-  writeFileSync(resolve(runFolder, 'draft.json'), draftBytes);
+const expectReason = (draft, pattern) => {
+  writeFileSync(resolve(runFolder, 'draft.json'), draft, 'utf8');
   clearHtml();
   const result = render();
   assert.equal(result.body.ok, false);
-  assert.match(result.body.reasons.join(' '), match);
+  assert.match(result.body.reasons.join(' '), pattern);
   assert.equal(existsSync(htmlPath), false);
 };
-
-const input = appInput();
-writeCase(input);
-let result = prepare();
-assert.equal(result.status, 0);
-assert.equal(result.body.ok, true);
-const prepared = JSON.parse(readFileSync(resolve(runFolder, 'prepared.json'), 'utf8'));
-assert.equal(prepared.hunks.length, 10);
-assert(prepared.skipped.includes('README.md'));
-result = render();
-assert.equal(result.status, 0);
-assert.equal(result.body.ok, true, JSON.stringify(result.body.reasons));
-const original = JSON.parse(readFileSync(resolve(fixture, 'original-draft.json'), 'utf8'));
-const draft = JSON.parse(readFileSync(resolve(fixture, 'draft.json'), 'utf8'));
-assert.deepEqual(draft.nodes.map(x => [x.id, x.title, x.caption]), original.nodes.map(x => [x.id, x.title, x.caption]));
-assert.deepEqual(draft.edges, original.edges);
-assert.deepEqual(draft.offMap.map(x => [x.title, x.caption]), original.offMap.map(x => [x.title, x.caption]));
-const oldHunks = ['h-64a09a5f389e', 'h-ac092537fa7d', 'h-839cec3a40f2', 'h-159d9c242bdc',
-  'h-954125474537', 'h-9319192d5977', 'h-c7a2fc15a207', 'h-2420dc43fe0a',
-  'h-7fe8eb6b72ec', 'h-06341ba05255'];
-const remap = new Map(oldHunks.map((id, i) => [id, prepared.hunks[i].id]));
-assert.deepEqual(draft.nodes.map(item => item.hunkIds), original.nodes.map(item => item.hunkIds.map(id => remap.get(id))));
-assert.deepEqual(draft.offMap.map(item => item.hunkIds), original.offMap.map(item => item.hunkIds.map(id => remap.get(id))));
-assert.equal(result.body.unassignedHunks, 0);
-assert(result.body.drawnEdges.every(id => prepared.map.edges.some(edge => edge.id === id)));
-assert.equal(new Set([...result.body.drawnEdges, ...result.body.foldedEdges]).size, draft.edges.length);
-assert.equal(result.body.geometry.layerCount, 4);
-assert(result.body.geometry.width <= 1000);
-const html = readFileSync(htmlPath, 'utf8');
-// R10-P7: one head per arrow kind, and legend heads use the document text colour instead of the SVG default black.
-const heads = Object.fromEntries([...html.matchAll(/<marker id="arrow-(\w+)"[^>]*><path class="ex-arrowhead-\1" d="([^"]+)"\/><\/marker>/g)]
-  .map(match => [match[1], match[2]]));
-const headShape = d => `${/A/.test(d) ? 'arc' : 'line'}:${[...new Set(d.match(/-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?/g))].sort().join(' ')}`;
-assert.deepEqual(Object.keys(heads).sort(), ['call', 'display', 'read', 'trigger', 'write']);
-assert.equal(new Set(Object.values(heads).map(headShape)).size, 5, 'Each arrow kind needs its own head shape.');
-assert(/<marker id="legend-arrow-(\w+)"[^>]*><path class="ex-arrowhead-\1"/.test(html), 'Legend heads carry their kind class.');
+const namesFor = prepared => ({
+  count: '保存する入口', refresh: '表示を読む入口', flow: '処理の入口', key: '日付ごとの保存',
+  stateTitle: '状態の変化', flowTitle: '入口と表示', dataTitle: '保存の形', raceTitle: '並行して保存する時',
+  stateSentence: '変更した処理を通る線を見ます。', nonMain: '変更した処理を通らない',
+  dataSentence: '保存先に値を書き、画面に値を表示する処理を見ます。',
+  raceSentence: '2つの画面が同じ保存先に書く順番を見ます。',
+  ...Object.fromEntries(['entries', 'conditions', 'origins', 'keyParts', 'states', 'stateValues', 'stateEvents'].map(field =>
+    [field, Object.fromEntries((prepared.views?.naming?.[field] ?? []).map((item, i) =>
+      [item[field === 'keyParts' || field === 'stateValues' ? 'id' : 'line'], `${{entries:'入口',conditions:'条件',origins:'日付の出どころ',keyParts:'キーの部分',states:'手元の値',stateValues:'状態',stateEvents:'切り替え'}[field]}${i + 1}`]))]))
+});
 const skillStyle = readFileSync(resolve(skill, 'assets/style.css'), 'utf8');
-assert(/\.ex-legend-svg \[class\^="ex-arrowhead-"\][^{]*\{[^}]*fill: var\(--results-fg/.test(skillStyle),
-  'Legend heads use the text colour in both themes.');
-for (const phrase of [draft.lead, draft.mapCaption, ...draft.nodes.flatMap(node => [node.title, node.caption]),
-  ...draft.offMap.flatMap(item => [item.title, item.caption]),
-  ...draft.interpretations.flatMap(item => [item.decision, item.evidence]),
-  ...draft.concerns.map(item => item.text), ...draft.unverified, input.task.request])
-  assert(html.includes(phrase), `Missing draft text: ${phrase}`);
-for (const [index, row] of draft.interpretations.entries()) {
-  const component = html.match(new RegExp(`<g data-map-node="${row.nodeId}">([\\s\\S]*?)<\\/g>`))?.[1];
-  assert(component?.includes(`判断${index + 1}`), `Decision badge ${index + 1}`);
-}
-const concernPart = prepared.map.nodes.find(node => node.file === draft.concerns[0].file &&
-  draft.concerns[0].line >= node.line && draft.concerns[0].line <= node.end && node.kind === 'function');
-assert(html.match(new RegExp(`<g data-map-node="${concernPart.id}">([\\s\\S]*?)<\\/g>`))?.[1].includes('懸念1'));
-assert(html.indexOf('class="ex-mapfig"') < html.indexOf('<h2>懸念点') &&
-  html.indexOf('<h2>懸念点') < html.indexOf('<h2>補った判断') &&
-  html.indexOf('<h2>依頼文') < html.indexOf('<details><summary>確認結果'));
-const unlinkedJudgment = structuredClone(draft);
-unlinkedJudgment.interpretations.push({ decision: '画面の余白を優先しました。', evidence: '画面の画像で確かめます。' });
-writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(unlinkedJudgment), 'utf8');
+const skillText = readFileSync(resolve(skill, 'SKILL.md'), 'utf8').replace(/^\uFEFF/, '');
+for (const phrase of ['## 判断基準', '## 冒頭の答え', '## 地図の根拠',
+  '## 画像と確認の限界', '## 平易な日本語', '## 書き終える前の確認',
+  '`viewNames`', '`interpretations[].tests`', 'views.naming', 'views.structure'])
+  assert(skillText.includes(phrase), `SKILL.md に ${phrase} がありません。`);
+assert(!/(?:<svg|<script|class="ex-)/i.test(skillText), '図の HTML 実装を SKILL.md に移してはいけません。');
+const contractInput = appInput();
+writeCase(contractInput);
+assert.equal(prepare().body.ok, true);
+const contractPrepared = JSON.parse(readFileSync(resolve(runFolder, 'prepared.json'), 'utf8'));
+assert.equal(contractPrepared.hunks.length, 10);
+assert(contractPrepared.skipped.includes('README.md'));
+const contractDraft = JSON.parse(readFileSync(resolve(fixture, 'draft.json'), 'utf8'));
+contractDraft.edges = [];
+contractDraft.viewNames = namesFor(contractPrepared);
+contractDraft.interpretations.forEach(row => { delete row.evidence; row.tests = []; });
+writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(contractDraft), 'utf8');
+const contractMade = render();
+assert.equal(contractMade.body.ok, true, JSON.stringify(contractMade.body.reasons));
+assert.equal(contractMade.body.unassignedHunks, 0);
+const contractHtml = readFileSync(htmlPath, 'utf8');
+for (const phrase of [contractDraft.lead, contractDraft.mapCaption,
+  ...contractDraft.nodes.filter(node => contractHtml.includes(`data-part="${node.id}"`)).map(node => node.title),
+  ...contractDraft.offMap.flatMap(item => [item.title, item.caption]),
+  ...contractDraft.interpretations.map(item => item.decision), contractInput.task.request])
+  assert(contractHtml.includes(phrase), `Missing draft text: ${phrase}`);
+assert(contractHtml.includes(readFileSync(resolve(skill, 'assets/document.js'), 'utf8')));
+assert(!/<\w+[^>]*\son[a-z]+\s*=/i.test(contractHtml));
+assert(!/(?:src|href)="https?:/i.test(contractHtml));
+assert(!/<img[^>]+src="(?!data:)/i.test(contractHtml));
+const invalidNode = structuredClone(contractDraft);
+invalidNode.nodes[0].id = 'not-a-candidate';
+expectReason(Buffer.from(JSON.stringify(invalidNode), 'utf8'), /候補にない部品/);
+const invalidHunk = structuredClone(contractDraft);
+invalidHunk.offMap[0].hunkIds = [];
+expectReason(Buffer.from(JSON.stringify(invalidHunk), 'utf8'), /割り当てのない差分/);
+expectReason(Buffer.from(JSON.stringify(contractDraft), 'utf16le'), /UTF-16/);
+expectReason(Buffer.from([0xff, 0xfe, 0x7b, 0x00]), /UTF-16/);
+writeFileSync(resolve(runFolder, 'draft.json'), Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]),
+  Buffer.from(JSON.stringify(contractDraft), 'utf8')]));
 assert.equal(render().body.ok, true);
-const unlinkedHtml = readFileSync(htmlPath, 'utf8');
-assert(unlinkedHtml.includes('<td>判断6</td>') && unlinkedHtml.includes('画面の余白を優先しました。'));
-assert(!unlinkedHtml.includes('ex-marker-decision"') || !unlinkedHtml.includes('>判断6</text>'));
-const badgeTarget = draft.interpretations[1].nodeId;
-const checkBadgeGeometry = (variant, expected) => {
-  writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(variant), 'utf8');
-  const made = render();
-  assert.equal(made.body.ok, true, JSON.stringify(made.body.reasons));
-  const box = made.body.geometry.boxes.find(candidate => candidate.id === badgeTarget);
-  const markup = readFileSync(htmlPath, 'utf8').match(new RegExp(`<g data-map-node="${badgeTarget}">([\\s\\S]*?)<\\/g>`))?.[1];
-  const badges = [...markup.matchAll(/<text class="ex-marker ex-marker-decision" x="([\d.]+)" y="([\d.]+)">([^<]+)<\/text>/g)]
-    .map(match => ({ x: +match[1], y: +match[2], label: match[3] }));
-  assert.deepEqual(badges.map(badge => badge.label), expected);
-  const lastSubBaseline = box.y + 31 + box.titleLines.length * 19 + (box.subLines.length - 1) * 15;
-  const rects = badges.map(badge => ({ x: badge.x, y: badge.y - 12, w: textWidth(badge.label, 12) + 4, h: 15 }));
-  for (const rect of rects) {
-    assert(rect.x >= box.x + 8 && rect.x + rect.w <= box.x + box.w - 8);
-    assert(rect.y > lastSubBaseline + 2 && rect.y >= box.y && rect.y + rect.h <= box.y + box.h);
-  }
-  for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
-    const a = rects[i], b = rects[j];
-    assert(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
-  }
-};
-const allBadges = structuredClone(draft);
-allBadges.concerns = [];
-allBadges.interpretations.forEach(row => { row.nodeId = badgeTarget; });
-checkBadgeGeometry(allBadges, ['判断1', '判断2', '判断3', '判断4', '判断5']);
-const fifthBadge = structuredClone(allBadges);
-fifthBadge.interpretations.slice(0, 4).forEach(row => { delete row.nodeId; });
-checkBadgeGeometry(fifthBadge, ['判断5']);
-// A box reserves one row per badge it draws, never rows for badges drawn elsewhere.
-const markersIn = (markup, id) => [...(markup.match(new RegExp(`<g data-map-node="${id}">([\\s\\S]*?)<\\/g>`))?.[1] ?? '')
-  .matchAll(/<text class="ex-marker [^"]+"[^>]*>([^<]+)<\/text>/g)].map(match => match[1]);
-const expectReservedRows = (made, markup) => {
-  for (const box of made.body.geometry.boxes) assert.equal(box.badgeCount, markersIn(markup, box.id).length, box.symbol);
-};
-expectReservedRows(result, html);
-const helperId = result.body.geometry.helperIds[0];
-assert(helperId, 'The fixture map must fold a helper.');
-const helperJudgment = structuredClone(draft);
-helperJudgment.interpretations[0].nodeId = helperId;
-writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(helperJudgment), 'utf8');
-const helperMade = render();
-assert.equal(helperMade.body.ok, true, JSON.stringify(helperMade.body.reasons));
-const helperHtml = readFileSync(htmlPath, 'utf8');
-const helperOwner = helperMade.body.geometry.folded.find(edge => edge.to === helperId).owner;
-assert(markersIn(helperHtml, helperOwner).includes('判断1'), 'A folded helper judgment appears on the box that calls it.');
-expectReservedRows(helperMade, helperHtml);
-copyFixtureDraft();
-assert.equal((html.match(/<script\b/g) ?? []).length, 1);
-assert(html.includes('<p class="ex-fact">部品を押すと、変更の根拠を右に表示します。</p>'));
-assert(html.includes(readFileSync(resolve(skill, 'assets/document.js'), 'utf8')));
-assert(!/<\w+[^>]*\son[a-z]+\s*=/i.test(html));
-assert(!/(?:src|href)="https?:/i.test(html));
-assert(!/<img[^>]+src="(?!data:)/i.test(html));
-
-input.images = [{ path: 'sample.png', label: '確認画像' }];
-writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
+contractInput.images = [{ path: 'sample.png', label: '変更後の画面' }];
+writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(contractInput), 'utf8');
 assert.equal(render().body.ok, true);
 assert.match(readFileSync(htmlPath, 'utf8'), /src="data:image\/png;base64,/);
-assert.match(readFileSync(htmlPath, 'utf8'), /data-poiesis-image="sample.png"/);
-const largePath = resolve(fixture, 'large-image.png');
-try {
-  writeFileSync(largePath, Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(2 * 1024 * 1024)]));
-  input.images = [{ path: 'large-image.png', label: '大きな画像' }];
-  writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
-  assert.equal(render().body.ok, true);
-  assert.match(readFileSync(htmlPath, 'utf8'), /画像が大きすぎるため省略しました。/);
-  assert.match(readFileSync(htmlPath, 'utf8'), /data-poiesis-image="large-image.png"/);
-} finally { if (existsSync(largePath)) unlinkSync(largePath); }
-input.images = [{ path: '../outside.png', label: '外の画像' }];
-writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
+contractInput.images = [{ path: '../outside.png', label: '外の画像' }];
+writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(contractInput), 'utf8');
 assert.equal(render().body.ok, true);
 assert(!readFileSync(htmlPath, 'utf8').includes('data-poiesis-image="../outside.png"'));
-input.images = [];
-input.requirement = { title: '作業回数の表示', tasks: [{ title: '表示の追加', completionSummary: '回数を表示しました。' }] };
-writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
-assert.equal(render().body.ok, true);
-assert.match(readFileSync(htmlPath, 'utf8'), /関連する作業/);
-input.requirement = null;
-writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
-
-// The screen box grows only for a screenshot the AI chose, so a document without images has no empty frame.
-const screenNode = draft.nodes.find(item => prepared.map.nodes.find(node => node.id === item.id)?.kind === 'screen');
-assert(screenNode, 'The fixture draft must include the screen part.');
-const screenHeight = body => body.geometry.boxes.find(box => box.id === screenNode.id).h;
-const plain = render();
-assert.equal(plain.body.ok, true, JSON.stringify(plain.body.reasons));
-const plainHtml = readFileSync(htmlPath, 'utf8');
-assert(!plainHtml.includes('class="ex-mapshot"'));
-assert(!plainHtml.includes('の中身</summary>'), 'Helper names read as their own names, not "〜の中身".');
-assert(plainHtml.includes('ex-edge-line') && !plainHtml.includes('箱の説明に畳んだ'));
-input.images = [{ path: 'sample.png', label: '変更後の画面' }];
-writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
-const withShot = { ...structuredClone(draft), screenImage: 'sample.png' };
-writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(withShot), 'utf8');
-const shot = render();
-assert.equal(shot.body.ok, true, JSON.stringify(shot.body.reasons));
-assert.equal(screenHeight(shot.body), screenHeight(plain.body) + 90);
-assert.match(readFileSync(htmlPath, 'utf8'), /<img class="ex-mapshot" src="data:image\/png;base64,[^"]+" alt="変更後の画面"/);
-expectReason(Buffer.from(JSON.stringify({ ...withShot, screenImage: 'missing.png' }), 'utf8'), /screenImage/);
-input.images = [];
-writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(input), 'utf8');
-expectReason(Buffer.from(JSON.stringify(withShot), 'utf8'), /screenImage/);
-// A hook screenshot left in the workspace reaches the document only when the AI chooses it, with its own caption.
-const chosen = { ...structuredClone(draft), images: [{ path: 'sample.png', caption: '変更後のタイマー画面を幅1280で撮った画像です。' }], screenImage: 'sample.png' };
-writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(chosen), 'utf8');
-const chosenResult = render();
-assert.equal(chosenResult.body.ok, true, JSON.stringify(chosenResult.body.reasons));
-const chosenHtml = readFileSync(htmlPath, 'utf8');
-assert.match(chosenHtml, /<figcaption>変更後のタイマー画面を幅1280で撮った画像です。<\/figcaption>/);
-assert.match(chosenHtml, /<img class="ex-mapshot" src="data:image\/png;base64,/);
-assert.equal(screenHeight(chosenResult.body), screenHeight(plain.body) + 90);
-expectReason(Buffer.from(JSON.stringify({ ...chosen, images: [{ path: 'missing.png', caption: '無い画像です。' }], screenImage: undefined }), 'utf8'), /missing\.png を載せられません/);
-expectReason(Buffer.from(JSON.stringify({ ...chosen, images: [{ path: '../outside.png', caption: '外の画像です。' }], screenImage: undefined }), 'utf8'), /載せられません/);
-expectReason(Buffer.from(JSON.stringify({ ...chosen, images: [{ path: 'README.md', caption: '画像ではありません。' }], screenImage: undefined }), 'utf8'), /載せられません/);
-copyFixtureDraft();
-
-const invalid = structuredClone(draft);
-invalid.nodes[0].id = 'not-a-candidate';
-expectReason(Buffer.from(JSON.stringify(invalid), 'utf8'), /候補にない部品/);
-invalid.nodes[0].id = draft.nodes[0].id;
-invalid.concerns[0].line = 999999;
-expectReason(Buffer.from(JSON.stringify(invalid), 'utf8'), /範囲外/);
-invalid.concerns[0].line = draft.concerns[0].line;
-invalid.offMap[0].hunkIds = [];
-expectReason(Buffer.from(JSON.stringify(invalid), 'utf8'), /割り当てのない差分/);
-expectReason(Buffer.from(JSON.stringify(draft).replace('今日', '\uFFFD'), 'utf8'), /壊れた文字/);
-expectReason(Buffer.from(JSON.stringify(draft), 'utf16le'), /UTF-16/);
-expectReason(Buffer.from([0xff, 0xfe, 0x7b, 0x00]), /UTF-16/);
-writeFileSync(resolve(runFolder, 'draft.json'), Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(JSON.stringify(draft), 'utf8')]));
-assert.equal(render().body.ok, true);
-copyFixtureDraft();
-
 const deletion = appInput();
 deletion.diff = 'diff --git a/gone.txt b/gone.txt\n--- a/gone.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-old text\n';
 deletion.changedFiles = [{ path: 'gone.txt', status: 'deleted', additions: 0, deletions: 1 }];
@@ -328,7 +180,9 @@ const nestedMade = render();
 assert.equal(nestedMade.body.ok, true);
 const nestedHtml = readFileSync(htmlPath, 'utf8');
 // The enclosing functions contain line 3 too, but only the part that draws the badge grows.
-expectReservedRows(nestedMade, nestedHtml);
+assert.equal(nestedMade.body.geometry.boxes.reduce((total, box) => total + box.badgeCount, 0), 1);
+assert(nestedMade.body.geometry.boxes.find(box => box.badgeCount === 1).h >
+  Math.max(...nestedMade.body.geometry.boxes.filter(box => box.badgeCount === 0).map(box => box.h)));
 assert.equal((nestedHtml.match(/class="ex-marker ex-marker-concern"/g) ?? []).length, 1);
 const affectedPart = nestedPrepared.map.nodes.find(node => node.kind === 'storage');
 assert(nestedHtml.match(new RegExp(`<g data-map-node="${affectedPart.id}">([\\s\\S]*?)<\\/g>`))?.[1].includes('懸念1'));
@@ -343,7 +197,7 @@ noMap.changeCaptureError = '記録に失敗しました。';
 noMap.verification.rows = [{ label: '画面の確認', status: 'unknown', detail: '文字化け � を含む記録です。' }];
 const noMapDraft = { lead: 'README.md の 0.4.1 は 1.5秒 < 2秒です。', mapCaption: '地図はありません。', nodes: [], edges: [],
   offMap: [{ title: '画面の調整', caption: '文字の間隔を変えました。', hunkIds: [] }],
-  interpretations: [{ decision: '余白を優先しました。', evidence: '画面の記録で確かめました。' }],
+  interpretations: [{ decision: '余白を優先しました。', tests: [] }],
   concerns: [{ text: '狭い幅では崩れる可能性があります。', file: 'theme.css', line: 1 }],
   unverified: ['狭い画面での表示は未確認です。'] };
 writeCase(noMap, JSON.stringify(noMapDraft));
@@ -358,6 +212,41 @@ for (const phrase of ['画面を &lt;見やすく&gt;', '余白を優先しま�
 assert(!noMapHtml.includes('変更はありません。'));
 assert(noMapHtml.includes('<h2>作業内容</h2><p>作業回数を表示しました。</p>'), 'The agent summary stays the work description without a map.');
 assert(noMapHtml.includes('1.5秒 &lt; 2秒'));
+noMap.images = [];
+noMapDraft.images = [
+  { path: 'target/s6-before-card.png', caption: '変更前の画面を撮影しました。', role: 'before', screen: '画面' },
+  { path: 'target/s6-after-card.png', caption: '変更後の画面を撮影しました。', role: 'after', screen: '画面' }
+];
+writeCase(noMap, JSON.stringify(noMapDraft));
+assert.equal(prepare().body.ok, true);
+assert.equal(render().body.ok, true);
+assert.match(readFileSync(htmlPath, 'utf8'), /class="ex-screen-pair"[^>]*>[\s\S]*s6-before-card\.png[\s\S]*s6-after-card\.png/);
+assert.equal((readFileSync(htmlPath, 'utf8').match(/data-poiesis-image="target\/s6-before-card\.png"/g) ?? []).length, 1);
+noMapDraft.images.shift();
+writeCase(noMap, JSON.stringify(noMapDraft));
+assert.equal(prepare().body.ok, true);
+assert.equal(render().body.ok, true);
+assert.match(readFileSync(htmlPath, 'utf8'), /変更前の画面の画像がありません。/);
+noMapDraft.images[0].role = 'later';
+writeCase(noMap, JSON.stringify(noMapDraft));
+assert.equal(prepare().body.ok, true);
+assert.equal(render().body.ok, false);
+noMapDraft.images[0].role = 'after';
+delete noMapDraft.images[0].screen;
+writeCase(noMap, JSON.stringify(noMapDraft));
+assert.equal(prepare().body.ok, true);
+assert.equal(render().body.ok, false);
+noMapDraft.images[0].screen = '画面';
+noMapDraft.images.push({ path: 'target/s6-before-card.png', caption: '別の変更後の画面です。', role: 'after', screen: '画面' });
+writeCase(noMap, JSON.stringify(noMapDraft));
+assert.equal(prepare().body.ok, true);
+assert.equal(render().body.ok, false);
+noMapDraft.images.pop();
+noMapDraft.images[0].role = 'before';
+writeCase(noMap, JSON.stringify(noMapDraft));
+assert.equal(prepare().body.ok, true);
+assert.equal(render().body.ok, true);
+assert.match(readFileSync(htmlPath, 'utf8'), /変更後の画面の画像がありません。/);
 const redactedDiff = appInput(fixture, 'diff --git a/example.ts b/example.ts\n--- a/example.ts\n+++ b/example.ts\n@@ -1 +1 @@\n-old\n+token: [REDACTED];\n');
 writeCase(redactedDiff, JSON.stringify(emptyDraft));
 assert.equal(prepare().body.ok, true);
@@ -429,7 +318,7 @@ for (const [label, kind, diff] of decisionCases) {
   const addedLine = decision.hunks.flatMap(h => h.lines.filter(line => line.kind === 'add').map(line => ({ file: h.file, line: line.line })))[0];
   const caseDraft = { lead: '変更した内容を確認しました。', mapCaption: '変更箇所と実際の表示を確認します。', nodes: [], edges: [],
     offMap: decision.hunks.map(h => ({ title: '変更のまとまり', caption: '実際の差分を確認します。', hunkIds: [h.id] })),
-    interpretations: [{ decision: '表示を優先しました。', evidence: '画面と差分で確かめます。' }],
+    interpretations: [{ decision: '表示を優先しました。', tests: [] }],
     concerns: addedLine ? [{ text: '狭い幅の表示は未確認です。', ...addedLine }] : [],
     unverified: ['狭い幅の画面表示を確認していません。'] };
   writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(caseDraft), 'utf8');
@@ -437,7 +326,7 @@ for (const [label, kind, diff] of decisionCases) {
   assert.equal(caseResult.body.ok, true, `${label}: ${JSON.stringify(caseResult.body.reasons)}`);
   const document = readFileSync(htmlPath, 'utf8');
   for (const phrase of [caseDraft.lead, caseDraft.mapCaption, caseDraft.interpretations[0].decision,
-    caseDraft.interpretations[0].evidence, ...caseDraft.unverified, ...caseDraft.concerns.map(c => c.text),
+    '対応するテストは未確認', ...caseDraft.unverified, ...caseDraft.concerns.map(c => c.text),
     caseInput.task.request, decision.mapDecision.reason]) assert(document.includes(phrase), `${label}: ${phrase}`);
   assert(document.indexOf('ex-lead') < document.indexOf('ex-screens') &&
     document.indexOf('<h2>懸念点') < document.indexOf('<h2>補った判断') &&
@@ -536,4 +425,68 @@ const captured = JSON.parse(readFileSync(resolve(runFolder, 'prepared.json'), 'u
 assert.equal(captured.mapDecision.kind, 'none');
 assert.match(captured.mapDecision.reason, /記録に失敗/);
 
-console.log('Results skill: fixture, candidates, assignments, invalid drafts, encoding, and no-change states passed.');
+for (const name of ['v1-lock', 'v2-recomputed-key', 'v3-inline-literal', 'v5-constant-write', 'v6-stale-module-var']) {
+  const workspace = resolve(fixture, 'r10-d', name);
+  const diff = readFileSync(resolve(workspace, 'diff.txt'), 'utf8');
+  writeCase(appInput(workspace, diff), JSON.stringify(emptyDraft));
+  const preparedResult = prepare();
+  assert.equal(preparedResult.status, 0, name);
+  assert.equal(preparedResult.body.ok, true, name);
+  const variant = JSON.parse(readFileSync(resolve(runFolder, 'prepared.json'), 'utf8'));
+  assert.equal(variant.views.selected.C, !['v1-lock', 'v5-constant-write'].includes(name), name);
+  if (name === 'v3-inline-literal') assert(variant.views.keys.length >= 2, 'Both changed storage keys must be listed.');
+  const variantDraft = { lead: '変更した処理を確認しました。', mapCaption: '変更箇所のコードを確認します。', viewNames: namesFor(variant),
+    nodes: variant.mapDecision.kind === 'map' ? [...new Set([...(variant.views.structure?.countNodeIds ?? []),
+      ...(variant.views.structure?.refreshNodeIds ?? []),
+      (variant.map.nodes.find(node => node.kind === 'function' && !node.helper) ?? variant.map.nodes.find(node => !node.helper))?.id])]
+      .map(id => variant.map.nodes.find(node => node.id === id)).filter(Boolean).map((node, i) =>
+        ({ id: node.id, title: `変更した処理${i + 1}`, caption: '変更した処理の入口を示します。', hunkIds: [] })) : [],
+    edges: [], offMap: variant.hunks.length ? [{ title: '変更の詳細', caption: '実際の差分を確認します。',
+      hunkIds: variant.hunks.map(hunk => hunk.id) }] : [],
+    interpretations: [], concerns: [], unverified: [] };
+  writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(variantDraft), 'utf8');
+  const made = render();
+  assert.equal(made.status, 0, name);
+  assert.equal(made.body.ok, true, `${name}: ${JSON.stringify(made.body.reasons)}`);
+  assert.equal(made.body.unassignedHunks, 0, name);
+  if (variant.views.selected.D && variant.views.selected.T && variant.mapDecision.kind === 'map')
+    assert(readFileSync(resolve(runFolder, 'results.html'), 'utf8').includes('data-view="structure"'), name);
+}
+for (const [name, expected] of [['one-storage.js', { S: false, D: true, T: false, C: false, M: false }],
+  ['single-flow.js', { S: false, D: false, T: true, C: false, M: false }]]) {
+  writeCase(appInput(fixture, addedFile(name)), JSON.stringify(emptyDraft));
+  assert.equal(prepare().body.ok, true, name);
+  const prepared = JSON.parse(readFileSync(resolve(runFolder, 'prepared.json'), 'utf8'));
+  assert.deepEqual(prepared.views.selected, expected, name);
+  assert.equal(prepared.mapDecision.kind, 'map', name);
+  const node = prepared.map.nodes.find(item => item.kind === 'function' && !item.helper);
+  assert(node, name);
+  const onlyDraft = { lead: '変更した処理を確認しました。', mapCaption: '変更箇所のコードを確認します。', viewNames: namesFor(prepared),
+    nodes: [...new Set([node.id, ...(prepared.views.structure?.countNodeIds ?? []),
+      ...(prepared.views.structure?.refreshNodeIds ?? [])])].map((id, i) =>
+      ({ id, title: `変更した処理${i + 1}`, caption: '変更した処理の入口を示します。', hunkIds: [] })),
+    edges: [], offMap: [{ title: '変更の詳細', caption: '実際の差分を確認します。',
+      hunkIds: prepared.hunks.map(hunk => hunk.id) }],
+    interpretations: expected.D ? [{ decision: '保存先の名前を選びました。', tests: [] }] : [], concerns: [], unverified: [] };
+  writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(onlyDraft), 'utf8');
+  const made = render();
+  assert.equal(made.body.ok, true, `${name}: ${JSON.stringify(made.body.reasons)}`);
+  const html = readFileSync(resolve(runFolder, 'results.html'), 'utf8');
+  assert.equal(/<section class="ex-view[^"]*" data-view="data"/.test(html), expected.D, name);
+  assert.equal(/<section class="ex-view[^"]*" data-view="structure"/.test(html), expected.T, name);
+  assert(!/<section class="ex-view[^"]*" data-view="race"/.test(html), name);
+  if (expected.D) assert.match(html, /対応するテストは未確認/, 'A judgment without source or verification stays unverified.');
+  for (const sentence of [...html.matchAll(/<section class="ex-view[^>]*>[\s\S]*?<\/section>/g)]
+    .flatMap(section => [...section[0].matchAll(/<(?:h2|p)[^>]*>([^<]+)<\/(?:h2|p)>/g)].map(match => match[1])))
+    assert(!/(?:か。|ですか|ますか|[?？])$/.test(sentence), `${name}: ${sentence}`);
+  if (expected.D) {
+    writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify({ ...onlyDraft,
+      interpretations: [{ decision: '保存先の名前を選びました。', evidence: 'AI が確かめました。' }] }), 'utf8');
+    assert.equal(render().body.ok, false, 'Derived evidence must come from prepared facts and input records.');
+    writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify({ ...onlyDraft,
+      mapCaption: '保存先はどこですか。' }), 'utf8');
+    assert.equal(render().body.ok, false, 'Diagram text must be declarative.');
+  }
+}
+
+console.log('Results skill: fixture, derived variants, candidates, assignments, invalid drafts, encoding, and no-change states passed.');

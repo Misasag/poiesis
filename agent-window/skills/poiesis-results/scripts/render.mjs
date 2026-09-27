@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, realpathSync, rmSync } from 'node:fs';
 import { resolve, extname, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { layoutGraph, textWidth } from './layout.mjs';
+import { renderViews } from './render-views.mjs';
 
 const emit = value => process.stdout.write(`${JSON.stringify(value)}\n`);
 const esc = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -20,12 +21,23 @@ const oneSentence = (value, label, reasons) => {
   if (!/[。．.!！]$/.test(text) || (text.match(/[。！!]|\.(?=\s|$)|．(?=\s|$)/g) ?? []).length !== 1) reasons.push(`${label}を1文で書き直してください。`);
   return text;
 };
+const declarativeSentence = (value, label, reasons) => {
+  const text = oneSentence(value, label, reasons);
+  if (/(?:か。|ですか|ますか|[?？])$/.test(text)) reasons.push(`${label}は疑問形にしないでください。`);
+  return text;
+};
 const tag = { new: '新規', modified: '変更', existing: '既存' };
 const verificationStatus = { pass: '確認済み', fail: '失敗', unknown: '未確認', outdated: '以前の結果', human: '人の確認待ち' };
 const mapQuestion = 'この図は、変更した処理がどの入口から動き、何を読み書きし表示するかを示します。';
 const visualQuestion = '変更した表示と実際の差分の確認箇所を示します。';
 const noMapQuestion = '処理の地図を省いた理由と、実際の差分を示します。';
-const judgmentsHtml = draft => `<h2>補った判断 ${draft.interpretations.length}件</h2><table class="ex-interp"><tr><th>番号</th><th>補った判断</th><th>確かめ方</th></tr>${draft.interpretations.map((row, i) => `<tr><td>判断${i + 1}</td><td class="ex-ai-text">${esc(row.decision)}</td><td class="ex-ai-text">${esc(row.evidence)}</td></tr>`).join('')}</table>`;
+const judgmentsHtml = (prepared, draft) => `<h2>補った判断 ${draft.interpretations.length}件</h2><table class="ex-interp"><tr><th>番号</th><th>補った判断</th><th>確かめ方（検査は作成者が選択）</th></tr>${draft.interpretations.map((row, i) => {
+  const node = prepared.map.nodes.find(item => item.id === row.nodeId);
+  const line = row.line ?? node?.line;
+  const source = node && line ? `<a href="#" data-poiesis-citation="${esc(`${node.file}:${line}-${line}`)}">${line}行 Code で開く</a>・` : '';
+  const tests = row.tests?.length ? row.tests.map(name => `検査「${esc(name)}」：成功`).join('・') : '対応するテストは未確認';
+  return `<tr><td>判断${i + 1}</td><td class="ex-ai-text">${esc(row.decision)}</td><td>${source}${tests}</td></tr>`;
+}).join('')}</table>`;
 // Both document forms state a failed or cancelled task as a fact, independent of the AI's lead sentence.
 const taskStateHtml = input => input.task?.status === 'failed' ? '<p class="ex-fact">作業を完了できませんでした。</p>'
   : input.task?.status === 'cancelled' ? '<p class="ex-fact">作業は取り消されました。</p>' : '';
@@ -44,14 +56,15 @@ const imagePath = (workspace, path, budget) => {
   catch { return { omitted: true, reason: '画像を読み込めません。', path }; }
   const rel = relative(root, actual);
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) return { omitted: true, reason: '画像の場所を確認できません。', path: null };
-  if (data.length > 2 * 1024 * 1024 || budget.used + data.length > 6 * 1024 * 1024)
+  const alreadyIncluded = budget.seen?.has(actual) ?? false;
+  if (data.length > 2 * 1024 * 1024 || !alreadyIncluded && budget.used + data.length > 6 * 1024 * 1024)
     return { omitted: true, reason: '画像が大きすぎるため省略しました。', path: rel.replace(/\\/g, '/') };
   const mime = data.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) ? 'image/png'
     : data[0] === 0xff && data[1] === 0xd8 && data.at(-2) === 0xff && data.at(-1) === 0xd9 ? 'image/jpeg'
     : data.toString('ascii', 0, 6) === 'GIF87a' || data.toString('ascii', 0, 6) === 'GIF89a' ? 'image/gif'
     : data.toString('ascii', 0, 4) === 'RIFF' && data.toString('ascii', 8, 12) === 'WEBP' ? 'image/webp' : null;
   if (!mime) return { omitted: true, reason: '画像の形式を確認できません。', path: rel.replace(/\\/g, '/') };
-  budget.used += data.length;
+  if (!alreadyIncluded) { budget.used += data.length; budget.seen?.add(actual); }
   return { src: `data:${mime};base64,${data.toString('base64')}`, path: rel.replace(/\\/g, '/') };
 };
 
@@ -59,19 +72,67 @@ function validate(prepared, draft, imagePaths = [], workspace = prepared?.worksp
   const reasons = [];
   if (!prepared?.ok || !Array.isArray(prepared?.map?.nodes) || !Array.isArray(prepared?.map?.edges) || !Array.isArray(prepared?.hunks)) return ['準備の出力がありません。準備をやり直してください。'];
   if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return ['JSON の本文をオブジェクトとして書き直してください。'];
-  onlyKeys(draft, ['lead', 'mapCaption', 'nodes', 'edges', 'offMap', 'images', 'screenImage', 'interpretations', 'concerns', 'unverified'], 'JSON の本文', reasons);
+  onlyKeys(draft, ['lead', 'mapCaption', 'nodes', 'edges', 'offMap', 'images', 'screenImage', 'interpretations', 'concerns', 'unverified', 'viewNames'], 'JSON の本文', reasons);
+  if (draft.viewNames !== undefined) {
+    onlyKeys(draft.viewNames, ['count', 'refresh', 'flow', 'key', 'dataSentence', 'raceSentence',
+      'stateTitle', 'flowTitle', 'dataTitle', 'raceTitle', 'stateSentence', 'nonMain',
+      'entries', 'conditions', 'origins', 'keyParts', 'states', 'stateValues', 'stateEvents'], '図の名前', reasons);
+    for (const [key, value] of Object.entries(draft.viewNames ?? {})) {
+      if (['dataSentence', 'raceSentence', 'stateSentence'].includes(key)) declarativeSentence(value, key, reasons);
+      else if (['entries', 'conditions', 'origins', 'keyParts', 'states', 'stateValues', 'stateEvents'].includes(key)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) reasons.push(`${key} は名前の対応表にしてください。`);
+        else for (const [id, name] of Object.entries(value)) plain(name, `${key} ${id} の名前`, reasons);
+      } else if (key.endsWith('Title')) {
+        const heading = plain(value, key, reasons);
+        if (heading.length > 30 || /(?:か。|ですか|ますか|[?？])$/.test(heading))
+          reasons.push('図の題名は30文字以内の平叙の名詞句にしてください。');
+      } else plain(value, key, reasons);
+    }
+  }
+  const viewNames = draft.viewNames ?? {};
+  const needed = (name, reason) => { if (!viewNames[name]) reasons.push(`${reason}の名前を図の名前に書いてください。`); };
+  if (prepared.views?.selected?.S) { needed('stateTitle', '状態の図'); needed('stateSentence', '状態の図の後の文'); needed('nonMain', '主役以外の線'); }
+  if (prepared.views?.selected?.T) needed('flowTitle', '入口の図');
+  if (prepared.views?.selected?.D) needed('dataTitle', '保存の図');
+  if (prepared.views?.selected?.C) needed('raceTitle', '並行の図');
+  if (prepared.views?.selected?.T || prepared.views?.selected?.M && prepared.views?.structure) {
+    for (const group of prepared.views.groups ?? []) if (['count', 'refresh', 'flow'].includes(group.kind)) needed(group.kind, '入口のまとまり');
+  }
+  if (prepared.views?.selected?.D) { needed('key', '保存先'); needed('dataSentence', '保存の図の後の文'); }
+  if (prepared.views?.selected?.C) needed('raceSentence', '並行の図の後の文');
+  if (prepared.views?.selected?.S || prepared.views?.selected?.D || prepared.views?.selected?.T || prepared.views?.selected?.C) for (const [field, items, id] of [
+    ['entries', prepared.views?.naming?.entries, 'line'],
+    ['conditions', prepared.views?.naming?.conditions, 'line'],
+    ['origins', prepared.views?.naming?.origins, 'line'],
+    ['keyParts', prepared.views?.naming?.keyParts, 'id'],
+    ['states', prepared.views?.naming?.states, 'line'],
+    ['stateValues', prepared.views?.naming?.stateValues, 'id'],
+    ['stateEvents', prepared.views?.naming?.stateEvents, 'line']
+  ]) for (const item of items ?? []) if (!viewNames[field]?.[item[id]])
+    reasons.push(`${field} の ${item[id]} に表示する名前を付けてください。`);
   // Screenshots a hook or the agent left in the workspace are chosen here; the app only lists verification images.
   const chosenImages = [];
+  const screenRoles = new Set();
   if (draft.images !== undefined && (!Array.isArray(draft.images) || draft.images.length > 6)) reasons.push('images は作業場所の画像を最大6件の配列で書いてください。');
   for (const item of list(draft.images)) {
-    onlyKeys(item, ['path', 'caption'], '載せる画像', reasons);
+    onlyKeys(item, ['path', 'caption', 'role', 'screen'], '載せる画像', reasons);
     oneSentence(item?.caption, `画像 ${item?.path ?? '(path なし)'} の説明`, reasons);
+    if (item?.role !== undefined || item?.screen !== undefined) {
+      if (!['before', 'after'].includes(item?.role)) reasons.push('画面の画像の role は before または after にしてください。');
+      if (typeof item?.screen !== 'string' || !item.screen.trim() || item.screen.length > 30)
+        reasons.push('画面の画像の screen は30文字以内の短い名前にしてください。');
+      else if (['before', 'after'].includes(item?.role)) {
+        const pair = `${item.screen.trim()}\0${item.role}`;
+        if (screenRoles.has(pair)) reasons.push('同じ画面に同じ変更前または変更後の画像を2枚指定できません。');
+        screenRoles.add(pair);
+      }
+    }
     const image = typeof item?.path === 'string' && workspace ? imagePath(workspace, item.path, { used: 0 }) : null;
     if (!image?.src) reasons.push(`画像 ${item?.path ?? '(path なし)'} を載せられません。${image?.reason ?? '作業場所からの相対パスで書いてください。'}作業場所にある PNG・JPEG・GIF・WebP の画像を選び直してください。`);
     else chosenImages.push(image.path);
   }
   oneSentence(draft.lead, '冒頭', reasons);
-  oneSentence(draft.mapCaption, '図の後の説明', reasons);
+  declarativeSentence(draft.mapCaption, '図の後の説明', reasons);
   if (prepared.mapDecision?.kind === 'map' && !list(draft.nodes).length) reasons.push('準備は処理の地図を指定しています。候補の部品を選んでください。');
   if (prepared.mapDecision?.kind !== 'map' && (list(draft.nodes).length || list(draft.edges).length || draft.screenImage)) reasons.push('準備は処理の地図を出さないと決めています。部品と矢印を空にしてください。');
   const nodes = new Map(prepared.map.nodes.map(n => [n.id, n]));
@@ -125,11 +186,34 @@ function validate(prepared, draft, imagePaths = [], workspace = prepared?.worksp
   const unassigned = [...hunks.keys()].filter(id => !assigned.has(id));
   if (unassigned.length) reasons.push(`割り当てのない差分の塊が ${unassigned.length} 件あります。${unassigned.join('、')} を部品か地図に載らない変更のパネルへ割り当ててください。`);
   if (!Array.isArray(draft.interpretations)) reasons.push('依頼と解釈の表を interpretations に書いてください。');
+  const reportedTests = new Set((prepared.views?.tests ?? []).filter(test => test.status === 'pass').map(test => test.name));
   for (const row of list(draft.interpretations)) {
-    onlyKeys(row, ['decision', 'evidence', 'nodeId'], '補った判断の行', reasons);
-    plain(row?.decision, '依頼にない判断', reasons); plain(row?.evidence, '確かめ方', reasons);
+    onlyKeys(row, ['decision', 'nodeId', 'edgeId', 'line', 'tests', 'image', 'why', 'unrequested'], '補った判断の行', reasons);
+    plain(row?.decision, '依頼にない判断', reasons);
+    if (row?.why !== undefined) declarativeSentence(row.why, '判断の理由', reasons);
+    if (row?.unrequested !== undefined && typeof row.unrequested !== 'boolean') reasons.push('依頼にない追加の印は true または false で指定してください。');
+    if (row?.nodeId !== undefined && row?.edgeId !== undefined) reasons.push('判断の札は部品か線の一方に付けてください。');
     if (row?.nodeId !== undefined && !selected.has(row.nodeId)) reasons.push('判断の札の部品は、選んだ部品から指定してください。');
+    if (row?.edgeId !== undefined && !edges.has(row.edgeId)) reasons.push('判断の札の線は、準備の候補から指定してください。');
+    const node = nodes.get(row?.nodeId);
+    const edge = edges.get(row?.edgeId);
+    const edgeOwner = nodes.get(edge?.from);
+    if (row?.line !== undefined && (!Number.isInteger(row.line) || !(node && row.line >= node.line && row.line <= node.end ||
+      edge && (row.line === edge.line || edgeOwner && row.line >= edgeOwner.line && row.line <= edgeOwner.end))))
+      reasons.push('判断の行は、札を付けた部品の開始行から終了行の中で指定してください。');
+    if (row?.tests !== undefined && !Array.isArray(row.tests)) reasons.push('判断の検査は名前の配列で指定してください。');
+    const seenTests = new Set();
+    for (const name of list(row?.tests)) {
+      if (typeof name !== 'string' || !reportedTests.has(name)) reasons.push(`記録に成功した検査「${name}」がありません。`);
+      if (seenTests.has(name)) reasons.push(`検査「${name}」を重複して選んでいます。`);
+      seenTests.add(name);
+    }
+    if (row?.image !== undefined && (typeof row.image !== 'string' ||
+      ![...imagePaths, ...chosenImages].includes(row.image.replaceAll('\\', '/'))))
+      reasons.push('判断の画面は入力にある画像から選んでください。');
   }
+  for (const id of [...(prepared.views?.structure?.countNodeIds ?? []), ...(prepared.views?.structure?.refreshNodeIds ?? [])])
+    if (!selected.has(id)) reasons.push('図に出す部品の日本語名を、準備の候補から指定してください。');
   if (!Array.isArray(draft.concerns) || draft.concerns.length > 3) reasons.push('懸念点は最大3件にしてください。');
   const changedLines = new Map();
   for (const h of prepared.hunks) for (const l of h.lines) if (l.kind === 'add') { if (!changedLines.has(h.file)) changedLines.set(h.file, new Set()); changedLines.get(h.file).add(l.line); }
@@ -160,7 +244,7 @@ function render(prepared, draft, evidence, request, input) {
   ].filter(badge => badge.source);
   const selected = draft.nodes.map(item => ({ ...nodes.get(item.id), title: item.title, caption: item.caption, hunkIds: item.hunkIds,
     badgeCount: badgeSources.filter(badge => badge.source === item.id).length }));
-  const budget = { used: 0 };
+  const budget = { used: 0, seen: new Set() };
   const shotEntry = draft.screenImage ? documentImages(draft, evidence).find(item => item.path.replaceAll('\\', '/') === draft.screenImage.replaceAll('\\', '/')) : null;
   const mapShotImage = shotEntry && selected.some(n => n.kind === 'screen') ? imagePath(prepared.workspace, shotEntry.path, budget) : null;
   const graph = layoutGraph(selected, draft.edges.map(id => edges.get(id)), { screenImage: Boolean(mapShotImage?.src) });
@@ -250,7 +334,9 @@ function render(prepared, draft, evidence, request, input) {
     : `<p>${esc(item.data.reason)} ${item.data.path ? `<button type="button" data-poiesis-image="${esc(item.data.path)}">${esc(item.data.path)}</button>` : esc(item.path)}</p>`;
   const images = pictures.map(picture).join('');
   const verification = evidence.verification ?? { rows: [] };
-  const verificationHtml = `<details><summary>確認結果 ${(verification.rows ?? []).length}件</summary>${verification.summary ? `<p class="ex-ai-text">${esc(verification.summary)}</p>` : ''}<ul class="ex-testlist">${(verification.rows ?? []).map(row => `<li><strong>${esc(verificationStatus[row.status] ?? '未確認')}</strong> ${esc(row.label)}${row.detail ? `：${esc(row.detail)}` : ''}</li>`).join('')}</ul></details>`;
+  const testRun = prepared.views?.testRun;
+  const testCommand = testRun ? `<p class="ex-fact">${esc(testRun.command)}：終了コード${testRun.exitCode}</p>` : '';
+  const verificationHtml = `<details><summary>確認結果 ${(verification.rows ?? []).length}件</summary>${verification.summary ? `<p class="ex-ai-text">${esc(verification.summary)}</p>` : ''}${testCommand}<ul class="ex-testlist">${(verification.rows ?? []).map(row => `<li><strong>${esc(verificationStatus[row.status] ?? '未確認')}</strong> ${esc(row.label)}${row.detail ? `：${esc(row.detail)}` : ''}</li>`).join('')}</ul></details>`;
   const style = readFileSync(fileURLToPath(new URL('../assets/style.css', import.meta.url)), 'utf8');
   const script = readFileSync(fileURLToPath(new URL('../assets/document.js', import.meta.url)), 'utf8');
   const selectedFiles = new Set(selected.map(n => n.file));
@@ -270,7 +356,7 @@ ${input.changeCaptureError ? `<p>変更の記録に失敗しました：${esc(in
 <figure class="ex-mapfig"><div class="ex-mapviewport"><div class="ex-mapbox">${svg.join('')}${mapShot}${hits}</div></div>${legend}<p class="ex-fact">部品を押すと、変更の根拠を右に表示します。</p><figcaption class="ex-ai-text">${esc(draft.mapCaption)}</figcaption></figure>
 <div class="ex-tally">確認 ${(verification.rows ?? []).length}件 ・ 新しい関数 ${newFunctions}件 ・ 手を入れた既存の処理 ${modifiedProcessing}件 ・ 補助の処理 ${graph.helperIds.length}件 ・ 地図に載らない変更 ${draft.offMap.length}件 ・ 割り当てのない差分 ${unassignedHunks}件</div>
 <h2>懸念点 ${draft.concerns.length}件</h2><ol class="ex-points">${concerns}</ol>
-${judgmentsHtml(draft)}<h2>依頼文</h2><p class="ex-request">${esc(request)}</p>
+${judgmentsHtml(prepared, draft)}<h2>依頼文</h2><p class="ex-request">${esc(request)}</p>
 ${input.requirement ? `<h2>関連する作業</h2><ul>${(input.requirement.tasks ?? []).map(task => `<li>${esc(task.title)}：${esc(task.completionSummary || task.failureSummary || '確認中')}</li>`).join('')}</ul>` : ''}
 ${images ? `<details><summary>画像 ${pictures.length}件</summary>${images}</details>` : ''}
 <details><summary>変更の詳細 ${draft.offMap.length}件</summary>${offMap}</details>
@@ -280,23 +366,49 @@ ${verificationHtml}${unverifiedHtml(draft)}<details><summary>差分の全体 ${p
 }
 
 // The app also lists verification images in input.images; show each file once.
-const uniqueImages = items => [...new Map(items.filter(item => typeof item?.path === 'string')
-  .map(item => [item.path.replaceAll('\\', '/'), item])).values()];
+const uniqueImages = items => {
+  const seen = new Set();
+  return items.filter(item => {
+    if (typeof item?.path !== 'string') return false;
+    const path = item.path.replaceAll('\\', '/');
+    if (seen.has(path)) return false;
+    seen.add(path);
+    return true;
+  });
+};
 const evidenceImages = evidence => uniqueImages([...(evidence.images ?? []), ...(evidence.verification?.rows ?? []).filter(row => row.image).map(row => ({ path: row.image, label: row.label }))]);
 // The images the AI chose come first, captioned in its words; listed evidence follows once.
-const documentImages = (draft, evidence) => uniqueImages([...list(draft.images).map(item => ({ path: item.path, label: item.caption })), ...evidenceImages(evidence)]);
+const documentImages = (draft, evidence) => uniqueImages([...list(draft.images).map(item =>
+  ({ path: item.path, label: item.caption, role: item.role, screen: item.screen })), ...evidenceImages(evidence)]);
 
 function renderNoMap(prepared, draft, input) {
   const style = readFileSync(fileURLToPath(new URL('../assets/style.css', import.meta.url)), 'utf8');
   const script = readFileSync(fileURLToPath(new URL('../assets/document.js', import.meta.url)), 'utf8');
   const hunks = new Map(prepared.hunks.map(h => [h.id, h]));
-  const budget = { used: 0 };
-  const screenOrder = item => /変更前|before/i.test(item.label ?? '') ? 0 : /変更後|after/i.test(item.label ?? '') ? 1 : 2;
-  const images = documentImages(draft, { images: input.images, verification: input.verification }).sort((a, b) => screenOrder(a) - screenOrder(b)).map(item => {
+  const budget = { used: 0, seen: new Set() };
+  const imageEntries = documentImages(draft, { images: input.images, verification: input.verification });
+  const images = imageEntries.map(item => {
     const image = imagePath(input.workspace, item.path, budget);
     return image.src ? `<figure class="ex-screen-evidence"><button type="button" data-poiesis-image="${esc(image.path)}"><img src="${esc(image.src)}" alt="${esc(item.label ?? item.path)}"></button><figcaption class="ex-ai-text">${esc(item.label ?? item.path)}</figcaption></figure>`
       : `<p>${esc(image.reason)} ${image.path ? `<button type="button" data-poiesis-image="${esc(image.path)}">${esc(image.path)}</button>` : esc(item.path)}</p>`;
   });
+  const screens = new Map();
+  imageEntries.forEach((item, index) => {
+    if (!item.role) return;
+    const screen = item.screen.trim();
+    if (!screens.has(screen)) screens.set(screen, {});
+    screens.get(screen)[item.role] = index;
+  });
+  const paired = new Set([...screens.values()].flatMap(pair => [pair.before, pair.after].filter(Number.isInteger)));
+  const comparison = screens.size ? `<section class="ex-screen-comparison"><h2>画面の変更</h2>` +
+    [...screens].map(([screen, pair]) => `<div class="ex-screen-pair" data-screen="${esc(screen)}">` +
+      `${pair.before !== undefined ? images[pair.before] : ''}${pair.before !== undefined && pair.after !== undefined ? '<span aria-hidden="true">→</span>' : ''}` +
+      `${pair.after !== undefined ? images[pair.after] : ''}</div>`).join('') + '</section>' : '';
+  const otherImages = images.filter((_, index) => !paired.has(index));
+  const missingImages = [...screens.values()].flatMap(pair => [
+    pair.after !== undefined && pair.before === undefined ? '変更前の画面の画像がありません。' : '',
+    pair.before !== undefined && pair.after === undefined ? '変更後の画面の画像がありません。' : ''
+  ].filter(Boolean));
   const offMap = draft.offMap.map(item => {
     const first = hunks.get(item.hunkIds[0]);
     const source = first ? `${first.file}:${first.start}-${first.start + Math.max(0, first.count - 1)}` : '';
@@ -308,15 +420,15 @@ function renderNoMap(prepared, draft, input) {
   const question = prepared.mapDecision.kind === 'visual' ? visualQuestion : noMapQuestion;
   const reason = prepared.mapDecision.reason;
   const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${style}</style></head><body>
-<p class="ex-lead ex-ai-text">${esc(draft.lead)}</p>${taskStateHtml(input)}<p class="ex-fact">${esc(question)}</p><p class="ex-fact">${esc(reason)}</p>${input.changeCaptureError ? `<p class="ex-fact">変更の記録に失敗しました：${esc(input.changeCaptureError)}</p>` : ''}
-<div class="ex-screens">${images.join('')}</div><p class="ex-ai-text">${esc(draft.mapCaption ?? '実際の差分を確認します。')}</p>
+<p class="ex-lead ex-ai-text">${esc(draft.lead)}</p><p class="ex-request">依頼：${esc(input.task?.request ?? '')}</p>${taskStateHtml(input)}<p class="ex-fact">${esc(question)}</p><p class="ex-fact">${esc(reason)}</p>${input.changeCaptureError ? `<p class="ex-fact">変更の記録に失敗しました：${esc(input.changeCaptureError)}</p>` : ''}
+${comparison}<div class="ex-screens">${otherImages.join('')}</div><p class="ex-ai-text">${esc(draft.mapCaption ?? '実際の差分を確認します。')}</p>
 <div class="ex-tally">変更のまとまり ${draft.offMap.length}件 ・ 懸念 ${draft.concerns.length}件 ・ 判断 ${draft.interpretations.length}件 ・ 確認 ${verification.rows?.length ?? 0}件</div>
 <h2>懸念点 ${draft.concerns.length}件</h2><ol class="ex-points">${concerns}</ol>
-${judgmentsHtml(draft)}<h2>依頼文</h2><p class="ex-request">${esc(input.task?.request ?? '')}</p><h2>作業内容</h2><p>${esc((input.task?.status === 'completed' ? input.task?.completionSummary : input.task?.failureSummary) || reason)}</p>
+${judgmentsHtml(prepared, draft)}<h2>作業内容</h2><p>${esc((input.task?.status === 'completed' ? input.task?.completionSummary : input.task?.failureSummary) || reason)}</p>
 ${input.requirement ? `<h2>関連する作業</h2><ul>${(input.requirement.tasks ?? []).map(task => `<li>${esc(task.title)}：${esc(task.completionSummary || task.failureSummary || '確認中')}</li>`).join('')}</ul>` : ''}
 <h2>変更の詳細 ${draft.offMap.length}件</h2>${offMap}
 <details><summary>確認結果 ${verification.rows?.length ?? 0}件</summary>${verification.summary ? `<p class="ex-ai-text">${esc(verification.summary)}</p>` : ''}<ul>${(verification.rows ?? []).map(row => `<li><strong>${esc(verificationStatus[row.status] ?? '未確認')}</strong> ${esc(row.label)}：${esc(row.detail || '詳細なし')}</li>`).join('')}</ul></details>
-${unverifiedHtml(draft)}<details><summary>差分の全体 ${prepared.hunks.length}件</summary>${prepared.hunks.map(h => `<div class="ex-diff-head">${esc(h.file)} ${h.start}行</div><pre class="ex-diff">${diffRows(h.lines, h.file)}</pre>`).join('')}</details>
+${unverifiedHtml({ ...draft, unverified: [...draft.unverified, ...missingImages] })}<details><summary>差分の全体 ${prepared.hunks.length}件</summary>${prepared.hunks.map(h => `<div class="ex-diff-head">${esc(h.file)} ${h.start}行</div><pre class="ex-diff">${diffRows(h.lines, h.file)}</pre>`).join('')}</details>
 <details><summary>改行コードだけの変更 ${prepared.lineEndingChanges}件</summary><p>${prepared.lineEndingChanges}行です。</p></details><script>${script}</script></body></html>`;
   return { html, drawnEdges: [], foldedEdges: [], unassignedHunks: 0, panelCount: 0, geometry: { boxes: [], edges: [], columns: [], width: 0, height: 0 } };
 }
@@ -336,17 +448,26 @@ try {
   rmSync(resolve(process.cwd(), 'results.html'), { force: true });
   const input = readJson('input.json'), prepared = readJson('prepared.json'), draft = readJson('draft.json');
   const reasons = validate(prepared, draft, evidenceImages({ images: input.images, verification: input.verification }).map(item => item.path.replaceAll('\\', '/')), input.workspace ?? prepared?.workspace);
+  const derivedActive = prepared.mapDecision.kind === 'map' &&
+    (prepared.views?.selected?.S || prepared.views?.selected?.D || prepared.views?.selected?.T || prepared.views?.selected?.C);
+  if (derivedActive && list(draft.edges).length) reasons.push('図の矢印は準備の結果から決めます。edges は空配列にしてください。');
   if (input.schema !== 'poiesis-results-input/1') reasons.push('入力の形式が違います。');
   if (reasons.length) emit({ ok: false, reasons });
   else {
     const evidence = { images: input.images, verification: input.verification };
     let result;
-    result = prepared.mapDecision.kind === 'map' ? render(prepared, draft, evidence, input.task?.request ?? '', input) : renderNoMap(prepared, draft, input);
+    const named = new Set(draft.nodes.map(node => node.id));
+    const baseDraft = derivedActive ? { ...draft, edges: prepared.map.edges.filter(edge =>
+      named.has(edge.from) && named.has(edge.to)).map(edge => edge.id) } : draft;
+    result = prepared.mapDecision.kind === 'map' ? render(prepared, baseDraft, evidence, input.task?.request ?? '', input) : renderNoMap(prepared, draft, input);
+    if (derivedActive)
+      result = renderViews(prepared, draft, result, input);
     const bytes = Buffer.byteLength(result.html, 'utf8');
     if (bytes > 8 * 1024 * 1024) emit({ ok: false, reasons: [`文書が8 MiBを超えました (${bytes} bytes)。画像や本文を減らしてください。`] });
     else {
       writeFileSync(resolve(process.cwd(), 'results.html'), result.html, 'utf8');
-      emit({ ok: true, output: 'results.html', bytes, drawnEdges: result.drawnEdges, foldedEdges: result.foldedEdges, unassignedHunks: result.unassignedHunks, panelCount: result.panelCount, geometry: result.geometry });
+      emit({ ok: true, output: 'results.html', bytes, drawnEdges: result.drawnEdges, foldedEdges: result.foldedEdges, unassignedHunks: result.unassignedHunks, panelCount: result.panelCount, geometry: result.geometry,
+        ...(result.views ? { views: result.views } : {}) });
     }
   }
 } catch (error) { emit({ ok: false, reasons: [`組み立てに失敗しました: ${error.message}`] }); }
