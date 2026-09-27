@@ -1295,13 +1295,23 @@
     box-shadow: 0 0 0 1px var(--poiesis-focus-ring-soft, rgb(194 139 96 / 24%));
 }
 
-/* Results reading layout. Auxiliary navigation, details, and questions overlay the
-   document so opening them never changes the iframe's size or reading position. */
+/* Results reading layout. The document and the open auxiliary panel share the width. */
 .poiesis-results {
     background: #1a1b1a;
-    display: block;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 0px;
     isolation: isolate;
     position: relative;
+    transition: grid-template-columns 170ms cubic-bezier(.2, 0, 0, 1);
+}
+
+.poiesis-results[data-auxiliary-panel='navigator'],
+.poiesis-results[data-auxiliary-panel='details'] {
+    grid-template-columns: minmax(0, 1fr) 368px;
+}
+
+.poiesis-results[data-auxiliary-panel='questions'] {
+    grid-template-columns: minmax(0, 1fr) 428px;
 }
 
 .poiesis-results__main,
@@ -1311,6 +1321,8 @@
 
 .poiesis-results__main {
     display: block;
+    grid-column: 1;
+    min-width: 0;
 }
 
 .poiesis-results__canvas {
@@ -1472,35 +1484,26 @@
 
 .poiesis-results__encoding-damage button:disabled { opacity: .6; cursor: wait; }
 
-.poiesis-results__auxiliary-scrim {
-    background: rgb(0 0 0 / 18%);
-    inset: 0;
-    position: absolute;
-    z-index: 40;
-}
-
 .poiesis-results__auxiliary {
     animation: poiesis-results-panel-in 170ms cubic-bezier(.2, 0, 0, 1);
     background: #1d1e1c;
     border: 1px solid #454741;
     border-radius: 10px;
-    bottom: 8px;
     box-shadow: 0 20px 52px rgb(0 0 0 / 48%);
     color: var(--poiesis-chrome-copy);
     display: grid;
+    grid-column: 2;
     grid-template-rows: auto minmax(0, 1fr);
+    height: calc(100% - 16px);
+    margin: 8px 8px 8px 0;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
-    position: absolute;
-    right: 8px;
-    top: 8px;
-    width: min(360px, calc(100% - 16px));
-    z-index: 41;
+    width: auto;
 }
 
 .poiesis-results__question-panel {
     grid-template-rows: auto minmax(0, 1fr) auto;
-    width: min(420px, calc(100% - 16px));
 }
 
 .poiesis-results__details {

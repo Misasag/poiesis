@@ -381,7 +381,7 @@ export class ResultsPart extends AgentWindowPart {
         const image = this.imageViewer;
         if (!image) { return null; }
         return <div className='poiesis-results__image-viewer' role='dialog' aria-modal='true' aria-label='画像の拡大表示'
-            onKeyDown={event => this.handleResultsAuxiliaryKeyDown(event, () => this.closeImage())}
+            onKeyDown={event => this.handleResultsAuxiliaryKeyDown(event, () => this.closeImage(), true)}
             onClick={event => { if (event.target === event.currentTarget) { this.closeImage(); } }}>
             <figure><button type='button' aria-label='画像を閉じる' ref={button => button?.focus()} onClick={() => this.closeImage()}>閉じる</button>
                 <img src={image.source} alt={image.label} /><figcaption>{image.label}</figcaption></figure>
@@ -393,13 +393,9 @@ export class ResultsPart extends AgentWindowPart {
         selectedRequirement: Requirement | undefined,
         selectedTaskId: string | undefined
     ): React.ReactNode {
-        return <>
-            <div className='poiesis-results__auxiliary-scrim' onPointerDown={() => this.closeResultsAuxiliary()} />
-            <aside
+        return <aside
                 id='poiesis-results-navigator'
                 className='poiesis-results__auxiliary poiesis-results__navigator'
-                role='dialog'
-                aria-modal='true'
                 aria-label='成果を選択'
                 onKeyDown={event => this.handleResultsAuxiliaryKeyDown(event, () => this.closeResultsAuxiliary())}
             >
@@ -412,8 +408,7 @@ export class ResultsPart extends AgentWindowPart {
                     ))}
                 </div>
                 {!requirements.length && <p className='poiesis-results__auxiliary-empty'>完了した成果はありません。</p>}
-            </aside>
-        </>;
+            </aside>;
     }
 
     protected renderRequirementCard(
@@ -825,13 +820,9 @@ export class ResultsPart extends AgentWindowPart {
         const generation = this.resultsGenerationBadge(document);
         const task = selectedTask ?? latestTask;
         const completedAtJst = formatTaskEndedAtJst(task.endedAt);
-        return <>
-            <div className='poiesis-results__auxiliary-scrim' onPointerDown={() => this.closeResultsAuxiliary()} />
-            <aside
+        return <aside
                 id='poiesis-results-details-panel'
                 className='poiesis-results__auxiliary poiesis-results__details'
-                role='dialog'
-                aria-modal='true'
                 aria-label='成果の詳細'
                 onKeyDown={event => this.handleResultsAuxiliaryKeyDown(event, () => this.closeResultsAuxiliary())}
             >
@@ -898,8 +889,7 @@ export class ResultsPart extends AgentWindowPart {
                         ))}
                     </ul>
                 )}
-            </aside>
-        </>;
+            </aside>;
     }
 
     protected renderResultsAuxiliaryHeader(title: string, closeLabel: string, onClose: () => void): React.ReactNode {
@@ -968,7 +958,7 @@ export class ResultsPart extends AgentWindowPart {
         });
     }
 
-    protected handleResultsAuxiliaryKeyDown(event: React.KeyboardEvent<HTMLElement>, close: () => void): void {
+    protected handleResultsAuxiliaryKeyDown(event: React.KeyboardEvent<HTMLElement>, close: () => void, trapFocus = false): void {
         if (event.defaultPrevented) {
             return;
         }
@@ -978,7 +968,7 @@ export class ResultsPart extends AgentWindowPart {
             close();
             return;
         }
-        if (event.key !== 'Tab') {
+        if (!trapFocus || event.key !== 'Tab') {
             return;
         }
         const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
@@ -1119,13 +1109,10 @@ export class ResultsPart extends AgentWindowPart {
         documentReady: boolean,
         archived: boolean
     ): React.ReactNode {
-        return <>
-            <div className='poiesis-results__auxiliary-scrim' onPointerDown={() => this.closeResultsQuestionPanel(scopeKey)} />
-            <section
+        return <section
                 id='poiesis-results-questions-panel'
                 className='poiesis-results__auxiliary poiesis-results__question-panel'
-                role='dialog'
-                aria-modal='true'
+                role='region'
                 aria-label={`${title}への質問`}
                 data-results-scope={scopeKey}
                 tabIndex={-1}
@@ -1207,8 +1194,7 @@ export class ResultsPart extends AgentWindowPart {
                         {documentReady && this.host.renderAiRolePill('results', true)}
                     </>}
                 </section>
-            </section>
-        </>;
+            </section>;
     }
 
     protected questionTime(timestamp: string): string {

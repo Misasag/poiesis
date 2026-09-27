@@ -398,12 +398,24 @@ for (const marker of [
     "aria-controls='poiesis-results-navigator'",
     "aria-controls='poiesis-results-questions-panel'",
     "aria-controls='poiesis-results-details-panel'",
-    "aria-modal='true'",
     'handleResultsAuxiliaryKeyDown',
     'closeResultsQuestionPanel'
 ]) {
     assert.ok(agentWidget.includes(marker), `On-demand Results auxiliary UI is missing ${marker}`);
 }
+for (const [start, end] of [
+    ['protected renderResultsNavigator(', 'protected renderRequirementCard('],
+    ['protected renderResultsDetails(', 'protected renderResultsAuxiliaryHeader('],
+    ['protected renderResultsQuestionPanel(', 'protected closeResultsQuestionPanel(']
+]) {
+    const panelSource = resultsPartSource.slice(resultsPartSource.indexOf(start), resultsPartSource.indexOf(end));
+    assert.ok(panelSource.includes("className='poiesis-results__auxiliary"), `Results side panel is missing at ${start}`);
+    assert.ok(!panelSource.includes("role='dialog'") && !panelSource.includes('aria-modal')
+        && !panelSource.includes('poiesis-results__auxiliary-scrim'),
+    `Results side panel must be non-modal and have no scrim at ${start}`);
+}
+assert.ok(resultsPartSource.includes("role='dialog' aria-modal='true' aria-label='画像の拡大表示'"),
+    'The Results image viewer must remain modal');
 assert.ok(!agentWidget.includes("className='poiesis-results__task-switcher'"),
     'Results must not mount a permanent outcome rail');
 for (const marker of [
@@ -1880,14 +1892,20 @@ for (const marker of [
 }
 for (const marker of [
     '.poiesis-results__toolbar-actions',
-    '.poiesis-results__auxiliary-scrim',
     '.poiesis-results__auxiliary',
     'animation: poiesis-results-panel-in 170ms',
+    'transition: grid-template-columns 170ms',
+    "[data-auxiliary-panel='questions']",
     '.poiesis-results__requirement-card.active',
     'background: var(--poiesis-selection-bg, #29302d);'
 ]) {
     assert.ok(agentStyles.includes(marker), `Results reading-layout styling is missing ${marker}`);
 }
+assert.ok(!agentStyles.includes('.poiesis-results__auxiliary-scrim'), 'Results side panels must not dim the document');
+assert.match(agentStyles, /\.poiesis-results\[data-auxiliary-panel='navigator'\],[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 368px;/,
+    'Opening the outcome or details panel must narrow the Results canvas');
+assert.match(agentStyles, /\.poiesis-results\[data-auxiliary-panel='questions'\]\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 428px;/,
+    'Opening Questions must narrow the Results canvas');
 
 for (const marker of [
     "event.key === 'Enter'",
