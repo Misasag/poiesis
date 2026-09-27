@@ -123,6 +123,19 @@ try {
   assert.equal(wideOpened.covered, 0, `The panel covers ${wideOpened.covered}px of the document at 1688px.`);
   assert.equal(wideOpened.mapWidth, wideClosed.mapWidth, 'Opening a panel at 1688px shrinks the map.');
   await wide.screenshot({ path: resolve(out, 'results-skill-s6-panel-1688.png') });
+  // Loaded wide, narrowed later: the panel opens at the width left by the document then, not at the width from loading.
+  await wide.setViewport({ width: 2328, height: 934, deviceScaleFactor: 1 });
+  await wide.setContent(srcdoc.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ''));
+  await wide.waitForSelector('.ex-map .ex-title');
+  await wide.setViewport({ width: 1500, height: 934, deviceScaleFactor: 1 });
+  await wide.evaluate(() => new Promise(done => setTimeout(done, 200)));
+  const narrowedClosed = await layout();
+  await wide.click('.ex-hit > summary');
+  await wide.waitForSelector('.ex-hit[open] .ex-panel');
+  await wide.evaluate(() => new Promise(done => setTimeout(done, 400)));
+  const narrowedOpened = await layout();
+  assert.equal(narrowedOpened.covered, 0, `The panel covers ${narrowedOpened.covered}px after the window narrowed.`);
+  assert.equal(narrowedOpened.mapWidth, narrowedClosed.mapWidth, 'A panel opened after the window narrowed shrinks the map.');
   await wide.close();
   const report = { preparationExit: prep.status, renderExit: made.status, s6TestsExit: tests.status,
     boxes: made.body.geometry.boxes.length, arrows: made.body.drawnEdges.length,

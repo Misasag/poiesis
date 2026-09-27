@@ -1,7 +1,9 @@
 (() => {
   const root = document.documentElement;
   let opener = null;
-  const opened = () => document.querySelector('details.ex-hit[open], details.ex-hit-inline[open]');
+  // Until the reader drags or keys the panel width, it follows the free space right of the document.
+  let chosenWidth = false;
+  const opened =() => document.querySelector('details.ex-hit[open], details.ex-hit-inline[open]');
   const closePanel = () => {
     const current = opened();
     if (!current) return;
@@ -15,6 +17,7 @@
     if (!(details instanceof HTMLDetailsElement) || !details.matches('.ex-hit, .ex-hit-inline') || !details.open) return;
     for (const other of document.querySelectorAll('details.ex-hit[open], details.ex-hit-inline[open]')) if (other !== details) other.open = false;
     opener = details.querySelector(':scope > summary');
+    if (!chosenWidth) setWidth(openingWidth());
   }, true);
   document.addEventListener('click', event => {
     const citation = event.target.closest('[data-poiesis-citation]');
@@ -41,10 +44,11 @@
     event.preventDefault();
     const current = parseFloat(getComputedStyle(root).getPropertyValue('--ex-panel-w')) || openingWidth();
     const delta = (event.key === 'ArrowLeft' ? 1 : -1) * (event.shiftKey ? 40 : 20);
+    chosenWidth = true;
     setWidth(current + delta);
   });
   function setWidth(width) {
-    const max = Math.max(320, innerWidth * .7);
+    const max = Math.max(320, root.clientWidth * .7);
     const value = Math.min(max, Math.max(320, width));
     root.style.setProperty('--ex-panel-w', `${value}px`);
     for (const grip of document.querySelectorAll('.ex-panel-grip')) {
@@ -60,17 +64,23 @@
     grip.setPointerCapture(event.pointerId);
     event.preventDefault();
   });
-  document.addEventListener('pointermove', event => { if (dragging) setWidth(innerWidth - event.clientX); });
+  document.addEventListener('pointermove', event => {
+    if (!dragging) return;
+    chosenWidth = true;
+    setWidth(root.clientWidth - event.clientX);
+  });
   document.addEventListener('pointerup', () => { dragging = false; });
   document.addEventListener('pointercancel', () => { dragging = false; });
   window.addEventListener('resize', () => {
     const current = parseFloat(getComputedStyle(root).getPropertyValue('--ex-panel-w'));
-    if (Number.isFinite(current)) setWidth(current);
+    if (!chosenWidth) setWidth(openingWidth());
+    else if (Number.isFinite(current)) setWidth(current);
   });
   // The panel opens in the space right of the document so it neither covers nor narrows it:
   // style.css keeps the open document at most 1100px wide plus 72px of margins and gap.
+  // clientWidth leaves out a classic scrollbar, matching the 100% that style.css measures against.
   function openingWidth() {
-    return Math.min(620, Math.max(320, innerWidth - 1100 - 72));
+    return Math.min(620, Math.max(320, root.clientWidth - 1100 - 72));
   }
   setWidth(openingWidth());
 })();
