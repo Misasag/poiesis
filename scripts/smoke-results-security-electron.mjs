@@ -126,6 +126,14 @@ try {
     await new Promise(done => setTimeout(done, 1000));
     assert.equal(frame.url(), 'about:srcdoc', 'A renamed Results frame must stay on srcdoc');
     assert.equal(navigationRequests, 0, 'Navigation after renaming must not reach the local server');
+    // A nested frame and a popup are the other ways out of the Results frame (CSP frame-src and the sandbox).
+    await frame.evaluate(url => {
+        const nested = document.createElement('iframe'); nested.src = url; document.body.append(nested);
+        try { window.open(url.replace('nested', 'popup')); } catch { /* the sandbox may throw */ }
+    }, `http://127.0.0.1:${leakPort}/leak?secret=nested`);
+    await new Promise(done => setTimeout(done, 1000));
+    assert.equal(navigationRequests, 0, 'A nested frame or popup must not reach the local server');
+    assert.equal(frame.url(), 'about:srcdoc');
     assert(await frame.$('.ex-hit'), 'Blocked navigation keeps the document visible');
     console.log(JSON.stringify({ resultsSecurityElectron: 'passed', assembledBytes: Buffer.byteLength(assembled),
         trustedPanelOpen: true, untrustedScriptRan: false, blockedNavigationRequests: navigationRequests }));

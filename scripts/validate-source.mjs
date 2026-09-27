@@ -1551,6 +1551,8 @@ for (const marker of [
     "appliedSkillNames.join('、')",
     'this.workspaceSkillService.list(root)',
     "sandbox='allow-scripts'",
+    // The Electron navigation guard recognises the Results frame by this name at frame creation.
+    "name='poiesis-results-document'",
     "type: 'poiesis:open-citation' | 'poiesis:retry-ai-results'",
     "window.addEventListener('message', receiveResultsMessage)",
     'this.frameMessages.accept(frame, event)',
