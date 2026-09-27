@@ -315,7 +315,7 @@ function render(prepared, draft, evidence, request, input) {
     }).join('');
     svg.push(`<g data-map-node="${p.id}"><rect class="ex-node ex-node-${cls}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="9"/>${title}<text class="ex-tag ex-tag-${cls}" x="${p.x + p.w - 8}" y="${p.y + 13}" text-anchor="end">${tag[p.status]}</text>${subs}${markers}</g>`);
   }
-  for (const edge of graph.edges) svg.push(`<g><rect class="ex-label-bg" x="${edge.label.x}" y="${edge.label.y}" width="${edge.label.w}" height="${edge.label.h}" rx="4"/><text class="ex-edge-label" x="${edge.label.x + edge.label.w / 2}" y="${edge.label.y + 12}" text-anchor="middle">${edge.text}</text><text class="ex-edge-line" x="${edge.label.x + edge.label.w / 2}" y="${edge.label.y + 23}" text-anchor="middle">${edge.line}行</text></g>`);
+  for (const edge of graph.edges) svg.push(`<g><rect class="ex-label-bg" x="${edge.label.x}" y="${edge.label.y}" width="${edge.label.w}" height="${edge.label.h}" rx="4"/><text class="ex-edge-label" x="${edge.label.x + edge.label.w / 2}" y="${edge.label.y + 14}" text-anchor="middle">${edge.text}</text><text class="ex-edge-line" x="${edge.label.x + edge.label.w / 2}" y="${edge.label.y + 30}" text-anchor="middle">${edge.line}行</text></g>`);
   svg.push('</svg>');
   const screen = selected.find(n => n.kind === 'screen');
   const screenBox = screen ? positions.get(screen.id) : null;

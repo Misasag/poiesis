@@ -64,10 +64,10 @@ function arrange(model, { screenImage = false } = {}) {
     const titleLines = wrapTitle(n.title, column.w - 20);
     const subLines = n.subs.slice(0, 3).map(s => {
       const annotation = n.annotations.find(a => a.text === s);
-      if (!annotation || textWidth(s, 11) <= column.w - 20) return abbreviate(s, column.w - 20, 11);
+      if (!annotation || textWidth(s, 12) <= column.w - 20) return abbreviate(s, column.w - 20, 12);
       const reference = `${annotation.line}行`;
-      const room = column.w - 20 - textWidth(` ${reference}`, 11);
-      return room >= 22 ? `${abbreviate(annotation.title, room, 11)} ${reference}` : abbreviate(reference, column.w - 20, 11);
+      const room = column.w - 20 - textWidth(` ${reference}`, 12);
+      return room >= 22 ? `${abbreviate(annotation.title, room, 12)} ${reference}` : abbreviate(reference, column.w - 20, 12);
     });
     if (n.subs.length > 3) subLines[2] = 'ほかの呼び出しは中身に表示';
     const textHeight = 18 + titleLines.length * 19 + subLines.length * 15 + 10;
@@ -173,7 +173,7 @@ export function route(start, end, boxes, occupied, height, detour = false) {
   return path.filter((p, i) => !i || i === path.length - 1 || !(path[i - 1].x === p.x && p.x === path[i + 1].x) && !(path[i - 1].y === p.y && p.y === path[i + 1].y));
 }
 function placeLabel(edge, boxes, labels, allSegments, height) {
-  const w = Math.ceil(Math.max(textWidth(edge.text, 12), textWidth(`${edge.line}行`, 9)) + 10), h = 29, candidates = [];
+  const w = Math.ceil(Math.max(textWidth(edge.text, 12), textWidth(`${edge.line}行`, 12)) + 10), h = 36, candidates = [];
   for (const [a, b] of segments(edge.points)) {
     const length = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
     for (let offset = 4; offset <= length - 4; offset += 4) {

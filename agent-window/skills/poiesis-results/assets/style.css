@@ -195,8 +195,8 @@
 body { max-width: 1100px; margin: 24px auto; margin-left: max(0px, calc((100% - 1132px) / 2)); padding: 0 16px; background: var(--results-bg, #fff); color: var(--results-fg, #1d2925); font: 15px/1.55 var(--results-font-sans, system-ui, sans-serif); overflow-x: hidden; }
 .ex-lead { font-size: 1.05em; }
 .ex-mapfig { margin: 1em 0 1.4em; }
-.ex-mapviewport { width: 100%; max-width: 100%; }
-.ex-mapbox { position: relative; width: 100%; min-width: 0; }
+.ex-mapviewport { width: 100%; max-width: 100%; overflow-x: auto; }
+.ex-mapbox { position: relative; width: 100%; min-width: 1000px; }
 .ex-map { display: block; width: 100%; height: auto; font-family: inherit; }
 .ex-map .ex-col { font-size: 12px; fill: var(--results-muted, #57645e); text-anchor: middle; letter-spacing: 0.08em; }
 .ex-map .ex-node { fill: var(--results-bg, #fff); stroke-width: 1.6; }
@@ -204,8 +204,8 @@ body { max-width: 1100px; margin: 24px auto; margin-left: max(0px, calc((100% - 
 .ex-map .ex-node-chg { stroke: var(--ex-chg); stroke-width: 3; fill: color-mix(in srgb, var(--ex-chg) 9%, var(--results-bg, #fff)); }
 .ex-map .ex-node-same { stroke: var(--ex-same); }
 .ex-map .ex-title { font-size: 15px; font-weight: 700; fill: var(--results-fg, #1d2925); }
-.ex-map .ex-sub { font-size: 11px; fill: var(--results-muted, #57645e); font-family: var(--results-font-mono, Consolas, monospace); }
-.ex-map .ex-tag { font-size: 10px; font-weight: 700; }
+.ex-map .ex-sub { font-size: 12px; fill: var(--results-muted, #57645e); font-family: var(--results-font-mono, Consolas, monospace); }
+.ex-map .ex-tag { font-size: 12px; font-weight: 700; }
 .ex-map .ex-tag-new { fill: var(--ex-new); } .ex-map .ex-tag-chg { fill: var(--ex-chg); } .ex-map .ex-tag-same { fill: var(--ex-same); }
 .ex-map .ex-edge { fill: none; stroke-width: 1.6; }
 .ex-map .ex-edge-new, .ex-legend-path.ex-edge-new { stroke: var(--ex-new); stroke-width: 2.8; } .ex-map .ex-edge-same, .ex-legend-path.ex-edge-same { stroke: var(--ex-same); stroke-width: 1.5; }
@@ -217,7 +217,7 @@ body { max-width: 1100px; margin: 24px auto; margin-left: max(0px, calc((100% - 
 .ex-map [class^="ex-arrowhead-"], .ex-legend-svg [class^="ex-arrowhead-"] { fill: var(--results-fg, #1d2925); }
 .ex-map .ex-arrowhead-trigger, .ex-legend-svg .ex-arrowhead-trigger { fill: var(--results-bg, #fff); stroke: var(--results-fg, #1d2925); stroke-width: 1.6; }
 .ex-map .ex-edge-label { font-size: 12px; fill: var(--results-fg, #1d2925); }
-.ex-map .ex-edge-line { font-size: 9px; fill: var(--results-muted, #57645e); }
+.ex-map .ex-edge-line { font-size: 12px; fill: var(--results-muted, #57645e); }
 .ex-map .ex-marker { font-size: 12px; font-weight: 700; }
 .ex-map .ex-marker-decision { fill: var(--ex-decision); }
 .ex-map .ex-marker-concern { fill: var(--ex-concern); }

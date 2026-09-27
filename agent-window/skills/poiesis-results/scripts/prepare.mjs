@@ -482,6 +482,10 @@ try {
       const sharedOrigins = helperOrigins.filter(edge => helperOrigins.some(other => other.from !== edge.from && other.to === edge.to));
       const writeOrigin = sharedOrigins.find(edge => edge.from === writer.id);
       const displayOrigin = sharedOrigins.find(edge => edge.from === display?.id);
+      // Sharing a key helper does not prove that the helper computes a date.
+      const dateHelper = writeOrigin && map.nodes.find(node => node.id === writeOrigin.to);
+      const hasDateParts = dateHelper && /\b(?:getFullYear|getMonth|getDate|toISOString|toLocale\w*)\s*\(/.test(
+        sourceLines.slice(dateHelper.line - 1, dateHelper.end).join('\n'));
       const eventOf = entry => data.registrations.find(item => item.entry === entry.entry)?.event;
       const notice = refreshEntries.find(entry => eventOf(entry) === 'storage');
       const notes = refreshEntries.filter(entry => ['storage', 'timer'].includes(eventOf(entry)));
@@ -500,7 +504,7 @@ try {
       // lettered substeps; the draft supplies names but never order or evidence.
       const readCall = map.edges.find(edge => edge.from === writer.id && edge.to === reader?.id && edge.access === 'call');
       const candidates = [
-        { kind: 'date', line: sharedOrigins.find(edge => edge.from === writer.id)?.line },
+        { kind: hasDateParts ? 'date' : 'keyPart', line: writeOrigin?.line },
         { kind: 'read', line: readCall?.line },
         { kind: 'write', line: writeEdge?.line },
         { kind: 'display', line: continuation?.line }
@@ -513,9 +517,6 @@ try {
         repeats.set(item.line, nth + 1);
         return { ...item, number: `${rank.get(item.line)}${same > 1 ? '.' + String.fromCharCode(97 + nth) : ''}` };
       });
-      const dateHelper = writeOrigin && map.nodes.find(node => node.id === writeOrigin.to);
-      const hasDateParts = dateHelper && /\b(?:getFullYear|getMonth|getDate|toISOString|toLocale\w*)\s*\(/.test(
-        sourceLines.slice(dateHelper.line - 1, dateHelper.end).join('\n'));
       const sourceArg = edge => edge?.call?.match(/\(([^)]*)\)/)?.[1]?.trim() ?? '';
       // A calendar-derived key with different read/write date arguments gets
       // a boundary view; example dates come only from the recorded completion.

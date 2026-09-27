@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { route } from '../agent-window/skills/poiesis-results/scripts/layout.mjs';
@@ -26,9 +27,16 @@ const namesFor = prepared => ({
 });
 const skillStyle = readFileSync(resolve(skill, 'assets/style.css'), 'utf8');
 const skillText = readFileSync(resolve(skill, 'SKILL.md'), 'utf8').replace(/^\uFEFF/, '');
-for (const phrase of ['## 判断基準', '## 冒頭の答え', '## 地図の根拠',
-  '## 画像と確認の限界', '## 平易な日本語', '## 書き終える前の確認',
-  '`viewNames`', '`interpretations[].tests`', 'views.naming', 'views.structure'])
+assert(skillText.indexOf('1. `node <skillフォルダー>/scripts/prepare.mjs`') < skillText.indexOf('## 判断基準'));
+for (const phrase of ['## 判断基準', '現在の対象で実行成功', '失敗・未実施・実行不明', '変更前の対象で成功',
+  '検証用ファイルが変わった', '人の判断が残る', '入力が矛盾・不足', '変更がない', '委任先の報告',
+  '## 冒頭の答え', '終了コード0', '## 地図の根拠', '構文から分かる関係',
+  '## 画像と確認の限界', '別の版', '## 平易な日本語', '## 危険な兆候と避けること',
+  '## 書き終える前の確認', '## 根拠', 'harness-results/SKILL.md',
+  'research-r6-results-visual-first.md', 'research-r8-results-for-engineers.md',
+  'research-r9-results-app-skill-boundary.md',
+  '`lead`', '`mapCaption`', '`nodes[].title/caption`', '`offMap`', '`interpretations`',
+  '`concerns`', '`unverified`', '`viewNames`', '`interpretations[].tests`', 'views.naming', 'views.structure'])
   assert(skillText.includes(phrase), `SKILL.md に ${phrase} がありません。`);
 assert(!/(?:<svg|<script|class="ex-)/i.test(skillText), '図の HTML 実装を SKILL.md に移してはいけません。');
 const contractInput = appInput();
@@ -186,6 +194,98 @@ assert(nestedMade.body.geometry.boxes.find(box => box.badgeCount === 1).h >
 assert.equal((nestedHtml.match(/class="ex-marker ex-marker-concern"/g) ?? []).length, 1);
 const affectedPart = nestedPrepared.map.nodes.find(node => node.kind === 'storage');
 assert(nestedHtml.match(new RegExp(`<g data-map-node="${affectedPart.id}">([\\s\\S]*?)<\\/g>`))?.[1].includes('懸念1'));
+// The legacy map remains a production path when M alone is selected.
+const legacyInput = appInput(fixture, addedFile('legacy-map.js'));
+writeCase(legacyInput, JSON.stringify(emptyDraft));
+assert.equal(prepare().body.ok, true);
+const legacyPrepared = JSON.parse(readFileSync(resolve(runFolder, 'prepared.json'), 'utf8'));
+assert.equal(legacyPrepared.mapDecision.kind, 'map');
+assert.deepEqual(legacyPrepared.views.selected, { S: false, D: false, T: false, C: false, M: true });
+const legacyScreen = legacyPrepared.map.nodes.find(node => node.kind === 'screen');
+assert(legacyScreen, 'M だけの地図に画面の部品が必要です。');
+const legacyDraft = { lead: '画面の値を更新しました。', mapCaption: '値を作る処理から画面までの線を見ます。',
+  nodes: legacyPrepared.map.nodes.map((node, i) => ({ id: node.id, title: `部品${i + 1}`,
+    caption: '画面へ値を渡す処理です。', hunkIds: i === 0 ? legacyPrepared.hunks.map(h => h.id) : [] })),
+  edges: legacyPrepared.map.edges.map(edge => edge.id), offMap: [], interpretations: [], concerns: [], unverified: [] };
+writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(legacyDraft), 'utf8');
+const legacyPlain = render();
+assert.equal(legacyPlain.body.ok, true, JSON.stringify(legacyPlain.body.reasons));
+const legacyScreenHeight = output => output.body.geometry.boxes.find(box => box.id === legacyScreen.id).h;
+assert(!readFileSync(htmlPath, 'utf8').includes('class="ex-mapshot"'), '画像のない画面の箱に空枠を出さない。');
+const largePath = resolve(fixture, 'large-image.png');
+try {
+  writeFileSync(largePath, Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(2 * 1024 * 1024)]));
+  legacyInput.images = [{ path: 'large-image.png', label: '大きな画像' }];
+  writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(legacyInput), 'utf8');
+  assert.equal(render().body.ok, true);
+  assert.match(readFileSync(htmlPath, 'utf8'), /画像が大きすぎるため省略しました。/);
+} finally { if (existsSync(largePath)) unlinkSync(largePath); }
+legacyInput.images = [];
+legacyInput.requirement = { title: '表示の変更', tasks: [{ title: '値の表示', completionSummary: '画面に値を出しました。' }] };
+writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(legacyInput), 'utf8');
+assert.equal(render().body.ok, true);
+assert.match(readFileSync(htmlPath, 'utf8'), /関連する作業/);
+legacyInput.requirement = null;
+legacyInput.images = [{ path: 'sample.png', label: '変更後の画面' }];
+writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(legacyInput), 'utf8');
+const legacyWithShot = { ...structuredClone(legacyDraft), screenImage: 'sample.png' };
+writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(legacyWithShot), 'utf8');
+const legacyShot = render();
+assert.equal(legacyShot.body.ok, true, JSON.stringify(legacyShot.body.reasons));
+assert.equal(legacyScreenHeight(legacyShot), legacyScreenHeight(legacyPlain) + 90);
+assert.match(readFileSync(htmlPath, 'utf8'), /<img class="ex-mapshot" src="data:image\/png;base64,/);
+expectReason(Buffer.from(JSON.stringify({ ...legacyWithShot, screenImage: 'missing.png' }), 'utf8'), /screenImage/);
+legacyInput.images = [];
+writeFileSync(resolve(runFolder, 'input.json'), JSON.stringify(legacyInput), 'utf8');
+expectReason(Buffer.from(JSON.stringify(legacyWithShot), 'utf8'), /screenImage/);
+const legacyChosen = { ...structuredClone(legacyDraft), images: [{ path: 'sample.png', caption: '変更後の画面を撮影しました。' }], screenImage: 'sample.png' };
+writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(legacyChosen), 'utf8');
+assert.equal(render().body.ok, true);
+const legacyChosenHtml = readFileSync(htmlPath, 'utf8');
+assert.match(legacyChosenHtml, /<figcaption>変更後の画面を撮影しました。<\/figcaption>/);
+assert.match(legacyChosenHtml, /<img class="ex-mapshot" src="data:image\/png;base64,/);
+const require = createRequire(import.meta.url);
+const puppeteer = require('puppeteer-core');
+const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  headless: true, args: ['--no-sandbox', '--disable-gpu'] });
+try {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1688, height: 960 });
+  await page.setContent(legacyChosenHtml);
+  const mapFont = () => page.evaluate(() => {
+    const svg = document.querySelector('.ex-map');
+    const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+    return { scale, min: Math.min(...[...svg.querySelectorAll('text')].map(item =>
+      Number.parseFloat(getComputedStyle(item).fontSize) * scale)) };
+  });
+  assert((await mapFont()).min >= 12, JSON.stringify(await mapFont()));
+  await page.click('.ex-hit > summary');
+  assert((await mapFont()).min >= 12, JSON.stringify(await mapFont()));
+} finally { await browser.close(); }
+expectReason(Buffer.from(JSON.stringify({ ...legacyChosen, images: [{ path: 'missing.png', caption: '画像がありません。' }], screenImage: undefined }), 'utf8'), /載せられません/);
+expectReason(Buffer.from(JSON.stringify({ ...legacyChosen, images: [{ path: '..\/outside.png', caption: '外の画像です。' }], screenImage: undefined }), 'utf8'), /載せられません/);
+expectReason(Buffer.from(JSON.stringify({ ...legacyChosen, images: [{ path: 'README.md', caption: '文書です。' }], screenImage: undefined }), 'utf8'), /載せられません/);
+expectReason(Buffer.from(JSON.stringify({ ...legacyDraft, concerns: [{ text: '範囲外です。', file: 'legacy-map.js', line: 50 }] }), 'utf8'), /範囲外/);
+expectReason(Buffer.from(JSON.stringify({ ...legacyDraft, lead: '文字�けです。' }), 'utf8'), /壊れた文字/);
+const keyPartInput = appInput(fixture, addedFile('shared-key-part.js'));
+writeCase(keyPartInput, JSON.stringify(emptyDraft));
+assert.equal(prepare().body.ok, true);
+const keyPartPrepared = JSON.parse(readFileSync(resolve(runFolder, 'prepared.json'), 'utf8'));
+assert(keyPartPrepared.views.steps.some(step => step.kind === 'keyPart'));
+assert(!keyPartPrepared.views.steps.some(step => step.kind === 'date'));
+assert.equal(keyPartPrepared.views.boundary, null);
+assert.equal(keyPartPrepared.views.selected.C, true);
+const keyPartDraft = { ...structuredClone(emptyDraft), viewNames: namesFor(keyPartPrepared),
+  nodes: keyPartPrepared.map.nodes.map((node, i) => ({ id: node.id, title: `部品${i + 1}`,
+    caption: '値を受け渡す処理です。', hunkIds: i === 0 ? keyPartPrepared.hunks.map(h => h.id) : [] })) };
+writeFileSync(resolve(runFolder, 'draft.json'), JSON.stringify(keyPartDraft), 'utf8');
+const keyPartMade = render();
+assert.equal(keyPartMade.body.ok, true, JSON.stringify(keyPartMade.body.reasons));
+const keyPartHtml = readFileSync(htmlPath, 'utf8');
+assert.match(keyPartHtml, /キーの部分を決める/);
+assert(!keyPartHtml.includes('日付を決める'));
+assert.match(keyPartHtml, /2つのタブが保存する順番を示します。/);
+assert(!keyPartHtml.includes('日付の境目をまたぐ処理を示します。'));
 const secretCall = appInput(fixture, addedFile('secret-call.js').replace('hunter2hunter2', '[REDACTED]'));
 writeCase(secretCall, JSON.stringify(emptyDraft));
 assert.equal(prepare().body.ok, true);

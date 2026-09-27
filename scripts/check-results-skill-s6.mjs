@@ -286,6 +286,28 @@ try {
   await new Promise(resolve => setTimeout(resolve, 300));
   await frame.click('.ex-view-record .ex-view-judgment[open] .ex-panel-close');
   await frame.waitForFunction(() => !document.querySelector('.ex-view-record .ex-view-judgment[open]'));
+  const judgment = '.ex-view-record .ex-view-judgment';
+  await frame.click(`${judgment} > summary`);
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const panelWidth = () => frame.$eval(`${judgment}[open] .ex-panel`, item => item.getBoundingClientRect().width);
+  const initialPanelWidth = await panelWidth();
+  const grip = await frame.$(`${judgment}[open] .ex-panel-grip`);
+  const gripBox = await grip.boundingBox();
+  await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(gripBox.x - 70, gripBox.y + 100, { steps: 5 });
+  await page.mouse.up();
+  const draggedPanelWidth = await panelWidth();
+  assert(draggedPanelWidth > initialPanelWidth + 40, JSON.stringify({ initialPanelWidth, draggedPanelWidth }));
+  await frame.evaluate(selector => document.querySelector(`${selector}[open] .ex-panel-grip`).focus(), judgment);
+  await page.keyboard.press('ArrowLeft');
+  assert((await panelWidth()) >= draggedPanelWidth + 19);
+  await page.keyboard.press('Escape');
+  const escapeResult = await frame.evaluate(selector => ({
+    open: Boolean(document.querySelector(`${selector}[open]`)),
+    focused: document.activeElement === document.querySelector(`${selector} > summary`)
+  }), judgment);
+  assert.deepEqual(escapeResult, { open: false, focused: true });
   await frame.click('[data-view="structure"] .ex-view-entry[data-entry-line="727"] .ex-view-judgment > summary');
   assert(await frame.$eval('[data-view="structure"] .ex-view-entry[data-entry-line="727"] .ex-view-judgment[open] .ex-view-judgment-image img',
     item => item.naturalWidth > 0));

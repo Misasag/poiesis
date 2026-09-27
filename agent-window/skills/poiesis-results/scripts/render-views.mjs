@@ -199,8 +199,8 @@ export function renderViews(prepared, draft, base, input) {
   let number = 1;
   const state = stateView(prepared, draft, views.selected.S ? number++ : number, ui);
   const count = views.groups.find(item => item.kind === 'count'), refresh = views.groups.find(item => item.kind === 'refresh');
-  const steps = views.steps.map(step => `<li data-step="${step.number}" data-evidence="${step.line}"><span>${esc(step.number)}　${step.kind === 'date' ? '日付を決める' : step.kind === 'read' ? '今の値を読む' : step.kind === 'write' ? '保存に書く' : '表示を読み直す'}</span>` +
-    `${step.kind === 'date' ? `（${esc(names.origins?.[step.line])}）` : ''} <small>${step.line}行</small></li>`).join('');
+  const steps = views.steps.map(step => `<li data-step="${step.number}" data-evidence="${step.line}"><span>${esc(step.number)}　${step.kind === 'date' ? '日付を決める' : step.kind === 'keyPart' ? 'キーの部分を決める' : step.kind === 'read' ? '今の値を読む' : step.kind === 'write' ? '保存に書く' : '表示を読み直す'}</span>` +
+    `${['date', 'keyPart'].includes(step.kind) ? `（${esc(names.origins?.[step.line])}）` : ''} <small>${step.line}行</small></li>`).join('');
   const recordCard = record ? `<div class="ex-view-card ex-part-function ex-status-${record.status} ex-view-record" data-part="${esc(record.id)}" tabindex="0" role="button" aria-label="${esc(title(record))}を選ぶ">` +
     `<strong>${esc(title(record))}</strong><span class="ex-view-card-kind">${record.status === 'new' ? '新規' : record.status === 'modified' ? '変更' : '既存'}</span>${ui.onNode(record.id)}<ol class="ex-view-steps">${steps}</ol>${cite(record.file, record.line)}</div>` : '';
   const writeOrigin = (structure.originEdges ?? []).map(edge).find(item => item?.from === record?.id);
@@ -285,7 +285,7 @@ export function renderViews(prepared, draft, base, input) {
     `<i class="ex-view-date-flow-line ex-view-date-flow-read" aria-label="表示する日のキーを読む"></i></div>` +
     '<span class="ex-view-unverified">実画面は未確認</span></div>' : '';
   const raceView = views.selected.C && race ? section('race', number++, `${names.raceTitle}（実行では未確認）`,
-    '2つのタブが保存する順番と、日付の境目をまたぐ処理を示します。',
+    boundary ? '2つのタブが保存する順番と、日付の境目をまたぐ処理を示します。' : '2つのタブが保存する順番を示します。',
     `<div id="ex-race-view" class="ex-view-race"><div class="ex-view-race-head"><span>タブA</span>${card(storage, keyName)}<span>タブB</span></div>` +
     `<div class="ex-view-race-window"><span>ほぼ同時（排他なし）</span>${raceRows}</div></div>` +
     `<div class="ex-view-result">${race.increment ? '保存結果 4　／　本来 5' : '最後に書いた値が残る'}</div>` +

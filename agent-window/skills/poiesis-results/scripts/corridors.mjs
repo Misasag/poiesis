@@ -2,6 +2,8 @@
 // gutter and every edge gets a row below the boxes. No graph search can fail.
 // Non-planar graphs use explicit gaps at crossings, never implied junctions.
 export function corridorRoutes(boxes, edges, columns, baseHeight) {
+  const labelWidth = edge => Math.max([...edge.text].reduce((n, c) => n + (c.charCodeAt(0) < 128 ? 7.2 : 12), 10),
+    [...`${edge.line}行`].reduce((n, c) => n + (c.charCodeAt(0) < 128 ? 7.2 : 12), 10)) + 10;
   const byId = new Map(boxes.map(b => [b.id, b]));
   const gutters = columns.map((c, i) => ({ left: i ? columns[i - 1].x + columns[i - 1].w : 0, right: c.x, tracks: [] }));
   gutters.push({ left: columns.at(-1).x + columns.at(-1).w, right: 1000, tracks: [] });
@@ -14,7 +16,7 @@ export function corridorRoutes(boxes, edges, columns, baseHeight) {
     const a = { x: from.x + from.w / 2, y: from.y + from.h }, b = { x: to.x + to.w / 2, y: to.y };
     if (from.layer === to.layer && b.y > a.y && !boxes.some(r => hits(a, b, r))
       && !direct.some(e => e.points[0].x === a.x && Math.min(e.points[1].y, b.y) > Math.max(e.points[0].y, a.y))) {
-      direct.push({ ...edge, points: [a, b], label: { x: a.x + 5, y: (a.y + b.y) / 2 - 15, w: Math.max(edge.text.length * 8 + 12, String(edge.line).length * 6 + 16), h: 29 } });
+      direct.push({ ...edge, points: [a, b], label: { x: a.x + 5, y: (a.y + b.y) / 2 - 18, w: labelWidth(edge), h: 36 } });
     } else pending.push(edge);
   }
   const port = (edge, side) => {
@@ -38,12 +40,12 @@ export function corridorRoutes(boxes, edges, columns, baseHeight) {
   const routed = pending.map((edge, i) => {
     const from = port(edge, 'out'), to = port(edge, 'in');
     const sx = tracks.get(`${edge.id}:out`), tx = tracks.get(`${edge.id}:in`), turn = tracks.get(`${edge.id}:turn`);
-    const y = baseHeight + 28 + i * 54, left = tracks.get(`${edge.id}:left`);
+    const y = baseHeight + 28 + i * 62, left = tracks.get(`${edge.id}:left`);
     const box = byId.get(left ? edge.from : edge.to);
-    const w = Math.min(box.w - 20, Math.max([...edge.text].reduce((n, c) => n + (c.charCodeAt(0) < 128 ? 7.2 : 12), 10), String(edge.line).length * 6 + 16));
+    const w = Math.min(box.w - 20, labelWidth(edge));
     return { ...edge, points: clean([from, { x: sx, y: from.y }, { x: sx, y }, { x: turn, y },
       { x: turn, y: y + 24 }, { x: tx, y: y + 24 }, { x: tx, y: to.y }, to]),
-      label: { x: box.x + (box.w - w) / 2, y: left ? y - 32 : y + 3, w, h: 29 } };
+      label: { x: box.x + (box.w - w) / 2, y: left ? y - 39 : y + 3, w, h: 36 } };
   });
   const all = [...direct, ...routed];
   // The geometry carries exactly the painted segments so QA can verify gaps,
@@ -69,5 +71,5 @@ export function corridorRoutes(boxes, edges, columns, baseHeight) {
       edge.paintedSegments.push(...(a.y < b.y ? pieces : pieces.reverse().map(([c, d]) => [d, c])));
     }
   }
-  return { edges: all, height: pending.length ? baseHeight + pending.length * 54 + 28 : baseHeight, bridges };
+  return { edges: all, height: pending.length ? baseHeight + pending.length * 62 + 28 : baseHeight, bridges };
 }
