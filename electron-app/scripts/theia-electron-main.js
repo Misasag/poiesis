@@ -1,4 +1,12 @@
 const path = require('node:path');
+const { app } = require('electron');
+const { shouldBlockResultsFrameNavigation } = require('./results-frame-navigation');
+
+app.on('web-contents-created', (_event, contents) => {
+    contents.on('will-frame-navigate', event => {
+        if (shouldBlockResultsFrameNavigation(event, contents.mainFrame)) event.preventDefault();
+    });
+});
 
 // Packaged plugins live outside app.asar so the backend/plugin host can read
 // their manifests and entry points directly. Development keeps using the

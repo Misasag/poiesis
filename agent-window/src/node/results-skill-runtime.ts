@@ -63,7 +63,8 @@ export function resultsSkillCliArgs(input: OneShotCliArgsInput, settings?: strin
     let args: string[];
     if (input.providerId === 'codex') {
         args = base.map(arg => arg === 'read-only' ? 'workspace-write' : arg);
-        args.splice(1, 0, '-c', 'sandbox_workspace_write.network_access=false', '-c', 'sandbox_workspace_write.exclude_tmpdir_env_var=true',
+        args.splice(1, 0, '--ignore-user-config', '--ignore-rules', '--ephemeral',
+            '-c', 'sandbox_workspace_write.network_access=false', '-c', 'sandbox_workspace_write.exclude_tmpdir_env_var=true',
             '-c', 'sandbox_workspace_write.exclude_slash_tmp=true', '-c', 'web_search="disabled"', '-c', 'approval_policy="never"');
     } else {
         if (!settings) { throw new Error('成果作成の道具を制限できませんでした。'); }
@@ -93,7 +94,9 @@ function allowed(event) {
     if (event.tool_name === 'Read' || event.tool_name === 'Write') {
         if (typeof input.file_path !== 'string' || /[\x00-\x1f]/.test(input.file_path)) return false;
         const target = canonical(input.file_path);
-        return (event.tool_name === 'Write' ? [config.run] : [config.run, config.workspace, config.skill]).some(root => within(root, target));
+        return event.tool_name === 'Write'
+            ? within(config.run, target) && !['input.json', 'results.html'].some(name => target === p.join(config.run, name))
+            : [config.run, config.workspace, config.skill].some(root => within(root, target));
     }
     if (event.tool_name !== 'Bash' || typeof input.command !== 'string' || input.run_in_background) return false;
     const command = input.command.trim();
