@@ -17,6 +17,32 @@ const statuses = (html, table = verification, options = {}) => Object.fromEntrie
     checkResultsTopAnswer(html, table, options).map(result => [result.text, result.status]));
 assert(Object.values(statuses(document('入力を保持します。'))).every(status => status === 'pass'));
 assert.equal(statuses(document('入力を保持します。確認できました。次も動きます。'))['冒頭に1〜2文の短い回答がある'], 'fail');
+const measuredBody = `<p>開始ボタンに「タイマーを開始」という読み上げ用の名前を追加しました。画面に表示される「スタート」の文字はそのままです。 <a href="#" data-poiesis-citation="index.html:325">index.html:325</a></p>
+<figure class="poiesis-figure" data-poiesis-figure-rendered="tree"><ul class="poiesis-figure__tree"><li><span class="poiesis-figure__item">タイマー画面</span><ul class="poiesis-figure__tree"><li><span class="poiesis-figure__item">開始ボタン</span><ul class="poiesis-figure__tree"><li><span class="poiesis-figure__item">読み上げ名<span class="poiesis-figure__badge">変更</span></span></li></ul></li></ul></li></ul><figcaption>開始ボタンに読み上げ用の名前が加わりました。</figcaption></figure>
+<p>「作業後の確認」は未確認です。確認記録がないため、記録された操作の成功を確認済みとは扱っていません。</p>`;
+const measuredVerification = { ...verification, counts: { ...verification.counts, unknown: 1 }, total: 1,
+    summary: '確認 1件中 1件未確認' };
+const measuredHtml = `<html><body>${measuredBody}</body></html>`;
+const measuredStatuses = statuses(measuredHtml, measuredVerification);
+for (const label of ['冒頭に1〜2文の短い回答がある', '確認状況がアプリの記録と一致する', '冒頭の確認件数がアプリの記録と一致する']) {
+    assert.equal(measuredStatuses[label], 'pass', label);
+}
+for (const html of [
+    measuredHtml.replace('そのままです。 <a', 'そのままです。さらに説明します。 <a'),
+    measuredHtml.replace('そのままです。 <a href="#" data-poiesis-citation="index.html:325">index.html:325</a>',
+        'そのままです。さらに説明します。')
+]) {
+    assert.equal(statuses(html, measuredVerification)['冒頭に1〜2文の短い回答がある'], 'fail',
+        'Three opening sentences must fail with or without a citation.');
+}
+const citationOnlyCounts = document('<a href="#" data-poiesis-citation="index.html:325">何を確認したか。確認2件中2件成功。すべて成功。</a>入力を保持します。');
+const citationStatuses = statuses(citationOnlyCounts);
+assert.equal(citationStatuses['冒頭に1〜2文の短い回答がある'], 'pass');
+assert.equal(citationStatuses['確認状況がアプリの記録と一致する'], 'pass');
+assert.equal(citationStatuses['冒頭の確認件数がアプリの記録と一致する'], 'pass');
+assert.equal(citationStatuses['冒頭と図の文が疑問詞で始まらない'], 'pass');
+assert.equal(statuses(document('入力を保持します。<code>続けます。さらに進めます。</code>'))['冒頭に1〜2文の短い回答がある'], 'fail',
+    'Non-citation inline elements still count toward opening sentences.');
 assert.equal(statuses(document('入力を保持します。', ''))['冒頭の直後に主図がある'], 'fail');
 assert.equal(statuses(document('入力を保持します。', '<svg><rect/></svg>'))['冒頭の直後に主図がある'], 'fail');
 assert.equal(statuses(document('入力を保持します。', '<img src="shot.png" alt="画面">'))['冒頭の直後に主図がある'], 'pass');
@@ -46,7 +72,8 @@ const consistency = html => checkResultsTopAnswer(html, humanUnknown).find(resul
 const paraphrased = consistency(document('回数を表示しました。', figure, '<p>画面の見やすさは、実際の画面での確認がまだありません。</p>'));
 assert.equal(paraphrased.status, 'fail');
 assert(paraphrased.evidence.startsWith('確認 3件中 2件成功・1件未確認。'), 'The evidence starts with the application summary.');
-assert(paraphrased.evidence.includes('未確認 1件の対象を、折りたたみの外に1項目1行で、対象・「未確認」の語・理由を含めて書いてください。'));
+assert(paraphrased.evidence.includes('未確認 1件について、折りたたみの外に1項目1行で、確かめていない事柄または失敗した事柄を利用者から見た言葉で書いてください。'));
+assert(paraphrased.evidence.includes('「未確認」などの状態の語と理由を含め、確認表の項目名をかぎ括弧で引用して並べないでください。'));
 assert(paraphrased.evidence.includes('人の判断が残る項目が1件あります。判断ごとに判断待ちのカードを置いてください。'));
 assert(!paraphrased.evidence.includes('失敗 ') && !paraphrased.evidence.includes('以前の結果 '), 'Only the broken conditions are named.');
 const stated = consistency(document('回数を表示しました。', figure,

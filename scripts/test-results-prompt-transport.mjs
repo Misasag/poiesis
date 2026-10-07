@@ -85,6 +85,7 @@ const verificationPrompt = new ResultsGenerationServerImpl(registry).buildPrompt
     verificationEvidence: JSON.stringify({ summary: '確認 4件中 4件成功', humanCount: 2, total: 4 })
 });
 assert(verificationPrompt.includes('冒頭で件数に触れる場合は「確認 4件中 4件成功。判断待ち 2件」をそのまま使ってください。'));
+assert(verificationPrompt.includes('確認表の項目名をかぎ括弧で引用して並べないでください。'));
 
 function instrument(server, providerId, output = wireOutput(providerId), stall = false) {
     server.resolveWorkspace = async () => workspace;

@@ -21,7 +21,9 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable,
     const opening = body.replace(/^\s*(?:(?:<(?:main|article|section|div)\b[^>]*>)\s*)*/i, '')
         .replace(/^<h[1-4]\b[^>]*>[\s\S]*?<\/h[1-4]\s*>\s*/i, '');
     const paragraph = opening.match(/^<p\b([^>]*)>([\s\S]*?)<\/p\s*>/i);
-    const answer = paragraph ? decodeBasicEntities(paragraph[2].replace(/<[^>]*>/g, ' ')).normalize('NFKC').trim() : '';
+    const answer = paragraph ? decodeBasicEntities(paragraph[2]
+        .replace(/<a\b(?=[^>]*\sdata-poiesis-citation(?:\s|=|>))[^>]*>[\s\S]*?<\/a\s*>/gi, ' ')
+        .replace(/<[^>]*>/g, ' ')).normalize('NFKC').trim() : '';
     const hidden = paragraph && /\bhidden\b|display\s*:\s*none|visibility\s*:\s*hidden/i.test(paragraph[1]);
     const sentences = answer.split(/[。！？!?]+/).filter(value => value.trim()).length;
     const exists = Boolean(answer) && !hidden && sentences >= 1 && sentences <= 2;
@@ -49,7 +51,7 @@ export function checkResultsTopAnswer(html: string, table: VerificationTable,
     const decision = table.humanCount === 0 || /判断|決め|選択|承認/.test(outsideText);
     // Name each broken condition so the regeneration can fix it; the status words match the application badges.
     const statusLine = (count: number, word: string): string =>
-        `${word} ${count}件の対象を、折りたたみの外に1項目1行で、対象・「${word}」の語・理由を含めて書いてください。`;
+        `${word} ${count}件について、折りたたみの外に1項目1行で、確かめていない事柄または失敗した事柄を利用者から見た言葉で書いてください。「${word}」などの状態の語と理由を含め、確認表の項目名をかぎ括弧で引用して並べないでください。`;
     const consistencyProblems = [
         ...(!exists ? ['冒頭に1〜2文の段落がありません。'] : []),
         ...(counts.some(count => count > table.counts.pass) ? [`冒頭の成功の件数が記録の成功 ${table.counts.pass}件より多くなっています。`] : []),
