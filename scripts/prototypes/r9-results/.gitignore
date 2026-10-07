@@ -1,0 +1,4 @@
+/out/
+chrome-profile/
+browser-check-*/
+*.log

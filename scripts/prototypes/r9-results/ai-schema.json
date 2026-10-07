@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Poiesis Results review draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lead", "nodes", "edges", "offMap", "interpretations", "concerns", "unverified"],
+  "properties": {
+    "lead": { "type": "string", "description": "冒頭の1文" },
+    "nodes": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["id", "title", "caption", "hunkIds"], "properties": { "id": { "type": "string" }, "title": { "type": "string" }, "caption": { "type": "string" }, "hunkIds": { "type": "array", "uniqueItems": true, "items": { "type": "string" } } } } },
+    "edges": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "offMap": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["title", "caption", "hunkIds"], "properties": { "title": { "type": "string" }, "caption": { "type": "string" }, "hunkIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } } } } },
+    "interpretations": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["decision", "evidence"], "properties": { "decision": { "type": "string" }, "evidence": { "type": "string" } } } },
+    "concerns": { "type": "array", "maxItems": 3, "items": { "type": "object", "additionalProperties": false, "required": ["text", "file", "line"], "properties": { "text": { "type": "string" }, "file": { "type": "string" }, "line": { "type": "integer", "minimum": 1 } } } },
+    "unverified": { "type": "array", "items": { "type": "string" } }
+  }
+}

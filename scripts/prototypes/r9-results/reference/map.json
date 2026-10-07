@@ -1,0 +1,643 @@
+{
+ "functions": {
+  "getLocalDay": {
+   "start": 450,
+   "end": 453,
+   "status": "new"
+  },
+  "getDailyCount": {
+   "start": 455,
+   "end": 466,
+   "status": "new"
+  },
+  "renderDailyCount": {
+   "start": 468,
+   "end": 471,
+   "status": "new"
+  },
+  "recordCompletedWork": {
+   "start": 473,
+   "end": 484,
+   "status": "new"
+  },
+  "getAudioContext": {
+   "start": 486,
+   "end": 495,
+   "status": "existing"
+  },
+  "prepareAudio": {
+   "start": 497,
+   "end": 504,
+   "status": "existing"
+  },
+  "playTransitionSound": {
+   "start": 506,
+   "end": 542,
+   "status": "existing"
+  },
+  "renderSoundToggle": {
+   "start": 544,
+   "end": 548,
+   "status": "existing"
+  },
+  "getModeDuration": {
+   "start": 550,
+   "end": 553,
+   "status": "existing"
+  },
+  "formatTime": {
+   "start": 555,
+   "end": 559,
+   "status": "existing"
+  },
+  "renderTime": {
+   "start": 561,
+   "end": 568,
+   "status": "existing"
+  },
+  "renderCycle": {
+   "start": 570,
+   "end": 572,
+   "status": "existing"
+  },
+  "stopTicker": {
+   "start": 574,
+   "end": 580,
+   "status": "existing"
+  },
+  "resetTimer": {
+   "start": 582,
+   "end": 588,
+   "status": "existing"
+  },
+  "switchMode": {
+   "start": 590,
+   "end": 607,
+   "status": "existing"
+  },
+  "finish": {
+   "start": 609,
+   "end": 637,
+   "status": "modified"
+  },
+  "tick": {
+   "start": 639,
+   "end": 648,
+   "status": "existing"
+  },
+  "start": {
+   "start": 650,
+   "end": 660,
+   "status": "existing"
+  },
+  "pause": {
+   "start": 662,
+   "end": 668,
+   "status": "existing"
+  }
+ },
+ "allEdges": [
+  {
+   "from": "fn:getDailyCount",
+   "to": "store:getItem DAILY_COUNT_PREFIX + day",
+   "line": 458,
+   "added": true
+  },
+  {
+   "from": "fn:renderDailyCount",
+   "to": "fn:getDailyCount",
+   "line": 469,
+   "added": true
+  },
+  {
+   "from": "fn:renderDailyCount",
+   "to": "fn:getLocalDay",
+   "line": 469,
+   "added": true
+  },
+  {
+   "from": "fn:renderDailyCount",
+   "to": "dom:#daily-count",
+   "line": 470,
+   "added": true
+  },
+  {
+   "from": "fn:recordCompletedWork",
+   "to": "fn:getLocalDay",
+   "line": 475,
+   "added": true
+  },
+  {
+   "from": "fn:recordCompletedWork",
+   "to": "fn:getDailyCount",
+   "line": 476,
+   "added": true
+  },
+  {
+   "from": "fn:recordCompletedWork",
+   "to": "store:setItem DAILY_COUNT_PREFIX + day",
+   "line": 479,
+   "added": true
+  },
+  {
+   "from": "fn:recordCompletedWork",
+   "to": "fn:renderDailyCount",
+   "line": 483,
+   "added": true
+  },
+  {
+   "from": "fn:prepareAudio",
+   "to": "fn:getAudioContext",
+   "line": 500,
+   "added": false
+  },
+  {
+   "from": "fn:playTransitionSound",
+   "to": "fn:getAudioContext",
+   "line": 509,
+   "added": false
+  },
+  {
+   "from": "fn:renderTime",
+   "to": "fn:formatTime",
+   "line": 562,
+   "added": false
+  },
+  {
+   "from": "fn:renderTime",
+   "to": "dom:#timer",
+   "line": 565,
+   "added": false
+  },
+  {
+   "from": "fn:renderCycle",
+   "to": "dom:#cycle",
+   "line": 571,
+   "added": false
+  },
+  {
+   "from": "fn:resetTimer",
+   "to": "fn:stopTicker",
+   "line": 583,
+   "added": false
+  },
+  {
+   "from": "fn:resetTimer",
+   "to": "fn:getModeDuration",
+   "line": 584,
+   "added": false
+  },
+  {
+   "from": "fn:resetTimer",
+   "to": "dom:#toggle",
+   "line": 585,
+   "added": false
+  },
+  {
+   "from": "fn:resetTimer",
+   "to": "dom:#status",
+   "line": 586,
+   "added": false
+  },
+  {
+   "from": "fn:resetTimer",
+   "to": "fn:renderTime",
+   "line": 587,
+   "added": false
+  },
+  {
+   "from": "fn:switchMode",
+   "to": "dom:#timer-heading",
+   "line": 596,
+   "added": false
+  },
+  {
+   "from": "fn:switchMode",
+   "to": "dom:#break-mode",
+   "line": 597,
+   "added": false
+  },
+  {
+   "from": "fn:switchMode",
+   "to": "fn:renderCycle",
+   "line": 605,
+   "added": false
+  },
+  {
+   "from": "fn:switchMode",
+   "to": "fn:resetTimer",
+   "line": 606,
+   "added": false
+  },
+  {
+   "from": "fn:finish",
+   "to": "fn:stopTicker",
+   "line": 610,
+   "added": false
+  },
+  {
+   "from": "fn:finish",
+   "to": "fn:recordCompletedWork",
+   "line": 613,
+   "added": true
+  },
+  {
+   "from": "fn:finish",
+   "to": "fn:playTransitionSound",
+   "line": 617,
+   "added": false
+  },
+  {
+   "from": "fn:finish",
+   "to": "fn:switchMode",
+   "line": 619,
+   "added": false
+  },
+  {
+   "from": "fn:finish",
+   "to": "fn:playTransitionSound",
+   "line": 629,
+   "added": false
+  },
+  {
+   "from": "fn:finish",
+   "to": "fn:switchMode",
+   "line": 631,
+   "added": false
+  },
+  {
+   "from": "fn:tick",
+   "to": "fn:renderTime",
+   "line": 644,
+   "added": false
+  },
+  {
+   "from": "fn:tick",
+   "to": "fn:finish",
+   "line": 647,
+   "added": false
+  },
+  {
+   "from": "fn:start",
+   "to": "fn:getModeDuration",
+   "line": 651,
+   "added": false
+  },
+  {
+   "from": "fn:start",
+   "to": "fn:prepareAudio",
+   "line": 653,
+   "added": false
+  },
+  {
+   "from": "fn:start",
+   "to": "dom:#toggle",
+   "line": 656,
+   "added": false
+  },
+  {
+   "from": "fn:start",
+   "to": "dom:#status",
+   "line": 657,
+   "added": false
+  },
+  {
+   "from": "fn:start",
+   "to": "fn:renderTime",
+   "line": 658,
+   "added": false
+  },
+  {
+   "from": "entry:timer:setInterval 250ms",
+   "to": "fn:tick",
+   "line": 659,
+   "added": false
+  },
+  {
+   "from": "fn:pause",
+   "to": "fn:tick",
+   "line": 663,
+   "added": false
+  },
+  {
+   "from": "fn:pause",
+   "to": "fn:stopTicker",
+   "line": 665,
+   "added": false
+  },
+  {
+   "from": "fn:pause",
+   "to": "dom:#toggle",
+   "line": 666,
+   "added": false
+  },
+  {
+   "from": "fn:pause",
+   "to": "dom:#status",
+   "line": 667,
+   "added": false
+  },
+  {
+   "from": "entry:page load (top level)",
+   "to": "store:getItem \"pomodoro-muted\"",
+   "line": 445,
+   "added": false
+  },
+  {
+   "from": "entry:event:toggleButton \"click\"",
+   "to": "fn:pause",
+   "line": 672,
+   "added": false
+  },
+  {
+   "from": "entry:event:toggleButton \"click\"",
+   "to": "fn:start",
+   "line": 674,
+   "added": false
+  },
+  {
+   "from": "entry:event:resetButton \"click\"",
+   "to": "fn:resetTimer",
+   "line": 678,
+   "added": false
+  },
+  {
+   "from": "entry:event:soundToggleButton \"click\"",
+   "to": "fn:renderSoundToggle",
+   "line": 682,
+   "added": false
+  },
+  {
+   "from": "entry:event:soundToggleButton \"click\"",
+   "to": "store:setItem \"pomodoro-muted\"",
+   "line": 685,
+   "added": false
+  },
+  {
+   "from": "entry:event:soundToggleButton \"click\"",
+   "to": "fn:prepareAudio",
+   "line": 690,
+   "added": false
+  },
+  {
+   "from": "entry:event:button \"click\"",
+   "to": "fn:switchMode",
+   "line": 697,
+   "added": false
+  },
+  {
+   "from": "entry:event:document \"keydown\"",
+   "to": "fn:switchMode",
+   "line": 714,
+   "added": false
+  },
+  {
+   "from": "entry:event:document \"visibilitychange\"",
+   "to": "fn:tick",
+   "line": 721,
+   "added": true
+  },
+  {
+   "from": "entry:event:document \"visibilitychange\"",
+   "to": "fn:renderDailyCount",
+   "line": 722,
+   "added": true
+  },
+  {
+   "from": "entry:event:window \"storage\"",
+   "to": "fn:renderDailyCount",
+   "line": 726,
+   "added": true
+  },
+  {
+   "from": "entry:timer:setInterval 1000ms",
+   "to": "fn:renderDailyCount",
+   "line": 727,
+   "added": true
+  },
+  {
+   "from": "entry:page load (top level)",
+   "to": "fn:renderDailyCount",
+   "line": 728,
+   "added": true
+  },
+  {
+   "from": "entry:page load (top level)",
+   "to": "fn:renderCycle",
+   "line": 729,
+   "added": false
+  },
+  {
+   "from": "entry:page load (top level)",
+   "to": "fn:renderTime",
+   "line": 730,
+   "added": false
+  },
+  {
+   "from": "entry:page load (top level)",
+   "to": "fn:renderSoundToggle",
+   "line": 731,
+   "added": false
+  }
+ ],
+ "mapEdges": [
+  {
+   "from": "fn:getDailyCount",
+   "to": "store:getItem DAILY_COUNT_PREFIX + day",
+   "line": 458,
+   "added": true
+  },
+  {
+   "from": "fn:renderDailyCount",
+   "to": "fn:getDailyCount",
+   "line": 469,
+   "added": true
+  },
+  {
+   "from": "fn:renderDailyCount",
+   "to": "fn:getLocalDay",
+   "line": 469,
+   "added": true
+  },
+  {
+   "from": "fn:renderDailyCount",
+   "to": "dom:#daily-count",
+   "line": 470,
+   "added": true
+  },
+  {
+   "from": "fn:recordCompletedWork",
+   "to": "fn:getLocalDay",
+   "line": 475,
+   "added": true
+  },
+  {
+   "from": "fn:recordCompletedWork",
+   "to": "fn:getDailyCount",
+   "line": 476,
+   "added": true
+  },
+  {
+   "from": "fn:recordCompletedWork",
+   "to": "store:setItem DAILY_COUNT_PREFIX + day",
+   "line": 479,
+   "added": true
+  },
+  {
+   "from": "fn:recordCompletedWork",
+   "to": "fn:renderDailyCount",
+   "line": 483,
+   "added": true
+  },
+  {
+   "from": "fn:finish",
+   "to": "fn:recordCompletedWork",
+   "line": 613,
+   "added": true
+  },
+  {
+   "from": "fn:tick",
+   "to": "fn:finish",
+   "line": 647,
+   "added": false
+  },
+  {
+   "from": "entry:timer:setInterval 250ms",
+   "to": "fn:tick",
+   "line": 659,
+   "added": false
+  },
+  {
+   "from": "fn:pause",
+   "to": "fn:tick",
+   "line": 663,
+   "added": false
+  },
+  {
+   "from": "entry:event:toggleButton \"click\"",
+   "to": "fn:pause",
+   "line": 672,
+   "added": false
+  },
+  {
+   "from": "entry:event:document \"visibilitychange\"",
+   "to": "fn:tick",
+   "line": 721,
+   "added": true
+  },
+  {
+   "from": "entry:event:document \"visibilitychange\"",
+   "to": "fn:renderDailyCount",
+   "line": 722,
+   "added": true
+  },
+  {
+   "from": "entry:event:window \"storage\"",
+   "to": "fn:renderDailyCount",
+   "line": 726,
+   "added": true
+  },
+  {
+   "from": "entry:timer:setInterval 1000ms",
+   "to": "fn:renderDailyCount",
+   "line": 727,
+   "added": true
+  },
+  {
+   "from": "entry:page load (top level)",
+   "to": "fn:renderDailyCount",
+   "line": 728,
+   "added": true
+  }
+ ],
+ "added": [
+  262,
+  263,
+  264,
+  265,
+  266,
+  267,
+  268,
+  269,
+  270,
+  271,
+  272,
+  273,
+  274,
+  275,
+  276,
+  277,
+  278,
+  279,
+  280,
+  281,
+  282,
+  283,
+  284,
+  285,
+  286,
+  287,
+  288,
+  289,
+  290,
+  291,
+  292,
+  293,
+  294,
+  295,
+  296,
+  383,
+  384,
+  385,
+  386,
+  387,
+  388,
+  425,
+  441,
+  442,
+  450,
+  451,
+  452,
+  453,
+  454,
+  455,
+  456,
+  457,
+  458,
+  459,
+  460,
+  461,
+  462,
+  463,
+  464,
+  465,
+  466,
+  467,
+  468,
+  469,
+  470,
+  471,
+  472,
+  473,
+  474,
+  475,
+  476,
+  477,
+  478,
+  479,
+  480,
+  481,
+  482,
+  483,
+  484,
+  485,
+  613,
+  720,
+  721,
+  722,
+  723,
+  726,
+  727,
+  728
+ ]
+}
