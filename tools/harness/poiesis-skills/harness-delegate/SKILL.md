@@ -8,6 +8,8 @@ metadata:
 
 Use when the user requests another model, the harness, or delegation, or when a task has clearly separable mechanical parts.
 
+First run `{{HX_COMMAND}} h status --project <workspace> --json`. If a ticket is active, defer to `harness-core` for intent, scope, checks, state, and final reporting. Delegation cannot substitute for its recorded criteria.
+
 1. Always select the model with `{{HX_COMMAND}} route --project <workspace> --role worker-mech|worker-design --task-class <cls> --explain`. Choose the role that fits the work; never hard-code a model.
 2. Write a concise brief with acceptance commands and expected exit codes under `<workspace>/.harness/tmp/`.
 3. Run `{{HX_COMMAND}} run --project <workspace> --model <id> --cwd <workspace> --brief <file> --max-usd 0.3 --timeout-min 20`.

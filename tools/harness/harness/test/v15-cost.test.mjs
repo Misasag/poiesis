@@ -54,7 +54,7 @@ test('Quota-first zeroes marginal utility cost and exhausted quota candidates ar
   const candidate = selected.candidates.find(r => r.model === 'codex:gpt-6-astra');
   assert.equal(candidate.pricing_rule, 'quota_first: zero marginal cost');
   assert.equal(candidate.utility, candidate.p_pass - .0001 * 10);
-  writeJson(path.join(ctx.data, 'budget/quota-state.json'), { openai: { seen_at: now.toISOString(), exhausted_until: '2026-09-23T13:00:00Z', source: 'test' } });
+  writeJson(path.join(ctx.data, 'budget/quota-state.json'), { openai: { seen_at: new Date().toISOString(), exhausted_until: new Date(Date.now() + 60 * 60_000).toISOString(), source: 'test' } });
   const fallback = route(ctx, { role: 'worker-design', 'task-class': 'app-frontend', ticket: 'quota-first-fixture' });
   assert.equal(fallback.candidates.some(r => r.model.startsWith('codex:')), false);
   assert.ok(fallback.skipped.quota_exhausted.length > 0);

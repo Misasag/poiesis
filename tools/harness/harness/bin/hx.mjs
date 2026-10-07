@@ -14,6 +14,7 @@ import { ledger, outcome } from './lib/ledger.mjs';
 import { mine, benchRun, resuite } from './lib/bench.mjs';
 import { gate } from './lib/gate.mjs';
 import { exhaustedQuota } from './lib/quota.mjs';
+import { h } from './lib/h.mjs';
 
 const o = options(process.argv.slice(2)), command = o._.shift();
 try {
@@ -25,6 +26,7 @@ try {
   initializeProject(ctx, { track: Boolean(o.track) });
   let result;
   switch (command) {
+    case 'h': result = await h(ctx, o); break;
     case 'run': result = await run(ctx, o); break;
     case 'verify': result = await verify(ctx, o); break;
     case 'judge': result = await judge(ctx, o); break;
@@ -81,10 +83,10 @@ try {
       break;
     }
     case 'help': case '--help': case undefined:
-      out('hx run|verify|gate|judge|route|scoreboard|outcome|tune|budget|prices|cost|bench|dogfood|status|judge-calibration|poiesis install|uninstall [--project dir] [--json]'); process.exit(0);
+      out('hx h status|intent|ticket|check|journal|scope; hx run|verify|gate|judge|route|scoreboard|outcome|tune|budget|prices|cost|bench|dogfood|status|judge-calibration|poiesis install|uninstall [--project dir] [--json]'); process.exit(0);
     default: fail(`Unknown command: ${command}`);
   }
-  out(command === 'cost' && !o.json ? formatCost(result) : redactor()(result)); process.exitCode = result?.exit_code ?? 0;
+  out(command === 'cost' && !o.json ? formatCost(result) : command === 'h' && !o.json && result?.packet ? redactor()(result.packet) : redactor()(result)); process.exitCode = result?.exit_code ?? 0;
 } catch (error) {
   out({ error: redactor()(error.message), exit_code: error.exitCode ?? 1 }); process.exitCode = error.exitCode ?? 1;
 }

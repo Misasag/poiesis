@@ -7,7 +7,9 @@ The plugin source is derived from the executable location. The project root is `
 
 ## Using the harness from the installed Poiesis
 
-Install the local skill catalog once with `node tools/harness/harness/bin/hx.mjs poiesis install` (preview with `--dry-run`). This writes three skills to `~/.poiesis/skills`; `poiesis uninstall` removes only the skills recorded by its manifest. `--dest <dir>` targets a separate skills directory. The installed app reads the catalog; the harness source remains in this checkout and is not packaged with the app.
+Install the local skill catalog once with `node tools/harness/harness/bin/hx.mjs poiesis install` (preview with `--dry-run`). This writes the user-scope skills to `~/.poiesis/skills`; `poiesis uninstall` removes only the skills recorded by its manifest. `--dest <dir>` targets a separate skills directory. `poiesis install --workspace <dir>` installs `harness-core` and `harness-results` into that workspace's `.poiesis/skills/`, where Poiesis inlines workspace skills for every task; `poiesis uninstall --workspace <dir>` removes the managed files. The installed app reads the catalog; the harness source remains in this checkout and is not packaged with the app.
+
+For a substantial Poiesis task, use `hx h status`, `h intent write` and `h intent approve`, `h ticket new`, `h check`, `h scope`, and `h ticket state`. The `harness-core` skill supplies the agent workflow. The durable v2 formats and command examples are in [POIESIS-FORMATS.md](POIESIS-FORMATS.md).
 
 Run `node <absolute-path-to-hx.mjs> status` from any workspace. Project ledger, runs, tickets and runtime files live in that workspace's `.harness/`. If policy, limits or subscriptions are absent, the bundled templates apply without copying them into the project. For a foreign project, the first command creates `.harness/.gitignore` with `*`; `--track` opts out so the project can version its harness data. The Poiesis checkout retains its existing `.harness/` data. OpenRouter account usage uses one shared monthly baseline under `~/.poiesis/harness/` across projects, while each project keeps its own ledger.
 

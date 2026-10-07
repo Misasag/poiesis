@@ -1,9 +1,9 @@
 ---
 name: harness-results
-description: Summarize recorded verification and model judgments in Results.
+description: Explain why, what changed, recorded evidence, and remaining human judgments in Results.
 metadata:
   poiesis:
     kind: results
 ---
 
-In the Results document, add a short section titled 「検証と判定」. List verification commands and their exit codes, and any gate or judge verdicts present in the execution evidence. List delegated models and their costs when the evidence mentions them. Do not invent entries. Use Japanese headings and plain Japanese text for readers; avoid internal identifiers and implementation terms.
+Use this order in the Results document, with short Japanese headings: 「なぜ（意図）」 → 「何を」 → 「証拠」 → 「未検証」 → 「人間が判断すること」. Under evidence, show each acceptance condition's current status, executed command, exit code, and a link or citation to its recorded run. Cite the actual code for claims about changes. Derive claims only from execution evidence and the agent's 「ハーネス状況」 block. Mark stale or absent evidence as unverified. Show human judgments separately; a machine exit code cannot replace them. Include delegated models and costs only when recorded. Use plain Japanese for readers and do not expose internal field names or IDs as user-facing copy.

@@ -89,13 +89,13 @@ test('install preview, render, and uninstall only managed skill files', t => {
   assert.ok(!fs.existsSync(dest));
   const install = cli(base, ['poiesis', 'install', '--dest', dest]);
   assert.equal(install.status, 0, install.stderr + install.stdout);
-  const ids = ['harness-delegate', 'harness-results', 'harness-verify'];
+  const ids = ['harness-core', 'harness-delegate', 'harness-results', 'harness-verify'];
   assert.deepEqual(JSON.parse(read(path.join(dest, '.hx-installed.json'))).skills, ids);
   for (const id of ids) {
     const skill = read(path.join(dest, id, 'SKILL.md'));
     assert.match(skill, new RegExp(`name: ${id}`));
     assert.ok(!skill.includes('{{HX_COMMAND}}'));
-    assert.ok(skill.split('\n').length <= 80);
+    assert.ok(skill.split('\n').length <= 120);
   }
   assert.match(read(path.join(dest, 'harness-delegate', 'SKILL.md')), /node "[^"]+hx\.mjs"/);
   fs.writeFileSync(path.join(dest, 'harness-verify', 'owner.txt'), 'keep', 'utf8');

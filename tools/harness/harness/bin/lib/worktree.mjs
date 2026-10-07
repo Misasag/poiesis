@@ -30,6 +30,15 @@ export async function dependencyCheck(ctx, base) {
 // worker body itself still runs outside the lock.
 let adminChain = Promise.resolve();
 const serialized = task => { const next = adminChain.then(task); adminChain = next.then(() => {}, () => {}); return next; };
+async function removeWorktree(ctx, dir, required) {
+  for (let attempt = 0; ; attempt++) {
+    const result = await git(ctx.root, ['worktree', 'remove', '--force', dir], { allowFailure: true });
+    if (result.exit_code === 0 || !fs.existsSync(dir)) return;
+    if (!required) return;
+    if (process.platform !== 'win32' || !/permission denied|access is denied/i.test(result.stderr) || attempt === 10) fail(`git worktree failed: ${result.stderr.trim()}`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+}
 async function cleanupWorktree(ctx, dir, { created, linked, gitPointer }) {
   try {
     // Unlink the junction itself before git cleanup; never recurse into the
@@ -42,8 +51,8 @@ async function cleanupWorktree(ctx, dir, { created, linked, gitPointer }) {
       else fs.rmSync(localGit, { recursive: true, force: true });
       fs.writeFileSync(localGit, gitPointer, 'utf8');
     }
-    if (created) await git(ctx.root, ['worktree', 'remove', '--force', dir]);
-    else if (fs.existsSync(dir)) await git(ctx.root, ['worktree', 'remove', '--force', dir], { allowFailure: true });
+    if (created) await removeWorktree(ctx, dir, true);
+    else if (fs.existsSync(dir)) await removeWorktree(ctx, dir, false);
   }
 }
 export async function withWorktree(ctx, base, fn, options = {}) {

@@ -27,16 +27,21 @@ function rendered(id) {
 }
 
 export async function poiesis(o) {
-  const action = o._[0], dest = destination(o.dest);
-  if (!['install', 'uninstall'].includes(action) || o._.length !== 1) fail('Usage: hx poiesis install|uninstall [--dest dir] [--dry-run]');
+  const action = o._[0];
+  if (o.workspace && o.dest) fail('Use either --workspace or --dest');
+  const workspace = o.workspace ? path.resolve(o.workspace) : null;
+  if (workspace && (!fs.existsSync(workspace) || !fs.statSync(workspace).isDirectory())) fail('Workspace directory unavailable');
+  const dest = workspace ? path.join(workspace, '.poiesis', 'skills') : destination(o.dest);
+  if (!['install', 'uninstall'].includes(action) || o._.length !== 1) fail('Usage: hx poiesis install|uninstall [--workspace dir|--dest dir] [--dry-run]');
   const owned = installed(dest);
   if (action === 'install') {
-    for (const id of skillIds) if (fs.existsSync(path.join(dest, id)) && !owned.includes(id)) fail(`Skill directory already exists: ${id}`);
+    const ids = workspace ? ['harness-core', 'harness-results'] : skillIds;
+    for (const id of ids) if (fs.existsSync(path.join(dest, id)) && !owned.includes(id)) fail(`Skill directory already exists: ${id}`);
     if (!o['dry-run']) {
-      for (const id of skillIds) write(skillFile(dest, id), rendered(id));
-      writeJson(manifest(dest), { version: 1, skills: skillIds });
+      for (const id of ids) write(skillFile(dest, id), rendered(id));
+      writeJson(manifest(dest), { version: 1, skills: [...new Set([...owned, ...ids])].sort() });
     }
-    return { action, dry_run: Boolean(o['dry-run']), destination: dest, skills: skillIds, command: `node "${hx}"` };
+    return { action, dry_run: Boolean(o['dry-run']), destination: dest, skills: ids, command: `node "${hx}"` };
   }
   if (!o['dry-run']) {
     for (const id of owned) {

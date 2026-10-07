@@ -11,6 +11,7 @@ Promise.all([
   import('./v16-local-usage.test.mjs'),
   import('./v17-project-poiesis.test.mjs'),
   import('./v18-nested.test.mjs'),
+  import('./poiesis-h.test.mjs'),
   import('./bench.test.mjs'),
   import('./dogfood.test.mjs'),
   import('./packaging.test.mjs')

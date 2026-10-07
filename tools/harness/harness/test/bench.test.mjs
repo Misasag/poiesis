@@ -11,7 +11,15 @@ import { seedLocalData } from './fixtures/local-data.mjs';
 
 test('Tiny git benchmark validates fail-to-pass and cleans worktrees even on error', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-bench-')), ctx = context(root);
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(async () => {
+    for (let attempt = 0; ; attempt++) {
+      try { fs.rmSync(root, { recursive: true, force: true }); break; }
+      catch (error) {
+        if (!['EPERM', 'EBUSY'].includes(error.code) || attempt === 10) throw error;
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+  });
   ctx.accountStatus = async () => ({ status: 'unavailable' });
   await git(root, ['init', '--quiet']);
   writeJson(path.join(root, 'package.json'), { scripts: { 'test:tiny': 'node scripts/test-tiny.mjs' } });
@@ -38,7 +46,15 @@ test('Tiny git benchmark validates fail-to-pass and cleans worktrees even on err
 
 async function fixture(t, scripts = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-bench-')), ctx = context(root);
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(async () => {
+    for (let attempt = 0; ; attempt++) {
+      try { fs.rmSync(root, { recursive: true, force: true }); break; }
+      catch (error) {
+        if (!['EPERM', 'EBUSY'].includes(error.code) || attempt === 10) throw error;
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+  });
   ctx.accountStatus = async () => ({ status: 'unavailable' });
   await git(root, ['init', '--quiet']);
   seedLocalData(ctx);
