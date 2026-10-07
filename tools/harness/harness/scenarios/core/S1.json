@@ -1,0 +1,13 @@
+{
+  "id": "S1",
+  "steps": [
+    { "type": "send", "text": "スタートボタンの文字を少し太くしてください。" },
+    { "type": "wait" },
+    { "type": "capture", "screenshot": "S1" }
+  ],
+  "assertions": [
+    { "filesChanged": true },
+    { "messageNotMatches": "こう理解しました" },
+    { "harnessFileAbsent": "^(?:intent/|tickets/)" }
+  ]
+}

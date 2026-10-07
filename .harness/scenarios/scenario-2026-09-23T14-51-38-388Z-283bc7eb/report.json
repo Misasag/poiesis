@@ -1,0 +1,82 @@
+{
+  "kind": "scenario",
+  "suite": "core",
+  "ts": "2026-09-23T14:51:38.389Z",
+  "app_root": "C:\\Users\\owner\\github\\poiesis-wt-chrome",
+  "workspace": "C:\\Users\\owner\\github\\poiesis-wt-scenario\\.harness\\tmp\\scenario-ws-scenario-2026-09-23T14-51-38-388Z-283bc7eb",
+  "agent_model": "gpt-6-luna",
+  "scenarios": [
+    {
+      "id": "S1",
+      "assertions": [
+        {
+          "id": "det-1",
+          "kind": "filesChanged",
+          "passed": true,
+          "verdict": "pass",
+          "reason": "1 source files changed"
+        },
+        {
+          "id": "det-2",
+          "kind": "messageNotMatches",
+          "passed": true,
+          "verdict": "pass",
+          "reason": "Forbidden agent message pattern"
+        },
+        {
+          "id": "det-3",
+          "kind": "harnessFileAbsent",
+          "passed": true,
+          "verdict": "pass",
+          "reason": "Forbidden harness path pattern"
+        }
+      ],
+      "wall_s": 35.999,
+      "tokens": 140422,
+      "screenshots": [
+        "C:\\Users\\owner\\github\\poiesis-wt-scenario\\.harness\\scenarios\\scenario-2026-09-23T14-51-38-388Z-283bc7eb\\S1.png"
+      ],
+      "capture": {
+        "message": "スタートボタンの文字を少し太くしました（`font-weight: 800` から `900`）。変更箇所は [index.html](/C:/Users/owner/github/poiesis-wt-scenario/.harness/tmp/scenario-ws-scenario-2026-09-23T14-51-38-388Z-283bc7eb/index.html)。",
+        "activity_counts": {
+          "total": 8,
+          "by_kind": {
+            "message": 2,
+            "command": 5,
+            "file-change": 1
+          }
+        },
+        "workspace": {
+          "status": " M index.html\n?? .poiesis/skills/.hx-installed.json\n?? .poiesis/skills/harness-delegate/SKILL.md\n?? .poiesis/skills/harness-results/SKILL.md\n?? .poiesis/skills/harness-verify/SKILL.md\n",
+          "diff_stat": " index.html | 1 +\n 1 file changed, 1 insertion(+)\n",
+          "paths": [
+            "index.html",
+            ".poiesis/skills/.hx-installed.json",
+            ".poiesis/skills/harness-delegate/SKILL.md",
+            ".poiesis/skills/harness-results/SKILL.md",
+            ".poiesis/skills/harness-verify/SKILL.md"
+          ],
+          "source_paths": [
+            "index.html",
+            ".poiesis/skills/.hx-installed.json",
+            ".poiesis/skills/harness-delegate/SKILL.md",
+            ".poiesis/skills/harness-results/SKILL.md",
+            ".poiesis/skills/harness-verify/SKILL.md"
+          ],
+          "source_paths_delta": [
+            "index.html"
+          ]
+        },
+        "harness_files": {},
+        "usage_line": "34秒 · 入力 139.5k トークン（キャッシュ 90%） · 出力 922",
+        "results": null,
+        "screenshots": [
+          "C:\\Users\\owner\\github\\poiesis-wt-scenario\\.harness\\scenarios\\scenario-2026-09-23T14-51-38-388Z-283bc7eb\\S1.png"
+        ]
+      },
+      "passed": 3,
+      "total": 3
+    }
+  ],
+  "exit_code": 0
+}

@@ -1,0 +1,11 @@
+{
+  "kind": "scenario",
+  "suite": "core",
+  "ts": "2026-09-23T14:45:43.484Z",
+  "app_root": "C:\\Users\\owner\\github\\poiesis-wt-chrome",
+  "workspace": "C:\\Users\\owner\\github\\poiesis-wt-scenario\\.harness\\tmp\\scenario-ws-scenario-2026-09-23T14-45-43-482Z-f969383e",
+  "agent_model": "gpt-6-luna",
+  "scenarios": [],
+  "exit_code": 1,
+  "error": "Timed out waiting for unique model gpt-6-luna"
+}

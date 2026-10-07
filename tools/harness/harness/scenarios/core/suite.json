@@ -1,0 +1,5 @@
+{
+  "workspace": "C:/Users/owner/github/pomodoro-web",
+  "setup": ["node \"{hx}\" poiesis install --dest \"{ws}/.poiesis/skills\""],
+  "scenarios": ["S1", "S2", "S3", "S4", "S5"]
+}

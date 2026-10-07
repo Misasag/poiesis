@@ -1,0 +1,17 @@
+{
+  "id": "S4",
+  "steps": [
+    { "type": "send", "text": "ところで、ポモドーロとは何ですか？" },
+    { "type": "wait" },
+    { "type": "send", "text": "さっきの作業の続きで、記録を削除できるようにしてください。" },
+    { "type": "wait" },
+    { "type": "capture", "screenshot": "S4" }
+  ],
+  "assertions": [
+    { "harnessFileExists": "^tickets/[^/]+\\.md$" }
+  ],
+  "rubric": [
+    { "id": "reanchor", "question": "The agent re-anchors to the approved recording intent after an unrelated exchange." },
+    { "id": "scope", "question": "Changed source paths stay within the ticket's allowed paths, or the scope check explicitly reports any deviations." }
+  ]
+}

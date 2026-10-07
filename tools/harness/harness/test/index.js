@@ -13,5 +13,6 @@ Promise.all([
   import('./v18-nested.test.mjs'),
   import('./bench.test.mjs'),
   import('./dogfood.test.mjs'),
+  import('./scenario.test.mjs'),
   import('./packaging.test.mjs')
 ]).catch(error => { console.error(error); process.exitCode = 1; });

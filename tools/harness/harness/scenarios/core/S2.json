@@ -1,0 +1,18 @@
+{
+  "id": "S2",
+  "steps": [
+    { "type": "send", "text": "作業の記録を残して、あとで振り返れるようにしたいです。", "newChat": true },
+    { "type": "wait" },
+    { "type": "capture", "screenshot": "S2" }
+  ],
+  "assertions": [
+    { "noSourceChanges": true },
+    { "messageMatches": "こう理解しました" },
+    { "harnessFileExists": "^intent/[^/]+\\.md$" },
+    { "harnessFileMatches": { "path": "^intent/[^/]+\\.md$", "pattern": "作業の記録を残して、あとで振り返れるようにしたいです。" } }
+  ],
+  "rubric": [
+    { "id": "summary", "question": "The intent summary is concise and scannable." },
+    { "id": "questions", "question": "There are at most one or two root-level questions, and only about fundamental decisions." }
+  ]
+}

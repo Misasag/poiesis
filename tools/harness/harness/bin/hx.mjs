@@ -63,6 +63,15 @@ try {
       else fail('Usage: hx bench mine|run|resuite');
       break;
     case 'dogfood': result = await (await import('./lib/dogfood.mjs')).dogfood(ctx, o); break;
+    case 'scenario': {
+      const scenarios = await import('./lib/scenario.mjs');
+      if (o._[0] === 'run') result = await scenarios.scenarioRun(ctx, o);
+      else if (o._[0] === 'compare' && o._.length === 3) {
+        result = scenarios.scenarioCompare(o._[1], o._[2]);
+        if (!o.json) { out(result.text); process.exit(0); }
+      } else fail('Usage: hx scenario run --suite name --app-root dir [--agent-model text] [--only S2,S3] [--keep] | compare reportA reportB');
+      break;
+    }
     case 'status': {
       const budget = budgetStatus(ctx), tickets = path.join(ctx.data, 'tickets'), exhausted = exhaustedQuota(ctx);
       const active = fs.existsSync(tickets) ? fs.readdirSync(tickets).filter(f => f.endsWith('.md')).filter(f => !/^state:\s*["']?(?:done|confirmed|確定)/mi.test(fs.readFileSync(path.join(tickets, f), 'utf8'))) : [];
@@ -81,7 +90,7 @@ try {
       break;
     }
     case 'help': case '--help': case undefined:
-      out('hx run|verify|gate|judge|route|scoreboard|outcome|tune|budget|prices|cost|bench|dogfood|status|judge-calibration|poiesis install|uninstall [--project dir] [--json]'); process.exit(0);
+      out('hx run|verify|gate|judge|route|scoreboard|outcome|tune|budget|prices|cost|bench|dogfood|scenario|status|judge-calibration|poiesis install|uninstall [--project dir] [--json]'); process.exit(0);
     default: fail(`Unknown command: ${command}`);
   }
   out(command === 'cost' && !o.json ? formatCost(result) : redactor()(result)); process.exitCode = result?.exit_code ?? 0;

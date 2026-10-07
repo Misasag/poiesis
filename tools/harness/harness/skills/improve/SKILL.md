@@ -15,6 +15,8 @@ Allow candidate changes ONLY to:
 Forbid changes to the frozen evaluator:
 - config/rubric-judge.md.
 - Bench task definitions, hidden tests, and suite membership during evaluation.
+- tools/harness/harness/scenarios/ suite definitions, prompts, assertions, and rubric items.
+- bin/lib/scenario.mjs and test/scenario.test.mjs.
 - Budget limits.
 - bin/lib/judge.mjs and bin/lib/budget.mjs.
 

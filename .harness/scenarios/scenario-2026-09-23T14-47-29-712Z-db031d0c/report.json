@@ -1,0 +1,82 @@
+{
+  "kind": "scenario",
+  "suite": "core",
+  "ts": "2026-09-23T14:47:29.713Z",
+  "app_root": "C:\\Users\\owner\\github\\poiesis-wt-chrome",
+  "workspace": "C:\\Users\\owner\\github\\poiesis-wt-scenario\\.harness\\tmp\\scenario-ws-scenario-2026-09-23T14-47-29-712Z-db031d0c",
+  "agent_model": "gpt-6-luna",
+  "scenarios": [
+    {
+      "id": "S1",
+      "assertions": [
+        {
+          "id": "det-1",
+          "kind": "filesChanged",
+          "passed": true,
+          "verdict": "pass",
+          "reason": "1 source files changed"
+        },
+        {
+          "id": "det-2",
+          "kind": "messageNotMatches",
+          "passed": true,
+          "verdict": "pass",
+          "reason": "Forbidden agent message pattern"
+        },
+        {
+          "id": "det-3",
+          "kind": "harnessFileAbsent",
+          "passed": true,
+          "verdict": "pass",
+          "reason": "Forbidden harness path pattern"
+        }
+      ],
+      "wall_s": 39.894,
+      "tokens": null,
+      "screenshots": [
+        "C:\\Users\\owner\\github\\poiesis-wt-scenario\\.harness\\scenarios\\scenario-2026-09-23T14-47-29-712Z-db031d0c\\S1.png"
+      ],
+      "capture": {
+        "message": "成果をまとめています\n成果をまとめています · 39秒\n作業履歴 6件 · コマンド 3 · ファイル変更 1",
+        "activity_counts": {
+          "total": 6,
+          "by_kind": {
+            "message": 2,
+            "command": 3,
+            "file-change": 1
+          }
+        },
+        "workspace": {
+          "status": " M index.html\n?? .poiesis/skills/.hx-installed.json\n?? .poiesis/skills/harness-delegate/SKILL.md\n?? .poiesis/skills/harness-results/SKILL.md\n?? .poiesis/skills/harness-verify/SKILL.md\n",
+          "diff_stat": " index.html | 1 +\n 1 file changed, 1 insertion(+)\n",
+          "paths": [
+            "index.html",
+            ".poiesis/skills/.hx-installed.json",
+            ".poiesis/skills/harness-delegate/SKILL.md",
+            ".poiesis/skills/harness-results/SKILL.md",
+            ".poiesis/skills/harness-verify/SKILL.md"
+          ],
+          "source_paths": [
+            "index.html",
+            ".poiesis/skills/.hx-installed.json",
+            ".poiesis/skills/harness-delegate/SKILL.md",
+            ".poiesis/skills/harness-results/SKILL.md",
+            ".poiesis/skills/harness-verify/SKILL.md"
+          ],
+          "source_paths_delta": [
+            "index.html"
+          ]
+        },
+        "harness_files": {},
+        "usage_line": "",
+        "results": null,
+        "screenshots": [
+          "C:\\Users\\owner\\github\\poiesis-wt-scenario\\.harness\\scenarios\\scenario-2026-09-23T14-47-29-712Z-db031d0c\\S1.png"
+        ]
+      },
+      "passed": 3,
+      "total": 3
+    }
+  ],
+  "exit_code": 0
+}

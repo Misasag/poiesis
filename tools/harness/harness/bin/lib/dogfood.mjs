@@ -19,13 +19,13 @@ const ROW = '.poiesis-agent-window__session-row.active';
 const DOCUMENT = '.poiesis-results__document';
 const sha256 = text => createHash('sha256').update(text).digest('hex');
 const seconds = (from, to) => (Date.parse(to) - Date.parse(from)) / 1000;
-async function freePort() {
+export async function freePort() {
   const server = net.createServer();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const port = server.address().port;
   await new Promise(resolve => server.close(resolve)); return port;
 }
-async function waitFor(fn, ms, label) {
+export async function waitFor(fn, ms, label) {
   const until = Date.now() + ms;
   while (Date.now() < until) { const result = await fn(); if (result) return result; await new Promise(r => setTimeout(r, 500)); }
   fail(`Timed out waiting for ${label}`);
@@ -112,12 +112,12 @@ async function selectModel(page, role, model) {
     return element?.getAttribute('data-provider') === 'codex' && element.getAttribute('data-model') === model;
   }, {}, { picker, model });
 }
-async function renderedDocument(page) {
+export async function renderedDocument(page) {
   const frame = await page.$(DOCUMENT);
   const content = frame && await frame.contentFrame();
   return content && content.evaluate(() => Boolean(document.body?.innerText.trim()) && document.readyState === 'complete');
 }
-async function renderedText(page) {
+export async function renderedText(page) {
   const element = await page.$(DOCUMENT), frame = await element.contentFrame();
   return frame.evaluate(() => {
     const body = document.body.cloneNode(true);

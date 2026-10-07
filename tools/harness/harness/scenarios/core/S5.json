@@ -1,0 +1,16 @@
+{
+  "id": "S5",
+  "steps": [
+    { "type": "send", "text": "作業記録の件、どこまで進んでいますか？", "newChat": true },
+    { "type": "wait" },
+    { "type": "capture", "screenshot": "S5" }
+  ],
+  "assertions": [
+    { "harnessFileExists": "^tickets/[^/]+\\.md$" },
+    { "activeTicketNamed": true }
+  ],
+  "rubric": [
+    { "id": "disk_state", "question": "The answer accurately reflects ticket state and unmet criteria on disk, without inventing progress." },
+    { "id": "ticket_identity", "question": "The answer names the active ticket ID or title exactly as recorded on disk." }
+  ]
+}

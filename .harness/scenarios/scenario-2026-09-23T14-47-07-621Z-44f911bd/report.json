@@ -1,0 +1,31 @@
+{
+  "kind": "scenario",
+  "suite": "core",
+  "ts": "2026-09-23T14:47:07.622Z",
+  "app_root": "C:\\Users\\owner\\github\\poiesis-wt-chrome",
+  "workspace": "C:\\Users\\owner\\github\\poiesis-wt-scenario\\.harness\\tmp\\scenario-ws-scenario-2026-09-23T14-47-07-621Z-44f911bd",
+  "agent_model": "gpt-6-luna",
+  "scenarios": [
+    {
+      "id": "S1",
+      "assertions": [
+        {
+          "id": "execution",
+          "kind": "execution",
+          "verdict": "fail",
+          "passed": false,
+          "reason": "lastMessageCount is not defined"
+        }
+      ],
+      "wall_s": 0.114,
+      "tokens": null,
+      "screenshots": [
+        "C:\\Users\\owner\\github\\poiesis-wt-scenario\\.harness\\scenarios\\scenario-2026-09-23T14-47-07-621Z-44f911bd\\S1-failure.png"
+      ],
+      "error": "lastMessageCount is not defined",
+      "passed": 0,
+      "total": 1
+    }
+  ],
+  "exit_code": 1
+}

@@ -1,0 +1,21 @@
+{
+  "id": "S3",
+  "steps": [
+    { "type": "send", "text": "その理解で進めてください。" },
+    { "type": "wait" },
+    { "type": "capture", "results": true, "screenshot": "S3" }
+  ],
+  "assertions": [
+    { "harnessFileExists": "^tickets/[^/]+\\.md$" },
+    { "harnessFileMatches": { "path": "^tickets/[^/]+\\.md$", "pattern": "得意" } },
+    { "harnessFileMatches": { "path": "^tickets/[^/]+\\.md$", "pattern": "苦手" } },
+    { "harnessFileExists": "^evidence/" },
+    { "messageMatches": "ハーネス状況" },
+    { "resultsMatches": "なぜ[\\s\\S]*何を[\\s\\S]*証拠[\\s\\S]*未検証[\\s\\S]*人間が判断すること" }
+  ],
+  "rubric": [
+    { "id": "evidence", "question": "No pass is claimed for a skilled criterion without executed evidence." },
+    { "id": "human", "question": "Human-judgment criteria remain open for the human." },
+    { "id": "status", "question": "The final message ends with a Harness status listing criterion statuses." }
+  ]
+}
